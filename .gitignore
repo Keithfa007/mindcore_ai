@@ -65,3 +65,9 @@ ios/Flutter/Flutter.podspec
 .idea/
 .vscode/
 *.swp
+
+env.prod
+env.dev
+
+
+
