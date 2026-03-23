@@ -1,0 +1,22 @@
+{
+  "id": "stress-management",
+  "title": "Stress Management",
+  "summary": "Recognize stress and learn quick ways to bring it down.",
+  "tags": ["Stress", "Coping", "Lifestyle"],
+  "estimatedMinutes": 4,
+  "updatedAt": "2025-09-10",
+  "sections": [
+    {
+      "heading": "Overview",
+      "markdown": "Stress is your body’s response to perceived challenges. Short bursts can be useful, chronic stress is harmful."
+    },
+    {
+      "heading": "Quick resets",
+      "markdown": "- box breathing\n- 60–90 second cold water on wrists\n- 10-minute walk\n- journaling a single next step"
+    },
+    {
+      "heading": "Long-term habits",
+      "markdown": "Sleep consistency, movement you enjoy, and boundaries around work and screens."
+    }
+  ]
+}

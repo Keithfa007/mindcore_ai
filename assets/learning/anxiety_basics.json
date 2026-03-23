@@ -1,0 +1,26 @@
+{
+  "id": "anxiety-basics",
+  "title": "Understanding Anxiety",
+  "summary": "What anxiety is, why it happens, and what helps.",
+  "tags": ["Anxiety", "Coping", "Basics"],
+  "estimatedMinutes": 5,
+  "updatedAt": "2025-09-10",
+  "sections": [
+    {
+      "heading": "Overview",
+      "markdown": "Anxiety is a normal human response. It becomes a problem when it is intense, persistent, and interferes with daily life."
+    },
+    {
+      "heading": "Common signs",
+      "markdown": "- racing thoughts\n- tight chest\n- restlessness\n- trouble sleeping"
+    },
+    {
+      "heading": "What helps",
+      "markdown": "Try **box breathing (4-4-4-4)**, progressive muscle relaxation, short walks, and cognitive reframing."
+    },
+    {
+      "heading": "Try this (2 min)",
+      "markdown": "Do the *5–4–3–2–1* grounding: name 5 things you see, 4 you feel, 3 you hear, 2 you smell, 1 you taste."
+    }
+  ]
+}

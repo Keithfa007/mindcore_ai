@@ -1,0 +1,55 @@
+// android/app/build.gradle (Groovy)
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+    // ✅ Needed for Firebase (Google services)
+    id "com.google.gms.google-services"
+}
+
+android {
+    namespace "com.mindcoreai.app"
+    // ✅ Use an SDK you have installed. If 36 isn’t installed, use 34 or 35.
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.mindcoreai.app"
+        minSdkVersion flutter.minSdkVersion               // Firebase + Google Sign-In is fine with 23+, you’re good
+        targetSdk 36            // ok to match compileSdk (or use 34/35)
+        versionCode 1
+        versionName "1.0.0"
+        // multiDexEnabled true  // not needed with minSdk 23; add only if you hit method count issues
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+        release {
+            signingConfig signingConfigs.debug   // TODO: replace with your real release signing
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        // ✅ Required by flutter_local_notifications & some modern libs
+        coreLibraryDesugaringEnabled true
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+flutter {
+    source "../.."
+}
+
+dependencies {
+    implementation 'com.android.billingclient:billing-ktx:7.1.1'
+    // ✅ Core library desugaring (>= 2.1.4 was required; 2.1.5 is fine)
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
+}

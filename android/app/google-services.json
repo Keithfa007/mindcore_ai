@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "471068535518",
+    "project_id": "mindcore-ai",
+    "storage_bucket": "mindcore-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:471068535518:android:6bdd23176bc7ada432704f",
+        "android_client_info": {
+          "package_name": "com.mindcoreai.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "471068535518-8pvla8ptl3vvv8hmsdebtc03r69mgolq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mindcoreai.app",
+            "certificate_hash": "d8f32eb1b1f00b22721895d40d0219902ce3046c"
+          }
+        },
+        {
+          "client_id": "471068535518-ogvr0odji8uq1gk4hto4j102csojlvc3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_Hwk5CU4SBIw-Jp65LLQtsB-mfQOFCjM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "471068535518-ogvr0odji8uq1gk4hto4j102csojlvc3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
