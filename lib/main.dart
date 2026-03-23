@@ -20,11 +20,14 @@ import 'pages/chat_persona_screen.dart';
 import 'pages/relax_audio_screen.dart';
 import 'pages/settings_screen.dart';
 import 'pages/guided_sessions_screen.dart';
+import 'pages/paywall_screen.dart';
 
 import 'pages/helpers/route_observer.dart';
 import 'services/settings_service.dart';
 import 'services/notification_service.dart';
 import 'services/openai_tts_service.dart';
+import 'services/premium_service.dart';
+import 'services/usage_service.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -50,6 +53,9 @@ Future<void> main() async {
 
   await Firebase.initializeApp();
 
+  await PremiumService.init();
+  await UsageService.instance.init();
+
   await NotificationService.instance.init(
     navigatorKey: appNavigatorKey,
   );
@@ -74,20 +80,21 @@ class MindCoreApp extends StatelessWidget {
           darkTheme: AppTheme.dark(),
           navigatorObservers: [appRouteObserver],
           routes: {
-            '/home': (_) => const HomeScreen(),
-            '/chat': (_) => const ChatScreen(),
-            '/daily-hub': (_) => const DailyHubScreen(),
-            '/breathe': (_) => const BreatheScreen(),
-            '/reset': (_) => const ResetScreen(),
-            '/mood-history': (_) => const MoodHistoryScreen(),
+            '/home':             (_) => const HomeScreen(),
+            '/chat':             (_) => const ChatScreen(),
+            '/daily-hub':        (_) => const DailyHubScreen(),
+            '/breathe':          (_) => const BreatheScreen(),
+            '/reset':            (_) => const ResetScreen(),
+            '/mood-history':     (_) => const MoodHistoryScreen(),
             '/frequently-asked': (_) => const FrequentlyAskedPage(),
-            '/profile': (_) => const ProfileScreen(),
-            '/login': (_) => const LoginScreen(),
-            '/onboarding': (_) => const PostLoginGate(),
-            '/chat-persona': (_) => const ChatPersonaScreen(),
-            '/relax-audio': (_) => const RelaxAudioScreen(),
-            '/guided-sessions': (_) => const GuidedSessionsScreen(),
-            '/settings': (_) => const SettingsScreen(),
+            '/profile':          (_) => const ProfileScreen(),
+            '/login':            (_) => const LoginScreen(),
+            '/onboarding':       (_) => const PostLoginGate(),
+            '/chat-persona':     (_) => const ChatPersonaScreen(),
+            '/relax-audio':      (_) => const RelaxAudioScreen(),
+            '/guided-sessions':  (_) => const GuidedSessionsScreen(),
+            '/settings':         (_) => const SettingsScreen(),
+            '/paywall':          (_) => const PaywallScreen(),
           },
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),
@@ -97,7 +104,9 @@ class MindCoreApp extends StatelessWidget {
                   body: Center(child: CircularProgressIndicator()),
                 );
               }
-              return snap.data == null ? const LoginScreen() : const PostLoginGate();
+              return snap.data == null
+                  ? const LoginScreen()
+                  : const PostLoginGate();
             },
           ),
         );
