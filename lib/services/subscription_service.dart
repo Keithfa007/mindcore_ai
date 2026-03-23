@@ -1,13 +1,9 @@
-
 // lib/services/subscription_service.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:mindcore_ai/env/env.dart';
-
-final publishable = Env.stripePublishable;
-final secret = Env.stripeSecret;
-
+import 'package:mindcore_ai/models/tier_config.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
 
 class SubscriptionService {
   static final SubscriptionService _instance = SubscriptionService._internal();
@@ -20,21 +16,27 @@ class SubscriptionService {
   static const Set<String> PRODUCT_IDS = {
     'mindcore_premium_monthly',
     'mindcore_premium_yearly',
+    'mindcore_pro_monthly',
+    'mindcore_pro_yearly',
   };
 
-  ProductDetails? monthly;
-  ProductDetails? yearly;
+  ProductDetails? premiumMonthly;
+  ProductDetails? premiumYearly;
+  ProductDetails? proMonthly;
+  ProductDetails? proYearly;
 
   bool get isSupported => true;
 
   Future<void> init() async {
     final available = await _iap.isAvailable();
     if (!available) return;
-    _purchaseSub ??= _iap.purchaseStream.listen(_onPurchaseUpdated, onDone: () {
-      _purchaseSub?.cancel();
-    }, onError: (e) {
-      debugPrint('IAP stream error: $e');
-    });
+
+    _purchaseSub ??= _iap.purchaseStream.listen(
+      _onPurchaseUpdated,
+      onDone: () => _purchaseSub?.cancel(),
+      onError: (e) => debugPrint('IAP stream error: $e'),
+    );
+
     await _queryProducts();
   }
 
@@ -45,8 +47,12 @@ class SubscriptionService {
       return;
     }
     for (final p in resp.productDetails) {
-      if (p.id == 'mindcore_premium_monthly') monthly = p;
-      if (p.id == 'mindcore_premium_yearly') yearly = p;
+      switch (p.id) {
+        case 'mindcore_premium_monthly': premiumMonthly = p; break;
+        case 'mindcore_premium_yearly':  premiumYearly  = p; break;
+        case 'mindcore_pro_monthly':     proMonthly     = p; break;
+        case 'mindcore_pro_yearly':      proYearly      = p; break;
+      }
     }
   }
 
@@ -64,23 +70,25 @@ class SubscriptionService {
       switch (purchase.status) {
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
-          await _finish(purchase);
-          break;
-        case PurchaseStatus.pending:
+          await _handleSuccess(purchase);
           break;
         case PurchaseStatus.error:
           debugPrint('Purchase error: ${purchase.error}');
           break;
+        case PurchaseStatus.pending:
         case PurchaseStatus.canceled:
           break;
       }
     }
   }
 
-  Future<void> _finish(PurchaseDetails p) async {
+  Future<void> _handleSuccess(PurchaseDetails p) async {
     if (p.pendingCompletePurchase) {
       await _iap.completePurchase(p);
     }
+    final tierConfig = TierConfig.fromProductId(p.productID);
+    await PremiumService.activate(tier: tierConfig);
+    debugPrint('SubscriptionService: activated ${tierConfig.displayName}');
   }
 
   void dispose() {
