@@ -17,13 +17,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
   bool _loading = false;
   bool _selectedYearly = true;
 
-  static const _benefits = [
-    (Icons.chat_rounded,             'AI conversations that adapt to your mood'),
-    (Icons.record_voice_over_rounded,'Hands-free push-to-talk voice mode'),
-    (Icons.self_improvement_rounded, 'All guided sessions and breathing tools'),
-    (Icons.headphones_rounded,       'Full relaxation audio library'),
-    (Icons.auto_awesome_rounded,     'Daily insight engine and journal AI'),
-    (Icons.picture_as_pdf_rounded,   'Export your journal as PDF'),
+  static const List<List<dynamic>> _benefits = [
+    [Icons.chat_rounded,             'AI conversations that adapt to your mood'],
+    [Icons.record_voice_over_rounded,'Hands-free push-to-talk voice mode'],
+    [Icons.self_improvement_rounded, 'All guided sessions and breathing tools'],
+    [Icons.headphones_rounded,       'Full relaxation audio library'],
+    [Icons.auto_awesome_rounded,     'Daily insight engine and journal AI'],
+    [Icons.picture_as_pdf_rounded,   'Export your journal as PDF'],
   ];
 
   @override
@@ -108,13 +108,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           width: 34,
                           height: 34,
                           decoration: BoxDecoration(
-                            color: cs.primary.withOpacity(0.1),
+                            color: cs.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(9),
                           ),
-                          child: Icon(b.$1, size: 16, color: cs.primary),
+                          child: Icon(b[0] as IconData, size: 16, color: cs.primary),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(child: Text(b.$2, style: tt.bodyMedium)),
+                        Expanded(child: Text(b[1] as String, style: tt.bodyMedium)),
                       ],
                     ),
                   ))),

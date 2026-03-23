@@ -1,4 +1,5 @@
 // lib/services/premium_service.dart
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -60,7 +61,7 @@ class PremiumService {
     await _setLocal(false, TierConfig.trial);
   }
 
-  static Future<bool> checkAndPrompt(context) async {
+  static Future<bool> checkAndPrompt(BuildContext context) async {
     if (isPremium.value) return true;
     await Navigator.of(context).pushNamed('/paywall');
     return isPremium.value;

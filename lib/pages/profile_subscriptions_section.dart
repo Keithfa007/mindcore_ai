@@ -1,91 +1,105 @@
-
 // lib/pages/profile_subscriptions_section.dart
 import 'package:flutter/material.dart';
 import 'package:mindcore_ai/services/subscription_service.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
+import 'package:mindcore_ai/models/tier_config.dart';
 
 class ProfileSubscriptionsSection extends StatefulWidget {
   const ProfileSubscriptionsSection({super.key});
 
   @override
-  State<ProfileSubscriptionsSection> createState() => _ProfileSubscriptionsSectionState();
+  State<ProfileSubscriptionsSection> createState() =>
+      _ProfileSubscriptionsSectionState();
 }
 
-class _ProfileSubscriptionsSectionState extends State<ProfileSubscriptionsSection> {
-  final sub = SubscriptionService();
+class _ProfileSubscriptionsSectionState
+    extends State<ProfileSubscriptionsSection> {
+  final _sub = SubscriptionService();
 
   @override
   void initState() {
     super.initState();
-    sub.init();
+    _sub.init();
   }
 
   @override
   void dispose() {
-    sub.dispose();
+    _sub.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return ValueListenableBuilder<TierConfig>(
+      valueListenable: PremiumService.currentTier,
+      builder: (context, tier, _) {
+        return Card(
+          margin: const EdgeInsets.all(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.workspace_premium, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Text('Premium Subscription', style: Theme.of(context).textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text('Unlock daily coaching, audio and advanced tools.'),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: sub.monthly == null ? null : () => sub.buy(sub.monthly!),
-                    child: Text(sub.monthly == null ? 'Monthly (loading...)' : 'Subscribe Monthly'),
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.workspace_premium,
+                        color: cs.primary),
+                    const SizedBox(width: 8),
+                    Text('Subscription',
+                        style: tt.titleMedium),
+                    const Spacer(),
+                    if (PremiumService.isPremium.value)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          tier.displayName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: sub.yearly == null ? null : () => sub.buy(sub.yearly!),
-                    child: Text(sub.yearly == null ? 'Yearly (loading...)' : 'Subscribe Yearly'),
+                const SizedBox(height: 12),
+                if (!PremiumService.isPremium.value) ...[
+                  Text('Unlock daily coaching, voice mode and advanced tools.',
+                      style: tt.bodyMedium),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () =>
+                          Navigator.of(context).pushNamed('/paywall'),
+                      child: const Text('See plans'),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => sub.restore(),
+                ] else ...[
+                  Text(
+                    'You\'re on the ${tier.displayName} plan. '
+                    'Manage your subscription in the App Store or Play Store.',
+                    style: tt.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => _sub.restore(),
                     child: const Text('Restore purchases'),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      // Optional: web/desktop only (provide your portal url)
-                      // await StripeService.openPortal('https://your-portal-url');
-                    },
-                    icon: const Icon(Icons.credit_card),
-                    label: const Text('Manage (web portal)'),
-                  ),
-                ),
+                ],
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
