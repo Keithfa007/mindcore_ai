@@ -1,7 +1,7 @@
 // lib/pages/chat_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Clipboard
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,7 +13,6 @@ import 'package:mindcore_ai/models/conversation_meta.dart';
 import 'package:mindcore_ai/ai/agent_action.dart';
 import 'package:mindcore_ai/ai/agent_type.dart';
 import 'package:mindcore_ai/ai/proactive_support_service.dart';
-import 'package:mindcore_ai/pages/helpers/chat_service.dart';
 import 'package:mindcore_ai/pages/helpers/chat_persistence.dart';
 
 // ✅ Mood logging + suggester
@@ -25,6 +24,10 @@ import 'package:mindcore_ai/services/live_voice_preferences.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
 import 'package:mindcore_ai/services/chat_stream_service.dart';
 import 'package:mindcore_ai/services/therapist_mode_service.dart';
+
+// ✅ Usage gating
+import 'package:mindcore_ai/services/usage_service.dart';
+import 'package:mindcore_ai/widgets/usage_banner.dart';
 
 import 'helpers/mood_picker_sheet.dart';
 
@@ -48,11 +51,9 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
   final _composerFocus = FocusNode();
   final _scroll = ScrollController();
 
-  // Conversations
   String _currentConvId = "";
   List<ConversationMeta> _convs = [];
 
-  // Mood (current)
   String? _currentMoodEmoji;
   String _currentMoodLabel = 'Neutral';
 
@@ -62,25 +63,20 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
   bool _showResetNudge = false;
   List<SupportPromptChip> _quickPrompts = const [];
 
-  // ✅ Mood suggestion (fallback UI)
   MoodSuggestion? _pendingMood;
   bool _showMoodSuggestion = false;
   int _turnsSinceMoodPrompt = 0;
 
-  // ✅ Auto-log tuning
-  static const double _autoLogMinConfidence = 0.78; // auto-log when >=
-  static const double _suggestMinConfidence = 0.58; // suggest bar when >=
+  static const double _autoLogMinConfidence = 0.78;
+  static const double _suggestMinConfidence = 0.58;
 
-  // ✅ Anti-spam prefs keys
   static const String _kAutoMoodLastTs = 'auto_mood_last_ts';
   static const String _kAutoMoodLastLabel = 'auto_mood_last_label';
   static const String _kManualMoodLastTs = 'manual_mood_last_ts';
 
-  // TTS toggle
   bool _ttsEnabled = true;
   bool _didHandleRouteArgs = false;
 
-  // Bot logo asset (AI avatar)
   static const String? kBotLogoAsset = 'assets/images/logo512.png';
   TherapistModeConfig _therapistMode = TherapistModeConfig.fallback;
 
@@ -96,7 +92,6 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
   }
 
   Future<void> _boot() async {
-    // Load TTS prefs
     await OpenAiTtsService.instance.init();
     _ttsEnabled = await OpenAiTtsService.instance.getSurfaceEnabled(TtsSurface.chat);
     _therapistMode = await TherapistModeService.load();
@@ -116,7 +111,7 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
       _showMoodSuggestion = false;
       _turnsSinceMoodPrompt = 0;
     });
-      await _refreshQuickPrompts();
+    await _refreshQuickPrompts();
     _scheduleScrollToBottom(animated: false);
   }
 
@@ -212,7 +207,7 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
 
   Future<void> _renameConversation() async {
     final current = _convs.firstWhere(
-          (c) => c.id == _currentConvId,
+      (c) => c.id == _currentConvId,
       orElse: () => ConversationMeta(id: _currentConvId, title: "Chat"),
     );
 
@@ -256,11 +251,12 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     if (confirm != true) return;
 
     await _stopSpeech(resetState: true);
-
     await ChatPersistence.deleteConversation(_currentConvId);
     _convs = await ChatPersistence.listConversations();
 
-    _currentConvId = _convs.isEmpty ? await ChatPersistence.ensureDefault() : _convs.first.id;
+    _currentConvId = _convs.isEmpty
+        ? await ChatPersistence.ensureDefault()
+        : _convs.first.id;
 
     final msgs = await ChatPersistence.load(_currentConvId);
 
@@ -340,21 +336,18 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
 
-    // If user manually logged recently, don't auto-log (avoid fighting the user).
     final manualTsMs = prefs.getInt(_kManualMoodLastTs) ?? 0;
     if (manualTsMs > 0) {
       final manualTs = DateTime.fromMillisecondsSinceEpoch(manualTsMs);
       if (now.difference(manualTs).inHours < 3) return false;
     }
 
-    // Don't auto-log too frequently.
     final lastAutoMs = prefs.getInt(_kAutoMoodLastTs) ?? 0;
     if (lastAutoMs > 0) {
       final lastAuto = DateTime.fromMillisecondsSinceEpoch(lastAutoMs);
       if (now.difference(lastAuto).inHours < 6) return false;
     }
 
-    // Don't repeat the same label too soon.
     final lastLabel = prefs.getString(_kAutoMoodLastLabel) ?? '';
     if (lastAutoMs > 0 && lastLabel.toLowerCase() == label.toLowerCase()) {
       final lastAuto = DateTime.fromMillisecondsSinceEpoch(lastAutoMs);
@@ -374,14 +367,12 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     required String userText,
     required String botText,
   }) async {
-    // Light throttle so we don't evaluate on every single micro-turn
     _turnsSinceMoodPrompt++;
     if (_turnsSinceMoodPrompt < 2) return;
     _turnsSinceMoodPrompt = 0;
 
     final suggestion = MoodSuggester.suggest(userText: userText, botText: botText);
 
-    // 1) Auto-log when confidence is high
     if (suggestion.confidence >= _autoLogMinConfidence) {
       final ok = await _canAutoLog(suggestion.label);
       if (!ok) return;
@@ -402,14 +393,12 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
       });
       await _refreshQuickPrompts();
 
-      // Optional: keep it subtle. If you want NO snackbar, remove this.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Mood auto-logged: ${suggestion.emoji} ${suggestion.label}')),
       );
       return;
     }
 
-    // 2) Otherwise show suggestion bar if medium confidence
     if (suggestion.confidence >= _suggestMinConfidence) {
       if (!mounted) return;
       setState(() {
@@ -540,28 +529,6 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     }
   }
 
-  Widget _buildQuickPromptBar() {
-    if (_quickPrompts.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _quickPrompts.take(3).map((chip) {
-            return ActionChip(
-              avatar: Icon(chip.icon, size: 16),
-              label: Text(chip.label),
-              onPressed: () => _applyPromptChip(chip),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-
   Widget _buildTherapistModeChip() {
     if (!_therapistMode.enabled) return const SizedBox.shrink();
     return Padding(
@@ -620,16 +587,15 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     );
   }
 
-  Future<String> _systemOverlayText() async {
-    if (!_therapistMode.enabled) return '';
-    return TherapistModeService.buildSystemOverlay();
-  }
-
-  // ---------- Send / Regenerate ----------
+  // ---------- Send ----------
   Future<void> _send() async {
     final text = _controller.text.trim();
     _showResetNudge = _shouldShowResetNudge(text);
     if (text.isEmpty || _isSending) return;
+
+    // ✅ Usage gate — checks limit and shows paywall if needed
+    final allowed = await UsageService.instance.tryConsumeMessage(context);
+    if (!allowed) return;
 
     await _stopSpeech(resetState: true);
 
@@ -664,9 +630,13 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     });
 
     try {
-      final recent = _messages.length > 9 ? _messages.sublist(_messages.length - 9) : List<ChatMessage>.from(_messages);
+      final recent = _messages.length > 9
+          ? _messages.sublist(_messages.length - 9)
+          : List<ChatMessage>.from(_messages);
       final history = recent.map((m) => {"role": m.role, "content": m.text}).toList();
-      if (history.isNotEmpty && history.last["role"] == "user" && history.last["content"] == text) {
+      if (history.isNotEmpty &&
+          history.last["role"] == "user" &&
+          history.last["content"] == text) {
         history.removeLast();
       }
       final asstId = _id.v4();
@@ -728,7 +698,8 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
       }
 
       if (mounted && _currentConvId == convIdAtSend) {
-        await _handleMoodFromConversation(userText: text, botText: result.reply);
+        await _handleMoodFromConversation(
+            userText: text, botText: result.reply);
       }
     } catch (e) {
       if (mounted && _currentConvId == convIdAtSend) {
@@ -736,7 +707,7 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
           _messages.add(ChatMessage(
             id: _id.v4(),
             role: 'assistant',
-            text: "⚠️ I couldn’t reach the AI right now.\n"
+            text: "⚠️ I couldn't reach the AI right now.\n"
                 "Please check your internet connection and API key configuration.\n\nError: $e",
             timestamp: DateTime.now(),
             supportModeLabel: 'Connection issue',
@@ -758,7 +729,8 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
   Future<void> _retryAssistantMessage(String messageId) async {
     if (_isSending) return;
 
-    final idx = _messages.indexWhere((m) => m.id == messageId && m.role == 'assistant');
+    final idx = _messages.indexWhere(
+        (m) => m.id == messageId && m.role == 'assistant');
     if (idx == -1) return;
 
     if (LiveVoicePreferences.instance.interruptOnNewMessage) {
@@ -789,9 +761,14 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
 
     try {
       final slice = _messages.take(u + 1).toList();
-      final recent = slice.length > 9 ? slice.sublist(slice.length - 9) : List<ChatMessage>.from(slice);
-      final history = recent.map((m) => {"role": m.role, "content": m.text}).toList();
-      if (history.isNotEmpty && history.last["role"] == "user" && history.last["content"] == userMsg.text) {
+      final recent = slice.length > 9
+          ? slice.sublist(slice.length - 9)
+          : List<ChatMessage>.from(slice);
+      final history =
+          recent.map((m) => {"role": m.role, "content": m.text}).toList();
+      if (history.isNotEmpty &&
+          history.last["role"] == "user" &&
+          history.last["content"] == userMsg.text) {
         history.removeLast();
       }
       final result = await ChatStreamService.streamOrchestratedReply(
@@ -805,7 +782,8 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
           if (currentIdx == -1) return;
 
           final existing = _messages[currentIdx];
-          _messages[currentIdx] = existing.copyWith(text: existing.text + delta);
+          _messages[currentIdx] =
+              existing.copyWith(text: existing.text + delta);
 
           if (mounted) {
             setState(() {});
@@ -836,7 +814,8 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
       }
 
       if (mounted && _currentConvId == convIdAtSend) {
-        await _handleMoodFromConversation(userText: userMsg.text, botText: result.reply);
+        await _handleMoodFromConversation(
+            userText: userMsg.text, botText: result.reply);
       }
     } catch (e) {
       if (mounted && _currentConvId == convIdAtSend) {
@@ -863,12 +842,15 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
   // ---------- UI helpers ----------
   String _prettyTime(DateTime dt) {
     final now = DateTime.now();
-    final sameDay = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+    final sameDay = dt.year == now.year &&
+        dt.month == now.month &&
+        dt.day == now.day;
     if (sameDay) return "Today ${TimeOfDay.fromDateTime(dt).format(context)}";
     return DateFormat('yyyy-MM-dd').format(dt);
   }
 
-  String _formatMsgTimestamp(DateTime dt) => DateFormat('EEE, MMM d • HH:mm').format(dt);
+  String _formatMsgTimestamp(DateTime dt) =>
+      DateFormat('EEE, MMM d • HH:mm').format(dt);
 
   String _stripLeadingEmoji(String s) {
     final regex = RegExp(
@@ -883,11 +865,13 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
       final userPhoto = FirebaseAuth.instance.currentUser?.photoURL;
       if (userPhoto != null && userPhoto.isNotEmpty) {
         return FadeAvatar(
-          child: CircleAvatar(radius: 16, backgroundImage: NetworkImage(userPhoto)),
+          child: CircleAvatar(
+              radius: 16, backgroundImage: NetworkImage(userPhoto)),
         );
       }
       return const FadeAvatar(
-        child: CircleAvatar(radius: 16, child: Icon(Icons.person, size: 18)),
+        child: CircleAvatar(
+            radius: 16, child: Icon(Icons.person, size: 18)),
       );
     }
 
@@ -913,7 +897,8 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     }
 
     return const FadeAvatar(
-      child: CircleAvatar(radius: 16, child: Icon(Icons.smart_toy, size: 18)),
+      child: CircleAvatar(
+          radius: 16, child: Icon(Icons.smart_toy, size: 18)),
     );
   }
 
@@ -962,13 +947,16 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     );
   }
 
-  Future<void> _handleAgentAction(AgentAction action, ChatMessage message) async {
+  Future<void> _handleAgentAction(
+      AgentAction action, ChatMessage message) async {
     if (action.routeName != null && action.routeName!.isNotEmpty) {
       await Navigator.of(context).pushNamed(action.routeName!);
       return;
     }
 
-    final payload = message.text.trim().isEmpty ? (message.supportModeLabel ?? 'MindCore AI note') : message.text.trim();
+    final payload = message.text.trim().isEmpty
+        ? (message.supportModeLabel ?? 'MindCore AI note')
+        : message.text.trim();
     await Clipboard.setData(ClipboardData(text: payload));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -988,7 +976,9 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
           return ActionChip(
             label: Text(action.label),
             avatar: Icon(
-              action.routeName != null ? Icons.arrow_forward_rounded : Icons.copy_rounded,
+              action.routeName != null
+                  ? Icons.arrow_forward_rounded
+                  : Icons.copy_rounded,
               size: 16,
             ),
             onPressed: () => _handleAgentAction(action, m),
@@ -1003,8 +993,12 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     final isUser = m.role == 'user';
     final theme = Theme.of(context);
 
-    final bg = isUser ? theme.colorScheme.primaryContainer : theme.colorScheme.surface;
-    final fg = isUser ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface;
+    final bg = isUser
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surface;
+    final fg = isUser
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurface;
 
     final ts = m.timestamp ?? DateTime.now();
     final maxBubbleWidth = MediaQuery.of(context).size.width * 0.82;
@@ -1021,26 +1015,28 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
             borderRadius: BorderRadius.circular(16),
             boxShadow: isUser
                 ? [
-              BoxShadow(
-                color: theme.colorScheme.primary.withValues(alpha: 0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ]
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
                 : const [
-              BoxShadow(
-                blurRadius: 6,
-                color: Color(0x14000000),
-                offset: Offset(0, 2),
-              ),
-            ],
+                    BoxShadow(
+                      blurRadius: 6,
+                      color: Color(0x14000000),
+                      offset: Offset(0, 2),
+                    ),
+                  ],
           ),
           child: Column(
-            crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment:
+                isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               if (!isUser && (m.supportModeLabel ?? '').isNotEmpty) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.primary.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(999),
@@ -1059,11 +1055,16 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
               if (!isUser) _buildActionChips(m, theme.colorScheme.primary),
               const SizedBox(height: 6),
               Align(
-                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                alignment: isUser
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
                 child: Text(
                   _formatMsgTimestamp(ts),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: isUser ? Colors.black87 : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: isUser
+                        ? Colors.black87
+                        : theme.colorScheme.onSurface
+                            .withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -1073,15 +1074,16 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(_ttsEnabled ? Icons.volume_up : Icons.volume_off),
-                      tooltip: _ttsEnabled ? 'Mute voice' : 'Read replies aloud',
+                      icon: Icon(
+                          _ttsEnabled ? Icons.volume_up : Icons.volume_off),
+                      tooltip: _ttsEnabled
+                          ? 'Mute voice'
+                          : 'Read replies aloud',
                       onPressed: () async {
                         final newValue = !_ttsEnabled;
-
                         setState(() => _ttsEnabled = newValue);
-
-                        await OpenAiTtsService.instance.setSurfaceEnabled(TtsSurface.chat, newValue);
-
+                        await OpenAiTtsService.instance
+                            .setSurfaceEnabled(TtsSurface.chat, newValue);
                         if (!newValue) {
                           await _stopSpeech(resetState: true);
                         }
@@ -1097,19 +1099,20 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     );
 
     final row = Row(
-      mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment:
+          isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: isUser
           ? [
-        Flexible(child: bubble),
-        const SizedBox(width: 8),
-        _avatar(isUser: true),
-      ]
+              Flexible(child: bubble),
+              const SizedBox(width: 8),
+              _avatar(isUser: true),
+            ]
           : [
-        _avatar(isUser: false),
-        const SizedBox(width: 8),
-        Flexible(child: bubble),
-      ],
+              _avatar(isUser: false),
+              const SizedBox(width: 8),
+              Flexible(child: bubble),
+            ],
     );
 
     return Padding(
@@ -1124,10 +1127,15 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
       child: Align(
         alignment: Alignment.centerLeft,
         child: Container(
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.74),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.74),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+            color: Theme.of(context)
+                .colorScheme
+                .surface
+                .withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(16),
             boxShadow: const [
               BoxShadow(
@@ -1142,14 +1150,20 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
             children: [
               Text(
                 'Your guide is ready whenever you are.',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 6),
               Text(
                 'Start typing to begin your check-in.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
-                ),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.72),
+                    ),
               ),
             ],
           ),
@@ -1162,8 +1176,10 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        margin:
+            const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+        padding:
+            const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
@@ -1173,31 +1189,11 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
     );
   }
 
-  Widget _logMoodButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: _onLogMoodPressed,
-        icon: const Icon(Icons.mood),
-        label: const Text('Log mood'),
-        style: FilledButton.styleFrom(
-          backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.92),
-          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-          shadowColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
-          elevation: 2,
-          minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _openSwitcher() async {
     if (_isSending) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please wait for the reply to finish…')),
+        const SnackBar(
+            content: Text('Please wait for the reply to finish…')),
       );
       return;
     }
@@ -1218,8 +1214,10 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
             ),
             const Divider(height: 0),
             ..._convs.map(
-                  (c) => ListTile(
-                leading: Icon(c.id == _currentConvId ? Icons.chat_bubble : Icons.chat_bubble_outline),
+              (c) => ListTile(
+                leading: Icon(c.id == _currentConvId
+                    ? Icons.chat_bubble
+                    : Icons.chat_bubble_outline),
                 title: Text(c.title),
                 subtitle: Text(_prettyTime(c.updatedAt)),
                 onTap: () => Navigator.pop(ctx, c.id),
@@ -1237,13 +1235,18 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
 
   @override
   Widget build(BuildContext context) {
-    final rawTitle = _convs.firstWhere(
-      (c) => c.id == _currentConvId,
-      orElse: () => ConversationMeta(id: _currentConvId, title: 'Chat'),
-    ).title;
+    final rawTitle = _convs
+        .firstWhere(
+          (c) => c.id == _currentConvId,
+          orElse: () =>
+              ConversationMeta(id: _currentConvId, title: 'Chat'),
+        )
+        .title;
 
     final baseTitle = _stripLeadingEmoji(rawTitle);
-    final decoratedTitle = _currentMoodEmoji == null ? baseTitle : '$baseTitle ${_currentMoodEmoji!}';
+    final decoratedTitle = _currentMoodEmoji == null
+        ? baseTitle
+        : '$baseTitle ${_currentMoodEmoji!}';
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safeBottom = MediaQuery.of(context).viewPadding.bottom;
 
@@ -1264,6 +1267,9 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
         ),
         title: decoratedTitle,
         actions: [
+          // ✅ Usage pill — shows messages remaining
+          const UsageBanner(compact: true),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.mood),
             tooltip: 'Log mood',
@@ -1271,14 +1277,13 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
           ),
           IconButton(
             icon: Icon(_ttsEnabled ? Icons.volume_up : Icons.volume_off),
-            tooltip: _ttsEnabled ? 'Mute voice' : 'Read replies aloud',
+            tooltip:
+                _ttsEnabled ? 'Mute voice' : 'Read replies aloud',
             onPressed: () async {
               final newValue = !_ttsEnabled;
               setState(() => _ttsEnabled = newValue);
-              await OpenAiTtsService.instance.setSurfaceEnabled(
-                TtsSurface.chat,
-                newValue,
-              );
+              await OpenAiTtsService.instance
+                  .setSurfaceEnabled(TtsSurface.chat, newValue);
               if (!newValue) {
                 await _stopSpeech(resetState: true);
               }
@@ -1296,9 +1301,12 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
               if (v == 'delete') _deleteConversation();
             },
             itemBuilder: (ctx) => const [
-              PopupMenuItem(value: 'rename', child: Text('Rename chat')),
-              PopupMenuItem(value: 'clear', child: Text('Clear messages')),
-              PopupMenuItem(value: 'delete', child: Text('Delete chat')),
+              PopupMenuItem(
+                  value: 'rename', child: Text('Rename chat')),
+              PopupMenuItem(
+                  value: 'clear', child: Text('Clear messages')),
+              PopupMenuItem(
+                  value: 'delete', child: Text('Delete chat')),
             ],
           ),
         ],
@@ -1315,7 +1323,8 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
                       children: [
                         if (_therapistMode.enabled)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                            padding:
+                                const EdgeInsets.fromLTRB(12, 12, 12, 0),
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: _buildTherapistModeChip(),
@@ -1324,25 +1333,32 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
                         Expanded(
                           child: ListView.builder(
                             controller: _scroll,
-                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
                             padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
-                            itemCount: (_messages.isEmpty ? 1 : _messages.length) + (_isTyping ? 1 : 0),
+                            itemCount:
+                                (_messages.isEmpty ? 1 : _messages.length) +
+                                    (_isTyping ? 1 : 0),
                             itemBuilder: (context, index) {
                               if (_messages.isEmpty && index == 0) {
                                 return _buildEmptyState();
                               }
-                              final adjustedIndex = _messages.isEmpty ? index - 1 : index;
-                              if (_isTyping && adjustedIndex == _messages.length) {
+                              final adjustedIndex =
+                                  _messages.isEmpty ? index - 1 : index;
+                              if (_isTyping &&
+                                  adjustedIndex == _messages.length) {
                                 return _buildTypingIndicator();
                               }
-                              return _messageItem(_messages[adjustedIndex]);
+                              return _messageItem(
+                                  _messages[adjustedIndex]);
                             },
                           ),
                         ),
                         _buildMoodSuggestionBar(),
                         if (_showResetNudge)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                            padding:
+                                const EdgeInsets.fromLTRB(12, 0, 12, 8),
                             child: GlassCard(
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
@@ -1353,21 +1369,27 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
                                     const Expanded(
                                       child: Text(
                                         'Want a quick reset? 90 seconds can help.',
-                                        style: TextStyle(fontWeight: FontWeight.w600),
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w600),
                                       ),
                                     ),
                                     TextButton(
                                       onPressed: () async {
-                                        setState(() => _showResetNudge = false);
-                                        await _stopSpeech(resetState: true);
+                                        setState(() =>
+                                            _showResetNudge = false);
+                                        await _stopSpeech(
+                                            resetState: true);
                                         if (!mounted) return;
-                                        Navigator.of(context).pushNamed('/reset');
+                                        Navigator.of(context)
+                                            .pushNamed('/reset');
                                       },
                                       child: const Text('Start'),
                                     ),
                                     IconButton(
-                                      onPressed: () => setState(() => _showResetNudge = false),
-                                      icon: const Icon(Icons.close, size: 18),
+                                      onPressed: () => setState(
+                                          () => _showResetNudge = false),
+                                      icon: const Icon(Icons.close,
+                                          size: 18),
                                     ),
                                   ],
                                 ),
@@ -1377,7 +1399,13 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
                         SafeArea(
                           top: false,
                           child: Padding(
-                            padding: EdgeInsets.fromLTRB(10, 6, 10, bottomInset > 0 ? 10 : (10 + safeBottom.clamp(0, 12))),
+                            padding: EdgeInsets.fromLTRB(
+                                10,
+                                6,
+                                10,
+                                bottomInset > 0
+                                    ? 10
+                                    : (10 + safeBottom.clamp(0, 12))),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
@@ -1387,25 +1415,32 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
                                     focusNode: _composerFocus,
                                     textInputAction: TextInputAction.send,
                                     onSubmitted: (_) => _send(),
-                                    onTap: () => _scheduleScrollToBottom(animated: false),
+                                    onTap: () => _scheduleScrollToBottom(
+                                        animated: false),
                                     minLines: 1,
                                     maxLines: 3,
                                     decoration: InputDecoration(
                                       hintText: 'Type a message…',
                                       filled: true,
                                       isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 18, vertical: 16),
                                       border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(18),
+                                        borderRadius:
+                                            BorderRadius.circular(18),
                                         borderSide: BorderSide.none,
                                       ),
-                                      fillColor: Theme.of(context).colorScheme.surface,
+                                      fillColor: Theme.of(context)
+                                          .colorScheme
+                                          .surface,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
+                                  padding:
+                                      const EdgeInsets.only(bottom: 2),
                                   child: IconButton(
                                     onPressed: _isSending ? null : _send,
                                     icon: const Icon(Icons.send_rounded),
@@ -1429,7 +1464,6 @@ class _ChatScreenState extends State<ChatScreen> with AutoStopTtsRouteAware<Chat
   }
 }
 
-/// Fade-in wrapper for avatars (soft entrance)
 class FadeAvatar extends StatefulWidget {
   final Widget child;
   const FadeAvatar({super.key, required this.child});
@@ -1438,13 +1472,16 @@ class FadeAvatar extends StatefulWidget {
   State<FadeAvatar> createState() => _FadeAvatarState();
 }
 
-class _FadeAvatarState extends State<FadeAvatar> with SingleTickerProviderStateMixin {
+class _FadeAvatarState extends State<FadeAvatar>
+    with SingleTickerProviderStateMixin {
   late AnimationController _c;
 
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 350))..forward();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 350))
+      ..forward();
   }
 
   @override
@@ -1470,7 +1507,7 @@ bool _shouldShowResetNudge(String text) {
   final t = text.toLowerCase();
   const cues = [
     'overwhelmed',
-    'can’t cope',
+    'can't cope',
     "can't cope",
     'panic',
     'panicking',
@@ -1479,7 +1516,7 @@ bool _shouldShowResetNudge(String text) {
     'stressed',
     'stress',
     'too much',
-    'i can’t breathe',
+    'i can't breathe',
     "i can't breathe",
     'spiral',
     'overthinking',
