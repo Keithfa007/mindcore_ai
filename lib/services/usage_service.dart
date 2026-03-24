@@ -83,24 +83,30 @@ class UsageService {
   int _voiceBuffer = 0;
 
   Future<void> init() async {
-    if (_initialised) return;
-    _initialised = true;
+  if (_initialised) return;
+  _initialised = true;
 
-    await _loadFromCache();
+  await _loadFromCache();
 
-    FirebaseAuth.instance.authStateChanges().listen((user) async {
-      if (user == null) {
-        snapshot.value = UsageSnapshot.empty;
-        return;
-      }
-      await _syncFromFirestore(user.uid);
-    });
-
-    PremiumService.isPremium.addListener(() async {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) await _syncFromFirestore(user.uid);
-    });
+  // Force sync on startup if user is already logged in
+  final user = FirebaseAuth.instance.currentUser;
+  if (user != null) {
+    await _syncFromFirestore(user.uid);
   }
+
+  FirebaseAuth.instance.authStateChanges().listen((user) async {
+    if (user == null) {
+      snapshot.value = UsageSnapshot.empty;
+      return;
+    }
+    await _syncFromFirestore(user.uid);
+  });
+
+  PremiumService.isPremium.addListener(() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) await _syncFromFirestore(user.uid);
+  });
+}
 
   Future<bool> tryConsumeMessage(BuildContext context) async {
     final snap = snapshot.value;
