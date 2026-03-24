@@ -5,7 +5,7 @@ import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/section_hero_card.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 
-import 'package:mindcore_ai/pages/chat_screen.dart';
+
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 
 import 'package:mindcore_ai/services/daily_plan_service.dart';
@@ -176,14 +176,109 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
               ),
             ),
             const SizedBox(height: 12),
-            GradientButton.primary(
-              'Start Chat',
-              onPressed: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const ChatScreen()),
-                );
-              },
+            Row(
+  children: [
+    Expanded(
+      child: GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.chat_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 24,
+              ),
             ),
+            const SizedBox(height: 10),
+            Text(
+              'Text Chat',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Type your thoughts',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pushNamed('/chat'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+                child: const Text('Open'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+    const SizedBox(width: 12),
+    Expanded(
+      child: GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF32D0BE).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.mic_rounded,
+                color: Color(0xFF32D0BE),
+                size: 24,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Voice Chat',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Speak hands-free',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pushNamed('/voice-chat'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  backgroundColor: const Color(0xFF32D0BE),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Open'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  ],
+),
             const SizedBox(height: 12),
             GlassCard(
               child: Column(

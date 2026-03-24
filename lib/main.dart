@@ -21,6 +21,7 @@ import 'pages/relax_audio_screen.dart';
 import 'pages/settings_screen.dart';
 import 'pages/guided_sessions_screen.dart';
 import 'pages/paywall_screen.dart';
+import 'pages/voice_chat_screen.dart';
 
 import 'pages/helpers/route_observer.dart';
 import 'services/settings_service.dart';
@@ -95,6 +96,7 @@ class MindCoreApp extends StatelessWidget {
             '/guided-sessions':  (_) => const GuidedSessionsScreen(),
             '/settings':         (_) => const SettingsScreen(),
             '/paywall':          (_) => const PaywallScreen(),
+            '/voice-chat':       (_) => const VoiceChatScreen(),
           },
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),
