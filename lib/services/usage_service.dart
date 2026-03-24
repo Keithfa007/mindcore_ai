@@ -111,15 +111,6 @@ class UsageService {
   Future<bool> tryConsumeMessage(BuildContext context) async {
   final snap = snapshot.value;
 
-  // Temporary debug — remove after testing
-  debugPrint('=== USAGE DEBUG ===');
-  debugPrint('Tier: ${snap.tier.displayName}');
-  debugPrint('Tier key: ${snap.tier.firestoreKey}');
-  debugPrint('isUnlimited: ${snap.tier.isUnlimited}');
-  debugPrint('messagesUsed: ${snap.messagesUsed}');
-  debugPrint('monthlyMessages: ${snap.tier.monthlyMessages}');
-  debugPrint('canSendMessage: ${snap.canSendMessage}');
-  debugPrint('===================');
 
   if (!snap.canSendMessage) {
     await _showLimitDialog(
