@@ -99,12 +99,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _startVoiceTimer();
 
     await _stt.listen(
-  onResult: (_) {},
-  listenOptions: SpeechListenOptions(
-    listenMode: ListenMode.dictation,
-    cancelOnError: true,
-  ),
-);
+      onResult: (_) {},
+      listenOptions: SpeechListenOptions(
+        listenMode: ListenMode.dictation,
+        cancelOnError: true,
+      ),
+    );
+    return;
   }
 
   Future<void> _onRelease() async {
@@ -123,6 +124,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   setState(() => _state = _VoiceState.thinking);
   await _sendToAI(spoken);
+  return;
 }
 
   // ── AI call ────────────────────────────────────────────────────────────
