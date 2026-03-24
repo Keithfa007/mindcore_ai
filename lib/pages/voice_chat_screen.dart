@@ -143,57 +143,56 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   // ── AI call ────────────────────────────────────────────────────────────
 
   Future<void> _sendToAI(String userText) async {
-    _history.add({'role': 'user', 'content': userText});
+  _history.add({'role': 'user', 'content': userText});
 
-    final replyBuffer = StringBuffer();
+  try {
+    final result = await ChatStreamService.streamOrchestratedReply(
+      history: _history,
+      moodLabel: _moodLabel,
+      userInput: userText,
+      screen: 'voice',
+      onDelta: (delta) async {},
+    );
 
-    try {
-      final result = await ChatStreamService.streamOrchestratedReply(
-        history: _history,
-        moodLabel: _moodLabel,
-        userInput: userText,
-        screen: 'voice',
-        onDelta: (delta) async {
-          replyBuffer.write(delta);
-        },
-      );
-
-      final reply = result.reply.trim();
-      if (reply.isEmpty) {
-        setState(() => _state = _VoiceState.idle);
-        return;
-      }
-
-      _history.add({'role': 'assistant', 'content': reply});
-
-      // Update mood from agent decision
-      _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
-          ? 'anxious'
-          : result.supportModeLabel.toLowerCase().contains('sleep')
-              ? 'low'
-              : 'calm';
-
-      if (!mounted) return;
-      setState(() => _state = _VoiceState.speaking);
-
-      await OpenAiTtsService.instance.speak(
-        reply,
-        moodLabel: _moodLabel,
-        messageId: _uuid.v4(),
-        surface: TtsSurface.chat,
-        force: true,
-      );
-
-      // Wait for TTS to finish
-      await _waitForTtsToFinish();
-
+    final reply = result.reply.trim();
+    if (reply.isEmpty) {
       if (mounted) setState(() => _state = _VoiceState.idle);
-    } catch (e) {
-      debugPrint('VoiceChat error: $e');
-      if (mounted) setState(() => _state = _VoiceState.idle);
+      return;
     }
-    return;
+
+    _history.add({'role': 'assistant', 'content': reply});
+
+    _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
+        ? 'anxious'
+        : result.supportModeLabel.toLowerCase().contains('sleep')
+            ? 'low'
+            : 'calm';
+
+    if (!mounted) return;
+    setState(() => _state = _VoiceState.speaking);
+
+    // Small delay to let state update before TTS starts
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    await OpenAiTtsService.instance.speak(
+      reply,
+      moodLabel: _moodLabel,
+      messageId: _uuid.v4(),
+      surface: TtsSurface.chat,
+      force: true,
+    );
+
+    // Wait for TTS to actually start then finish
+    await Future.delayed(const Duration(milliseconds: 500));
+    await _waitForTtsToFinish();
+
+    if (mounted) setState(() => _state = _VoiceState.idle);
+  } catch (e) {
+    debugPrint('VoiceChat error: $e');
+    if (mounted) setState(() => _state = _VoiceState.idle);
   }
+  return;
+}
 
   Future<void> _waitForTtsToFinish() async {
     while (OpenAiTtsService.instance.isSpeakingNow) {
@@ -269,13 +268,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Spacer(),
-            _buildCentralOrb(),
-            const SizedBox(height: 48),
-            _buildStateLabel(),
-            const Spacer(),
-            _buildHoldButton(),
-            const SizedBox(height: 48),
-          ],
+              Center(child: _buildCentralOrb()),
+              const SizedBox(height: 48),
+              Center(child: _buildStateLabel()),
+              const Spacer(),
+              Center(child: _buildHoldButton()),
+          ]   
+
         ),
       ),
     );
