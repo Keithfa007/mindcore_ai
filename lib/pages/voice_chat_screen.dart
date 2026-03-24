@@ -108,7 +108,9 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Future<void> _onRelease() async {
-  if (_state != _VoiceState.listening) return;
+  if (_state != _VoiceState.listening) {
+    return;
+  }
 
   _stopVoiceTimer();
   await _stt.stop();
@@ -121,7 +123,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   setState(() => _state = _VoiceState.thinking);
   await _sendToAI(spoken);
-  return;
 }
 
   // ── AI call ────────────────────────────────────────────────────────────
