@@ -140,7 +140,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         moodLabel: _moodLabel,
         userInput: userText,
         screen: 'voice',
-        onDelta: (delta) {
+        onDelta: (delta) async {
           replyBuffer.write(delta);
         },
       );
