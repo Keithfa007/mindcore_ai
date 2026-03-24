@@ -39,7 +39,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   // Voice minutes tracking
   Timer? _voiceTimer;
-  int _sessionSeconds = 0;
 
   @override
   void initState() {
@@ -109,20 +108,21 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Future<void> _onRelease() async {
-    if (_state != _VoiceState.listening) return;
+  if (_state != _VoiceState.listening) return;
 
-    _stopVoiceTimer();
-    await _stt.stop();
+  _stopVoiceTimer();
+  await _stt.stop();
 
-    final spoken = _stt.lastRecognizedWords.trim();
-    if (spoken.isEmpty) {
-      setState(() => _state = _VoiceState.idle);
-      return;
-    }
-
-    setState(() => _state = _VoiceState.thinking);
-    await _sendToAI(spoken);
+  final spoken = _stt.lastRecognizedWords.trim();
+  if (spoken.isEmpty) {
+    setState(() => _state = _VoiceState.idle);
+    return;
   }
+
+  setState(() => _state = _VoiceState.thinking);
+  await _sendToAI(spoken);
+  return;
+}
 
   // ── AI call ────────────────────────────────────────────────────────────
 
@@ -190,7 +190,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   void _startVoiceTimer() {
     _voiceTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      _sessionSeconds++;
       final stillOk = await UsageService.instance.recordVoiceSecond();
       if (!stillOk && mounted) {
         // Ran out of minutes mid-session
@@ -425,7 +424,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Widget _buildHoldButton() {
-    final isIdle = _state == _VoiceState.idle;
     final isListening = _state == _VoiceState.listening;
 
     return GestureDetector(
