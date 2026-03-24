@@ -1507,8 +1507,7 @@ bool _shouldShowResetNudge(String text) {
   final t = text.toLowerCase();
   const cues = [
     'overwhelmed',
-    'can't cope',
-    "can't cope",
+    'cant cope',
     'panic',
     'panicking',
     'anxious',
@@ -1516,8 +1515,7 @@ bool _shouldShowResetNudge(String text) {
     'stressed',
     'stress',
     'too much',
-    'i can't breathe',
-    "i can't breathe",
+    'i cant breathe',
     'spiral',
     'overthinking',
     'my chest',
@@ -1526,3 +1524,4 @@ bool _shouldShowResetNudge(String text) {
   ];
   return cues.any(t.contains);
 }
+ 
