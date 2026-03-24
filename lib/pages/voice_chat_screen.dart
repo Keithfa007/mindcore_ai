@@ -114,15 +114,28 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   _stopVoiceTimer();
+
+  // Give STT a moment to finalise the last word
+  await Future.delayed(const Duration(milliseconds: 500));
   await _stt.stop();
 
+  // Wait up to 2 seconds for final recognised words
+  int waited = 0;
+  while (_stt.lastRecognizedWords.isEmpty && waited < 2000) {
+    await Future.delayed(const Duration(milliseconds: 100));
+    waited += 100;
+  }
+
   final spoken = _stt.lastRecognizedWords.trim();
+
+  debugPrint('VoiceChat — recognised: "$spoken"');
+
   if (spoken.isEmpty) {
-    setState(() => _state = _VoiceState.idle);
+    if (mounted) setState(() => _state = _VoiceState.idle);
     return;
   }
 
-  setState(() => _state = _VoiceState.thinking);
+  if (mounted) setState(() => _state = _VoiceState.thinking);
   await _sendToAI(spoken);
   return;
 }
@@ -253,6 +266,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       ),
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Spacer(),
             _buildCentralOrb(),
@@ -359,28 +373,49 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Widget _buildOrbIcon() {
-    switch (_state) {
-      case _VoiceState.idle:
-        return const Icon(Icons.mic_none_rounded,
-            color: Colors.white54, size: 36, key: ValueKey('idle'));
-      case _VoiceState.listening:
-        return const Icon(Icons.mic_rounded,
-            color: Colors.white, size: 40, key: ValueKey('listening'));
-      case _VoiceState.thinking:
-        return const SizedBox(
-          key: ValueKey('thinking'),
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Colors.white70,
-          ),
-        );
-      case _VoiceState.speaking:
-        return const Icon(Icons.graphic_eq_rounded,
-            color: Colors.white, size: 40, key: ValueKey('speaking'));
-    }
+  switch (_state) {
+    case _VoiceState.idle:
+      return ClipOval(
+        child: Image.asset(
+          'assets/images/logo512.png',
+          width: 52,
+          height: 52,
+          fit: BoxFit.cover,
+          key: const ValueKey('idle'),
+        ),
+      );
+    case _VoiceState.listening:
+      return ClipOval(
+        child: Image.asset(
+          'assets/images/logo512.png',
+          width: 58,
+          height: 58,
+          fit: BoxFit.cover,
+          key: const ValueKey('listening'),
+        ),
+      );
+    case _VoiceState.thinking:
+      return const SizedBox(
+        key: ValueKey('thinking'),
+        width: 28,
+        height: 28,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Colors.white70,
+        ),
+      );
+    case _VoiceState.speaking:
+      return ClipOval(
+        child: Image.asset(
+          'assets/images/logo512.png',
+          width: 52,
+          height: 52,
+          fit: BoxFit.cover,
+          key: const ValueKey('speaking'),
+        ),
+      );
   }
+}
 
   Color _stateColor() {
     switch (_state) {
