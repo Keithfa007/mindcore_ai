@@ -1,6 +1,6 @@
 // lib/pages/voice_chat_screen.dart
 import 'dart:async';
-import 'dart:math' as math;
+
 
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -100,10 +100,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _startVoiceTimer();
 
     await _stt.listen(
-      onResult: (_) {}, // we grab final result on stop
-      listenMode: ListenMode.dictation,
-      cancelOnError: true,
-    );
+  onResult: (_) {},
+  listenOptions: SpeechListenOptions(
+    listenMode: ListenMode.dictation,
+    cancelOnError: true,
+  ),
+);
   }
 
   Future<void> _onRelease() async {
@@ -174,6 +176,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       debugPrint('VoiceChat error: $e');
       if (mounted) setState(() => _state = _VoiceState.idle);
     }
+    return;
   }
 
   Future<void> _waitForTtsToFinish() async {
@@ -391,12 +394,21 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Widget _buildStateLabel() {
-    final label = switch (_state) {
-      _VoiceState.idle     => 'Hold to speak',
-      _VoiceState.listening => 'Listening…',
-      _VoiceState.thinking  => 'Thinking…',
-      _VoiceState.speaking  => 'Speaking…',
-    };
+    String label;
+    switch (_state) {
+      case _VoiceState.idle:
+        label = 'Hold to speak';
+        break;
+      case _VoiceState.listening:
+        label = 'Listening…';
+        break;
+      case _VoiceState.thinking:
+        label = 'Thinking…';
+        break;
+      case _VoiceState.speaking:
+        label = 'Speaking…';
+        break;
+    }
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
