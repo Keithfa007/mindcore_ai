@@ -1,7 +1,6 @@
 // lib/pages/voice_chat_screen.dart
 import 'dart:async';
 
-
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
@@ -109,90 +108,92 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Future<void> _onRelease() async {
-  if (_state != _VoiceState.listening) {
-    return;
-  }
+    if (_state != _VoiceState.listening) {
+      return;
+    }
 
-  _stopVoiceTimer();
+    _stopVoiceTimer();
 
-  // Give STT a moment to finalise the last word
-  await Future.delayed(const Duration(milliseconds: 500));
-  await _stt.stop();
+    // Give STT a moment to finalise the last word
+    await Future.delayed(const Duration(milliseconds: 500));
+    await _stt.stop();
 
-  // Wait up to 2 seconds for final recognised words
-  int waited = 0;
-  while (_stt.lastRecognizedWords.isEmpty && waited < 2000) {
-    await Future.delayed(const Duration(milliseconds: 100));
-    waited += 100;
-  }
+    // Wait up to 2 seconds for final recognised words
+    int waited = 0;
+    while (_stt.lastRecognizedWords.isEmpty && waited < 2000) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waited += 100;
+    }
 
-  final spoken = _stt.lastRecognizedWords.trim();
+    final spoken = _stt.lastRecognizedWords.trim();
 
-  debugPrint('VoiceChat — recognised: "$spoken"');
+    debugPrint('VoiceChat — recognised: "$spoken"');
 
-  if (spoken.isEmpty) {
-    if (mounted) setState(() => _state = _VoiceState.idle);
-    return;
-  }
-
-  if (mounted) setState(() => _state = _VoiceState.thinking);
-  await _sendToAI(spoken);
-  return;
-}
-
-  // ── AI call ────────────────────────────────────────────────────────────
-
-  Future<void> _sendToAI(String userText) async {
-  _history.add({'role': 'user', 'content': userText});
-
-  try {
-    final result = await ChatStreamService.streamOrchestratedReply(
-      history: _history,
-      moodLabel: _moodLabel,
-      userInput: userText,
-      screen: 'voice',
-      onDelta: (delta) async {},
-    );
-
-    final reply = result.reply.trim();
-    if (reply.isEmpty) {
+    if (spoken.isEmpty) {
       if (mounted) setState(() => _state = _VoiceState.idle);
       return;
     }
 
-    _history.add({'role': 'assistant', 'content': reply});
-
-    _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
-        ? 'anxious'
-        : result.supportModeLabel.toLowerCase().contains('sleep')
-            ? 'low'
-            : 'calm';
-
-    if (!mounted) return;
-    setState(() => _state = _VoiceState.speaking);
-
-    // Small delay to let state update before TTS starts
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    await OpenAiTtsService.instance.speak(
-      reply,
-      moodLabel: _moodLabel,
-      messageId: _uuid.v4(),
-      surface: TtsSurface.chat,
-      force: true,
-    );
-
-    // Wait for TTS to actually start then finish
-    await Future.delayed(const Duration(milliseconds: 500));
-    await _waitForTtsToFinish();
-
-    if (mounted) setState(() => _state = _VoiceState.idle);
-  } catch (e) {
-    debugPrint('VoiceChat error: $e');
-    if (mounted) setState(() => _state = _VoiceState.idle);
+    if (mounted) setState(() => _state = _VoiceState.thinking);
+    await _sendToAI(spoken);
+    return;
   }
-  return;
-}
+
+  // ── AI call ────────────────────────────────────────────────────────────
+
+  Future<void> _sendToAI(String userText) async {
+    _history.add({'role': 'user', 'content': userText});
+
+    try {
+      final result = await ChatStreamService.streamOrchestratedReply(
+        history: _history,
+        moodLabel: _moodLabel,
+        userInput: userText,
+        screen: 'voice',
+        onDelta: (delta) async {},
+      );
+
+      final reply = result.reply.trim();
+      if (reply.isEmpty) {
+        if (mounted) setState(() => _state = _VoiceState.idle);
+        return;
+      }
+
+      _history.add({'role': 'assistant', 'content': reply});
+
+      _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
+          ? 'anxious'
+          : result.supportModeLabel.toLowerCase().contains('sleep')
+              ? 'low'
+              : 'calm';
+
+      if (!mounted) return;
+      setState(() => _state = _VoiceState.speaking);
+
+      // Small delay to let state update before TTS starts
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      debugPrint('VoiceChat — replying with: "$reply"');
+      final ttsOk = await OpenAiTtsService.instance.speak(
+        reply,
+        moodLabel: _moodLabel,
+        messageId: _uuid.v4(),
+        surface: TtsSurface.chat,
+        force: true,
+      );
+      debugPrint('VoiceChat — TTS result: $ttsOk');
+
+      // Wait for TTS to actually start then finish
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _waitForTtsToFinish();
+
+      if (mounted) setState(() => _state = _VoiceState.idle);
+    } catch (e) {
+      debugPrint('VoiceChat error: $e');
+      if (mounted) setState(() => _state = _VoiceState.idle);
+    }
+    return;
+  }
 
   Future<void> _waitForTtsToFinish() async {
     while (OpenAiTtsService.instance.isSpeakingNow) {
@@ -264,19 +265,19 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         ],
       ),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Spacer(),
-              Center(child: _buildCentralOrb()),
-              const SizedBox(height: 48),
-              Center(child: _buildStateLabel()),
-              const Spacer(),
-              Center(child: _buildHoldButton()),
-          ]   
-
-        ),
-      ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      const Spacer(flex: 2),
+      Center(child: _buildCentralOrb()),
+      const SizedBox(height: 16),
+      Center(child: _buildStateLabel()),
+      const Spacer(flex: 3),
+      Center(child: _buildHoldButton()),
+      const SizedBox(height: 64),
+    ],
+  ),
+),
     );
   }
 
@@ -350,9 +351,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   List<Widget> _buildWaveRings(Color color) {
     return List.generate(3, (i) {
-      final scale = 1.0 +
-          (i * 0.18) +
-          (_waveController.value * 0.12 * (i + 1));
+      final scale = 1.0 + (i * 0.18) + (_waveController.value * 0.12 * (i + 1));
       final opacity = (0.18 - i * 0.05).clamp(0.0, 1.0);
       return Transform.scale(
         scale: scale,
@@ -372,49 +371,49 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Widget _buildOrbIcon() {
-  switch (_state) {
-    case _VoiceState.idle:
-      return ClipOval(
-        child: Image.asset(
-          'assets/images/logo512.png',
-          width: 52,
-          height: 52,
-          fit: BoxFit.cover,
-          key: const ValueKey('idle'),
-        ),
-      );
-    case _VoiceState.listening:
-      return ClipOval(
-        child: Image.asset(
-          'assets/images/logo512.png',
-          width: 58,
-          height: 58,
-          fit: BoxFit.cover,
-          key: const ValueKey('listening'),
-        ),
-      );
-    case _VoiceState.thinking:
-      return const SizedBox(
-        key: ValueKey('thinking'),
-        width: 28,
-        height: 28,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: Colors.white70,
-        ),
-      );
-    case _VoiceState.speaking:
-      return ClipOval(
-        child: Image.asset(
-          'assets/images/logo512.png',
-          width: 52,
-          height: 52,
-          fit: BoxFit.cover,
-          key: const ValueKey('speaking'),
-        ),
-      );
+    switch (_state) {
+      case _VoiceState.idle:
+        return ClipOval(
+          child: Image.asset(
+            'assets/images/logo512.png',
+            width: 52,
+            height: 52,
+            fit: BoxFit.cover,
+            key: const ValueKey('idle'),
+          ),
+        );
+      case _VoiceState.listening:
+        return ClipOval(
+          child: Image.asset(
+            'assets/images/logo512.png',
+            width: 58,
+            height: 58,
+            fit: BoxFit.cover,
+            key: const ValueKey('listening'),
+          ),
+        );
+      case _VoiceState.thinking:
+        return const SizedBox(
+          key: ValueKey('thinking'),
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white70,
+          ),
+        );
+      case _VoiceState.speaking:
+        return ClipOval(
+          child: Image.asset(
+            'assets/images/logo512.png',
+            width: 52,
+            height: 52,
+            fit: BoxFit.cover,
+            key: const ValueKey('speaking'),
+          ),
+        );
+    }
   }
-}
 
   Color _stateColor() {
     switch (_state) {
