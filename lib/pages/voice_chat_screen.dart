@@ -265,19 +265,23 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         ],
       ),
       body: SafeArea(
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      const Spacer(flex: 2),
-      Center(child: _buildCentralOrb()),
-      const SizedBox(height: 16),
-      Center(child: _buildStateLabel()),
-      const Spacer(flex: 3),
-      Center(child: _buildHoldButton()),
-      const SizedBox(height: 64),
-    ],
-  ),
-),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Spacer(flex: 2),
+            Center(child: _buildCentralOrb()),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.only(top: 128),
+              child: Center(child: _buildStateLabel()),
+            ),
+            //Center(child: _buildStateLabel()),
+            const Spacer(flex: 1),
+            Center(child: _buildHoldButton()),
+            const SizedBox(height: 84),
+          ],
+        ),
+      ),
     );
   }
 
