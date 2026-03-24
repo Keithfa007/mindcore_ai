@@ -1,6 +1,5 @@
 // lib/services/premium_service.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,15 +11,29 @@ class PremiumService {
   static final isPremium = ValueNotifier<bool>(false);
   static final currentTier = ValueNotifier<TierConfig>(TierConfig.trial);
 
-  static const _kIsPremium = 'mindcore_is_premium';
-  static const _kTierKey   = 'mindcore_tier_key';
+  static const _kIsPremium    = 'mindcore_is_premium';
+  static const _kTierKey      = 'mindcore_tier_key';
+  static const _kTrialStart   = 'mindcore_trial_start';
+  static const _trialDays     = 3;
+
   static bool _initialised = false;
+
+  // ─── Init ─────────────────────────────────────────────────────────────
 
   static Future<void> init() async {
     if (_initialised) return;
     _initialised = true;
 
     final prefs = await SharedPreferences.getInstance();
+
+    // Record trial start date on first ever launch
+    if (prefs.getString(_kTrialStart) == null) {
+      await prefs.setString(
+        _kTrialStart,
+        DateTime.now().toIso8601String(),
+      );
+    }
+
     isPremium.value   = prefs.getBool(_kIsPremium) ?? false;
     currentTier.value = TierConfig.fromKey(prefs.getString(_kTierKey));
 
@@ -32,6 +45,41 @@ class PremiumService {
       await _refreshFromFirestore(user.uid);
     });
   }
+
+  // ─── Trial helpers ────────────────────────────────────────────────────
+
+  /// Returns true if the 3-day trial is still active
+  static Future<bool> isTrialActive() async {
+    if (isPremium.value) return true;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kTrialStart);
+    if (raw == null) return true; // no start recorded yet — still fresh
+    final start = DateTime.tryParse(raw);
+    if (start == null) return true;
+    final elapsed = DateTime.now().difference(start).inDays;
+    return elapsed < _trialDays;
+  }
+
+  /// How many trial days remain (0 if expired)
+  static Future<int> trialDaysRemaining() async {
+    if (isPremium.value) return 0;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kTrialStart);
+    if (raw == null) return _trialDays;
+    final start = DateTime.tryParse(raw);
+    if (start == null) return _trialDays;
+    final elapsed = DateTime.now().difference(start).inDays;
+    return (_trialDays - elapsed).clamp(0, _trialDays);
+  }
+
+  /// Returns true if the user can access the app
+  /// (either has active subscription OR trial is still valid)
+  static Future<bool> hasAccess() async {
+    if (isPremium.value) return true;
+    return isTrialActive();
+  }
+
+  // ─── Write ────────────────────────────────────────────────────────────
 
   static Future<void> activate({required TierConfig tier}) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -61,11 +109,15 @@ class PremiumService {
     await _setLocal(false, TierConfig.trial);
   }
 
+  // ─── Gate helper ──────────────────────────────────────────────────────
+
   static Future<bool> checkAndPrompt(BuildContext context) async {
     if (isPremium.value) return true;
     await Navigator.of(context).pushNamed('/paywall');
     return isPremium.value;
   }
+
+  // ─── Private ──────────────────────────────────────────────────────────
 
   static Future<void> _refreshFromFirestore(String uid) async {
     try {
