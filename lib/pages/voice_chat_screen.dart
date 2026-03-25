@@ -127,8 +127,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
     final spoken = _stt.lastRecognizedWords.trim();
 
-    debugPrint('VoiceChat — recognised: "$spoken"');
-
     if (spoken.isEmpty) {
       if (mounted) setState(() => _state = _VoiceState.idle);
       return;
@@ -173,15 +171,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       // Small delay to let state update before TTS starts
       await Future.delayed(const Duration(milliseconds: 200));
 
-      debugPrint('VoiceChat — replying with: "$reply"');
-      final ttsOk = await OpenAiTtsService.instance.speak(
+      await OpenAiTtsService.instance.speak(
         reply,
         moodLabel: _moodLabel,
         messageId: _uuid.v4(),
         surface: TtsSurface.chat,
         force: true,
       );
-      debugPrint('VoiceChat — TTS result: $ttsOk');
 
       // Wait for TTS to actually start then finish
       await Future.delayed(const Duration(milliseconds: 500));
