@@ -32,8 +32,8 @@ class TierConfig {
   static const TierConfig trial = TierConfig._(
     tier: AppTier.trial,
     displayName: 'Trial',
-    monthlyMessages: -1,
-    monthlyVoiceSeconds: -1,
+    monthlyMessages: 50,
+    monthlyVoiceSeconds: 5 * 60, // 5 minutes
     hasVoice: true,
     monthlyPrice: 0,
     yearlyPrice: 0,
@@ -69,9 +69,8 @@ class TierConfig {
 
   bool get isUnlimited => monthlyMessages == -1;
 
-  int get voiceMinutes => monthlyVoiceSeconds == -1
-      ? 999
-      : (monthlyVoiceSeconds / 60).round();
+  int get voiceMinutes =>
+      monthlyVoiceSeconds == -1 ? 999 : (monthlyVoiceSeconds / 60).round();
 
   String get messageLabel =>
       isUnlimited ? 'Unlimited' : '$monthlyMessages / month';

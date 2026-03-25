@@ -34,14 +34,10 @@ class _PostLoginGateState extends State<PostLoginGate> {
     final done = prefs.getBool(_kOnboardingDone) ?? false;
 
     // Check access in parallel
-    final access  = await PremiumService.hasAccess();
-    final days    = await PremiumService.trialDaysRemaining();
-
     if (!mounted) return;
     setState(() {
-      _onboardingDone     = done;
-      _hasAccess          = access;
-      _trialDaysRemaining = days;
+      _onboardingDone = done;
+      _hasAccess = true;
     });
 
     if (done && access) {

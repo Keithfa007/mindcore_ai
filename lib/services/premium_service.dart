@@ -11,10 +11,8 @@ class PremiumService {
   static final isPremium = ValueNotifier<bool>(false);
   static final currentTier = ValueNotifier<TierConfig>(TierConfig.trial);
 
-  static const _kIsPremium    = 'mindcore_is_premium';
-  static const _kTierKey      = 'mindcore_tier_key';
-  static const _kTrialStart   = 'mindcore_trial_start';
-  static const _trialDays     = 3;
+  static const _kIsPremium = 'mindcore_is_premium';
+  static const _kTierKey = 'mindcore_tier_key';
 
   static bool _initialised = false;
 
@@ -26,15 +24,8 @@ class PremiumService {
 
     final prefs = await SharedPreferences.getInstance();
 
-    // Record trial start date on first ever launch
-    if (prefs.getString(_kTrialStart) == null) {
-      await prefs.setString(
-        _kTrialStart,
-        DateTime.now().toIso8601String(),
-      );
-    }
 
-    isPremium.value   = prefs.getBool(_kIsPremium) ?? false;
+    isPremium.value = prefs.getBool(_kIsPremium) ?? false;
     currentTier.value = TierConfig.fromKey(prefs.getString(_kTierKey));
 
     FirebaseAuth.instance.authStateChanges().listen((user) async {
@@ -48,35 +39,19 @@ class PremiumService {
 
   // ─── Trial helpers ────────────────────────────────────────────────────
 
-  /// Returns true if the 3-day trial is still active
-  static Future<bool> isTrialActive() async {
-    if (isPremium.value) return true;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kTrialStart);
-    if (raw == null) return true; // no start recorded yet — still fresh
-    final start = DateTime.tryParse(raw);
-    if (start == null) return true;
-    final elapsed = DateTime.now().difference(start).inDays;
-    return elapsed < _trialDays;
-  }
-
-  /// How many trial days remain (0 if expired)
-  static Future<int> trialDaysRemaining() async {
-    if (isPremium.value) return 0;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kTrialStart);
-    if (raw == null) return _trialDays;
-    final start = DateTime.tryParse(raw);
-    if (start == null) return _trialDays;
-    final elapsed = DateTime.now().difference(start).inDays;
-    return (_trialDays - elapsed).clamp(0, _trialDays);
-  }
-
-  /// Returns true if the user can access the app
-  /// (either has active subscription OR trial is still valid)
+  /// Trial is "active" as long as they haven't used up their allowance.
+  /// With usage-based trial, access is always granted — UsageService
+  /// handles the actual limit enforcement.
   static Future<bool> hasAccess() async {
-    if (isPremium.value) return true;
-    return isTrialActive();
+    return true; // UsageService gates usage, PostLoginGate just needs basic auth
+  }
+
+  static Future<bool> isTrialActive() async {
+    return true;
+  }
+
+  static Future<int> trialDaysRemaining() async {
+    return 0;
   }
 
   // ─── Write ────────────────────────────────────────────────────────────
@@ -87,8 +62,8 @@ class PremiumService {
 
     await FirebaseFirestore.instance.collection('users').doc(uid).set(
       {
-        'isPremium':          true,
-        'tier':               tier.firestoreKey,
+        'isPremium': true,
+        'tier': tier.firestoreKey,
         'premiumActivatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
@@ -121,13 +96,11 @@ class PremiumService {
 
   static Future<void> _refreshFromFirestore(String uid) async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
 
-      final remote  = doc.data()?['isPremium'] as bool?   ?? false;
-      final tierKey = doc.data()?['tier']      as String? ?? 'trial';
+      final remote = doc.data()?['isPremium'] as bool? ?? false;
+      final tierKey = doc.data()?['tier'] as String? ?? 'trial';
       await _setLocal(remote, TierConfig.fromKey(tierKey));
     } catch (e) {
       debugPrint('PremiumService: Firestore refresh failed — $e');
@@ -135,7 +108,7 @@ class PremiumService {
   }
 
   static Future<void> _setLocal(bool premium, TierConfig tier) async {
-    isPremium.value   = premium;
+    isPremium.value = premium;
     currentTier.value = tier;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kIsPremium, premium);
