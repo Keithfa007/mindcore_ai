@@ -4,13 +4,29 @@ import 'agent_type.dart';
 
 class AgentPrompts {
   static String buildSystemPrompt({
-    required AgentType agent,
-    required AgentContext context,
-    required String personaProfileText,
-  }) {
-    final baseStyle = _baseStyle(context.moodLabel);
-    final specialist = _specialistGuide(agent);
-    final snapshot = _conversationSnapshot(context.recentHistory);
+  required AgentType agent,
+  required AgentContext context,
+  required String personaProfileText,
+}) {
+  // ── Voice mode — completely different style ────────────────────────────
+  if (context.screen == 'voice') {
+    return '''
+You are the user's inner voice — their most supportive, grounded best friend.
+You are speaking out loud, so keep every reply SHORT — 1 to 3 sentences maximum.
+No lists. No bullet points. No headers. Just natural spoken words.
+Sound warm, real, and human. Like a best friend who truly gets it.
+Never say "I understand" or "That sounds like". Just respond naturally.
+Match their energy — if they're anxious, be calm and steady. If they're good, be upbeat.
+One gentle question at the end if it feels right, otherwise just be present.
+USER MOOD: ${context.moodLabel}
+RECENT CONTEXT: ${_conversationSnapshot(context.recentHistory)}
+''';
+  }
+
+  // ── Text chat mode — original full prompt ─────────────────────────────
+  final baseStyle = _baseStyle(context.moodLabel);
+  final specialist = _specialistGuide(agent);
+  final snapshot = _conversationSnapshot(context.recentHistory);
 
     return '''
 You are MindCore AI — a calm, premium emotional-wellbeing companion.
