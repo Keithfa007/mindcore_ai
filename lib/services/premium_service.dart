@@ -13,6 +13,8 @@ class PremiumService {
 
   static const _kIsPremium = 'mindcore_is_premium';
   static const _kTierKey = 'mindcore_tier_key';
+  static const _kTrialStart = 'mindcore_trial_start';
+  static const _trialDays = 30;
 
   static bool _initialised = false;
 
@@ -24,6 +26,13 @@ class PremiumService {
 
     final prefs = await SharedPreferences.getInstance();
 
+    // Record trial start on first ever launch
+    if (prefs.getString(_kTrialStart) == null) {
+      await prefs.setString(
+        _kTrialStart,
+        DateTime.now().toIso8601String(),
+      );
+    }
 
     isPremium.value = prefs.getBool(_kIsPremium) ?? false;
     currentTier.value = TierConfig.fromKey(prefs.getString(_kTierKey));
@@ -39,19 +48,37 @@ class PremiumService {
 
   // ─── Trial helpers ────────────────────────────────────────────────────
 
-  /// Trial is "active" as long as they haven't used up their allowance.
-  /// With usage-based trial, access is always granted — UsageService
-  /// handles the actual limit enforcement.
-  static Future<bool> hasAccess() async {
-    return true; // UsageService gates usage, PostLoginGate just needs basic auth
+  /// True if the 30-day trial window is still open
+  static Future<bool> isTrialWindowOpen() async {
+    if (isPremium.value) return true;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kTrialStart);
+    if (raw == null) return true;
+    final start = DateTime.tryParse(raw);
+    if (start == null) return true;
+    final elapsed = DateTime.now().difference(start).inDays;
+    return elapsed < _trialDays;
   }
 
-  static Future<bool> isTrialActive() async {
-    return true;
-  }
-
+  /// How many days remain in trial window
   static Future<int> trialDaysRemaining() async {
-    return 0;
+    if (isPremium.value) return 0;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kTrialStart);
+    if (raw == null) return _trialDays;
+    final start = DateTime.tryParse(raw);
+    if (start == null) return _trialDays;
+    final elapsed = DateTime.now().difference(start).inDays;
+    return (_trialDays - elapsed).clamp(0, _trialDays);
+  }
+
+  /// User can access the app if:
+  ///   - They have an active subscription, OR
+  ///   - They are within the 30-day trial window
+  /// Usage limits (50 msgs / 5 min voice) are enforced separately by UsageService
+  static Future<bool> hasAccess() async {
+    if (isPremium.value) return true;
+    return isTrialWindowOpen();
   }
 
   // ─── Write ────────────────────────────────────────────────────────────
@@ -83,8 +110,6 @@ class PremiumService {
 
     await _setLocal(false, TierConfig.trial);
   }
-
-  // ─── Gate helper ──────────────────────────────────────────────────────
 
   static Future<bool> checkAndPrompt(BuildContext context) async {
     if (isPremium.value) return true;

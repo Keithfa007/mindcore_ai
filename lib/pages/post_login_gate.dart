@@ -18,10 +18,8 @@ class PostLoginGate extends StatefulWidget {
 class _PostLoginGateState extends State<PostLoginGate> {
   static const _kOnboardingDone = 'onboarding_done_v1';
 
-  // null = still loading
   bool? _onboardingDone;
   bool? _hasAccess;
-  int _trialDaysRemaining = 3;
 
   @override
   void initState() {
@@ -32,12 +30,12 @@ class _PostLoginGateState extends State<PostLoginGate> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final done = prefs.getBool(_kOnboardingDone) ?? false;
+    final access = await PremiumService.hasAccess();
 
-    // Check access in parallel
     if (!mounted) return;
     setState(() {
       _onboardingDone = done;
-      _hasAccess = true;
+      _hasAccess = access;
     });
 
     if (done && access) {
@@ -49,45 +47,35 @@ class _PostLoginGateState extends State<PostLoginGate> {
   Future<void> _finish() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kOnboardingDone, true);
-
     if (!mounted) return;
-
     await Future.delayed(const Duration(milliseconds: 350));
     await DailyMotivationService.maybeSpeakOnAppOpen(moodLabel: 'neutral');
-
     setState(() => _onboardingDone = true);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Still loading
     if (_onboardingDone == null || _hasAccess == null) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    // No access — trial expired and no subscription
     if (!_hasAccess!) {
       return _TrialExpiredScreen(
-        onSubscribe: () async {
-          // After returning from paywall, re-check access
-          await _load();
-        },
+        onSubscribe: () async => await _load(),
       );
     }
 
-    // Has access but onboarding not done
     if (!_onboardingDone!) {
       return OnboardingScreen(onFinish: _finish);
     }
 
-    // Full access — show home
     return const HomeScreen();
   }
 }
 
-// ─── Trial expired screen ─────────────────────────────────────────────────
+// ─── Trial expired screen ──────────────────────────────────────────────────
 
 class _TrialExpiredScreen extends StatelessWidget {
   final VoidCallback onSubscribe;
@@ -107,23 +95,17 @@ class _TrialExpiredScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(
-                Icons.lock_clock_rounded,
-                size: 64,
-                color: cs.primary,
-              ),
+              Icon(Icons.lock_clock_rounded, size: 64, color: cs.primary),
               const SizedBox(height: 24),
               Text(
                 'Your free trial has ended',
-                style: tt.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                style: tt.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
-                'Subscribe to keep your progress, conversations '
-                'and wellness journey going.',
+                'Your 30-day trial has expired. Subscribe to keep '
+                'your progress, conversations and wellness journey going.',
                 style: tt.bodyLarge?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.6),
                 ),
@@ -133,9 +115,7 @@ class _TrialExpiredScreen extends StatelessWidget {
               FilledButton(
                 onPressed: () async {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const PaywallScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const PaywallScreen()),
                   );
                   onSubscribe();
                 },
@@ -153,12 +133,8 @@ class _TrialExpiredScreen extends StatelessWidget {
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () async {
-                  // Let them try restoring a purchase
-                  // The paywall has a restore button inside
                   await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const PaywallScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const PaywallScreen()),
                   );
                   onSubscribe();
                 },
