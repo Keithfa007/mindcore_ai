@@ -8,6 +8,7 @@ import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/pages/helpers/route_observer.dart';
 import 'package:mindcore_ai/services/relax_audio_engine.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
 
 class RelaxTrack {
   final String id;
@@ -154,11 +155,21 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen>
   @override
   void initState() {
     super.initState();
+    _checkPremiumAccess();
     _player.setReleaseMode(ReleaseMode.stop);
     _player.onPlayerComplete.listen((_) {
       if (!mounted) return;
       setState(() => _isPlaying = false);
     });
+  }
+
+  Future<void> _checkPremiumAccess() async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      if (mounted) Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -291,15 +302,15 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen>
                     Text(
                       'Reset with sound',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                            fontWeight: FontWeight.w800,
+                          ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       'Choose a session, press play, and let it run while you breathe, journal, or simply rest.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: cs.onSurface.withValues(alpha: 0.7),
-                      ),
+                            color: cs.onSurface.withValues(alpha: 0.7),
+                          ),
                     ),
                     if (_recommendedTrackTitle != null) ...[
                       const SizedBox(height: 10),
@@ -314,11 +325,11 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen>
                         ),
                         child: Text(
                           'Recommended: $_recommendedTrackTitle',
-                          style: Theme.of(context).textTheme.labelMedium
-                              ?.copyWith(
-                                color: cs.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
                       ),
                       if (_recommendedFrequencyLabel != null ||
@@ -479,9 +490,8 @@ class _AudioTrackTile extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: isActive
-                                  ? FontWeight.w800
-                                  : FontWeight.w700,
+                              fontWeight:
+                                  isActive ? FontWeight.w800 : FontWeight.w700,
                               height: 1.15,
                             ),
                           ),
@@ -553,10 +563,12 @@ class _AudioTrackTile extends StatelessWidget {
                             tooltip: 'Stop',
                             icon: const Icon(Icons.stop_rounded),
                             style: IconButton.styleFrom(
-                              backgroundColor: cs.surface.withValues(alpha: 0.75),
+                              backgroundColor:
+                                  cs.surface.withValues(alpha: 0.75),
                               foregroundColor: cs.onSurface,
                               side: BorderSide(
-                                color: cs.outlineVariant.withValues(alpha: 0.24),
+                                color:
+                                    cs.outlineVariant.withValues(alpha: 0.24),
                               ),
                             ),
                           ),
@@ -627,7 +639,8 @@ class _MediaControlButton extends StatelessWidget {
           child: Icon(
             isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
             size: 30,
-            color: isActive ? Colors.white : cs.onSurface.withValues(alpha: 0.72),
+            color:
+                isActive ? Colors.white : cs.onSurface.withValues(alpha: 0.72),
           ),
         ),
       ),

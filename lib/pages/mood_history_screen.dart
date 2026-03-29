@@ -11,10 +11,13 @@ import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/section_hero_card.dart';
 
+import 'package:mindcore_ai/services/premium_service.dart';
+
 /// (Kept for compatibility in some parts below)
 const kCardShadow = Color(0x14000000);
 
 enum HistoryTab { progress, mood }
+
 enum ProgressRange { week, month, year }
 
 // ------------------- MoodEntry model (for this screen) -------------------
@@ -64,15 +67,16 @@ class MoodEntry {
     final label = (j['mood'] as String?) ?? 'Neutral';
     final note = (j['note'] as String?) ?? '';
     final score = scoreFromEmoji(emoji);
-    return MoodEntry(timestamp: ts, emoji: emoji, label: label, note: note, mood: score);
+    return MoodEntry(
+        timestamp: ts, emoji: emoji, label: label, note: note, mood: score);
   }
 
   Map<String, dynamic> toJson() => {
-    'ts': timestamp.toIso8601String(),
-    'emoji': emoji,
-    'mood': label,
-    'note': note,
-  };
+        'ts': timestamp.toIso8601String(),
+        'emoji': emoji,
+        'mood': label,
+        'note': note,
+      };
 }
 
 class _WeeklyPoint {
@@ -120,8 +124,18 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _checkPremiumAccess();
     _monthCursor = DateTime(DateTime.now().year, DateTime.now().month, 1);
     _loadMoodFromStore();
+  }
+
+  Future<void> _checkPremiumAccess() async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      if (mounted) Navigator.of(context).pop();
+    }
   }
 
   // ------------------- Mood storage (read-only) -------------------
@@ -332,8 +346,8 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     return _range == ProgressRange.week
         ? DateFormat('EEE').format(vals.first.day)
         : (_range == ProgressRange.month
-        ? DateFormat('MMM').format(vals.first.day)
-        : DateFormat('yyyy').format(vals.first.day));
+            ? DateFormat('MMM').format(vals.first.day)
+            : DateFormat('yyyy').format(vals.first.day));
   }
 
   String _toughLabel(List<_WeeklyPoint> pts) {
@@ -343,11 +357,12 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     return _range == ProgressRange.week
         ? DateFormat('EEE').format(vals.first.day)
         : (_range == ProgressRange.month
-        ? DateFormat('MMM').format(vals.first.day)
-        : DateFormat('yyyy').format(vals.first.day));
+            ? DateFormat('MMM').format(vals.first.day)
+            : DateFormat('yyyy').format(vals.first.day));
   }
 
-  int _entriesCount(List<_WeeklyPoint> pts) => pts.fold<int>(0, (a, p) => a + p.count);
+  int _entriesCount(List<_WeeklyPoint> pts) =>
+      pts.fold<int>(0, (a, p) => a + p.count);
 
   // ------------------- Mood list grouping -------------------
   List<Widget> _buildMoodGroupWidgets(List<MoodEntry> entries) {
@@ -364,7 +379,8 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
 
     for (final k in keys) {
       final date = DateTime.parse(k);
-      final items = byDay[k]!..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      final items = byDay[k]!
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
       widgets
         ..add(
           Padding(
@@ -395,11 +411,14 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900, fontSize: 18)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _pill(context, 'Avg', p.avg == 0 ? '—' : p.avg.toStringAsFixed(1)),
+                    _pill(context, 'Avg',
+                        p.avg == 0 ? '—' : p.avg.toStringAsFixed(1)),
                     const SizedBox(width: 8),
                     _pill(context, 'Logs', '${p.count}'),
                   ],
@@ -419,10 +438,13 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
                           Expanded(
                             child: Text(
                               '${e.label} • $time',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ),
-                          Text('${e.mood}/5', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text('${e.mood}/5',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
                         ],
                       ),
                     );
@@ -445,7 +467,8 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
           color: theme.colorScheme.primary.withValues(alpha: 0.08),
           border: Border.all(color: theme.dividerColor),
         ),
-        child: Text('$label: $value', style: const TextStyle(fontWeight: FontWeight.w800)),
+        child: Text('$label: $value',
+            style: const TextStyle(fontWeight: FontWeight.w800)),
       ),
     );
   }
@@ -477,7 +500,9 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: _tab == HistoryTab.progress ? _buildProgressTab(context) : _buildMoodTab(context),
+              child: _tab == HistoryTab.progress
+                  ? _buildProgressTab(context)
+                  : _buildMoodTab(context),
             ),
           ],
         ),
@@ -495,7 +520,9 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
 
     final pts = _range == ProgressRange.week
         ? _buildLast7Points()
-        : (_range == ProgressRange.month ? _buildLast12MonthsPoints() : _buildLast5YearsPoints());
+        : (_range == ProgressRange.month
+            ? _buildLast12MonthsPoints()
+            : _buildLast5YearsPoints());
 
     final avg = _avgOfPoints(pts);
     final trend = _trendOfPoints(pts);
@@ -506,12 +533,14 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     final coverage = _range == ProgressRange.week
         ? '${pts.where((p) => p.avg > 0).length}/7 days'
         : (_range == ProgressRange.month
-        ? '${pts.where((p) => p.avg > 0).length}/12 months'
-        : '${pts.where((p) => p.avg > 0).length}/5 yrs');
+            ? '${pts.where((p) => p.avg > 0).length}/12 months'
+            : '${pts.where((p) => p.avg > 0).length}/5 yrs');
 
     final labelMode = _range == ProgressRange.week
         ? _BarLabelMode.week
-        : (_range == ProgressRange.month ? _BarLabelMode.month : _BarLabelMode.year);
+        : (_range == ProgressRange.month
+            ? _BarLabelMode.month
+            : _BarLabelMode.year);
 
     String title;
     String subtitle;
@@ -555,17 +584,20 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
                         _RangeChip(
                           label: 'Week',
                           selected: _range == ProgressRange.week,
-                          onTap: () => setState(() => _range = ProgressRange.week),
+                          onTap: () =>
+                              setState(() => _range = ProgressRange.week),
                         ),
                         _RangeChip(
                           label: 'Month',
                           selected: _range == ProgressRange.month,
-                          onTap: () => setState(() => _range = ProgressRange.month),
+                          onTap: () =>
+                              setState(() => _range = ProgressRange.month),
                         ),
                         _RangeChip(
                           label: 'Year',
                           selected: _range == ProgressRange.year,
-                          onTap: () => setState(() => _range = ProgressRange.year),
+                          onTap: () =>
+                              setState(() => _range = ProgressRange.year),
                         ),
                       ],
                     ),
@@ -577,7 +609,9 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
                     child: _DailyMoodBars(
                       points: pts,
                       labelMode: labelMode,
-                      onBarTap: _range == ProgressRange.week ? (p) => _showDayDetails(context, p) : null,
+                      onBarTap: _range == ProgressRange.week
+                          ? (p) => _showDayDetails(context, p)
+                          : null,
                     ),
                   ),
 
@@ -600,8 +634,14 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
                             Expanded(
                               child: _StatTile(
                                 label: 'Trend',
-                                value: trend == 0 ? '—' : (trend > 0 ? '+${trend.toStringAsFixed(1)}' : trend.toStringAsFixed(1)),
-                                icon: trend > 0 ? Icons.trending_up : (trend < 0 ? Icons.trending_down : null),
+                                value: trend == 0
+                                    ? '—'
+                                    : (trend > 0
+                                        ? '+${trend.toStringAsFixed(1)}'
+                                        : trend.toStringAsFixed(1)),
+                                icon: trend > 0
+                                    ? Icons.trending_up
+                                    : (trend < 0 ? Icons.trending_down : null),
                               ),
                             ),
                           ],
@@ -609,24 +649,31 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            Expanded(child: _InfoChip(label: 'Best', value: best)),
+                            Expanded(
+                                child: _InfoChip(label: 'Best', value: best)),
                             const SizedBox(width: 8),
-                            Expanded(child: _InfoChip(label: 'Tough', value: tough)),
+                            Expanded(
+                                child: _InfoChip(label: 'Tough', value: tough)),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            Expanded(child: _InfoChip(label: 'Entries', value: '$entries')),
+                            Expanded(
+                                child: _InfoChip(
+                                    label: 'Entries', value: '$entries')),
                             const SizedBox(width: 8),
-                            Expanded(child: _InfoChip(label: 'Coverage', value: coverage)),
+                            Expanded(
+                                child: _InfoChip(
+                                    label: 'Coverage', value: coverage)),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Text(
                           'Tip: Multiple logs per day are fine — bar height is the daily average. Multi-colour shows all logs (weighted).',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.65),
                           ),
                         ),
                       ],
@@ -654,11 +701,13 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
           final vx = details.primaryVelocity ?? 0;
           if (vx < -100) {
             setState(() {
-              _monthCursor = DateTime(_monthCursor.year, _monthCursor.month + 1, 1);
+              _monthCursor =
+                  DateTime(_monthCursor.year, _monthCursor.month + 1, 1);
             });
           } else if (vx > 100) {
             setState(() {
-              _monthCursor = DateTime(_monthCursor.year, _monthCursor.month - 1, 1);
+              _monthCursor =
+                  DateTime(_monthCursor.year, _monthCursor.month - 1, 1);
             });
           }
         },
@@ -677,12 +726,14 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
                     month: _monthCursor,
                     onPrev: () {
                       setState(() {
-                        _monthCursor = DateTime(_monthCursor.year, _monthCursor.month - 1, 1);
+                        _monthCursor = DateTime(
+                            _monthCursor.year, _monthCursor.month - 1, 1);
                       });
                     },
                     onNext: () {
                       setState(() {
-                        _monthCursor = DateTime(_monthCursor.year, _monthCursor.month + 1, 1);
+                        _monthCursor = DateTime(
+                            _monthCursor.year, _monthCursor.month + 1, 1);
                       });
                     },
                   ),
@@ -693,7 +744,10 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
                     bestStreak: _bestStreakOf(monthList),
                   ),
                   const SizedBox(height: 8),
-                  if (monthList.isEmpty) const _EmptyState() else ..._buildMoodGroupWidgets(monthList),
+                  if (monthList.isEmpty)
+                    const _EmptyState()
+                  else
+                    ..._buildMoodGroupWidgets(monthList),
                 ],
               ),
             ),
@@ -709,7 +763,8 @@ class _TopTabChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _TopTabChip({required this.label, required this.selected, required this.onTap});
+  const _TopTabChip(
+      {required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -726,7 +781,8 @@ class _RangeChip extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _RangeChip({required this.label, required this.selected, required this.onTap});
+  const _RangeChip(
+      {required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -750,7 +806,9 @@ class _EmptyState extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: const [BoxShadow(color: kCardShadow, blurRadius: 8, offset: Offset(0, 2))],
+        boxShadow: const [
+          BoxShadow(color: kCardShadow, blurRadius: 8, offset: Offset(0, 2))
+        ],
         border: Border.all(color: theme.dividerColor),
       ),
       child: Center(
@@ -767,7 +825,8 @@ class _SummaryRow extends StatelessWidget {
   final double avg;
   final int count;
   final int bestStreak;
-  const _SummaryRow({required this.avg, required this.count, required this.bestStreak});
+  const _SummaryRow(
+      {required this.avg, required this.count, required this.bestStreak});
 
   @override
   Widget build(BuildContext context) {
@@ -780,7 +839,9 @@ class _SummaryRow extends StatelessWidget {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: theme.dividerColor),
-        boxShadow: const [BoxShadow(color: kCardShadow, blurRadius: 8, offset: Offset(0, 2))],
+        boxShadow: const [
+          BoxShadow(color: kCardShadow, blurRadius: 8, offset: Offset(0, 2))
+        ],
       ),
       child: Row(
         children: [
@@ -842,7 +903,9 @@ class _MoodCard extends StatelessWidget {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: theme.dividerColor),
-        boxShadow: const [BoxShadow(color: kCardShadow, blurRadius: 8, offset: Offset(0, 2))],
+        boxShadow: const [
+          BoxShadow(color: kCardShadow, blurRadius: 8, offset: Offset(0, 2))
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -855,14 +918,16 @@ class _MoodCard extends StatelessWidget {
               children: [
                 Text(
                   '${entry.label} • $day',
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 if (entry.note.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
                     entry.note,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                      color:
+                          theme.colorScheme.onSurface.withValues(alpha: 0.75),
                     ),
                   ),
                 ],
@@ -887,7 +952,8 @@ class _MonthHeader extends StatelessWidget {
   final DateTime month;
   final VoidCallback onPrev;
   final VoidCallback onNext;
-  const _MonthHeader({required this.month, required this.onPrev, required this.onNext});
+  const _MonthHeader(
+      {required this.month, required this.onPrev, required this.onNext});
 
   @override
   Widget build(BuildContext context) {
@@ -947,17 +1013,22 @@ class _DailyMoodBars extends StatelessWidget {
       height: barAreaH,
       child: _scrollable
           ? SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: points.map((p) => _barItem(context, p, barAreaH, width: itemWidth)).toList(),
-        ),
-      )
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: points
+                    .map(
+                        (p) => _barItem(context, p, barAreaH, width: itemWidth))
+                    .toList(),
+              ),
+            )
           : Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: points.map((p) => Expanded(child: _barItem(context, p, barAreaH))).toList(),
-      ),
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: points
+                  .map((p) => Expanded(child: _barItem(context, p, barAreaH)))
+                  .toList(),
+            ),
     );
 
     return Container(
@@ -966,7 +1037,9 @@ class _DailyMoodBars extends StatelessWidget {
         color: theme.colorScheme.surface.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: theme.dividerColor),
-        boxShadow: const [BoxShadow(color: kCardShadow, blurRadius: 10, offset: Offset(0, 2))],
+        boxShadow: const [
+          BoxShadow(color: kCardShadow, blurRadius: 10, offset: Offset(0, 2))
+        ],
       ),
       child: SizedBox(
         height: chartH,
@@ -1002,7 +1075,9 @@ class _DailyMoodBars extends StatelessWidget {
 
     if (!_scrollable) {
       return Row(
-        children: points.map((p) => Expanded(child: Center(child: labelFor(p.day)))).toList(),
+        children: points
+            .map((p) => Expanded(child: Center(child: labelFor(p.day))))
+            .toList(),
       );
     }
 
@@ -1011,7 +1086,8 @@ class _DailyMoodBars extends StatelessWidget {
       physics: const BouncingScrollPhysics(),
       child: Row(
         children: points
-            .map((p) => SizedBox(width: itemWidth, child: Center(child: labelFor(p.day))))
+            .map((p) => SizedBox(
+                width: itemWidth, child: Center(child: labelFor(p.day))))
             .toList(),
       ),
     );
@@ -1021,16 +1097,16 @@ class _DailyMoodBars extends StatelessWidget {
     final theme = Theme.of(context);
 
     Widget dot(Color c) => Container(
-      width: 10,
-      height: 10,
-      decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-    );
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+        );
 
     TextStyle t() => theme.textTheme.bodySmall!.copyWith(
-      fontSize: 11,
-      fontWeight: FontWeight.w800,
-      color: theme.colorScheme.onSurface.withValues(alpha: 0.70),
-    );
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.70),
+        );
 
     const good = Color(0xFF2E7D32);
     const neutral = Color(0xFFF9A825);
@@ -1042,13 +1118,24 @@ class _DailyMoodBars extends StatelessWidget {
       spacing: 14,
       runSpacing: 6,
       children: [
-        Row(mainAxisSize: MainAxisSize.min, children: [dot(good), const SizedBox(width: 6), Text('Good', style: t())]),
-        Row(mainAxisSize: MainAxisSize.min, children: [dot(neutral), const SizedBox(width: 6), Text('Neutral', style: t())]),
-        Row(mainAxisSize: MainAxisSize.min, children: [dot(bad), const SizedBox(width: 6), Text('Bad', style: t())]),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          dot(good),
+          const SizedBox(width: 6),
+          Text('Good', style: t())
+        ]),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          dot(neutral),
+          const SizedBox(width: 6),
+          Text('Neutral', style: t())
+        ]),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          dot(bad),
+          const SizedBox(width: 6),
+          Text('Bad', style: t())
+        ]),
       ],
     );
   }
-
 
   static Color _moodColorForScore(double mood) {
     if (mood >= 4.0) return const Color(0xFF2E7D32);
@@ -1056,7 +1143,8 @@ class _DailyMoodBars extends StatelessWidget {
     return const Color(0xFFF9A825);
   }
 
-  Widget _barItem(BuildContext context, _WeeklyPoint p, double maxH, {double? width}) {
+  Widget _barItem(BuildContext context, _WeeklyPoint p, double maxH,
+      {double? width}) {
     final theme = Theme.of(context);
 
     // Height = daily/monthly/yearly average
@@ -1071,12 +1159,12 @@ class _DailyMoodBars extends StatelessWidget {
         child: p.avg <= 0
             ? Container(color: theme.dividerColor)
             : (p.count <= 1 || p.entries.isEmpty)
-            ? Container(
-                color: p.entries.length == 1
-                    ? _StackedSlices._segmentColor(p.entries.first.mood)
-                    : _moodColorForScore(p.avg),
-              )
-            : _StackedSlices(entries: p.entries),
+                ? Container(
+                    color: p.entries.length == 1
+                        ? _StackedSlices._segmentColor(p.entries.first.mood)
+                        : _moodColorForScore(p.avg),
+                  )
+                : _StackedSlices(entries: p.entries),
       ),
     );
 
@@ -1105,7 +1193,8 @@ class _DailyMoodBars extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: theme.dividerColor),
                 boxShadow: const [
-                  BoxShadow(color: kCardShadow, blurRadius: 8, offset: Offset(0, 2)),
+                  BoxShadow(
+                      color: kCardShadow, blurRadius: 8, offset: Offset(0, 2)),
                 ],
               ),
               child: Text(
@@ -1123,10 +1212,10 @@ class _DailyMoodBars extends StatelessWidget {
 
     final tappable = (onBarTap != null)
         ? GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => onBarTap!(p),
-      child: withBadge,
-    )
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onBarTap!(p),
+            child: withBadge,
+          )
         : withBadge;
 
     return SizedBox(
@@ -1247,7 +1336,8 @@ class _InfoChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.18)),
+        border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.18)),
       ),
       child: Text(
         '$label: $value',

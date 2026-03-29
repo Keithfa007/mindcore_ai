@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mindcore_ai/services/ai_guided_session_service.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/widgets/ai_speaking_wave.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
@@ -19,9 +20,25 @@ class _GuidedSessionsScreenState extends State<GuidedSessionsScreen> {
   String _selectedCategory = AiGuidedSessionService.categories().first;
 
   @override
+  void initState() {
+    super.initState();
+    _checkPremiumAccess();
+  }
+
+  Future<void> _checkPremiumAccess() async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final plans = AiGuidedSessionService.byCategory(_selectedCategory);
-    final recommended = AiGuidedSessionService.recommendForMood(_selectedCategory);
+    final recommended =
+        AiGuidedSessionService.recommendForMood(_selectedCategory);
 
     return PageScaffold(
       title: 'AI Guided Sessions',
@@ -45,9 +62,10 @@ class _GuidedSessionsScreenState extends State<GuidedSessionsScreen> {
                       Expanded(
                         child: Text(
                           'Recommended now: ${recommended.title}',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                       ),
                       AnimatedBuilder(
@@ -64,14 +82,14 @@ class _GuidedSessionsScreenState extends State<GuidedSessionsScreen> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: AiGuidedSessionService.categories().map((category) {
+                    children:
+                        AiGuidedSessionService.categories().map((category) {
                       final selected = category == _selectedCategory;
                       return ChoiceChip(
                         selected: selected,
                         label: Text(category),
-                        onSelected: (_) {
-                          setState(() => _selectedCategory = category);
-                        },
+                        onSelected: (_) =>
+                            setState(() => _selectedCategory = category),
                       );
                     }).toList(),
                   ),
@@ -80,9 +98,7 @@ class _GuidedSessionsScreenState extends State<GuidedSessionsScreen> {
             ),
             const SizedBox(height: 12),
             for (final plan in plans) ...[
-              GlassCard(
-                child: _SessionPlanCard(plan: plan),
-              ),
+              GlassCard(child: _SessionPlanCard(plan: plan)),
               const SizedBox(height: 12),
             ],
           ],
@@ -94,7 +110,6 @@ class _GuidedSessionsScreenState extends State<GuidedSessionsScreen> {
 
 class _SessionPlanCard extends StatelessWidget {
   final AiGuidedSessionPlan plan;
-
   const _SessionPlanCard({required this.plan});
 
   @override
@@ -145,9 +160,10 @@ class _SessionPlanCard extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           'Flow',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(context)
+              .textTheme
+              .titleSmall
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         for (int i = 0; i < plan.steps.length; i++)
@@ -181,7 +197,8 @@ class _SessionPlanCard extends StatelessWidget {
               child: FilledButton.icon(
                 icon: const Icon(Icons.self_improvement_rounded),
                 label: const Text('Open breathing coach'),
-                onPressed: () => Navigator.of(context).pushNamed('/breathe'),
+                onPressed: () =>
+                    Navigator.of(context).pushNamed('/breathe'),
               ),
             ),
           ],
@@ -215,7 +232,6 @@ class _SessionPlanCard extends StatelessWidget {
 
 class _InfoChip extends StatelessWidget {
   final String label;
-
   const _InfoChip({required this.label});
 
   @override

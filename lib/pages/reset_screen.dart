@@ -7,6 +7,7 @@ import 'package:mindcore_ai/pages/helpers/mood_picker_sheet.dart';
 import 'package:mindcore_ai/services/reset_metrics_service.dart';
 import 'package:mindcore_ai/services/affirmation_service.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/pages/helpers/route_observer.dart';
 import 'package:mindcore_ai/widgets/tts_replay_button.dart';
 
@@ -17,7 +18,8 @@ class ResetScreen extends StatefulWidget {
   State<ResetScreen> createState() => _ResetScreenState();
 }
 
-class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<ResetScreen> {
+class _ResetScreenState extends State<ResetScreen>
+    with AutoStopTtsRouteAware<ResetScreen> {
   String _moodLabel = 'Neutral';
   String _moodEmoji = '🙂';
 
@@ -27,13 +29,27 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
   bool _didBreathing = false;
   bool _saving = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _checkPremiumAccess();
+  }
+
+  Future<void> _checkPremiumAccess() async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
   Future<void> _pickMood() async {
     final res = await showModalBottomSheet<Map<String, String>?>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => const _SheetShell(child: MoodPickerSheet()),
     );
-
     if (res == null) return;
     setState(() {
       _moodLabel = res['label'] ?? 'Neutral';
@@ -45,7 +61,6 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
     setState(() => _didBreathing = true);
     await Navigator.of(context).pushNamed('/breathe');
     if (!mounted) return;
-    // After returning, prompt for "after" rating (already visible)
     setState(() {});
   }
 
@@ -59,13 +74,10 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
         afterStress: _after,
         moodLabel: _moodLabel,
       );
-
-      // Speak a short affirmation after the reset (matches your calm/kind tone).
       await AffirmationService.getDailyAffirmation(
         moodLabel: _moodLabel,
         speak: true,
       );
-
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Reset saved. Nice work.')),
@@ -92,7 +104,8 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
                 children: [
                   const Text(
                     '60 seconds to calmer.',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -114,17 +127,13 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
           _sliderCard(
             title: 'Stress before',
             value: _before,
             onChanged: (v) => setState(() => _before = v),
           ),
-
           const SizedBox(height: 12),
-
           GlassCard(
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -133,11 +142,12 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
                 children: [
                   const Text(
                     'Breathing',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Tap start. Come back when you’re done.',
+                    'Tap start. Come back when you\'re done.',
                     style: TextStyle(color: Theme.of(context).hintColor),
                   ),
                   const SizedBox(height: 10),
@@ -146,24 +156,22 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
                     child: FilledButton.icon(
                       onPressed: _startBreathing,
                       icon: const Icon(Icons.spa_outlined),
-                      label: Text(_didBreathing ? 'Do another round' : 'Start breathing'),
+                      label: Text(_didBreathing
+                          ? 'Do another round'
+                          : 'Start breathing'),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
           _sliderCard(
             title: 'Stress after',
             value: _after,
             onChanged: (v) => setState(() => _after = v),
           ),
-
           const SizedBox(height: 16),
-
           Row(
             children: [
               Expanded(
@@ -192,11 +200,15 @@ class _ResetScreenState extends State<ResetScreen> with AutoStopTtsRouteAware<Re
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             Row(
               children: [
-                Text(value.toString(), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                Text(value.toString(),
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w800)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Slider(

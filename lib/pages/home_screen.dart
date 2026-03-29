@@ -5,13 +5,13 @@ import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/section_hero_card.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 
-
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 
 import 'package:mindcore_ai/services/daily_plan_service.dart';
 import 'package:mindcore_ai/services/mood_log_service.dart';
 import 'package:mindcore_ai/services/notification_service.dart';
 import 'package:mindcore_ai/services/settings_service.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/ai/proactive_support_service.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
 import 'package:mindcore_ai/pages/helpers/route_observer.dart';
@@ -24,7 +24,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with AutoStopTtsRouteAware<HomeScreen> {
   final TextEditingController _plan = TextEditingController();
   bool _savingPlan = false;
 
@@ -52,7 +53,8 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
     final reminderTime = await SettingsService.getDailyReminderTime();
 
     if (reminderEnabled) {
-      await NotificationService.instance.scheduleDailyRecommendationNotification(
+      await NotificationService.instance
+          .scheduleDailyRecommendationNotification(
         uniqueKey: suggestion.id,
         title: suggestion.notificationTitle,
         body: suggestion.notificationBody,
@@ -105,7 +107,6 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
     setState(() => _savingPlan = false);
     _plan.clear();
     FocusScope.of(context).unfocus();
-
     await _loadAll();
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -122,16 +123,13 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
     );
   }
 
-  Future<void> _speakRecommendation() async {
-    final suggestion = _supportSuggestion;
-    if (suggestion == null) return;
-    await OpenAiTtsService.instance.speak(
-      '${suggestion.title}. ${suggestion.subtitle}',
-      moodLabel: 'calm',
-      surface: TtsSurface.recommendation,
-      messageId: 'speak_recommendation_${suggestion.id}',
-      force: true,
-    );
+  // ── Premium gate helper ─────────────────────────────────────────────────
+  Future<void> _openPremiumRoute(String route) async {
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      return;
+    }
+    Navigator.of(context).pushNamed(route);
   }
 
   @override
@@ -143,164 +141,215 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           children: [
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionHeroCard(
-                    title: 'Daily Reset',
-                    subtitle: 'A quick moment to breathe and recenter',
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pushNamed('/reset'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(54),
+
+            // ── Daily Reset (premium only) ────────────────────────────────
+            ValueListenableBuilder<bool>(
+              valueListenable: PremiumService.isPremium,
+              builder: (context, isPremium, _) {
+                return GlassCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionHeroCard(
+                        title: 'Daily Reset',
+                        subtitle: 'A quick moment to breathe and recenter',
                       ),
-                      child: const Text(
-                        'Quick Reset',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => _openPremiumRoute('/reset'),
+                          icon: Icon(isPremium
+                              ? Icons.self_improvement_rounded
+                              : Icons.lock_rounded),
+                          label: Text(isPremium
+                              ? 'Quick Reset'
+                              : 'Unlock Daily Reset'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(54),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '60 seconds to calm your mind.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                              color: Colors.black.withValues(alpha: 0.75),
+                            ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '60 seconds to calm your mind.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.black.withValues(alpha: 0.75),
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
             const SizedBox(height: 12),
+
+            // ── Chat buttons (always available) ──────────────────────────
             Row(
-  children: [
-    Expanded(
-      child: GlassCard(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.chat_rounded,
-                color: Theme.of(context).colorScheme.primary,
-                size: 24,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Text Chat',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Type your thoughts',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pushNamed('/chat'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-                child: const Text('Open'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-    const SizedBox(width: 12),
-    Expanded(
-      child: GlassCard(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFF32D0BE).withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.mic_rounded,
-                color: Color(0xFF32D0BE),
-                size: 24,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Voice Chat',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Speak hands-free',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pushNamed('/voice-chat'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  backgroundColor: const Color(0xFF32D0BE),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Open'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  ],
-),
-            const SizedBox(height: 12),
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionHeroCard(
-                    title: 'Guided Sessions',
-                    subtitle: 'Ready-to-play calming audio journeys for focus, sleep, panic, and emotional reset',
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.of(context).pushNamed('/guided-sessions'),
-                      icon: const Icon(Icons.self_improvement_rounded),
-                      label: const Text('Open Guided Sessions'),
+              children: [
+                Expanded(
+                  child: GlassCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.chat_rounded,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Text Chat',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Type your thoughts',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.55),
+                              ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () =>
+                                Navigator.of(context).pushNamed('/chat'),
+                            style: FilledButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            child: const Text('Open'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GlassCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF32D0BE)
+                                .withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.mic_rounded,
+                            color: Color(0xFF32D0BE),
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Voice Chat',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Speak hands-free',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.55),
+                              ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () => Navigator.of(context)
+                                .pushNamed('/voice-chat'),
+                            style: FilledButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 10),
+                              backgroundColor: const Color(0xFF32D0BE),
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Open'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
+
+            // ── Guided Sessions (premium only) ────────────────────────────
+            ValueListenableBuilder<bool>(
+              valueListenable: PremiumService.isPremium,
+              builder: (context, isPremium, _) {
+                return GlassCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionHeroCard(
+                        title: 'Guided Sessions',
+                        subtitle:
+                            'Ready-to-play calming audio journeys for focus, sleep, panic, and emotional reset',
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () =>
+                              _openPremiumRoute('/guided-sessions'),
+                          icon: Icon(isPremium
+                              ? Icons.self_improvement_rounded
+                              : Icons.lock_rounded),
+                          label: Text(isPremium
+                              ? 'Open Guided Sessions'
+                              : 'Unlock Guided Sessions'),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // ── Recommended for you ───────────────────────────────────────
             if (_supportSuggestion != null)
               GlassCard(
                 padding: const EdgeInsets.all(18),
@@ -309,7 +358,8 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
                   children: [
                     const SectionHeroCard(
                       title: 'Recommended for you',
-                      subtitle: 'A gentle nudge based on your recent activity',
+                      subtitle:
+                          'A gentle nudge based on your recent activity',
                     ),
                     const SizedBox(height: 12),
                     NestCard(
@@ -324,9 +374,11 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
                               children: [
                                 Text(
                                   _supportSuggestion!.title,
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                          fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 6),
                                 Text(_supportSuggestion!.subtitle),
@@ -342,25 +394,31 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
                         Expanded(
                           child: FilledButton.icon(
                             onPressed: _openRecommendation,
-                            icon: Icon(_supportSuggestion!.icon, size: 18),
+                            icon:
+                                Icon(_supportSuggestion!.icon, size: 18),
                             label: Text(_supportSuggestion!.ctaLabel),
                           ),
                         ),
                         const SizedBox(width: 10),
                         TtsSpeakerButton(
-                          text: '${_supportSuggestion!.title}. ${_supportSuggestion!.subtitle}',
+                          text:
+                              '${_supportSuggestion!.title}. ${_supportSuggestion!.subtitle}',
                           surface: TtsSurface.recommendation,
                           moodLabel: 'calm',
-                          messageId: 'speak_recommendation_${_supportSuggestion!.id}',
+                          messageId:
+                              'speak_recommendation_${_supportSuggestion!.id}',
                         ),
                         const SizedBox(width: 8),
-                        const TtsReplayButton(surface: TtsSurface.recommendation),
+                        const TtsReplayButton(
+                            surface: TtsSurface.recommendation),
                       ],
                     ),
                   ],
                 ),
               ),
             if (_supportSuggestion != null) const SizedBox(height: 12),
+
+            // ── Journal (trial users can write, but View is premium) ──────
             GlassCard(
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -383,33 +441,48 @@ class _HomeScreenState extends State<HomeScreen> with AutoStopTtsRouteAware<Home
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _savingPlan ? null : _saveJournal,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12.0),
-                            child: Text(_savingPlan ? 'Saving…' : 'Save entry'),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: PremiumService.isPremium,
+                    builder: (context, isPremium, _) {
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _savingPlan ? null : _saveJournal,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12.0),
+                                child: Text(
+                                    _savingPlan ? 'Saving…' : 'Save entry'),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      OutlinedButton(
-                        onPressed: () => Navigator.of(context).pushNamed('/daily-hub'),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12.0),
-                          child: Text('View'),
-                        ),
-                      ),
-                    ],
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                _openPremiumRoute('/daily-hub'),
+                            icon: Icon(
+                              isPremium
+                                  ? Icons.visibility_rounded
+                                  : Icons.lock_rounded,
+                              size: 16,
+                            ),
+                            label: const Padding(
+                              padding:
+                                  EdgeInsets.symmetric(vertical: 12.0),
+                              child: Text('View'),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   Text(
                     'Saved locally on your device.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.65),
-                    ),
+                          color: Colors.white.withValues(alpha: 0.65),
+                        ),
                   ),
                 ],
               ),

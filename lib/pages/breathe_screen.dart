@@ -13,6 +13,7 @@ import 'package:mindcore_ai/widgets/breathing_lungs.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
 import 'package:mindcore_ai/services/live_voice_preferences.dart';
 import 'package:mindcore_ai/services/ai_breathing_coach_service.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
 
 class BreatheScreen extends StatefulWidget {
   const BreatheScreen({super.key});
@@ -21,6 +22,7 @@ class BreatheScreen extends StatefulWidget {
 }
 
 enum _Phase { inhale, hold1, exhale, hold2 }
+
 enum _Preset { box, equal, fourSevenEight, custom }
 
 class _BreatheSettings {
@@ -89,11 +91,11 @@ class _BreathePrefs {
     final p = await SharedPreferences.getInstance();
     final presetStr = p.getString(_kPreset) ?? 'box';
     final preset = <String, _Preset>{
-      'box': _Preset.box,
-      'equal': _Preset.equal,
-      '478': _Preset.fourSevenEight,
-      'custom': _Preset.custom,
-    }[presetStr] ??
+          'box': _Preset.box,
+          'equal': _Preset.equal,
+          '478': _Preset.fourSevenEight,
+          'custom': _Preset.custom,
+        }[presetStr] ??
         _Preset.box;
 
     return _BreatheSettings(
@@ -157,6 +159,7 @@ class _BreatheScreenState extends State<BreatheScreen>
   @override
   void initState() {
     super.initState();
+    _checkPremiumAccess();
     _applyDurationsFrom(_settings);
 
     _c = AnimationController(vsync: this, duration: _cycle)
@@ -164,6 +167,15 @@ class _BreatheScreenState extends State<BreatheScreen>
 
     _loadSettings();
     _loadCoachPref();
+  }
+
+  Future<void> _checkPremiumAccess() async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      if (mounted) Navigator.of(context).pop();
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -176,38 +188,37 @@ class _BreatheScreenState extends State<BreatheScreen>
     });
   }
 
-
-Future<void> _loadCoachPref() async {
-  _aiCoachEnabled = await LiveVoicePreferences.getAiBreathingCoachEnabled();
-  if (mounted) setState(() {});
-}
-
-String get _presetName {
-  switch (_settings.preset) {
-    case _Preset.box:
-      return 'Box';
-    case _Preset.equal:
-      return 'Equal';
-    case _Preset.fourSevenEight:
-      return '4-7-8';
-    case _Preset.custom:
-      return 'Custom';
+  Future<void> _loadCoachPref() async {
+    _aiCoachEnabled = await LiveVoicePreferences.getAiBreathingCoachEnabled();
+    if (mounted) setState(() {});
   }
-}
 
-Future<void> _prepareAiCoach() async {
-  if (!_aiCoachEnabled) return;
-  setState(() => _loadingCoach = true);
-  final plan = await AiBreathingCoachService.buildPlan(moodLabel: _coachMoodLabel, presetName: _presetName);
-  if (!mounted) return;
-  setState(() {
-    _coachPlan = plan;
-    _loadingCoach = false;
-  });
-}
+  String get _presetName {
+    switch (_settings.preset) {
+      case _Preset.box:
+        return 'Box';
+      case _Preset.equal:
+        return 'Equal';
+      case _Preset.fourSevenEight:
+        return '4-7-8';
+      case _Preset.custom:
+        return 'Custom';
+    }
+  }
 
-void _applyDurationsFrom(_BreatheSettings s) {
+  Future<void> _prepareAiCoach() async {
+    if (!_aiCoachEnabled) return;
+    setState(() => _loadingCoach = true);
+    final plan = await AiBreathingCoachService.buildPlan(
+        moodLabel: _coachMoodLabel, presetName: _presetName);
+    if (!mounted) return;
+    setState(() {
+      _coachPlan = plan;
+      _loadingCoach = false;
+    });
+  }
 
+  void _applyDurationsFrom(_BreatheSettings s) {
     _dInhale = Duration(seconds: s.inhaleS);
     _dHold1 = Duration(seconds: s.hold1S);
     _dExhale = Duration(seconds: s.exhaleS);
@@ -333,7 +344,10 @@ void _applyDurationsFrom(_BreatheSettings s) {
     _c.repeat(period: _cycle);
 
     if (_aiCoachEnabled && _settings.tts && _coachPlan.intro.isNotEmpty) {
-      await OpenAiTtsService.instance.speak(_coachPlan.intro, moodLabel: 'calm', messageId: 'breathe_intro', surface: TtsSurface.breathe);
+      await OpenAiTtsService.instance.speak(_coachPlan.intro,
+          moodLabel: 'calm',
+          messageId: 'breathe_intro',
+          surface: TtsSurface.breathe);
     }
     _speakPhase(_phaseVN.value);
     setState(() => _running = true);
@@ -450,7 +464,8 @@ void _applyDurationsFrom(_BreatheSettings s) {
                     Expanded(
                       child: Text(
                         'Breathe',
-                        style: t.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                        style:
+                            t.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ),
                     IconButton(
@@ -506,13 +521,22 @@ void _applyDurationsFrom(_BreatheSettings s) {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _aiCoachEnabled ? 'AI breathing coach is on' : 'Classic breathing cues',
-                              style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                              _aiCoachEnabled
+                                  ? 'AI breathing coach is on'
+                                  : 'Classic breathing cues',
+                              style: t.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _loadingCoach ? 'Preparing a real-time guided rhythm…' : (_aiCoachEnabled ? _coachPlan.outro : 'Use simple inhale, hold, and exhale cues.'),
-                              style: t.bodySmall?.copyWith(color: scheme.onSurface.withValues(alpha: 0.72)),
+                              _loadingCoach
+                                  ? 'Preparing a real-time guided rhythm…'
+                                  : (_aiCoachEnabled
+                                      ? _coachPlan.outro
+                                      : 'Use simple inhale, hold, and exhale cues.'),
+                              style: t.bodySmall?.copyWith(
+                                  color:
+                                      scheme.onSurface.withValues(alpha: 0.72)),
                             ),
                           ],
                         ),
@@ -544,8 +568,10 @@ void _applyDurationsFrom(_BreatheSettings s) {
                             sy = 1.30;
                             break;
                           case _Phase.exhale:
-                            sx = _lerp(1.18, 0.92, Curves.easeInOut.transform(p));
-                            sy = _lerp(1.30, 0.88, Curves.easeInOut.transform(p));
+                            sx = _lerp(
+                                1.18, 0.92, Curves.easeInOut.transform(p));
+                            sy = _lerp(
+                                1.30, 0.88, Curves.easeInOut.transform(p));
                             break;
                           case _Phase.hold2:
                             sx = 0.92;
@@ -569,7 +595,8 @@ void _applyDurationsFrom(_BreatheSettings s) {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.all_inclusive,
-                        size: 18, color: scheme.onSurface.withValues(alpha: 0.6)),
+                        size: 18,
+                        color: scheme.onSurface.withValues(alpha: 0.6)),
                     const SizedBox(width: 6),
                     ValueListenableBuilder<int>(
                       valueListenable: _cyclesVN,

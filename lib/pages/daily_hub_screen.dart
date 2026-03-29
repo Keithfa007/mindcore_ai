@@ -14,6 +14,7 @@ import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/services/daily_insight_engine_service.dart';
 import 'package:mindcore_ai/services/knowledge_snapshot_service.dart';
 import 'package:mindcore_ai/services/smart_nudge_engine.dart';
+import 'package:mindcore_ai/services/premium_service.dart';
 
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 
@@ -38,7 +39,8 @@ class DailyHubScreen extends StatefulWidget {
   State<DailyHubScreen> createState() => _DailyHubScreenState();
 }
 
-class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAware<DailyHubScreen> {
+class _DailyHubScreenState extends State<DailyHubScreen>
+    with AutoStopTtsRouteAware<DailyHubScreen> {
   final TextEditingController _journalCtrl = TextEditingController();
   bool _saving = false;
   bool _exporting = false;
@@ -61,6 +63,7 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
   @override
   void initState() {
     super.initState();
+    _checkPremiumAccess();
     _loadEntries();
     _loadDraftForToday();
     unawaited(_loadInsightBundle());
@@ -68,6 +71,14 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
     _journalCtrl.addListener(_scheduleDraftSave);
   }
 
+  Future<void> _checkPremiumAccess() async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
 
   Future<void> _loadInsightBundle({bool forceRefresh = false}) async {
     final snapshot = await KnowledgeSnapshotService.buildSnapshot();
@@ -121,10 +132,13 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
     try {
       final raw = await _DraftStore.getString(_draftKey);
       if (!mounted) return;
-      if (raw != null && raw.trim().isNotEmpty && _journalCtrl.text.trim().isEmpty) {
+      if (raw != null &&
+          raw.trim().isNotEmpty &&
+          _journalCtrl.text.trim().isEmpty) {
         setState(() {
           _journalCtrl.text = raw;
-          _journalCtrl.selection = TextSelection.collapsed(offset: _journalCtrl.text.length);
+          _journalCtrl.selection =
+              TextSelection.collapsed(offset: _journalCtrl.text.length);
         });
       }
     } catch (_) {}
@@ -214,7 +228,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(cloudOk ? '✅ Journal saved to cloud' : '⚠️ Saved locally only'),
+          content: Text(
+              cloudOk ? '✅ Journal saved to cloud' : '⚠️ Saved locally only'),
         ),
       );
     } catch (e) {
@@ -231,9 +246,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
   // ✅ NEW: Reflection UI
   // --------------------------
 
-
-
-  Future<void> _speakJournalText(String text, {TtsSurface surface = TtsSurface.journal}) async {
+  Future<void> _speakJournalText(String text,
+      {TtsSurface surface = TtsSurface.journal}) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     await OpenAiTtsService.instance.speak(
@@ -292,7 +306,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     Expanded(
                       child: Text(
                         'AI Reflection',
-                        style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ),
                     if (cached != null && cached.trim().isNotEmpty)
@@ -322,7 +337,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     decoration: BoxDecoration(
                       color: scheme.surface,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+                      border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.35)),
                     ),
                     child: Text(
                       cached,
@@ -391,7 +407,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     Expanded(
                       child: Text(
                         'Reflection',
-                        style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ),
                     TtsSpeakerButton(
@@ -412,7 +429,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                   decoration: BoxDecoration(
                     color: scheme.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+                    border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.35)),
                   ),
                   child: Text(
                     text,
@@ -445,16 +463,22 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
   Future<bool> _confirmOverwrite(BuildContext ctx) async {
     final t = Theme.of(ctx).textTheme;
     return (await showDialog<bool>(
-      context: ctx,
-      builder: (dctx) => AlertDialog(
-        title: Text('Save changes?', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
-        content: const Text('This will overwrite the existing text for this page.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dctx, true), child: const Text('Save')),
-        ],
-      ),
-    )) ??
+          context: ctx,
+          builder: (dctx) => AlertDialog(
+            title: Text('Save changes?',
+                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+            content: const Text(
+                'This will overwrite the existing text for this page.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(dctx, true),
+                  child: const Text('Save')),
+            ],
+          ),
+        )) ??
         false;
   }
 
@@ -489,7 +513,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     Icon(Icons.edit_rounded, color: scheme.primary),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text('Edit Page', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                      child: Text('Edit Page',
+                          style: t.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900)),
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(ctx, false),
@@ -500,14 +526,16 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                 const SizedBox(height: 6),
                 Text(
                   DateFormat('EEEE, d MMMM • HH:mm').format(entry.timestamp),
-                  style: t.bodySmall?.copyWith(color: t.bodySmall?.color?.withValues(alpha: 0.75)),
+                  style: t.bodySmall?.copyWith(
+                      color: t.bodySmall?.color?.withValues(alpha: 0.75)),
                 ),
                 const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
                     color: scheme.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                    border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.45)),
                   ),
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                   child: TextField(
@@ -515,7 +543,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     minLines: 7,
                     maxLines: 14,
                     textInputAction: TextInputAction.newline,
-                    decoration: const InputDecoration(border: InputBorder.none, hintText: 'Edit your entry…'),
+                    decoration: const InputDecoration(
+                        border: InputBorder.none, hintText: 'Edit your entry…'),
                     style: t.bodyLarge?.copyWith(height: 1.35),
                   ),
                 ),
@@ -543,7 +572,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                             if (!ok) return;
                           }
 
-                          final ok = await JournalService.updateEntry(entry.timestamp, updated);
+                          final ok = await JournalService.updateEntry(
+                              entry.timestamp, updated);
                           Navigator.pop(ctx, ok);
                         },
                         child: const Padding(
@@ -567,7 +597,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
       await _loadEntries();
       await _refreshMindCoreLayer();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Entry updated')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Entry updated')));
     }
   }
 
@@ -601,7 +632,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     Icon(Icons.note_add_rounded, color: scheme.primary),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text('New Page', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                      child: Text('New Page',
+                          style: t.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900)),
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(ctx, false),
@@ -612,14 +645,16 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                 const SizedBox(height: 6),
                 Text(
                   DateFormat('EEEE, d MMMM').format(day),
-                  style: t.bodySmall?.copyWith(color: t.bodySmall?.color?.withValues(alpha: 0.75)),
+                  style: t.bodySmall?.copyWith(
+                      color: t.bodySmall?.color?.withValues(alpha: 0.75)),
                 ),
                 const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
                     color: scheme.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                    border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.45)),
                   ),
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                   child: TextField(
@@ -627,7 +662,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     minLines: 7,
                     maxLines: 14,
                     textInputAction: TextInputAction.newline,
-                    decoration: const InputDecoration(border: InputBorder.none, hintText: 'Write your entry…'),
+                    decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        hintText: 'Write your entry…'),
                     style: t.bodyLarge?.copyWith(height: 1.35),
                   ),
                 ),
@@ -651,9 +688,11 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                           if (note.isEmpty) return;
 
                           final now = DateTime.now();
-                          final when = DateTime(day.year, day.month, day.day, now.hour, now.minute, now.second);
+                          final when = DateTime(day.year, day.month, day.day,
+                              now.hour, now.minute, now.second);
 
-                          final res = await JournalService.addEntry(note, when: when);
+                          final res =
+                              await JournalService.addEntry(note, when: when);
                           Navigator.pop(ctx, res.cloudOk);
                         },
                         child: const Padding(
@@ -678,7 +717,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
       await _refreshMindCoreLayer();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(saved ? '✅ Journal saved to cloud' : '⚠️ Saved locally only')),
+        SnackBar(
+            content: Text(
+                saved ? '✅ Journal saved to cloud' : '⚠️ Saved locally only')),
       );
     }
   }
@@ -706,7 +747,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
     int streak = 0;
 
     for (int i = 0; i < 5000; i++) {
-      final d = DateTime(today.year, today.month, today.day).subtract(Duration(days: i));
+      final d = DateTime(today.year, today.month, today.day)
+          .subtract(Duration(days: i));
       final key = DateFormat('yyyy-MM-dd').format(d);
       if ((grouped[key] ?? const []).isEmpty) break;
       streak++;
@@ -714,14 +756,18 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
     return streak;
   }
 
-  _MonthSummary _monthSummary(DateTime month, Map<String, List<JournalEntry>> grouped) {
+  _MonthSummary _monthSummary(
+      DateTime month, Map<String, List<JournalEntry>> grouped) {
     final monthStart = DateTime(month.year, month.month, 1);
-    final monthEnd = DateTime(month.year, month.month + 1, 1).subtract(const Duration(days: 1));
+    final monthEnd = DateTime(month.year, month.month + 1, 1)
+        .subtract(const Duration(days: 1));
 
     int daysWithEntries = 0;
     int totalEntries = 0;
 
-    for (DateTime d = monthStart; !d.isAfter(monthEnd); d = d.add(const Duration(days: 1))) {
+    for (DateTime d = monthStart;
+        !d.isAfter(monthEnd);
+        d = d.add(const Duration(days: 1))) {
       final key = DateFormat('yyyy-MM-dd').format(d);
       final list = grouped[key] ?? const <JournalEntry>[];
       if (list.isNotEmpty) daysWithEntries++;
@@ -739,7 +785,12 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
   // Export month (PDF — premium diary)
   // --------------------------
   // (kept exactly as you provided)
-  Future<void> _exportMonthAsPdf(DateTime month, Map<String, List<JournalEntry>> grouped) async {
+  Future<void> _exportMonthAsPdf(
+      DateTime month, Map<String, List<JournalEntry>> grouped) async {
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      return;
+    }
     if (_exporting) return;
     setState(() => _exporting = true);
 
@@ -750,7 +801,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
       final summary = _monthSummary(month, grouped);
 
       final monthStart = DateTime(month.year, month.month, 1);
-      final monthEnd = DateTime(month.year, month.month + 1, 1).subtract(const Duration(days: 1));
+      final monthEnd = DateTime(month.year, month.month + 1, 1)
+          .subtract(const Duration(days: 1));
 
       final pdf = pw.Document();
 
@@ -799,15 +851,21 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                   pw.SizedBox(height: 14),
                   pw.Text(
                     'Monthly Reflection Snapshot',
-                    style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800),
+                    style: pw.TextStyle(
+                        fontSize: 13,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blueGrey800),
                   ),
                   pw.SizedBox(height: 10),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
-                      _pdfStat('Days written', '${summary.daysWithEntries}', PdfColors.blueGrey800),
-                      _pdfStat('Entries', '${summary.totalEntries}', PdfColors.blueGrey800),
-                      _pdfStat('Current streak', '${summary.streak} days', PdfColors.blueGrey800),
+                      _pdfStat('Days written', '${summary.daysWithEntries}',
+                          PdfColors.blueGrey800),
+                      _pdfStat('Entries', '${summary.totalEntries}',
+                          PdfColors.blueGrey800),
+                      _pdfStat('Current streak', '${summary.streak} days',
+                          PdfColors.blueGrey800),
                     ],
                   ),
                   pw.SizedBox(height: 18),
@@ -820,8 +878,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     ),
                     child: pw.Text(
                       'Created privately on your device.\n'
-                          'Share only if you choose — your wellbeing comes first.',
-                      style: pw.TextStyle(fontSize: 10.5, color: PdfColors.grey800),
+                      'Share only if you choose — your wellbeing comes first.',
+                      style: pw.TextStyle(
+                          fontSize: 10.5, color: PdfColors.grey800),
                     ),
                   ),
                   pw.Spacer(),
@@ -829,7 +888,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     alignment: pw.Alignment.bottomRight,
                     child: pw.Text(
                       'Generated on ${DateFormat('d MMM yyyy').format(DateTime.now())}',
-                      style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                      style:
+                          pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
                     ),
                   ),
                 ],
@@ -859,7 +919,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
           build: (ctx) {
             final widgets = <pw.Widget>[];
 
-            for (DateTime d = monthStart; !d.isAfter(monthEnd); d = d.add(const Duration(days: 1))) {
+            for (DateTime d = monthStart;
+                !d.isAfter(monthEnd);
+                d = d.add(const Duration(days: 1))) {
               final key = DateFormat('yyyy-MM-dd').format(d);
               final dayEntries = grouped[key] ?? const <JournalEntry>[];
               if (dayEntries.isEmpty) continue;
@@ -869,7 +931,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                   padding: const pw.EdgeInsets.only(top: 14, bottom: 6),
                   child: pw.Text(
                     DateFormat('EEEE, d MMMM').format(d),
-                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+                    style: pw.TextStyle(
+                        fontSize: 14, fontWeight: pw.FontWeight.bold),
                   ),
                 ),
               );
@@ -881,7 +944,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     padding: const pw.EdgeInsets.only(left: 10),
                     decoration: pw.BoxDecoration(
                       border: pw.Border(
-                        left: pw.BorderSide(width: 2, color: PdfColors.blueGrey200),
+                        left: pw.BorderSide(
+                            width: 2, color: PdfColors.blueGrey200),
                       ),
                     ),
                     child: pw.Column(
@@ -889,7 +953,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                       children: [
                         pw.Text(
                           DateFormat('HH:mm').format(e.timestamp),
-                          style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                          style: pw.TextStyle(
+                              fontSize: 9, color: PdfColors.grey700),
                         ),
                         pw.SizedBox(height: 3),
                         pw.Text(
@@ -907,7 +972,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
 
             if (widgets.isEmpty) {
               return [
-                pw.Text('No journal entries for this month.', style: const pw.TextStyle(fontSize: 12)),
+                pw.Text('No journal entries for this month.',
+                    style: const pw.TextStyle(fontSize: 12)),
               ];
             }
 
@@ -935,7 +1001,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
 
       if (!mounted) return;
 
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'My MindReset Journal — $monthLabel'));
+      await SharePlus.instance.share(ShareParams(
+          files: [XFile(file.path)],
+          subject: 'My MindReset Journal — $monthLabel'));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -957,9 +1025,14 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text(label, style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey700)),
+          pw.Text(label,
+              style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey700)),
           pw.SizedBox(height: 4),
-          pw.Text(value, style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold, color: color)),
+          pw.Text(value,
+              style: pw.TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: color)),
         ],
       ),
     );
@@ -985,11 +1058,15 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {
-            final res = await JournalService.addEntry(removed.note, when: removed.timestamp);
+            final res = await JournalService.addEntry(removed.note,
+                when: removed.timestamp);
             await _loadEntries();
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(res.cloudOk ? '✅ Restored to cloud' : '⚠️ Restored locally only')),
+              SnackBar(
+                  content: Text(res.cloudOk
+                      ? '✅ Restored to cloud'
+                      : '⚠️ Restored locally only')),
             );
           },
         ),
@@ -997,7 +1074,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
     );
   }
 
-  Future<void> _openDayEntries(DateTime day, List<JournalEntry> dayEntries) async {
+  Future<void> _openDayEntries(
+      DateTime day, List<JournalEntry> dayEntries) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1025,7 +1103,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     Expanded(
                       child: Text(
                         DateFormat('EEEE, d MMMM').format(day),
-                        style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ),
                     IconButton(
@@ -1049,10 +1128,11 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                   ),
                 ),
                 const SizedBox(height: 10),
-
                 ...dayEntries.map((e) {
                   final time = DateFormat('HH:mm').format(e.timestamp);
-                  final preview = e.note.trim().length > 120 ? '${e.note.trim().substring(0, 120)}…' : e.note.trim();
+                  final preview = e.note.trim().length > 120
+                      ? '${e.note.trim().substring(0, 120)}…'
+                      : e.note.trim();
 
                   return Container(
                     margin: const EdgeInsets.only(top: 10),
@@ -1060,7 +1140,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     decoration: BoxDecoration(
                       color: scheme.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+                      border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.35)),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1077,13 +1158,20 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                               children: [
                                 Row(
                                   children: [
-                                    Text(time, style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800)),
+                                    Text(time,
+                                        style: t.labelMedium?.copyWith(
+                                            fontWeight: FontWeight.w800)),
                                     const Spacer(),
-                                    Icon(Icons.edit_rounded, size: 18, color: scheme.primary.withValues(alpha: 0.85)),
+                                    Icon(Icons.edit_rounded,
+                                        size: 18,
+                                        color: scheme.primary
+                                            .withValues(alpha: 0.85)),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Text(preview, style: t.bodyMedium?.copyWith(height: 1.35)),
+                                Text(preview,
+                                    style:
+                                        t.bodyMedium?.copyWith(height: 1.35)),
                               ],
                             ),
                           ),
@@ -1106,7 +1194,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                                 Navigator.pop(ctx);
                                 _showReflection(e);
                               },
-                              icon: Icon(Icons.auto_awesome_rounded, color: scheme.primary.withValues(alpha: 0.90)),
+                              icon: Icon(Icons.auto_awesome_rounded,
+                                  color:
+                                      scheme.primary.withValues(alpha: 0.90)),
                             ),
                             IconButton(
                               tooltip: 'Delete',
@@ -1114,7 +1204,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                                 Navigator.pop(ctx);
                                 _deleteEntryWithUndo(e);
                               },
-                              icon: Icon(Icons.delete_outline_rounded, color: scheme.error.withValues(alpha: 0.85)),
+                              icon: Icon(Icons.delete_outline_rounded,
+                                  color: scheme.error.withValues(alpha: 0.85)),
                             ),
                           ],
                         ),
@@ -1194,7 +1285,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                           Text(
                             'A private page for your thoughts.',
                             style: t.bodySmall?.copyWith(
-                              color: t.bodySmall?.color?.withValues(alpha: 0.75),
+                              color:
+                                  t.bodySmall?.color?.withValues(alpha: 0.75),
                             ),
                           ),
                         ],
@@ -1207,26 +1299,28 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                       onPressed: _syncing ? null : _syncNow,
                       icon: _syncing
                           ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: scheme.primary,
-                        ),
-                      )
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: scheme.primary,
+                              ),
+                            )
                           : Icon(
-                        Icons.sync_rounded,
-                        color: scheme.primary.withValues(alpha: 0.9),
-                      ),
+                              Icons.sync_rounded,
+                              color: scheme.primary.withValues(alpha: 0.9),
+                            ),
                     ),
 
                     if (streak > 0)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: scheme.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: scheme.primary.withValues(alpha: 0.22)),
+                          border: Border.all(
+                              color: scheme.primary.withValues(alpha: 0.22)),
                         ),
                         child: Text(
                           '🔥 $streak day streak',
@@ -1249,13 +1343,16 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _sectionTitle(context, 'Today’s Entry', Icons.menu_book_rounded),
+                    _sectionTitle(
+                        context, 'Today’s Entry', Icons.menu_book_rounded),
                     const SizedBox(height: 12),
                     Container(
                       decoration: BoxDecoration(
                         color: scheme.surface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                        border: Border.all(
+                            color:
+                                scheme.outlineVariant.withValues(alpha: 0.45)),
                         boxShadow: const [
                           BoxShadow(
                             blurRadius: 10,
@@ -1274,7 +1371,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                                 width: 10,
                                 decoration: BoxDecoration(
                                   color: scheme.primary.withValues(alpha: 0.10),
-                                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+                                  borderRadius: const BorderRadius.horizontal(
+                                      left: Radius.circular(16)),
                                 ),
                               ),
                             ),
@@ -1287,11 +1385,13 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                               maxLines: 12,
                               textInputAction: TextInputAction.newline,
                               decoration: InputDecoration(
-                                hintText: 'Write freely…\n\nWhat’s on your mind today?\nWhat do you want to let go of?',
+                                hintText:
+                                    'Write freely…\n\nWhat’s on your mind today?\nWhat do you want to let go of?',
                                 border: InputBorder.none,
                                 hintStyle: t.bodyMedium?.copyWith(
                                   height: 1.35,
-                                  color: t.bodyMedium?.color?.withValues(alpha: 0.55),
+                                  color: t.bodyMedium?.color
+                                      ?.withValues(alpha: 0.55),
                                 ),
                               ),
                               style: t.bodyLarge?.copyWith(height: 1.35),
@@ -1307,7 +1407,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                           child: FilledButton(
                             onPressed: _saving ? null : _saveJournal,
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12.0),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 12.0),
                               child: Text(_saving ? 'Saving…' : 'Save Entry'),
                             ),
                           ),
@@ -1344,10 +1445,12 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                   transitionBuilder: (child, anim) {
                     final begin = Offset(_monthDir * 0.10, 0);
                     final offsetTween =
-                    Tween<Offset>(begin: begin, end: Offset.zero).chain(CurveTween(curve: Curves.easeOut));
+                        Tween<Offset>(begin: begin, end: Offset.zero)
+                            .chain(CurveTween(curve: Curves.easeOut));
                     return FadeTransition(
                       opacity: anim,
-                      child: SlideTransition(position: anim.drive(offsetTween), child: child),
+                      child: SlideTransition(
+                          position: anim.drive(offsetTween), child: child),
                     );
                   },
                   child: _JournalCalendar(
@@ -1356,7 +1459,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                     groupedByDay: grouped,
                     onPrevMonth: _prevMonth,
                     onNextMonth: _nextMonth,
-                    onExportMonth: _exporting ? null : () => _exportMonthAsPdf(_monthCursor, grouped),
+                    onExportMonth: _exporting
+                        ? null
+                        : () => _exportMonthAsPdf(_monthCursor, grouped),
                     onDayTap: (day) {
                       HapticFeedback.lightImpact();
                       final key = DateFormat('yyyy-MM-dd').format(day);
@@ -1374,7 +1479,6 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
       ),
     );
   }
-
 
   Widget _buildMindCoreInsightCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1398,7 +1502,8 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
               ),
               if (!_insightLoading)
                 TtsSpeakerButton(
-                  text: '${_dailyInsight.summaryLine} ${_dailyInsight.affirmation} ${_dailyInsight.tip} ${_dailyInsight.reflectionPrompt}',
+                  text:
+                      '${_dailyInsight.summaryLine} ${_dailyInsight.affirmation} ${_dailyInsight.tip} ${_dailyInsight.reflectionPrompt}',
                   surface: TtsSurface.recommendation,
                   moodLabel: 'calm',
                   messageId: 'daily_insight_bundle',
@@ -1416,7 +1521,9 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
                 children: [
                   _InsightPill(label: 'State: ${snapshot.dominantState}'),
                   _InsightPill(label: 'Focus: ${snapshot.recommendedFocus}'),
-                  _InsightPill(label: 'Mood avg: ${snapshot.recentMoodAverage.toStringAsFixed(1)}/5'),
+                  _InsightPill(
+                      label:
+                          'Mood avg: ${snapshot.recentMoodAverage.toStringAsFixed(1)}/5'),
                 ],
               ),
             const SizedBox(height: 12),
@@ -1456,13 +1563,15 @@ class _DailyHubScreenState extends State<DailyHubScreen> with AutoStopTtsRouteAw
         const SizedBox(width: 8),
         Text(
           title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontWeight: FontWeight.w900),
         ),
       ],
     );
   }
 }
-
 
 class _InsightPill extends StatelessWidget {
   final String label;
@@ -1481,9 +1590,9 @@ class _InsightPill extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: scheme.primary,
-        ),
+              fontWeight: FontWeight.w700,
+              color: scheme.primary,
+            ),
       ),
     );
   }
@@ -1509,7 +1618,8 @@ class _InsightBlock extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+        border:
+            Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1520,7 +1630,8 @@ class _InsightBlock extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
+                Text(title,
+                    style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text(body, style: t.bodyMedium?.copyWith(height: 1.35)),
               ],
@@ -1596,10 +1707,13 @@ class _JournalCalendar extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: onExportMonth == null ? 'Exporting…' : 'Export month as PDF',
+              tooltip:
+                  onExportMonth == null ? 'Exporting…' : 'Export month as PDF',
               onPressed: onExportMonth,
               icon: Icon(
-                onExportMonth == null ? Icons.hourglass_top_rounded : Icons.picture_as_pdf_rounded,
+                onExportMonth == null
+                    ? Icons.hourglass_top_rounded
+                    : Icons.picture_as_pdf_rounded,
                 color: scheme.primary.withValues(alpha: 0.9),
               ),
             ),
@@ -1608,7 +1722,9 @@ class _JournalCalendar extends StatelessWidget {
         const SizedBox(height: 10),
         Row(
           children: [
-            IconButton(onPressed: onPrevMonth, icon: const Icon(Icons.chevron_left_rounded)),
+            IconButton(
+                onPressed: onPrevMonth,
+                icon: const Icon(Icons.chevron_left_rounded)),
             Expanded(
               child: Center(
                 child: Text(
@@ -1617,7 +1733,9 @@ class _JournalCalendar extends StatelessWidget {
                 ),
               ),
             ),
-            IconButton(onPressed: onNextMonth, icon: const Icon(Icons.chevron_right_rounded)),
+            IconButton(
+                onPressed: onNextMonth,
+                icon: const Icon(Icons.chevron_right_rounded)),
           ],
         ),
         const SizedBox(height: 6),
@@ -1625,17 +1743,17 @@ class _JournalCalendar extends StatelessWidget {
           children: weekLabels
               .map(
                 (w) => Expanded(
-              child: Center(
-                child: Text(
-                  w,
-                  style: t.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: t.labelSmall?.color?.withValues(alpha: 0.7),
+                  child: Center(
+                    child: Text(
+                      w,
+                      style: t.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: t.labelSmall?.color?.withValues(alpha: 0.7),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          )
+              )
               .toList(),
         ),
         const SizedBox(height: 8),
@@ -1660,7 +1778,9 @@ class _JournalCalendar extends StatelessWidget {
             final hasEntry = entries.isNotEmpty;
 
             final now = DateTime.now();
-            final isToday = now.year == day.year && now.month == day.month && now.day == day.day;
+            final isToday = now.year == day.year &&
+                now.month == day.month &&
+                now.day == day.day;
 
             return _DayCell(
               day: dayNum,
@@ -1675,7 +1795,8 @@ class _JournalCalendar extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           'Tap a highlighted day to view & edit • Long-press any day to add a page.',
-          style: t.bodySmall?.copyWith(color: t.bodySmall?.color?.withValues(alpha: 0.75)),
+          style: t.bodySmall
+              ?.copyWith(color: t.bodySmall?.color?.withValues(alpha: 0.75)),
         ),
       ],
     );
@@ -1703,7 +1824,8 @@ class _DayCell extends StatefulWidget {
   State<_DayCell> createState() => _DayCellState();
 }
 
-class _DayCellState extends State<_DayCell> with SingleTickerProviderStateMixin {
+class _DayCellState extends State<_DayCell>
+    with SingleTickerProviderStateMixin {
   AnimationController? _c;
 
   @override
