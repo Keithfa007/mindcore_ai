@@ -71,10 +71,17 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     super.dispose();
   }
 
-  // ✅ Premium gate: show paywall if needed, then send non-premium users home.
+  // ✅ Premium gate: show paywall, then send user home if still not premium.
   Future<void> _checkAccess() async {
-    final ok = await PremiumService.checkAndPrompt(context);
-    if (!ok && mounted) Navigator.of(context).pushReplacementNamed('/home');
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    if (!PremiumService.isPremium.value) {
+      await Navigator.of(context).pushNamed('/paywall');
+      // Navigate home if user did not subscribe during the paywall session.
+      if (mounted && !PremiumService.isPremium.value) {
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+    }
   }
 
   Future<void> _initStt() async {
@@ -84,7 +91,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     if (mounted) setState(() => _sttReady = available);
   }
 
-  // ── Hold to speak ──────────────────────────────────────────────────────────────────
+  // ── Hold to speak ──────────────────────────────────────────────────────────────────────────────
 
   Future<void> _onHold() async {
     if (!_sttReady || _state != _VoiceState.idle) return;
@@ -138,7 +145,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     return;
   }
 
-  // ── AI call ────────────────────────────────────────────────────────────────────
+  // ── AI call ──────────────────────────────────────────────────────────────────────────────
 
   Future<void> _sendToAI(String userText) async {
     _history.add({'role': 'user', 'content': userText});
@@ -199,7 +206,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     }
   }
 
-  // ── Voice minute tracking ──────────────────────────────────────────────────────
+  // ── Voice minute tracking ───────────────────────────────────────────────────────────────────────
 
   void _startVoiceTimer() {
     _voiceTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
@@ -221,7 +228,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _voiceTimer = null;
   }
 
-  // ── Minutes display ────────────────────────────────────────────────────────────────
+  // ── Minutes display ────────────────────────────────────────────────────────────────────────
 
   String get _minutesLabel {
     final snap = UsageService.instance.snapshot.value;
@@ -230,7 +237,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     return '$rem min left';
   }
 
-  // ── UI ─────────────────────────────────────────────────────────────────────────
+  // ── UI ──────────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {

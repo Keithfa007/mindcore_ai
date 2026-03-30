@@ -169,12 +169,13 @@ class _BreatheScreenState extends State<BreatheScreen>
     _loadCoachPref();
   }
 
-  // ✅ Premium gate: show paywall if not premium, then send user home if still not premium.
+  // ✅ Premium gate: show paywall, then send user home if still not premium.
   Future<void> _checkPremiumAccess() async {
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     if (!PremiumService.isPremium.value) {
       await Navigator.of(context).pushNamed('/paywall');
+      // Navigate home if user did not subscribe during the paywall session.
       if (mounted && !PremiumService.isPremium.value) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
@@ -559,6 +560,7 @@ class _BreatheScreenState extends State<BreatheScreen>
                         final p = _phaseLocalProgress();
                         final phase = _phaseVN.value;
 
+                        // Bigger lungs + smooth scale
                         double sx, sy;
                         switch (phase) {
                           case _Phase.inhale:
@@ -592,7 +594,7 @@ class _BreatheScreenState extends State<BreatheScreen>
                   ),
                 ),
 
-                // status line
+                // status line (✅ cycles uses ValueNotifier so it updates)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -818,6 +820,7 @@ class _BreatheSettingsSheetState extends State<_BreatheSettingsSheet> {
                 onChanged: (v) => setState(() => _haptics = v),
               ),
 
+              // ✅ Voice cues toggle
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Voice cues (OpenAI TTS)'),
