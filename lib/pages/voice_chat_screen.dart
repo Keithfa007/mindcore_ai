@@ -71,9 +71,10 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     super.dispose();
   }
 
+  // ✅ Premium gate: show paywall if needed, then send non-premium users home.
   Future<void> _checkAccess() async {
     final ok = await PremiumService.checkAndPrompt(context);
-    if (!ok && mounted) Navigator.of(context).pop();
+    if (!ok && mounted) Navigator.of(context).pushReplacementNamed('/home');
   }
 
   Future<void> _initStt() async {
@@ -83,7 +84,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     if (mounted) setState(() => _sttReady = available);
   }
 
-  // ── Hold to speak ──────────────────────────────────────────────────────
+  // ── Hold to speak ──────────────────────────────────────────────────────────────────
 
   Future<void> _onHold() async {
     if (!_sttReady || _state != _VoiceState.idle) return;
@@ -137,7 +138,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     return;
   }
 
-  // ── AI call ────────────────────────────────────────────────────────────
+  // ── AI call ────────────────────────────────────────────────────────────────────
 
   Future<void> _sendToAI(String userText) async {
     _history.add({'role': 'user', 'content': userText});
@@ -198,7 +199,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     }
   }
 
-  // ── Voice minute tracking ──────────────────────────────────────────────
+  // ── Voice minute tracking ──────────────────────────────────────────────────────
 
   void _startVoiceTimer() {
     _voiceTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
@@ -220,7 +221,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _voiceTimer = null;
   }
 
-  // ── Minutes display ────────────────────────────────────────────────────
+  // ── Minutes display ────────────────────────────────────────────────────────────────
 
   String get _minutesLabel {
     final snap = UsageService.instance.snapshot.value;
@@ -229,7 +230,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     return '$rem min left';
   }
 
-  // ── UI ─────────────────────────────────────────────────────────────────
+  // ── UI ─────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +272,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
               padding: const EdgeInsets.only(top: 128),
               child: Center(child: _buildStateLabel()),
             ),
-            //Center(child: _buildStateLabel()),
             const Spacer(flex: 1),
             Center(child: _buildHoldButton()),
             const SizedBox(height: 84),
