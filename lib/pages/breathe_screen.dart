@@ -169,12 +169,16 @@ class _BreatheScreenState extends State<BreatheScreen>
     _loadCoachPref();
   }
 
+  // ✅ Premium gate: if not premium, show paywall then pop if still not premium.
   Future<void> _checkPremiumAccess() async {
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     if (!PremiumService.isPremium.value) {
       await Navigator.of(context).pushNamed('/paywall');
-      if (mounted) Navigator.of(context).pop();
+      // Only pop if user did not subscribe during the paywall session.
+      if (mounted && !PremiumService.isPremium.value) {
+        Navigator.of(context).pop();
+      }
     }
   }
 
@@ -820,7 +824,7 @@ class _BreatheSettingsSheetState extends State<_BreatheSettingsSheet> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Voice cues (OpenAI TTS)'),
-                subtitle: const Text('Speaks “Inhale / Hold / Exhale”'),
+                subtitle: const Text('Speaks "Inhale / Hold / Exhale"'),
                 value: _tts,
                 onChanged: (v) => setState(() => _tts = v),
               ),
