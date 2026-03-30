@@ -17,6 +17,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
   bool _loading = false;
   bool _selectedYearly = true;
 
+  // ✅ Set to true when the paywall is opened as a premium gate.
+  // When the user closes without subscribing, we push to /home
+  // instead of popping (which would return to a locked screen).
+  bool _gateMode = false;
+
   static const List<List<dynamic>> _benefits = [
     [Icons.chat_rounded,             'AI conversations that adapt to your mood'],
     [Icons.record_voice_over_rounded,'Hands-free push-to-talk voice mode'],
@@ -25,6 +30,15 @@ class _PaywallScreenState extends State<PaywallScreen> {
     [Icons.auto_awesome_rounded,     'Daily insight engine and journal AI'],
     [Icons.picture_as_pdf_rounded,   'Export your journal as PDF'],
   ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map) {
+      _gateMode = args['gateMode'] == true;
+    }
+  }
 
   @override
   void initState() {
@@ -40,8 +54,21 @@ class _PaywallScreenState extends State<PaywallScreen> {
     super.dispose();
   }
 
+  // Called when subscription completes — always just pop back to the caller.
   void _onPremiumChanged() {
     if (PremiumService.isPremium.value && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  // ✅ Close button logic:
+  //   - gateMode + not subscribed → clear stack and go home
+  //   - otherwise (e.g. opened from profile) → simply pop
+  void _handleClose() {
+    if (_gateMode && !PremiumService.isPremium.value) {
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil('/home', (route) => false);
+    } else {
       Navigator.of(context).pop();
     }
   }
@@ -74,7 +101,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _handleClose,
         ),
       ),
       body: SafeArea(

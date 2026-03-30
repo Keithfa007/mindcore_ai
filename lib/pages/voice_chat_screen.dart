@@ -28,15 +28,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   bool _sttReady = false;
   String _moodLabel = 'calm';
 
-  // Conversation history for context
   final List<Map<String, String>> _history = [];
 
-  // Animation controllers
   late AnimationController _pulseController;
   late AnimationController _waveController;
   late Animation<double> _pulseAnim;
 
-  // Voice minutes tracking
   Timer? _voiceTimer;
 
   @override
@@ -71,16 +68,16 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     super.dispose();
   }
 
-  // ✅ Premium gate: show paywall, then send user home if still not premium.
+  // ✅ Premium gate: delay so widget is mounted, then push paywall in gateMode.
+  // The paywall handles navigation to /home if the user closes without subscribing.
   Future<void> _checkAccess() async {
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     if (!PremiumService.isPremium.value) {
-      await Navigator.of(context).pushNamed('/paywall');
-      // Navigate home if user did not subscribe during the paywall session.
-      if (mounted && !PremiumService.isPremium.value) {
-        Navigator.of(context).pushReplacementNamed('/home');
-      }
+      await Navigator.of(context).pushNamed(
+        '/paywall',
+        arguments: {'gateMode': true},
+      );
     }
   }
 
@@ -91,20 +88,15 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     if (mounted) setState(() => _sttReady = available);
   }
 
-  // ── Hold to speak ──────────────────────────────────────────────────────────────────────────────
+  // ── Hold to speak ──────────────────────────────────────────────────────
 
   Future<void> _onHold() async {
     if (!_sttReady || _state != _VoiceState.idle) return;
-
-    // Check voice limit
     final allowed = await UsageService.instance.tryConsumeVoice(context);
     if (!allowed) return;
-
     await OpenAiTtsService.instance.stop();
-
     setState(() => _state = _VoiceState.listening);
     _startVoiceTimer();
-
     await _stt.listen(
       onResult: (_) {},
       listenOptions: SpeechListenOptions(
@@ -116,40 +108,29 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Future<void> _onRelease() async {
-    if (_state != _VoiceState.listening) {
-      return;
-    }
-
+    if (_state != _VoiceState.listening) return;
     _stopVoiceTimer();
-
-    // Give STT a moment to finalise the last word
     await Future.delayed(const Duration(milliseconds: 500));
     await _stt.stop();
-
-    // Wait up to 2 seconds for final recognised words
     int waited = 0;
     while (_stt.lastRecognizedWords.isEmpty && waited < 2000) {
       await Future.delayed(const Duration(milliseconds: 100));
       waited += 100;
     }
-
     final spoken = _stt.lastRecognizedWords.trim();
-
     if (spoken.isEmpty) {
       if (mounted) setState(() => _state = _VoiceState.idle);
       return;
     }
-
     if (mounted) setState(() => _state = _VoiceState.thinking);
     await _sendToAI(spoken);
     return;
   }
 
-  // ── AI call ──────────────────────────────────────────────────────────────────────────────
+  // ── AI call ────────────────────────────────────────────────────────────
 
   Future<void> _sendToAI(String userText) async {
     _history.add({'role': 'user', 'content': userText});
-
     try {
       final result = await ChatStreamService.streamOrchestratedReply(
         history: _history,
@@ -158,27 +139,20 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         screen: 'voice',
         onDelta: (delta) async {},
       );
-
       final reply = result.reply.trim();
       if (reply.isEmpty) {
         if (mounted) setState(() => _state = _VoiceState.idle);
         return;
       }
-
       _history.add({'role': 'assistant', 'content': reply});
-
       _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
           ? 'anxious'
           : result.supportModeLabel.toLowerCase().contains('sleep')
               ? 'low'
               : 'calm';
-
       if (!mounted) return;
       setState(() => _state = _VoiceState.speaking);
-
-      // Small delay to let state update before TTS starts
       await Future.delayed(const Duration(milliseconds: 200));
-
       await OpenAiTtsService.instance.speak(
         reply,
         moodLabel: _moodLabel,
@@ -186,11 +160,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         surface: TtsSurface.chat,
         force: true,
       );
-
-      // Wait for TTS to actually start then finish
       await Future.delayed(const Duration(milliseconds: 500));
       await _waitForTtsToFinish();
-
       if (mounted) setState(() => _state = _VoiceState.idle);
     } catch (e) {
       debugPrint('VoiceChat error: $e');
@@ -206,18 +177,15 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     }
   }
 
-  // ── Voice minute tracking ───────────────────────────────────────────────────────────────────────
+  // ── Voice minute tracking ──────────────────────────────────────────────
 
   void _startVoiceTimer() {
     _voiceTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       final stillOk = await UsageService.instance.recordVoiceSecond();
       if (!stillOk && mounted) {
-        // Ran out of minutes mid-session
         await _onRelease();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Voice minutes used up for this month.'),
-          ),
+          const SnackBar(content: Text('Voice minutes used up for this month.')),
         );
       }
     });
@@ -228,8 +196,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _voiceTimer = null;
   }
 
-  // ── Minutes display ────────────────────────────────────────────────────────────────────────
-
   String get _minutesLabel {
     final snap = UsageService.instance.snapshot.value;
     if (snap.tier.monthlyVoiceSeconds == -1) return 'Unlimited';
@@ -237,7 +203,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     return '$rem min left';
   }
 
-  // ── UI ──────────────────────────────────────────────────────────────────────────────
+  // ── UI ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -258,10 +224,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
               child: Center(
                 child: Text(
                   _minutesLabel,
-                  style: const TextStyle(
-                    color: Colors.white38,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
               ),
             ),
@@ -290,7 +253,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   Widget _buildCentralOrb() {
     final color = _stateColor();
-
     return AnimatedBuilder(
       animation: Listenable.merge([_pulseController, _waveController]),
       builder: (_, __) {
@@ -300,12 +262,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Outer ring glow
-              if (_state == _VoiceState.listening ||
-                  _state == _VoiceState.speaking)
+              if (_state == _VoiceState.listening || _state == _VoiceState.speaking)
                 ..._buildWaveRings(color),
-
-              // Idle pulse ring
               if (_state == _VoiceState.idle)
                 Transform.scale(
                   scale: _pulseAnim.value,
@@ -321,8 +279,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                     ),
                   ),
                 ),
-
-              // Core orb
               AnimatedContainer(
                 duration: const Duration(milliseconds: 400),
                 width: _state == _VoiceState.listening ? 120 : 100,
@@ -330,24 +286,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: color.withValues(alpha: 0.15),
-                  border: Border.all(
-                    color: color.withValues(alpha: 0.6),
-                    width: 2,
-                  ),
+                  border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
                   boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.3),
-                      blurRadius: 40,
-                      spreadRadius: 8,
-                    ),
+                    BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 8),
                   ],
                 ),
-                child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _buildOrbIcon(),
-                  ),
-                ),
+                child: Center(child: AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: _buildOrbIcon())),
               ),
             ],
           ),
@@ -367,10 +311,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           height: 100,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(
-              color: color.withValues(alpha: opacity),
-              width: 1.5,
-            ),
+            border: Border.all(color: color.withValues(alpha: opacity), width: 1.5),
           ),
         ),
       );
@@ -380,95 +321,41 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   Widget _buildOrbIcon() {
     switch (_state) {
       case _VoiceState.idle:
-        return ClipOval(
-          child: Image.asset(
-            'assets/images/logo512.png',
-            width: 52,
-            height: 52,
-            fit: BoxFit.cover,
-            key: const ValueKey('idle'),
-          ),
-        );
+        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('idle')));
       case _VoiceState.listening:
-        return ClipOval(
-          child: Image.asset(
-            'assets/images/logo512.png',
-            width: 58,
-            height: 58,
-            fit: BoxFit.cover,
-            key: const ValueKey('listening'),
-          ),
-        );
+        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
       case _VoiceState.thinking:
-        return const SizedBox(
-          key: ValueKey('thinking'),
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Colors.white70,
-          ),
-        );
+        return const SizedBox(key: ValueKey('thinking'), width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
       case _VoiceState.speaking:
-        return ClipOval(
-          child: Image.asset(
-            'assets/images/logo512.png',
-            width: 52,
-            height: 52,
-            fit: BoxFit.cover,
-            key: const ValueKey('speaking'),
-          ),
-        );
+        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
     }
   }
 
   Color _stateColor() {
     switch (_state) {
-      case _VoiceState.idle:
-        return const Color(0xFF4D7CFF);
-      case _VoiceState.listening:
-        return const Color(0xFF32D0BE);
-      case _VoiceState.thinking:
-        return const Color(0xFF9B7FFF);
-      case _VoiceState.speaking:
-        return const Color(0xFF4D7CFF);
+      case _VoiceState.idle:     return const Color(0xFF4D7CFF);
+      case _VoiceState.listening: return const Color(0xFF32D0BE);
+      case _VoiceState.thinking:  return const Color(0xFF9B7FFF);
+      case _VoiceState.speaking:  return const Color(0xFF4D7CFF);
     }
   }
 
   Widget _buildStateLabel() {
     String label;
     switch (_state) {
-      case _VoiceState.idle:
-        label = 'Hold to speak';
-        break;
-      case _VoiceState.listening:
-        label = 'Listening…';
-        break;
-      case _VoiceState.thinking:
-        label = 'Thinking…';
-        break;
-      case _VoiceState.speaking:
-        label = 'Speaking…';
-        break;
+      case _VoiceState.idle:      label = 'Hold to speak'; break;
+      case _VoiceState.listening: label = 'Listening…';    break;
+      case _VoiceState.thinking:  label = 'Thinking…';     break;
+      case _VoiceState.speaking:  label = 'Speaking…';     break;
     }
-
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      child: Text(
-        label,
-        key: ValueKey(label),
-        style: const TextStyle(
-          color: Colors.white38,
-          fontSize: 15,
-          letterSpacing: 0.5,
-        ),
-      ),
+      child: Text(label, key: ValueKey(label), style: const TextStyle(color: Colors.white38, fontSize: 15, letterSpacing: 0.5)),
     );
   }
 
   Widget _buildHoldButton() {
     final isListening = _state == _VoiceState.listening;
-
     return GestureDetector(
       onTapDown: (_) => _onHold(),
       onTapUp: (_) => _onRelease(),
@@ -479,21 +366,15 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         height: isListening ? 80 : 72,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isListening
-              ? const Color(0xFF32D0BE).withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.06),
+          color: isListening ? const Color(0xFF32D0BE).withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.06),
           border: Border.all(
-            color: isListening
-                ? const Color(0xFF32D0BE).withValues(alpha: 0.8)
-                : Colors.white.withValues(alpha: 0.15),
+            color: isListening ? const Color(0xFF32D0BE).withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.15),
             width: isListening ? 2 : 1,
           ),
         ),
         child: Icon(
           isListening ? Icons.stop_rounded : Icons.mic_rounded,
-          color: isListening
-              ? const Color(0xFF32D0BE)
-              : Colors.white.withValues(alpha: 0.6),
+          color: isListening ? const Color(0xFF32D0BE) : Colors.white.withValues(alpha: 0.6),
           size: 30,
         ),
       ),
