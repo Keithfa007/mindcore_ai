@@ -56,8 +56,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
     _initStt();
 
-    // ✅ addPostFrameCallback guarantees the navigator is fully settled
-    // before we try to push the paywall — avoids the '!_debugLocked' assertion.
+    // Wait for first frame so navigator is fully settled before pushing paywall.
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkAccess());
   }
 
@@ -71,13 +70,20 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     super.dispose();
   }
 
+  // ✅ Push paywall, then after it pops check premium status.
+  // If still not premium, clear the stack and go home.
   Future<void> _checkAccess() async {
     if (!mounted) return;
+    if (PremiumService.isPremium.value) return;
+
+    await Navigator.of(context).pushNamed('/paywall');
+
+    // Paywall has returned (closed or subscribed).
+    if (!mounted) return;
     if (!PremiumService.isPremium.value) {
-      await Navigator.of(context).pushNamed(
-        '/paywall',
-        arguments: {'gateMode': true},
-      );
+      // User closed without subscribing — clear stack and go home.
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil('/home', (route) => false);
     }
   }
 
@@ -99,12 +105,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _startVoiceTimer();
     await _stt.listen(
       onResult: (_) {},
-      listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.dictation,
-        cancelOnError: true,
-      ),
+      listenOptions: SpeechListenOptions(listenMode: ListenMode.dictation, cancelOnError: true),
     );
-    return;
   }
 
   Future<void> _onRelease() async {
@@ -124,7 +126,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     }
     if (mounted) setState(() => _state = _VoiceState.thinking);
     await _sendToAI(spoken);
-    return;
   }
 
   // ── AI call ────────────────────────────────────────────────────────────
@@ -154,11 +155,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       setState(() => _state = _VoiceState.speaking);
       await Future.delayed(const Duration(milliseconds: 200));
       await OpenAiTtsService.instance.speak(
-        reply,
-        moodLabel: _moodLabel,
-        messageId: _uuid.v4(),
-        surface: TtsSurface.chat,
-        force: true,
+        reply, moodLabel: _moodLabel, messageId: _uuid.v4(), surface: TtsSurface.chat, force: true,
       );
       await Future.delayed(const Duration(milliseconds: 500));
       await _waitForTtsToFinish();
@@ -167,7 +164,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       debugPrint('VoiceChat error: $e');
       if (mounted) setState(() => _state = _VoiceState.idle);
     }
-    return;
   }
 
   Future<void> _waitForTtsToFinish() async {
@@ -199,8 +195,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   String get _minutesLabel {
     final snap = UsageService.instance.snapshot.value;
     if (snap.tier.monthlyVoiceSeconds == -1) return 'Unlimited';
-    final rem = snap.voiceMinutesRemaining;
-    return '$rem min left';
+    return '${snap.voiceMinutesRemaining} min left';
   }
 
   // ── UI ─────────────────────────────────────────────────────────────────
@@ -221,12 +216,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
             valueListenable: UsageService.instance.snapshot,
             builder: (_, snap, __) => Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Text(
-                  _minutesLabel,
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
-                ),
-              ),
+              child: Center(child: Text(_minutesLabel, style: const TextStyle(color: Colors.white38, fontSize: 12))),
             ),
           ),
         ],
@@ -257,8 +247,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       animation: Listenable.merge([_pulseController, _waveController]),
       builder: (_, __) {
         return SizedBox(
-          width: 220,
-          height: 220,
+          width: 220, height: 220,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -268,14 +257,10 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                 Transform.scale(
                   scale: _pulseAnim.value,
                   child: Container(
-                    width: 160,
-                    height: 160,
+                    width: 160, height: 160,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: color.withValues(alpha: 0.25),
-                        width: 1.5,
-                      ),
+                      border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
                     ),
                   ),
                 ),
@@ -287,9 +272,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                   shape: BoxShape.circle,
                   color: color.withValues(alpha: 0.15),
                   border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
-                  boxShadow: [
-                    BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 8),
-                  ],
+                  boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 8)],
                 ),
                 child: Center(child: AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: _buildOrbIcon())),
               ),
@@ -307,8 +290,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       return Transform.scale(
         scale: scale,
         child: Container(
-          width: 100,
-          height: 100,
+          width: 100, height: 100,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: color.withValues(alpha: opacity), width: 1.5),
