@@ -17,11 +17,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
   bool _loading = false;
   bool _selectedYearly = true;
 
-  // ✅ Set to true when the paywall is opened as a premium gate.
-  // When the user closes without subscribing, we push to /home
-  // instead of popping (which would return to a locked screen).
-  bool _gateMode = false;
-
   static const List<List<dynamic>> _benefits = [
     [Icons.chat_rounded,             'AI conversations that adapt to your mood'],
     [Icons.record_voice_over_rounded,'Hands-free push-to-talk voice mode'],
@@ -30,15 +25,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
     [Icons.auto_awesome_rounded,     'Daily insight engine and journal AI'],
     [Icons.picture_as_pdf_rounded,   'Export your journal as PDF'],
   ];
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is Map) {
-      _gateMode = args['gateMode'] == true;
-    }
-  }
 
   @override
   void initState() {
@@ -54,18 +40,24 @@ class _PaywallScreenState extends State<PaywallScreen> {
     super.dispose();
   }
 
-  // Called when subscription completes — always just pop back to the caller.
+  // Called when subscription completes — pop back so the gate screen
+  // can detect the premium change and let the user through.
   void _onPremiumChanged() {
     if (PremiumService.isPremium.value && mounted) {
       Navigator.of(context).pop();
     }
   }
 
-  // ✅ Close button logic:
-  //   - gateMode + not subscribed → clear stack and go home
-  //   - otherwise (e.g. opened from profile) → simply pop
+  // ✅ Read gateMode HERE, at button-press time, when the route is
+  // fully active and ModalRoute.of(context) is guaranteed non-null.
+  // didChangeDependencies fires too early (route not settled yet).
   void _handleClose() {
-    if (_gateMode && !PremiumService.isPremium.value) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final isGateMode = args is Map && args['gateMode'] == true;
+
+    if (isGateMode && !PremiumService.isPremium.value) {
+      // Clear the whole stack and go home — prevents black page or
+      // returning to a locked screen.
       Navigator.of(context)
           .pushNamedAndRemoveUntil('/home', (route) => false);
     } else {
@@ -357,12 +349,9 @@ class _TierCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _FeatureRow(icon: Icons.chat_rounded,
-              label: config.messageLabel),
-          _FeatureRow(icon: Icons.mic_rounded,
-              label: config.voiceLabel),
-          _FeatureRow(icon: Icons.star_rounded,
-              label: 'All features included'),
+          _FeatureRow(icon: Icons.chat_rounded,    label: config.messageLabel),
+          _FeatureRow(icon: Icons.mic_rounded,     label: config.voiceLabel),
+          _FeatureRow(icon: Icons.star_rounded,    label: 'All features included'),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
