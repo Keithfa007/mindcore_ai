@@ -129,12 +129,16 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     _loadMoodFromStore();
   }
 
+  // ✅ Premium gate: if not premium, show paywall then pop if still not premium.
   Future<void> _checkPremiumAccess() async {
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     if (!PremiumService.isPremium.value) {
       await Navigator.of(context).pushNamed('/paywall');
-      if (mounted) Navigator.of(context).pop();
+      // Only pop if user did not subscribe during the paywall session.
+      if (mounted && !PremiumService.isPremium.value) {
+        Navigator.of(context).pop();
+      }
     }
   }
 
@@ -981,7 +985,7 @@ class _MonthHeader extends StatelessWidget {
 enum _BarLabelMode { week, month, year }
 
 /// ✅ Bars: height = avg (1..5)
-/// ✅ If multiple logs, bar shows stacked colour segments (WEIGHTED by mood score) + “xN” badge
+/// ✅ If multiple logs, bar shows stacked colour segments (WEIGHTED by mood score) + "xN" badge
 /// ✅ Fix overflow: chart height increased + legend uses Wrap (can go 2 lines)
 class _DailyMoodBars extends StatelessWidget {
   final List<_WeeklyPoint> points;
@@ -1006,7 +1010,7 @@ class _DailyMoodBars extends StatelessWidget {
     // Bars area (max bar height)
     const barAreaH = 104.0;
 
-    // Month/year fixed width + scroll so labels don’t overlap.
+    // Month/year fixed width + scroll so labels don't overlap.
     final itemWidth = (labelMode == _BarLabelMode.month) ? 56.0 : 64.0;
 
     final barsRow = SizedBox(
@@ -1177,7 +1181,7 @@ class _DailyMoodBars extends StatelessWidget {
       ),
     );
 
-    // Badge “xN” if multiple logs
+    // Badge "xN" if multiple logs
     final withBadge = Stack(
       clipBehavior: Clip.none,
       children: [
