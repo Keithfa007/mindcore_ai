@@ -162,7 +162,7 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
         const SizedBox(height: 6),
         Text('Tip: Multiple logs per day are fine — bar height is the daily average.', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.65))),
       ])),
-    ]))]));
+    ])))));
   }
 
   Widget _buildMoodTab(BuildContext context) {
@@ -202,7 +202,14 @@ class _MoodCard extends StatelessWidget {
 class _MonthHeader extends StatelessWidget {
   final DateTime month; final VoidCallback onPrev, onNext;
   const _MonthHeader({required this.month, required this.onPrev, required this.onNext});
-  @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4), child: Row(children: [IconButton(onPressed: onPrev, icon: const Icon(Icons.chevron_left)), Expanded(child: Text(DateFormat('MMMM yyyy').format(month), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))), markers: IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_right))]));
+  @override Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
+    child: Row(children: [
+      IconButton(onPressed: onPrev, icon: const Icon(Icons.chevron_left)),
+      Expanded(child: Text(DateFormat('MMMM yyyy').format(month), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+      IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_right)),
+    ]),
+  );
 }
 
 enum _BarLabelMode { week, month, year }
