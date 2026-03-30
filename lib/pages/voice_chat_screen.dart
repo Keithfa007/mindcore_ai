@@ -55,7 +55,10 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     );
 
     _initStt();
-    _checkAccess();
+
+    // ✅ addPostFrameCallback guarantees the navigator is fully settled
+    // before we try to push the paywall — avoids the '!_debugLocked' assertion.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAccess());
   }
 
   @override
@@ -68,10 +71,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     super.dispose();
   }
 
-  // ✅ Premium gate: delay so widget is mounted, then push paywall in gateMode.
-  // The paywall handles navigation to /home if the user closes without subscribing.
   Future<void> _checkAccess() async {
-    await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     if (!PremiumService.isPremium.value) {
       await Navigator.of(context).pushNamed(
@@ -333,7 +333,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   Color _stateColor() {
     switch (_state) {
-      case _VoiceState.idle:     return const Color(0xFF4D7CFF);
+      case _VoiceState.idle:      return const Color(0xFF4D7CFF);
       case _VoiceState.listening: return const Color(0xFF32D0BE);
       case _VoiceState.thinking:  return const Color(0xFF9B7FFF);
       case _VoiceState.speaking:  return const Color(0xFF4D7CFF);
