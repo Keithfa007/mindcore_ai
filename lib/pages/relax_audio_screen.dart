@@ -163,12 +163,16 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen>
     });
   }
 
+  // ✅ Premium gate: if not premium, show paywall then pop if still not premium.
   Future<void> _checkPremiumAccess() async {
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     if (!PremiumService.isPremium.value) {
       await Navigator.of(context).pushNamed('/paywall');
-      if (mounted) Navigator.of(context).pop();
+      // Only pop if user did not subscribe during the paywall session.
+      if (mounted && !PremiumService.isPremium.value) {
+        Navigator.of(context).pop();
+      }
     }
   }
 
