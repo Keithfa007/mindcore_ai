@@ -6,6 +6,7 @@ import 'package:mindcore_ai/widgets/section_hero_card.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/mood_orb.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
+import 'package:mindcore_ai/ai/daily_briefing_service.dart';
 
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 
@@ -34,6 +35,10 @@ class _HomeScreenState extends State<HomeScreen>
   List<double> _last7 = const [];
   ProactiveSuggestion? _supportSuggestion;
 
+  // AI daily briefing
+  String? _briefing;
+  bool _briefingLoading = true;
+
   // Staggered entrance animations
   late final AnimationController _entranceCtrl;
   final List<Animation<double>> _fadeAnims = [];
@@ -49,12 +54,10 @@ class _HomeScreenState extends State<HomeScreen>
       duration: const Duration(milliseconds: 900),
     );
 
-    // Build staggered fade + slide for each card
     for (int i = 0; i < _cardCount; i++) {
       final start = (i * 0.12).clamp(0.0, 0.9);
       final end = (start + 0.40).clamp(0.0, 1.0);
       final interval = Interval(start, end, curve: Curves.easeOut);
-
       _fadeAnims.add(
         Tween<double>(begin: 0.0, end: 1.0).animate(
           CurvedAnimation(parent: _entranceCtrl, curve: interval),
@@ -71,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     _loadAll();
+    _loadBriefing();
     _entranceCtrl.forward();
   }
 
@@ -86,13 +90,22 @@ class _HomeScreenState extends State<HomeScreen>
     if (index >= _fadeAnims.length) return child;
     return FadeTransition(
       opacity: _fadeAnims[index],
-      child: SlideTransition(
-        position: _slideAnims[index],
-        child: child,
-      ),
+      child: SlideTransition(position: _slideAnims[index], child: child),
     );
   }
 
+  // ── Load AI briefing ───────────────────────────────────────
+  Future<void> _loadBriefing() async {
+    setState(() => _briefingLoading = true);
+    final text = await DailyBriefingService.getBriefing();
+    if (!mounted) return;
+    setState(() {
+      _briefing = text;
+      _briefingLoading = false;
+    });
+  }
+
+  // ── Load mood + suggestion ─────────────────────────────────
   Future<void> _loadAll() async {
     await DailyPlanService.getTodayNote();
     final mood = await MoodRepo.instance.last7Normalized();
@@ -114,7 +127,6 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     if (!mounted) return;
-
     setState(() {
       _plan.text = '';
       _last7 = mood;
@@ -139,24 +151,19 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _saveJournal() async {
     final text = _plan.text.trim();
     if (_savingPlan) return;
-
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Write something first.')),
       );
       return;
     }
-
     setState(() => _savingPlan = true);
     await JournalService.addEntry(text, when: DateTime.now());
-
     if (!mounted) return;
-
     setState(() => _savingPlan = false);
     _plan.clear();
     FocusScope.of(context).unfocus();
     await _loadAll();
-
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Journal entry saved.')),
     );
@@ -179,22 +186,25 @@ class _HomeScreenState extends State<HomeScreen>
     Navigator.of(context).pushNamed(route);
   }
 
-  // ── Greeting based on time of day ────────────────────────────────────────
+  // ── Time-aware greeting ───────────────────────────────────
   String get _greeting {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    if (hour < 21) return 'Good evening';
+    if (hour >= 5 && hour < 9) return 'Early start';
+    if (hour >= 9 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 21) return 'Good evening';
     return 'Good night';
   }
 
-  // ── Orb colour based on last 7 avg mood ──────────────────────────────────
+  // ── Orb colour from mood average ──────────────────────────
   Color get _orbColor {
     if (_last7.isEmpty) return AppColors.primary;
-    final avg = _last7.reduce((a, b) => a + b) / _last7.length;
-    if (avg >= 0.65) return AppColors.mintDeep;
-    if (avg >= 0.40) return AppColors.primary;
-    return AppColors.violet;
+    final nonZero = _last7.where((v) => v > 0).toList();
+    if (nonZero.isEmpty) return AppColors.primary;
+    final avg = nonZero.reduce((a, b) => a + b) / nonZero.length;
+    if (avg >= 0.65) return AppColors.mintDeep; // good — teal
+    if (avg >= 0.40) return AppColors.primary;   // neutral — blue
+    return AppColors.violet;                     // low — soft violet
   }
 
   @override
@@ -210,34 +220,40 @@ class _HomeScreenState extends State<HomeScreen>
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
           children: [
-            // ── Hero Orb Section ─────────────────────────────────────────
+
+            // ── Hero Orb + Greeting + AI Briefing ─────────────────
             _animated(
               0,
               Padding(
-                padding: const EdgeInsets.fromLTRB(0, 24, 0, 8),
+                padding: const EdgeInsets.fromLTRB(0, 28, 0, 8),
                 child: Column(
                   children: [
-                    MoodOrb(
-                      moodColor: _orbColor,
-                      size: 160,
-                    ),
+                    MoodOrb(moodColor: _orbColor, size: 160),
                     const SizedBox(height: 20),
+
+                    // Greeting
                     Text(
                       _greeting,
                       style: tt.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white : const Color(0xFF0E1320),
+                        color: isDark
+                            ? Colors.white
+                            : const Color(0xFF0E1320),
                         letterSpacing: -0.8,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'How are you feeling today?',
-                      style: tt.bodyMedium?.copyWith(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.55)
-                            : const Color(0xFF475467),
-                      ),
+                    const SizedBox(height: 10),
+
+                    // AI briefing — shimmer while loading, fade in when ready
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 500),
+                      child: _briefingLoading
+                          ? _BriefingShimmer(isDark: isDark)
+                          : _BriefingText(
+                              text: _briefing ?? '',
+                              isDark: isDark,
+                              tt: tt,
+                            ),
                     ),
                   ],
                 ),
@@ -245,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 20),
 
-            // ── Daily Reset ──────────────────────────────────────────────
+            // ── Daily Reset ─────────────────────────────────────
             _animated(
               1,
               ValueListenableBuilder<bool>(
@@ -258,13 +274,15 @@ class _HomeScreenState extends State<HomeScreen>
                       children: [
                         const SectionHeroCard(
                           title: 'Daily Reset',
-                          subtitle: 'A quick moment to breathe and recenter',
+                          subtitle:
+                              'A quick moment to breathe and recenter',
                         ),
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed: () => _openPremiumRoute('/reset'),
+                            onPressed: () =>
+                                _openPremiumRoute('/reset'),
                             icon: Icon(isPremium
                                 ? Icons.self_improvement_rounded
                                 : Icons.lock_rounded),
@@ -293,7 +311,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 12),
 
-            // ── Chat buttons ─────────────────────────────────────────────
+            // ── Chat buttons ─────────────────────────────────────
             _animated(
               2,
               Row(
@@ -313,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 end: Alignment.bottomRight,
                                 colors: [
                                   Color(0xFF4D7CFF),
-                                  Color(0xFF74C3FF),
+                                  Color(0xFF74C3FF)
                                 ],
                               ),
                               shape: BoxShape.circle,
@@ -326,35 +344,29 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                               ],
                             ),
-                            child: const Icon(
-                              Icons.chat_rounded,
-                              color: Colors.white,
-                              size: 24,
-                            ),
+                            child: const Icon(Icons.chat_rounded,
+                                color: Colors.white, size: 24),
                           ),
                           const SizedBox(height: 10),
-                          Text(
-                            'Text Chat',
-                            style: tt.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
+                          Text('Text Chat',
+                              style: tt.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800)),
                           const SizedBox(height: 4),
-                          Text(
-                            'Type your thoughts',
-                            style: tt.bodySmall?.copyWith(
-                              color: cs.onSurface.withValues(alpha: 0.55),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
+                          Text('Type your thoughts',
+                              style: tt.bodySmall?.copyWith(
+                                color: cs.onSurface
+                                    .withValues(alpha: 0.55),
+                              ),
+                              textAlign: TextAlign.center),
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton(
-                              onPressed: () =>
-                                  Navigator.of(context).pushNamed('/chat'),
+                              onPressed: () => Navigator.of(context)
+                                  .pushNamed('/chat'),
                               style: FilledButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 10),
                               ),
                               child: const Text('Open'),
                             ),
@@ -379,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 end: Alignment.bottomRight,
                                 colors: [
                                   Color(0xFF32D0BE),
-                                  Color(0xFF89E0CF),
+                                  Color(0xFF89E0CF)
                                 ],
                               ),
                               shape: BoxShape.circle,
@@ -392,26 +404,20 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                               ],
                             ),
-                            child: const Icon(
-                              Icons.mic_rounded,
-                              color: Colors.white,
-                              size: 24,
-                            ),
+                            child: const Icon(Icons.mic_rounded,
+                                color: Colors.white, size: 24),
                           ),
                           const SizedBox(height: 10),
-                          Text(
-                            'Voice Chat',
-                            style: tt.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
+                          Text('Voice Chat',
+                              style: tt.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800)),
                           const SizedBox(height: 4),
-                          Text(
-                            'Speak hands-free',
-                            style: tt.bodySmall?.copyWith(
-                              color: cs.onSurface.withValues(alpha: 0.55),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
+                          Text('Speak hands-free',
+                              style: tt.bodySmall?.copyWith(
+                                color: cs.onSurface
+                                    .withValues(alpha: 0.55),
+                              ),
+                              textAlign: TextAlign.center),
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
@@ -419,8 +425,8 @@ class _HomeScreenState extends State<HomeScreen>
                               onPressed: () => Navigator.of(context)
                                   .pushNamed('/voice-chat'),
                               style: FilledButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 10),
                                 backgroundColor: AppColors.mintDeep,
                                 foregroundColor: Colors.white,
                               ),
@@ -436,7 +442,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 12),
 
-            // ── Guided Sessions ──────────────────────────────────────────
+            // ── Guided Sessions ─────────────────────────────────
             _animated(
               3,
               ValueListenableBuilder<bool>(
@@ -456,8 +462,8 @@ class _HomeScreenState extends State<HomeScreen>
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed: () =>
-                                _openPremiumRoute('/guided-sessions'),
+                            onPressed: () => _openPremiumRoute(
+                                '/guided-sessions'),
                             icon: Icon(isPremium
                                 ? Icons.self_improvement_rounded
                                 : Icons.lock_rounded),
@@ -474,7 +480,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 12),
 
-            // ── Recommended for you ──────────────────────────────────────
+            // ── Recommended for you ────────────────────────────
             if (_supportSuggestion != null)
               _animated(
                 4,
@@ -498,7 +504,8 @@ class _HomeScreenState extends State<HomeScreen>
                             const SizedBox(width: 10),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     _supportSuggestion!.title,
@@ -519,8 +526,10 @@ class _HomeScreenState extends State<HomeScreen>
                           Expanded(
                             child: FilledButton.icon(
                               onPressed: _openRecommendation,
-                              icon: Icon(_supportSuggestion!.icon, size: 18),
-                              label: Text(_supportSuggestion!.ctaLabel),
+                              icon: Icon(_supportSuggestion!.icon,
+                                  size: 18),
+                              label:
+                                  Text(_supportSuggestion!.ctaLabel),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -543,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             if (_supportSuggestion != null) const SizedBox(height: 12),
 
-            // ── Journal ──────────────────────────────────────────────────
+            // ── Journal ──────────────────────────────────────────
             _animated(
               5,
               GlassCard(
@@ -575,12 +584,14 @@ class _HomeScreenState extends State<HomeScreen>
                           children: [
                             Expanded(
                               child: FilledButton(
-                                onPressed: _savingPlan ? null : _saveJournal,
+                                onPressed:
+                                    _savingPlan ? null : _saveJournal,
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 12.0),
-                                  child: Text(
-                                      _savingPlan ? 'Saving…' : 'Save entry'),
+                                  child: Text(_savingPlan
+                                      ? 'Saving…'
+                                      : 'Save entry'),
                                 ),
                               ),
                             ),
@@ -595,7 +606,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 size: 16,
                               ),
                               label: const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 12.0),
+                                padding: EdgeInsets.symmetric(
+                                    vertical: 12.0),
                                 child: Text('View'),
                               ),
                             ),
@@ -617,6 +629,102 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Briefing shimmer (loading state) ─────────────────────────────
+
+class _BriefingShimmer extends StatefulWidget {
+  final bool isDark;
+  const _BriefingShimmer({required this.isDark});
+  @override
+  State<_BriefingShimmer> createState() => _BriefingShimmerState();
+}
+
+class _BriefingShimmerState extends State<_BriefingShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200))
+      ..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) {
+        final alpha = 0.08 + _anim.value * 0.12;
+        return Column(
+          children: [
+            Container(
+              width: 240,
+              height: 13,
+              decoration: BoxDecoration(
+                color: (widget.isDark ? Colors.white : Colors.black)
+                    .withValues(alpha: alpha),
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: 180,
+              height: 11,
+              decoration: BoxDecoration(
+                color: (widget.isDark ? Colors.white : Colors.black)
+                    .withValues(alpha: alpha * 0.7),
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ── Briefing text (fade in) ──────────────────────────────────
+
+class _BriefingText extends StatelessWidget {
+  final String text;
+  final bool isDark;
+  final TextTheme tt;
+
+  const _BriefingText({
+    required this.text,
+    required this.isDark,
+    required this.tt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: tt.bodyMedium?.copyWith(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.65)
+              : const Color(0xFF475467),
+          height: 1.5,
+          letterSpacing: 0.1,
         ),
       ),
     );
