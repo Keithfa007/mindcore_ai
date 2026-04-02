@@ -21,7 +21,7 @@ class DailyBriefingService {
   static String? _memCache;
   static String? _memCacheSlot;
 
-  // ── Public API ─────────────────────────────────────────
+  // ── Public API ─────────────────────────────────────────────────────────
 
   /// Returns a personalised 1–2 sentence briefing for the current moment.
   /// Hits AI once per [date + time-slot], then returns cached result.
@@ -65,7 +65,7 @@ class DailyBriefingService {
     return getBriefing();
   }
 
-  // ── Internal ─────────────────────────────────────────
+  // ── Internal ───────────────────────────────────────────────────────────
 
   static TimeSlot _currentSlot() {
     final h = DateTime.now().hour;
@@ -103,18 +103,19 @@ class DailyBriefingService {
         : last7.reduce((a, b) => a + b) / last7.length;
     final moodTrend = _moodTrendLabel(last7);
 
-    // Today’s mood (if already logged)
+    // Today's mood (if already logged)
     final todayMeta = await MoodLogService.todayMeta();
     final todayMoodLabel = todayMeta['label'] ?? '';
     final todayMoodEmoji = todayMeta['emoji'] ?? '';
 
-    // Latest journal note (first 200 chars)
+    // Latest journal note — safe substring, no characters package needed
     String journalSnippet = '';
     try {
       final entries = await JournalService.getEntries();
       if (entries.isNotEmpty) {
+        final note = entries.first.note.trim();
         journalSnippet =
-            entries.first.note.trim().characters.take(200).toString();
+            note.length > 200 ? note.substring(0, 200) : note;
       }
     } catch (_) {}
 
@@ -160,14 +161,19 @@ class DailyBriefingService {
     final todayMoodEmoji = ctx['todayMoodEmoji'] as String;
     final journalSnippet = ctx['journalSnippet'] as String;
 
-    // Time-of-day label
-    final timeLabel = switch (slot) {
-      'earlyMorning' => 'early morning ($hour:00)',
-      'morning'      => 'morning ($hour:00)',
-      'afternoon'    => 'afternoon ($hour:00)',
-      'evening'      => 'evening ($hour:00)',
-      _              => 'night ($hour:00)',
-    };
+    // Time-of-day label — standard if/else, no Dart 3 switch expression
+    String timeLabel;
+    if (slot == 'earlyMorning') {
+      timeLabel = 'early morning ($hour:00)';
+    } else if (slot == 'morning') {
+      timeLabel = 'morning ($hour:00)';
+    } else if (slot == 'afternoon') {
+      timeLabel = 'afternoon ($hour:00)';
+    } else if (slot == 'evening') {
+      timeLabel = 'evening ($hour:00)';
+    } else {
+      timeLabel = 'night ($hour:00)';
+    }
 
     // Build the prompt
     final sb = StringBuffer();
@@ -182,9 +188,9 @@ class DailyBriefingService {
     sb.writeln('- Mood trend (last 7 days): $moodTrend');
     if (todayMoodLabel.isNotEmpty) {
       sb.writeln(
-          '- User already logged today\'s mood: $todayMoodEmoji $todayMoodLabel');
+          "- User already logged today's mood: $todayMoodEmoji $todayMoodLabel");
     } else {
-      sb.writeln('- User has not logged today\'s mood yet');
+      sb.writeln("- User has not logged today's mood yet");
     }
     if (journalSnippet.isNotEmpty) {
       sb.writeln('- Latest journal note (context only): "$journalSnippet"');
@@ -192,9 +198,9 @@ class DailyBriefingService {
     sb.writeln();
     sb.writeln('RULES:');
     sb.writeln(
-        '- Never say \'good morning\' if it is afternoon, evening, or night');
+        "- Never say 'good morning' if it is afternoon, evening, or night");
     sb.writeln(
-        '- Never say \'good evening\' if it is morning or afternoon');
+        "- Never say 'good evening' if it is morning or afternoon");
     sb.writeln(
         '- Be warm, not clinical. No emojis. No asterisks. No quotes.');
     sb.writeln(
@@ -224,7 +230,9 @@ class DailyBriefingService {
     if (response.statusCode != 200) return '';
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = (json['choices'] as List?)?.firstOrNull?['message']
+    final choices = json['choices'] as List?;
+    if (choices == null || choices.isEmpty) return '';
+    final content = (choices.first as Map<String, dynamic>)['message']
             ?['content']
             ?.toString()
             .trim() ??
