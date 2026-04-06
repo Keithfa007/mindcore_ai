@@ -1,5 +1,5 @@
-// OpenAI-only TTS service for MindCore AI.
-// No backend relay. No chunk streaming. just_audio only.
+// OpenAI chat + Fish Audio TTS service for MindCore AI.
+// All public API is identical — only the underlying synthesis call changed.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -9,6 +9,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:mindcore_ai/env/env.dart';
 
 enum TtsMood { calm, anxious, low, neutral }
 
@@ -76,140 +78,103 @@ class OpenAiTtsService extends ChangeNotifier {
       final done = state.processingState == ProcessingState.completed ||
           state.processingState == ProcessingState.idle ||
           !state.playing;
-      if (done) {
-        _clearActive();
-      }
+      if (done) _clearActive();
     });
   }
 
   static final OpenAiTtsService instance = OpenAiTtsService._internal();
 
-  static const String _endpoint = 'https://api.openai.com/v1/audio/speech';
-  static const String _model = 'gpt-4o-mini-tts';
-  static const String _defaultVoice = 'nova';
-  static const String _defaultFormat = 'wav';
+  // ── Fish Audio constants ───────────────────────────────────────────
+  static const String _fishEndpoint = 'https://api.fish.audio/v1/tts';
+  static const String _fishFormat   = 'mp3';
+  static const String _fishLatency  = 'normal';
 
-  static String get _apiKey {
-    final fromDotenv = dotenv.env['OPENAI_API_KEY']?.trim() ?? '';
-    if (fromDotenv.isNotEmpty) return fromDotenv;
-    return const String.fromEnvironment('OPENAI_API_KEY', defaultValue: '').trim();
+  static String get _fishApiKey {
+    // 1. Compile-time dart-define
+    const fromEnv = Env.fishAudioKey;
+    if (fromEnv.isNotEmpty) return fromEnv;
+    // 2. Runtime .env (flutter_dotenv)
+    final fromDotenv = dotenv.env['FISH_AUDIO_API_KEY']?.trim() ?? '';
+    return fromDotenv;
   }
 
+  static String get _fishVoiceId {
+    const fromEnv = Env.fishAudioVoiceId;
+    if (fromEnv.isNotEmpty) return fromEnv;
+    return dotenv.env['FISH_AUDIO_VOICE_ID']?.trim() ??
+        '0b74ead073f2474a904f69033535b98e';
+  }
+
+  // ── Player & state ─────────────────────────────────────────────────
   final AudioPlayer _player = AudioPlayer();
   final Map<TtsSurface, bool> _surfaceEnabled = {
     for (final s in TtsSurface.values) s: s.defaultEnabled,
   };
 
-  bool _enabled = true;
-  bool _moodAdaptive = true;
-  double _baseSpeed = 0.96;
-  String _voice = _defaultVoice;
-  int _requestToken = 0;
-  bool _isSpeaking = false;
+  bool   _enabled     = true;
+  bool   _moodAdaptive = true;
+  double _baseSpeed    = 0.96; // kept for settings compatibility
+  int    _requestToken = 0;
+  bool   _isSpeaking   = false;
   String? _activeMessageId;
   TtsSurface? _activeSurface;
   final Map<TtsSurface, _TtsMemory> _lastBySurface = {};
-  final Map<String, Uint8List> _audioCache = {};
+  final Map<String, Uint8List>      _audioCache    = {};
 
-  Future<void> init() async {
-    await loadSettings();
-  }
+  Future<void> init() async => loadSettings();
 
-  bool get enabled => _enabled;
-  bool get moodAdaptive => _moodAdaptive;
-  double get baseSpeed => _baseSpeed;
-  String get voice => _voice;
-  bool get isSpeakingNow => _isSpeaking;
-  String? get activeMessageId => _activeMessageId;
-  TtsSurface? get activeSurface => _activeSurface;
+  // ── Public getters ──────────────────────────────────────────────────
+  bool        get enabled         => _enabled;
+  bool        get moodAdaptive    => _moodAdaptive;
+  double      get baseSpeed       => _baseSpeed;
+  bool        get isSpeakingNow   => _isSpeaking;
+  String?     get activeMessageId => _activeMessageId;
+  TtsSurface? get activeSurface   => _activeSurface;
 
   bool isEnabled() => _enabled;
 
-  bool isSpeakingMessage(String? messageId) {
-    return _isSpeaking && messageId != null && _activeMessageId == messageId;
-  }
+  bool isSpeakingMessage(String? messageId) =>
+      _isSpeaking && messageId != null && _activeMessageId == messageId;
 
-  bool isSurfaceEnabled(TtsSurface surface) {
-    return _surfaceEnabled[surface] ?? surface.defaultEnabled;
-  }
+  bool isSurfaceEnabled(TtsSurface surface) =>
+      _surfaceEnabled[surface] ?? surface.defaultEnabled;
 
   bool hasReplay(TtsSurface surface) {
-    final memory = _lastBySurface[surface];
-    return memory != null && memory.text.trim().isNotEmpty;
+    final m = _lastBySurface[surface];
+    return m != null && m.text.trim().isNotEmpty;
   }
 
   Future<bool> replayLast(TtsSurface surface, {bool force = true}) async {
-    final memory = _lastBySurface[surface];
-    if (memory == null || memory.text.trim().isEmpty) return false;
-    return speak(
-      memory.text,
-      moodLabel: memory.moodLabel,
-      messageId: memory.messageId,
-      surface: surface,
-      force: force,
-    );
+    final m = _lastBySurface[surface];
+    if (m == null || m.text.trim().isEmpty) return false;
+    return speak(m.text,
+        moodLabel: m.moodLabel, messageId: m.messageId, surface: surface, force: force);
   }
 
-  Future<bool> getEnabled() async {
-    await loadSettings();
-    return _enabled;
-  }
+  // ── Settings ─────────────────────────────────────────────────────────
+  Future<bool>   getEnabled()     async { await loadSettings(); return _enabled; }
+  Future<bool>   getMoodAdaptive() async { await loadSettings(); return _moodAdaptive; }
+  Future<String> getVoice()       async { await loadSettings(); return _fishVoiceId; }
 
-  Future<void> setEnabled(bool value) async {
-    _enabled = value;
+  Future<void> setEnabled(bool v)       async { _enabled = v; await _saveSettings(); if (!v) await stop(); }
+  Future<void> setMoodAdaptive(bool v)  async { _moodAdaptive = v; await _saveSettings(); }
+  Future<void> setBaseSpeed(double v)   async { _baseSpeed = v.clamp(0.84, 1.04); await _saveSettings(); }
+  Future<void> setVoice(String v)       async { await _saveSettings(); } // voice is set via env
+
+  Future<bool> getSurfaceEnabled(TtsSurface s) async { await loadSettings(); return isSurfaceEnabled(s); }
+  Future<void> setSurfaceEnabled(TtsSurface s, bool v) async {
+    _surfaceEnabled[s] = v;
     await _saveSettings();
-    if (!value) {
-      await stop();
-    }
-  }
-
-  Future<bool> getMoodAdaptive() async {
-    await loadSettings();
-    return _moodAdaptive;
-  }
-
-  Future<void> setMoodAdaptive(bool value) async {
-    _moodAdaptive = value;
-    await _saveSettings();
-  }
-
-  Future<void> setBaseSpeed(double value) async {
-    _baseSpeed = value.clamp(0.84, 1.04);
-    await _saveSettings();
-  }
-
-  Future<String> getVoice() async {
-    await loadSettings();
-    return _voice;
-  }
-
-  Future<void> setVoice(String value) async {
-    _voice = value.trim().isEmpty ? _defaultVoice : value.trim();
-    await _saveSettings();
-  }
-
-  Future<bool> getSurfaceEnabled(TtsSurface surface) async {
-    await loadSettings();
-    return isSurfaceEnabled(surface);
-  }
-
-  Future<void> setSurfaceEnabled(TtsSurface surface, bool value) async {
-    _surfaceEnabled[surface] = value;
-    await _saveSettings();
-    if (!value && _activeSurface == surface) {
-      await stop();
-    }
+    if (!v && _activeSurface == s) await stop();
   }
 
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _enabled = prefs.getBool('tts_enabled') ?? true;
+    _enabled      = prefs.getBool('tts_enabled') ?? true;
     _moodAdaptive = prefs.getBool('tts_mood_adaptive') ?? true;
-    _baseSpeed = prefs.getDouble('tts_speed') ?? 0.96;
-    _voice = prefs.getString('tts_voice') ?? _defaultVoice;
-    for (final surface in TtsSurface.values) {
-      _surfaceEnabled[surface] =
-          prefs.getBool(surface.prefsKey) ?? surface.defaultEnabled;
+    _baseSpeed    = prefs.getDouble('tts_speed') ?? 0.96;
+    for (final s in TtsSurface.values) {
+      _surfaceEnabled[s] = prefs.getBool(s.prefsKey) ?? s.defaultEnabled;
     }
   }
 
@@ -218,12 +183,12 @@ class OpenAiTtsService extends ChangeNotifier {
     await prefs.setBool('tts_enabled', _enabled);
     await prefs.setBool('tts_mood_adaptive', _moodAdaptive);
     await prefs.setDouble('tts_speed', _baseSpeed);
-    await prefs.setString('tts_voice', _voice);
-    for (final entry in _surfaceEnabled.entries) {
-      await prefs.setBool(entry.key.prefsKey, entry.value);
+    for (final e in _surfaceEnabled.entries) {
+      await prefs.setBool(e.key.prefsKey, e.value);
     }
   }
 
+  // ── Core speak ──────────────────────────────────────────────────────
   Future<bool> speak(
     String text, {
     String moodLabel = 'neutral',
@@ -234,39 +199,29 @@ class OpenAiTtsService extends ChangeNotifier {
     if (!_enabled) return false;
     if (!force && !isSurfaceEnabled(surface)) return false;
 
-    final apiKey = _apiKey;
-    if (apiKey.isEmpty) return false;
+    final apiKey = _fishApiKey;
+    if (apiKey.isEmpty) {
+      debugPrint('[TTS] FISH_AUDIO_API_KEY is not set.');
+      return false;
+    }
 
     final cleaned = _cleanText(text);
     if (cleaned.isEmpty) return false;
 
-    final resolvedMessageId = messageId ?? '${surface.name}_${cleaned.hashCode}';
-    _lastBySurface[surface] = _TtsMemory(
-      text: cleaned,
-      moodLabel: moodLabel,
-      messageId: resolvedMessageId,
-    );
+    final resolvedId = messageId ?? '${surface.name}_${cleaned.hashCode}';
+    _lastBySurface[surface] =
+        _TtsMemory(text: cleaned, moodLabel: moodLabel, messageId: resolvedId);
 
-    if (isSpeakingMessage(resolvedMessageId)) {
-      return true;
-    }
+    if (isSpeakingMessage(resolvedId)) return true;
 
     final token = ++_requestToken;
     await _stopPlaybackOnly();
     if (token != _requestToken) return false;
 
-    final mood = _mapMood(moodLabel);
-    final speed = _speedFor(surface, mood);
-    final voice = _voiceFor(surface, mood);
-
-    final cacheKey = '$voice|${speed.toStringAsFixed(2)}|$cleaned';
+    // Cache key — voice ID + text (Fish Audio has no speed param)
+    final cacheKey = '${_fishVoiceId}|$cleaned';
     final bytes = _audioCache[cacheKey] ??
-        await _synthesize(
-          text: cleaned,
-          voice: voice,
-          speed: speed,
-          apiKey: apiKey,
-        );
+        await _synthesize(text: cleaned, apiKey: apiKey);
 
     if (token != _requestToken) return false;
     if (bytes == null || bytes.isEmpty) {
@@ -274,20 +229,17 @@ class OpenAiTtsService extends ChangeNotifier {
       return false;
     }
 
-    if (bytes != null && bytes.isNotEmpty) {
-      _audioCache[cacheKey] = bytes;
-      if (_audioCache.length > 12) {
-        _audioCache.remove(_audioCache.keys.first);
-      }
-    }
+    _audioCache[cacheKey] = bytes;
+    if (_audioCache.length > 12) _audioCache.remove(_audioCache.keys.first);
 
-    _activeMessageId = resolvedMessageId;
-    _activeSurface = surface;
-    _isSpeaking = true;
+    _activeMessageId = resolvedId;
+    _activeSurface   = surface;
+    _isSpeaking      = true;
     notifyListeners();
 
     try {
-      await _player.setAudioSource(_BytesAudioSource(bytes, contentType: _contentTypeForFormat(_defaultFormat)));
+      await _player.setAudioSource(
+          _BytesAudioSource(bytes, contentType: 'audio/mpeg'));
       if (token != _requestToken) {
         await _stopPlaybackOnly();
         _clearActive();
@@ -295,10 +247,9 @@ class OpenAiTtsService extends ChangeNotifier {
       }
       await _player.play();
       return true;
-    } catch (_) {
-      if (token == _requestToken) {
-        _clearActive();
-      }
+    } catch (e) {
+      debugPrint('[TTS] Playback error: $e');
+      if (token == _requestToken) _clearActive();
       return false;
     }
   }
@@ -314,19 +265,16 @@ class OpenAiTtsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     final ymd =
-        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
     final key = 'tts_once_day_${surface.name}_$uniqueKey';
     if (prefs.getString(key) == ymd) return false;
-
-    final ok = await speak(
-      text,
-      moodLabel: moodLabel,
-      messageId: messageId ?? '${surface.name}_$uniqueKey',
-      surface: surface,
-    );
-    if (ok) {
-      await prefs.setString(key, ymd);
-    }
+    final ok = await speak(text,
+        moodLabel: moodLabel,
+        messageId: messageId ?? '${surface.name}_$uniqueKey',
+        surface: surface);
+    if (ok) await prefs.setString(key, ymd);
     return ok;
   }
 
@@ -337,162 +285,88 @@ class OpenAiTtsService extends ChangeNotifier {
   }
 
   Future<void> stopIfSurface(TtsSurface surface) async {
-    if (_activeSurface == surface) {
-      await stop();
-    }
+    if (_activeSurface == surface) await stop();
   }
 
-  Future<void> _stopPlaybackOnly() async {
-    try {
-      await _player.stop();
-    } catch (_) {}
-  }
+  Future<void> flushVoiceBuffer() async {} // kept for call-site compatibility
 
-  void _clearActive() {
-    final changed = _activeMessageId != null || _activeSurface != null || _isSpeaking;
-    _activeMessageId = null;
-    _activeSurface = null;
-    _isSpeaking = false;
-    if (changed) {
-      notifyListeners();
-    }
-  }
-
+  // ── Fish Audio synthesis ──────────────────────────────────────────────
   Future<Uint8List?> _synthesize({
     required String text,
-    required String voice,
-    required double speed,
     required String apiKey,
   }) async {
     try {
-      final res = await http.post(
-        Uri.parse(_endpoint),
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'model': _model,
-          'voice': voice,
-          'input': text,
-          'format': _defaultFormat,
-          'speed': speed,
-        }),
-      );
-      if (res.statusCode != 200) return null;
+      final res = await http
+          .post(
+            Uri.parse(_fishEndpoint),
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'text':         text,
+              'reference_id': _fishVoiceId,
+              'format':       _fishFormat,
+              'latency':      _fishLatency,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (res.statusCode != 200) {
+        debugPrint('[TTS] Fish Audio error ${res.statusCode}: ${res.body}');
+        return null;
+      }
       return Uint8List.fromList(res.bodyBytes);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[TTS] Fish Audio exception: $e');
       return null;
     }
   }
 
+  // ── Internals ──────────────────────────────────────────────────────────
+  Future<void> _stopPlaybackOnly() async {
+    try { await _player.stop(); } catch (_) {}
+  }
+
+  void _clearActive() {
+    final changed = _activeMessageId != null ||
+        _activeSurface != null ||
+        _isSpeaking;
+    _activeMessageId = null;
+    _activeSurface   = null;
+    _isSpeaking      = false;
+    if (changed) notifyListeners();
+  }
+
   String _cleanText(String text) {
-    var cleaned = text.replaceAll('\r', ' ').replaceAll('\n', ' ');
-    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ');
-    cleaned = cleaned.replaceAll('•', '');
-    cleaned = cleaned.replaceAllMapped(
+    var c = text.replaceAll('\r', ' ').replaceAll('\n', ' ');
+    c = c.replaceAll(RegExp(r'\s+'), ' ');
+    c = c.replaceAll('•', '');
+    c = c.replaceAllMapped(
       RegExp(r'([a-zA-Z])\s*-\s*([a-zA-Z])'),
       (m) => '${m.group(1)} ${m.group(2)}',
     );
-    return cleaned.trim();
-  }
-
-
-
-  String _contentTypeForFormat(String format) {
-    switch (format) {
-      case 'wav':
-        return 'audio/wav';
-      case 'aac':
-        return 'audio/aac';
-      case 'flac':
-        return 'audio/flac';
-      case 'opus':
-        return 'audio/opus';
-      case 'pcm':
-        return 'audio/pcm';
-      case 'mp3':
-      default:
-        return 'audio/mpeg';
-    }
-  }
-
-  TtsMood _mapMood(String label) {
-    final value = label.toLowerCase();
-    if (value.contains('anx') || value.contains('panic') || value.contains('overwhelm')) {
-      return TtsMood.anxious;
-    }
-    if (value.contains('sad') || value.contains('low') || value.contains('down')) {
-      return TtsMood.low;
-    }
-    if (value.contains('calm') || value.contains('good') || value.contains('relax')) {
-      return TtsMood.calm;
-    }
-    return TtsMood.neutral;
-  }
-
-  String _voiceFor(TtsSurface surface, TtsMood mood) {
-    if (surface == TtsSurface.recommendation ||
-        surface == TtsSurface.dailyMotivation ||
-        surface == TtsSurface.journal ||
-        surface == TtsSurface.reflection ||
-        mood == TtsMood.anxious ||
-        mood == TtsMood.low ||
-        mood == TtsMood.calm) {
-      return 'nova';
-    }
-    return _voice.trim().isEmpty ? _defaultVoice : _voice.trim();
-  }
-
-  double _speedFor(TtsSurface surface, TtsMood mood) {
-    var speed = _baseSpeed.clamp(0.84, 1.04);
-
-    switch (surface) {
-      case TtsSurface.recommendation:
-      case TtsSurface.dailyMotivation:
-        speed -= 0.03;
-        break;
-      case TtsSurface.journal:
-      case TtsSurface.reflection:
-      case TtsSurface.breathe:
-        speed -= 0.02;
-        break;
-      case TtsSurface.chat:
-        break;
-    }
-
-    if (_moodAdaptive) {
-      switch (mood) {
-        case TtsMood.anxious:
-        case TtsMood.low:
-          speed -= 0.02;
-          break;
-        case TtsMood.calm:
-        case TtsMood.neutral:
-          break;
-      }
-    }
-
-    return speed.clamp(0.84, 1.04);
+    return c.trim();
   }
 }
 
-class _BytesAudioSource extends StreamAudioSource {
-  _BytesAudioSource(this.bytes, {required this.contentType});
+// ── Audio source helpers ─────────────────────────────────────────────────────
 
+class _BytesAudioSource extends StreamAudioSource {
   final Uint8List bytes;
   final String contentType;
+  _BytesAudioSource(this.bytes, {required this.contentType});
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     start ??= 0;
-    end ??= bytes.length;
+    end   ??= bytes.length;
     return StreamAudioResponse(
-      sourceLength: bytes.length,
+      sourceLength:  bytes.length,
       contentLength: end - start,
-      offset: start,
-      stream: Stream.value(bytes.sublist(start, end)),
-      contentType: contentType,
+      offset:        start,
+      stream:        Stream.value(bytes.sublist(start, end)),
+      contentType:   contentType,
     );
   }
 }
@@ -501,10 +375,8 @@ class _TtsMemory {
   final String text;
   final String moodLabel;
   final String messageId;
-
-  const _TtsMemory({
-    required this.text,
-    required this.moodLabel,
-    required this.messageId,
-  });
+  const _TtsMemory(
+      {required this.text,
+      required this.moodLabel,
+      required this.messageId});
 }
