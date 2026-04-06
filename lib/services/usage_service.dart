@@ -10,12 +10,14 @@ import 'package:mindcore_ai/services/premium_service.dart';
 class UsageSnapshot {
   final int messagesUsed;
   final int voiceSecondsUsed;
+  final int bonusVoiceSeconds; // from purchased voice packs
   final TierConfig tier;
 
   const UsageSnapshot({
     required this.messagesUsed,
     required this.voiceSecondsUsed,
     required this.tier,
+    this.bonusVoiceSeconds = 0,
   });
 
   static const empty = UsageSnapshot(
@@ -29,10 +31,13 @@ class UsageSnapshot {
     return (tier.monthlyMessages - messagesUsed).clamp(0, tier.monthlyMessages);
   }
 
+  // Total available = plan allowance + bonus from packs
+  int get totalVoiceSeconds =>
+      tier.monthlyVoiceSeconds + bonusVoiceSeconds;
+
   int get voiceSecondsRemaining {
     if (tier.monthlyVoiceSeconds == -1) return 9999;
-    return (tier.monthlyVoiceSeconds - voiceSecondsUsed)
-        .clamp(0, tier.monthlyVoiceSeconds);
+    return (totalVoiceSeconds - voiceSecondsUsed).clamp(0, totalVoiceSeconds);
   }
 
   int get voiceMinutesRemaining => (voiceSecondsRemaining / 60).floor();
@@ -43,7 +48,7 @@ class UsageSnapshot {
   bool get canUseVoice =>
       tier.hasVoice &&
       (tier.monthlyVoiceSeconds == -1 ||
-          voiceSecondsUsed < tier.monthlyVoiceSeconds);
+          voiceSecondsUsed < totalVoiceSeconds);
 
   double get messageFraction {
     if (tier.isUnlimited) return 0;
@@ -51,19 +56,21 @@ class UsageSnapshot {
   }
 
   double get voiceFraction {
-    if (tier.monthlyVoiceSeconds <= 0) return 0;
-    return (voiceSecondsUsed / tier.monthlyVoiceSeconds).clamp(0.0, 1.0);
+    if (totalVoiceSeconds <= 0) return 0;
+    return (voiceSecondsUsed / totalVoiceSeconds).clamp(0.0, 1.0);
   }
 
   UsageSnapshot copyWith({
     int? messagesUsed,
     int? voiceSecondsUsed,
+    int? bonusVoiceSeconds,
     TierConfig? tier,
   }) {
     return UsageSnapshot(
-      messagesUsed: messagesUsed ?? this.messagesUsed,
+      messagesUsed:     messagesUsed     ?? this.messagesUsed,
       voiceSecondsUsed: voiceSecondsUsed ?? this.voiceSecondsUsed,
-      tier: tier ?? this.tier,
+      bonusVoiceSeconds: bonusVoiceSeconds ?? this.bonusVoiceSeconds,
+      tier:             tier             ?? this.tier,
     );
   }
 }
@@ -74,61 +81,62 @@ class UsageService {
 
   final snapshot = ValueNotifier<UsageSnapshot>(UsageSnapshot.empty);
 
-  static const _kMsgs   = 'usage_msgs_';
-  static const _kVoice  = 'usage_voice_';
-  static const _kPeriod = 'usage_period';
-  static const _kTier   = 'usage_tier';
+  static const _kMsgs        = 'usage_msgs_';
+  static const _kVoice       = 'usage_voice_';
+  static const _kBonusVoice  = 'usage_bonus_voice_';
+  static const _kPeriod      = 'usage_period';
+  static const _kTier        = 'usage_tier';
 
   bool _initialised = false;
-  int _voiceBuffer = 0;
+  int  _voiceBuffer = 0;
 
   Future<void> init() async {
-  if (_initialised) return;
-  _initialised = true;
+    if (_initialised) return;
+    _initialised = true;
 
-  await _loadFromCache();
+    await _loadFromCache();
 
-  // Force sync on startup if user is already logged in
-  final user = FirebaseAuth.instance.currentUser;
-  if (user != null) {
-    await _syncFromFirestore(user.uid);
-  }
-
-  FirebaseAuth.instance.authStateChanges().listen((user) async {
-    if (user == null) {
-      snapshot.value = UsageSnapshot.empty;
-      return;
-    }
-    await _syncFromFirestore(user.uid);
-  });
-
-  PremiumService.isPremium.addListener(() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) await _syncFromFirestore(user.uid);
-  });
-}
 
-  Future<bool> tryConsumeMessage(BuildContext context) async {
-  final snap = snapshot.value;
+    FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (user == null) {
+        snapshot.value = UsageSnapshot.empty;
+        return;
+      }
+      await _syncFromFirestore(user.uid);
+    });
 
-
-  if (!snap.canSendMessage) {
-    await _showLimitDialog(
-      context,
-      title: 'Message limit reached',
-      body: 'You\'ve used all ${snap.tier.monthlyMessages} messages '
-          'for this month on the ${snap.tier.displayName} plan.\n\n'
-          'Upgrade to send more.',
-    );
-    return false;
+    PremiumService.isPremium.addListener(() async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) await _syncFromFirestore(user.uid);
+    });
   }
 
-  final updated = snap.copyWith(messagesUsed: snap.messagesUsed + 1);
-  snapshot.value = updated;
-  await _persistLocally(updated);
-  _incrementFirestore('messagesUsed', 1);
-  return true;
-}
+  // ── Message gating ────────────────────────────────────────────────────
+
+  Future<bool> tryConsumeMessage(BuildContext context) async {
+    final snap = snapshot.value;
+
+    if (!snap.canSendMessage) {
+      await _showLimitDialog(
+        context,
+        title: 'Message limit reached',
+        body: 'You\'ve used all ${snap.tier.monthlyMessages} messages '
+            'for this month on the ${snap.tier.displayName} plan.\n\n'
+            'Upgrade to send more.',
+      );
+      return false;
+    }
+
+    final updated = snap.copyWith(messagesUsed: snap.messagesUsed + 1);
+    snapshot.value = updated;
+    await _persistLocally(updated);
+    _incrementFirestore('messagesUsed', 1);
+    return true;
+  }
+
+  // ── Voice gating ──────────────────────────────────────────────────────
 
   Future<bool> tryConsumeVoice(BuildContext context) async {
     final snap = snapshot.value;
@@ -146,9 +154,8 @@ class UsageService {
       await _showLimitDialog(
         context,
         title: 'Voice minutes used up',
-        body: 'You\'ve used all ${snap.tier.voiceMinutes} voice minutes '
-            'for this month on the ${snap.tier.displayName} plan.\n\n'
-            'Upgrade to Pro for more.',
+        body: 'You\'ve used all your voice minutes this month.\n\n'
+            'Buy a voice top-up pack or upgrade your plan.',
       );
       return false;
     }
@@ -174,6 +181,43 @@ class UsageService {
     return updated.canUseVoice;
   }
 
+  // ── Voice pack top-up ─────────────────────────────────────────────────
+
+  /// Called when a user purchases a voice add-on pack.
+  /// Adds the pack minutes to their bonus balance for the current period.
+  Future<void> addVoiceMinutes(int minutes) async {
+    final snap      = snapshot.value;
+    final addSeconds = minutes * 60;
+    final updated   = snap.copyWith(
+      bonusVoiceSeconds: snap.bonusVoiceSeconds + addSeconds,
+    );
+    snapshot.value = updated;
+    await _persistLocally(updated);
+
+    // Also persist bonus to Firestore
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('usage')
+            .doc(_currentPeriod())
+            .set(
+          {
+            'bonusVoiceSeconds': FieldValue.increment(addSeconds),
+            'updatedAt':         FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      } catch (e) {
+        debugPrint('UsageService: addVoiceMinutes Firestore failed — $e');
+      }
+    }
+
+    debugPrint('UsageService: added $minutes voice minutes (+${addSeconds}s)');
+  }
+
   Future<void> flushVoiceBuffer() async {
     if (_voiceBuffer > 0) {
       await _incrementFirestore('voiceSecondsUsed', _voiceBuffer);
@@ -182,8 +226,10 @@ class UsageService {
     await _persistLocally(snapshot.value);
   }
 
+  // ── Firestore sync ────────────────────────────────────────────────────
+
   Future<void> _syncFromFirestore(String uid) async {
-    final period = _currentPeriod();
+    final period     = _currentPeriod();
     final tierConfig = PremiumService.currentTier.value;
 
     try {
@@ -196,24 +242,28 @@ class UsageService {
 
       int msgs   = 0;
       int voices = 0;
+      int bonus  = 0;
 
       if (doc.exists) {
         msgs   = (doc.data()?['messagesUsed']     as int?) ?? 0;
         voices = (doc.data()?['voiceSecondsUsed'] as int?) ?? 0;
+        bonus  = (doc.data()?['bonusVoiceSeconds'] as int?) ?? 0;
       } else {
         await doc.reference.set({
-          'messagesUsed':     0,
-          'voiceSecondsUsed': 0,
-          'tier':             tierConfig.firestoreKey,
-          'periodStart':      FieldValue.serverTimestamp(),
-          'updatedAt':        FieldValue.serverTimestamp(),
+          'messagesUsed':      0,
+          'voiceSecondsUsed':  0,
+          'bonusVoiceSeconds': 0,
+          'tier':              tierConfig.firestoreKey,
+          'periodStart':       FieldValue.serverTimestamp(),
+          'updatedAt':         FieldValue.serverTimestamp(),
         });
       }
 
       final updated = UsageSnapshot(
-        messagesUsed:     msgs,
-        voiceSecondsUsed: voices,
-        tier:             tierConfig,
+        messagesUsed:      msgs,
+        voiceSecondsUsed:  voices,
+        bonusVoiceSeconds: bonus,
+        tier:              tierConfig,
       );
 
       snapshot.value = updated;
@@ -245,6 +295,8 @@ class UsageService {
     }
   }
 
+  // ── Local cache ───────────────────────────────────────────────────────
+
   Future<void> _loadFromCache() async {
     final prefs  = await SharedPreferences.getInstance();
     final period = _currentPeriod();
@@ -253,17 +305,20 @@ class UsageService {
     if (cached != null && cached != period) {
       await prefs.remove(_kMsgs + cached);
       await prefs.remove(_kVoice + cached);
+      await prefs.remove(_kBonusVoice + cached);
       await prefs.setString(_kPeriod, period);
     }
 
-    final msgs   = prefs.getInt(_kMsgs + period)  ?? 0;
-    final voices = prefs.getInt(_kVoice + period)  ?? 0;
+    final msgs   = prefs.getInt(_kMsgs + period)       ?? 0;
+    final voices = prefs.getInt(_kVoice + period)      ?? 0;
+    final bonus  = prefs.getInt(_kBonusVoice + period) ?? 0;
     final tier   = TierConfig.fromKey(prefs.getString(_kTier));
 
     snapshot.value = UsageSnapshot(
-      messagesUsed:     msgs,
-      voiceSecondsUsed: voices,
-      tier:             tier,
+      messagesUsed:      msgs,
+      voiceSecondsUsed:  voices,
+      bonusVoiceSeconds: bonus,
+      tier:              tier,
     );
   }
 
@@ -271,8 +326,9 @@ class UsageService {
     final prefs  = await SharedPreferences.getInstance();
     final period = _currentPeriod();
     await prefs.setString(_kPeriod, period);
-    await prefs.setInt(_kMsgs   + period, snap.messagesUsed);
-    await prefs.setInt(_kVoice  + period, snap.voiceSecondsUsed);
+    await prefs.setInt(_kMsgs        + period, snap.messagesUsed);
+    await prefs.setInt(_kVoice       + period, snap.voiceSecondsUsed);
+    await prefs.setInt(_kBonusVoice  + period, snap.bonusVoiceSeconds);
     await prefs.setString(_kTier, snap.tier.firestoreKey);
   }
 
@@ -280,6 +336,8 @@ class UsageService {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}';
   }
+
+  // ── Limit dialog ──────────────────────────────────────────────────────
 
   Future<void> _showLimitDialog(
     BuildContext context, {
@@ -290,16 +348,13 @@ class UsageService {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title),
         content: Text(body),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Not now'),
-          ),
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Not now')),
           FilledButton(
             onPressed: () {
               Navigator.of(ctx).pop();
