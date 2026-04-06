@@ -1,10 +1,6 @@
 // lib/models/tier_config.dart
 
-enum AppTier {
-  trial,
-  premium,
-  pro,
-}
+enum AppTier { trial, premium, pro }
 
 class TierConfig {
   final AppTier tier;
@@ -16,6 +12,7 @@ class TierConfig {
   final double yearlyPrice;
   final String monthlyProductId;
   final String yearlyProductId;
+  final String trialProductId;
 
   const TierConfig._({
     required this.tier,
@@ -27,7 +24,10 @@ class TierConfig {
     required this.yearlyPrice,
     required this.monthlyProductId,
     required this.yearlyProductId,
+    this.trialProductId = '',
   });
+
+  // ── Tiers ─────────────────────────────────────────────────────
 
   static const TierConfig trial = TierConfig._(
     tier: AppTier.trial,
@@ -39,13 +39,14 @@ class TierConfig {
     yearlyPrice: 0,
     monthlyProductId: '',
     yearlyProductId: '',
+    trialProductId: 'mindcore_trial_7day', // EUR 1.99 one-time
   );
 
   static const TierConfig premium = TierConfig._(
     tier: AppTier.premium,
     displayName: 'Premium',
-    monthlyMessages: 150,
-    monthlyVoiceSeconds: 15 * 60,
+    monthlyMessages: 300,
+    monthlyVoiceSeconds: 30 * 60, // 30 minutes
     hasVoice: true,
     monthlyPrice: 14.99,
     yearlyPrice: 99.99,
@@ -56,8 +57,8 @@ class TierConfig {
   static const TierConfig pro = TierConfig._(
     tier: AppTier.pro,
     displayName: 'Pro',
-    monthlyMessages: 300,
-    monthlyVoiceSeconds: 30 * 60,
+    monthlyMessages: 600,
+    monthlyVoiceSeconds: 60 * 60, // 60 minutes
     hasVoice: true,
     monthlyPrice: 25.00,
     yearlyPrice: 179.99,
@@ -73,13 +74,13 @@ class TierConfig {
       monthlyVoiceSeconds == -1 ? 999 : (monthlyVoiceSeconds / 60).round();
 
   String get messageLabel =>
-      isUnlimited ? 'Unlimited' : '$monthlyMessages / month';
+      isUnlimited ? 'Unlimited' : '$monthlyMessages messages / month';
 
   String get voiceLabel => monthlyVoiceSeconds == -1
       ? 'Unlimited'
       : monthlyVoiceSeconds == 0
           ? 'None'
-          : '$voiceMinutes min / month';
+          : '$voiceMinutes min voice / month';
 
   static TierConfig fromProductId(String productId) {
     if (productId.contains('pro')) return pro;
@@ -89,23 +90,64 @@ class TierConfig {
 
   static TierConfig fromKey(String? key) {
     switch (key) {
-      case 'pro':
-        return pro;
-      case 'premium':
-        return premium;
-      default:
-        return trial;
+      case 'pro':     return pro;
+      case 'premium': return premium;
+      default:        return trial;
     }
   }
 
   String get firestoreKey {
     switch (tier) {
-      case AppTier.pro:
-        return 'pro';
-      case AppTier.premium:
-        return 'premium';
-      case AppTier.trial:
-        return 'trial';
+      case AppTier.pro:     return 'pro';
+      case AppTier.premium: return 'premium';
+      case AppTier.trial:   return 'trial';
     }
   }
+}
+
+// ── Voice add-on packs ─────────────────────────────────────────────────
+
+class VoicePackConfig {
+  final String displayName;
+  final int minutes;
+  final double price;
+  final String productId;
+  final String tagline;
+
+  const VoicePackConfig({
+    required this.displayName,
+    required this.minutes,
+    required this.price,
+    required this.productId,
+    required this.tagline,
+  });
+
+  static const VoicePackConfig starter = VoicePackConfig(
+    displayName: 'Starter Pack',
+    minutes: 30,
+    price: 1.99,
+    productId: 'mindcore_voice_starter_30min',
+    tagline: 'Perfect for occasional use',
+  );
+
+  static const VoicePackConfig standard = VoicePackConfig(
+    displayName: 'Standard Pack',
+    minutes: 60,
+    price: 3.49,
+    productId: 'mindcore_voice_standard_60min',
+    tagline: 'Most popular top-up',
+  );
+
+  static const VoicePackConfig plus = VoicePackConfig(
+    displayName: 'Plus Pack',
+    minutes: 120,
+    price: 5.99,
+    productId: 'mindcore_voice_plus_120min',
+    tagline: 'Best per-minute value',
+  );
+
+  static const List<VoicePackConfig> all = [starter, standard, plus];
+
+  String get priceLabel => '€${price.toStringAsFixed(2)}';
+  String get minutesLabel => '$minutes min';
 }
