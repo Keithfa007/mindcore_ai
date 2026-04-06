@@ -7,6 +7,8 @@ import 'onboarding_screen.dart';
 import 'paywall_screen.dart';
 import 'package:mindcore_ai/services/daily_motivation_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
+import 'package:mindcore_ai/widgets/animated_backdrop.dart';
+import 'package:mindcore_ai/widgets/animated_logo.dart';
 
 class PostLoginGate extends StatefulWidget {
   const PostLoginGate({super.key});
@@ -29,13 +31,13 @@ class _PostLoginGateState extends State<PostLoginGate> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final done = prefs.getBool(_kOnboardingDone) ?? false;
+    final done   = prefs.getBool(_kOnboardingDone) ?? false;
     final access = await PremiumService.hasAccess();
 
     if (!mounted) return;
     setState(() {
       _onboardingDone = done;
-      _hasAccess = access;
+      _hasAccess      = access;
     });
 
     if (done && access) {
@@ -55,16 +57,13 @@ class _PostLoginGateState extends State<PostLoginGate> {
 
   @override
   Widget build(BuildContext context) {
+    // Loading — show branded splash instead of plain spinner
     if (_onboardingDone == null || _hasAccess == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const _SplashScreen();
     }
 
     if (!_hasAccess!) {
-      return _TrialExpiredScreen(
-        onSubscribe: () async => await _load(),
-      );
+      return _TrialExpiredScreen(onSubscribe: () async => _load());
     }
 
     if (!_onboardingDone!) {
@@ -75,7 +74,51 @@ class _PostLoginGateState extends State<PostLoginGate> {
   }
 }
 
-// ─── Trial expired screen ──────────────────────────────────────────────────
+// ── Branded splash screen ─────────────────────────────────────────────────
+
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final tt     = Theme.of(context).textTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: AnimatedBackdrop(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const AnimatedLogo(size: 150),
+              const SizedBox(height: 28),
+              Text(
+                'MindCore AI',
+                style: tt.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.8,
+                  color: isDark ? Colors.white : const Color(0xFF0E1320),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Getting things ready…',
+                style: tt.bodyMedium?.copyWith(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.45)
+                      : Colors.black.withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Trial expired screen ───────────────────────────────────────────────────
 
 class _TrialExpiredScreen extends StatelessWidget {
   final VoidCallback onSubscribe;
@@ -122,13 +165,10 @@ class _TrialExpiredScreen extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                      borderRadius: BorderRadius.circular(14)),
                 ),
-                child: Text(
-                  'See plans',
-                  style: tt.titleMedium?.copyWith(color: Colors.white),
-                ),
+                child: Text('See plans',
+                    style: tt.titleMedium?.copyWith(color: Colors.white)),
               ),
               const SizedBox(height: 12),
               TextButton(
@@ -141,8 +181,7 @@ class _TrialExpiredScreen extends StatelessWidget {
                 child: Text(
                   'Restore purchases',
                   style: tt.bodyMedium?.copyWith(
-                    color: cs.onSurface.withValues(alpha: 0.45),
-                  ),
+                      color: cs.onSurface.withValues(alpha: 0.45)),
                 ),
               ),
             ],
