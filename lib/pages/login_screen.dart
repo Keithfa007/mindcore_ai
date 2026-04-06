@@ -8,7 +8,7 @@ import '../services/mood_log_service.dart';
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
-import 'package:mindcore_ai/widgets/mood_orb.dart';
+import 'package:mindcore_ai/widgets/animated_logo.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -132,17 +132,15 @@ class _LoginScreenState extends State<LoginScreen>
                   children: [
                     const SizedBox(height: 20),
 
-                    // ── Orb + title ──────────────────────────────────────
+                    // ── Animated logo + title ────────────────────────────
                     FadeTransition(
                       opacity: _logoFade,
                       child: SlideTransition(
                         position: _logoSlide,
                         child: Column(
                           children: [
-                            const MoodOrb(
-                              moodColor: AppColors.primary,
-                              size: 140,
-                            ),
+                            // Animated branded logo
+                            const AnimatedLogo(size: 150),
                             const SizedBox(height: 24),
                             Text(
                               'MindCore AI',
@@ -197,9 +195,7 @@ class _LoginScreenState extends State<LoginScreen>
                               const SizedBox(height: 20),
 
                               if (!_initDone) ...[
-                                const Center(
-                                  child: CircularProgressIndicator(),
-                                ),
+                                const Center(child: CircularProgressIndicator()),
                               ] else ...[
 
                                 // Error banner
@@ -232,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   gradient: const LinearGradient(
                                     colors: [
                                       Color(0xFF4D7CFF),
-                                      Color(0xFF74C3FF)
+                                      Color(0xFF74C3FF),
                                     ],
                                   ),
                                   glowColor: AppColors.primary,
@@ -247,13 +243,13 @@ class _LoginScreenState extends State<LoginScreen>
                                 // Google button
                                 _AuthButton(
                                   label: _busy
-                                      ? 'Signing in…'
+                                      ? 'Signing in\u2026'
                                       : 'Continue with Google',
                                   icon: Icons.login_rounded,
                                   gradient: const LinearGradient(
                                     colors: [
                                       Color(0xFF32D0BE),
-                                      Color(0xFF89E0CF)
+                                      Color(0xFF89E0CF),
                                     ],
                                   ),
                                   glowColor: AppColors.mintDeep,
