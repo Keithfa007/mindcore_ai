@@ -4,7 +4,7 @@ import '../widgets/surfaces.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/section_hero_card.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
-import 'package:mindcore_ai/widgets/mood_orb.dart';
+import 'package:mindcore_ai/widgets/animated_logo.dart';
 import 'package:mindcore_ai/widgets/mood_prediction_chip.dart';
 import 'package:mindcore_ai/widgets/streak_badge.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
@@ -201,16 +201,6 @@ class _HomeScreenState extends State<HomeScreen>
     return 'Good night';
   }
 
-  Color get _orbColor {
-    if (_last7.isEmpty) return AppColors.primary;
-    final nonZero = _last7.where((v) => v > 0).toList();
-    if (nonZero.isEmpty) return AppColors.primary;
-    final avg = nonZero.reduce((a, b) => a + b) / nonZero.length;
-    if (avg >= 0.65) return AppColors.mintDeep;
-    if (avg >= 0.40) return AppColors.primary;
-    return AppColors.violet;
-  }
-
   @override
   Widget build(BuildContext context) {
     final tt     = Theme.of(context).textTheme;
@@ -225,14 +215,15 @@ class _HomeScreenState extends State<HomeScreen>
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
           children: [
 
-            // ── Hero: Orb + Greeting + Streak + Briefing ────────────────
+            // ── Hero: Logo + Streak + Greeting + Briefing ───────────────
             _animated(
               0,
               Padding(
                 padding: const EdgeInsets.fromLTRB(0, 28, 0, 8),
                 child: Column(
                   children: [
-                    MoodOrb(moodColor: _orbColor, size: 160),
+                    // Animated branded logo — same as login screen
+                    const AnimatedLogo(size: 160),
                     const SizedBox(height: 16),
 
                     // Streak badge
@@ -295,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
 
-            // ── Weekly report (shown when available) ────────────────────
+            // ── Weekly report ───────────────────────────────────────────
             if (_weeklyReport != null)
               _animated(
                 3,
@@ -367,11 +358,7 @@ class _HomeScreenState extends State<HomeScreen>
                           Container(
                             width: 50, height: 50,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF4D7CFF), Color(0xFF74C3FF)],
-                              ),
+                              gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF4D7CFF), Color(0xFF74C3FF)]),
                               shape: BoxShape.circle,
                               boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
                             ),
@@ -440,7 +427,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 12),
 
-            // ── Recommended for you ───────────────────────────────────
+            // ── Recommended for you ──────────────────────────────────────
             if (_supportSuggestion != null)
               _animated(
                 7,
@@ -499,7 +486,7 @@ class _HomeScreenState extends State<HomeScreen>
                     child: TextField(
                       controller: _plan, maxLines: 4,
                       textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(hintText: 'A few lines is enough…', border: InputBorder.none),
+                      decoration: const InputDecoration(hintText: 'A few lines is enough\u2026', border: InputBorder.none),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -511,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen>
                           Expanded(
                             child: FilledButton(
                               onPressed: _savingPlan ? null : _saveJournal,
-                              child: Padding(padding: const EdgeInsets.symmetric(vertical: 12.0), child: Text(_savingPlan ? 'Saving…' : 'Save entry')),
+                              child: Padding(padding: const EdgeInsets.symmetric(vertical: 12.0), child: Text(_savingPlan ? 'Saving\u2026' : 'Save entry')),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -552,53 +539,29 @@ class _SosButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.55 : 0.40),
-            width: 1.5,
-          ),
+          border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.55 : 0.40), width: 1.5),
           color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.10 : 0.07),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFF6B6B).withValues(alpha: 0.18),
-              blurRadius: 18,
-              spreadRadius: 1,
-            ),
-          ],
+          boxShadow: [BoxShadow(color: const Color(0xFFFF6B6B).withValues(alpha: 0.18), blurRadius: 18, spreadRadius: 1)],
         ),
         child: Row(
           children: [
             Container(
               width: 38, height: 38,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFFF6B6B).withValues(alpha: 0.15),
-              ),
-              child: const Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFFFF6B6B), size: 20),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFF6B6B).withValues(alpha: 0.15)),
+              child: const Icon(Icons.warning_amber_rounded, color: Color(0xFFFF6B6B), size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('SOS — I need help right now',
-                      style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFFFF6B6B),
-                      )),
+                  Text('SOS \u2014 I need help right now', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFFFF6B6B))),
                   const SizedBox(height: 2),
-                  Text('Tap for instant grounding: breathe, ground, audio',
-                      style: tt.bodySmall?.copyWith(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.50)
-                            : Colors.black.withValues(alpha: 0.50),
-                      )),
+                  Text('Tap for instant grounding: breathe, ground, audio', style: tt.bodySmall?.copyWith(color: isDark ? Colors.white.withValues(alpha: 0.50) : Colors.black.withValues(alpha: 0.50))),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                color: const Color(0xFFFF6B6B).withValues(alpha: 0.70),
-                size: 20),
+            Icon(Icons.chevron_right_rounded, color: const Color(0xFFFF6B6B).withValues(alpha: 0.70), size: 20),
           ],
         ),
       ),
@@ -621,28 +584,17 @@ class _WeeklyReportCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.violet.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
-                ),
-                child: Text('Weekly Report',
-                    style: tt.labelSmall?.copyWith(
-                        color: AppColors.violet, fontWeight: FontWeight.w800)),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.violet.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
+            ),
+            child: Text('Weekly Report', style: tt.labelSmall?.copyWith(color: AppColors.violet, fontWeight: FontWeight.w800)),
           ),
           const SizedBox(height: 12),
-          Text(report.summary,
-              style: tt.bodyMedium?.copyWith(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.85)
-                      : const Color(0xFF0E1320),
-                  height: 1.5)),
+          Text(report.summary, style: tt.bodyMedium?.copyWith(color: isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF0E1320), height: 1.5)),
           const SizedBox(height: 14),
           _ReportRow(icon: Icons.star_rounded, color: AppColors.mintDeep, label: 'Best day', value: report.bestDay, tt: tt, isDark: isDark),
           const SizedBox(height: 8),
@@ -674,15 +626,9 @@ class _ReportRow extends StatelessWidget {
         Expanded(
           child: RichText(
             text: TextSpan(
-              style: tt.bodySmall?.copyWith(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.65)
-                      : const Color(0xFF475467),
-                  height: 1.4),
+              style: tt.bodySmall?.copyWith(color: isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF475467), height: 1.4),
               children: [
-                TextSpan(
-                    text: '$label: ',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w800)),
                 TextSpan(text: value),
               ],
             ),
@@ -710,8 +656,7 @@ class _BriefingShimmerState extends State<_BriefingShimmer>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
