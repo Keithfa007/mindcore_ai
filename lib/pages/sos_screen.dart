@@ -2,7 +2,7 @@
 //
 // SOS Mode — one-tap grounding sequence.
 // Step 1: 60-second box breathing
-// Step 2: Grounding message
+// Step 2: 5-4-3-2-1 grounding technique
 // Step 3: Auto-play calming audio
 
 import 'dart:async';
@@ -14,14 +14,20 @@ import 'package:mindcore_ai/widgets/app_gradients.dart';
 
 enum _SosStep { breathe, grounding, audio }
 
+// Simple data class — avoids Dart 3 record syntax
+class _GroundingItem {
+  final String label;
+  final IconData icon;
+  const _GroundingItem(this.label, this.icon);
+}
+
 class SosScreen extends StatefulWidget {
   const SosScreen({super.key});
   @override
   State<SosScreen> createState() => _SosScreenState();
 }
 
-class _SosScreenState extends State<SosScreen>
-    with TickerProviderStateMixin {
+class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   _SosStep _step = _SosStep.breathe;
 
   // Breathing
@@ -35,11 +41,19 @@ class _SosScreenState extends State<SosScreen>
   final AudioPlayer _player = AudioPlayer();
   bool _audioPlaying = false;
 
+  static const _groundingItems = [
+    _GroundingItem('5 things you can see',  Icons.visibility_rounded),
+    _GroundingItem('4 things you can touch', Icons.touch_app_rounded),
+    _GroundingItem('3 things you can hear',  Icons.hearing_rounded),
+    _GroundingItem('2 things you can smell', Icons.air_rounded),
+    _GroundingItem('1 thing you can taste',  Icons.restaurant_rounded),
+  ];
+
   @override
   void initState() {
     super.initState();
 
-    // Breathing animation — 4s inhale / 4s exhale loop
+    // 8s breath cycle — first half inhale, second half exhale
     _breathCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
@@ -49,7 +63,6 @@ class _SosScreenState extends State<SosScreen>
       CurvedAnimation(parent: _breathCtrl, curve: Curves.easeInOut),
     );
 
-    // Phase label switches every 4s
     _breathCtrl.addListener(() {
       final phase = _breathCtrl.value < 0.5 ? 'Breathe in' : 'Breathe out';
       if (phase != _breathPhaseLabel && mounted) {
@@ -57,9 +70,8 @@ class _SosScreenState extends State<SosScreen>
       }
     });
 
-    // Countdown 60s then advance
-    _breathTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) {
+    // 60s countdown then auto-advance
+    _breathTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
         _breathSecondsLeft--;
@@ -88,8 +100,7 @@ class _SosScreenState extends State<SosScreen>
 
   Future<void> _startAudio() async {
     try {
-      await _player.play(
-          AssetSource('audio/Panic Calmer.mp3'));
+      await _player.play(AssetSource('audio/Panic Calmer.mp3'));
       setState(() => _audioPlaying = true);
       _player.onPlayerComplete
           .listen((_) => setState(() => _audioPlaying = false));
@@ -103,7 +114,7 @@ class _SosScreenState extends State<SosScreen>
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
+    final tt     = Theme.of(context).textTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -111,8 +122,7 @@ class _SosScreenState extends State<SosScreen>
       body: AnimatedBackdrop(
         child: SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -121,9 +131,7 @@ class _SosScreenState extends State<SosScreen>
                   children: [
                     IconButton(
                       icon: Icon(Icons.close,
-                          color: isDark
-                              ? Colors.white54
-                              : Colors.black45),
+                          color: isDark ? Colors.white54 : Colors.black45),
                       onPressed: () {
                         _stopAudio();
                         Navigator.of(context).pop();
@@ -131,23 +139,19 @@ class _SosScreenState extends State<SosScreen>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'SOS — Grounding Mode',
+                      'SOS \u2014 Grounding Mode',
                       style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: isDark
-                            ? Colors.white
-                            : const Color(0xFF0E1320),
+                        color: isDark ? Colors.white : const Color(0xFF0E1320),
                       ),
                     ),
                   ],
                 ),
 
-                // Step indicator
                 const SizedBox(height: 12),
                 _StepIndicator(current: _step),
                 const SizedBox(height: 28),
 
-                // Step content
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 600),
@@ -173,13 +177,13 @@ class _SosScreenState extends State<SosScreen>
     }
   }
 
-  // ── Step 1: Breathing ──────────────────────────────────────
+  // ── Step 1: Breathing ─────────────────────────────────────────────
   Widget _buildBreatheStep(TextTheme tt, bool isDark) {
     return Column(
       key: const ValueKey('breathe'),
       children: [
         Text(
-          'Step 1 of 3 — Breathe',
+          'Step 1 of 3 \u2014 Breathe',
           style: tt.labelSmall?.copyWith(
             color: AppColors.primary,
             fontWeight: FontWeight.w800,
@@ -198,7 +202,6 @@ class _SosScreenState extends State<SosScreen>
         ),
         const Spacer(),
 
-        // Breathing orb
         AnimatedBuilder(
           animation: _breathAnim,
           builder: (_, __) => Transform.scale(
@@ -217,8 +220,7 @@ class _SosScreenState extends State<SosScreen>
                   stops: const [0.0, 0.55, 1.0],
                 ),
                 border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.50),
-                    width: 2),
+                    color: AppColors.primary.withValues(alpha: 0.50), width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: AppColors.primary.withValues(alpha: 0.30),
@@ -232,7 +234,6 @@ class _SosScreenState extends State<SosScreen>
         ),
         const SizedBox(height: 24),
 
-        // Phase label
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
           child: Text(
@@ -247,7 +248,6 @@ class _SosScreenState extends State<SosScreen>
         ),
         const SizedBox(height: 10),
 
-        // Timer
         Text(
           '${_breathSecondsLeft}s remaining',
           style: tt.bodySmall?.copyWith(
@@ -258,11 +258,10 @@ class _SosScreenState extends State<SosScreen>
         ),
         const Spacer(),
 
-        // Skip button
         TextButton(
           onPressed: _advanceStep,
           child: Text(
-            'Skip breathing →',
+            'Skip breathing \u2192',
             style: tt.labelSmall?.copyWith(
               color: AppColors.primary,
               fontWeight: FontWeight.w700,
@@ -274,22 +273,14 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
-  // ── Step 2: Grounding message ────────────────────────────
+  // ── Step 2: 5-4-3-2-1 grounding ──────────────────────────────────
   Widget _buildGroundingStep(TextTheme tt, bool isDark) {
-    final items = [
-      ('5 things you can see', Icons.visibility_rounded),
-      ('4 things you can touch', Icons.touch_app_rounded),
-      ('3 things you can hear', Icons.hearing_rounded),
-      ('2 things you can smell', Icons.air_rounded),
-      ('1 thing you can taste', Icons.restaurant_rounded),
-    ];
-
     return Column(
       key: const ValueKey('grounding'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Step 2 of 3 — Ground yourself',
+          'Step 2 of 3 \u2014 Ground yourself',
           style: tt.labelSmall?.copyWith(
             color: AppColors.mintDeep,
             fontWeight: FontWeight.w800,
@@ -307,27 +298,29 @@ class _SosScreenState extends State<SosScreen>
           ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
-        ...items.map((item) => GlassCard(
-              glowColor: AppColors.glowMint,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(item.$2,
-                      color: AppColors.mintDeep, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      item.$1,
-                      style: tt.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+        const SizedBox(height: 20),
+
+        // Grounding items — uses _GroundingItem class, no records
+        for (final item in _groundingItems) ...[
+          GlassCard(
+            glowColor: AppColors.glowMint,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Icon(item.icon, color: AppColors.mintDeep, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    item.label,
+                    style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                ],
-              ),
-            )),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+
         const Spacer(),
         FilledButton(
           onPressed: _advanceStep,
@@ -335,20 +328,20 @@ class _SosScreenState extends State<SosScreen>
             backgroundColor: AppColors.mintDeep,
             minimumSize: const Size.fromHeight(52),
           ),
-          child: const Text('I\'m ready → Play calming audio'),
+          child: const Text("I'm ready \u2192 Play calming audio"),
         ),
         const SizedBox(height: 8),
       ],
     );
   }
 
-  // ── Step 3: Calming audio ───────────────────────────────
+  // ── Step 3: Calming audio ─────────────────────────────────────────
   Widget _buildAudioStep(TextTheme tt, bool isDark) {
     return Column(
       key: const ValueKey('audio'),
       children: [
         Text(
-          'Step 3 of 3 — Let it settle',
+          'Step 3 of 3 \u2014 Let it settle',
           style: tt.labelSmall?.copyWith(
             color: AppColors.violet,
             fontWeight: FontWeight.w800,
@@ -367,7 +360,6 @@ class _SosScreenState extends State<SosScreen>
         ),
         const Spacer(),
 
-        // Audio orb
         _AudioOrb(isPlaying: _audioPlaying),
         const SizedBox(height: 28),
 
@@ -378,8 +370,7 @@ class _SosScreenState extends State<SosScreen>
             children: [
               Text(
                 'Panic Calmer',
-                style: tt.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800),
+                style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
@@ -393,23 +384,14 @@ class _SosScreenState extends State<SosScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton.filled(
-                    onPressed: _audioPlaying
-                        ? _stopAudio
-                        : _startAudio,
-                    style: IconButton.styleFrom(
-                        backgroundColor: AppColors.violet),
-                    icon: Icon(
-                      _audioPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
+              IconButton.filled(
+                onPressed: _audioPlaying ? _stopAudio : _startAudio,
+                style:
+                    IconButton.styleFrom(backgroundColor: AppColors.violet),
+                icon: Icon(
+                  _audioPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: Colors.white,
+                ),
               ),
             ],
           ),
@@ -422,9 +404,8 @@ class _SosScreenState extends State<SosScreen>
             Navigator.of(context).pop();
           },
           style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(52),
-          ),
-          child: const Text('I feel better — close'),
+              minimumSize: const Size.fromHeight(52)),
+          child: const Text('I feel better \u2014 close'),
         ),
         const SizedBox(height: 8),
       ],
@@ -432,7 +413,7 @@ class _SosScreenState extends State<SosScreen>
   }
 }
 
-// ── Step indicator ─────────────────────────────────────────────────
+// ── Step progress bar ─────────────────────────────────────────────────
 
 class _StepIndicator extends StatelessWidget {
   final _SosStep current;
@@ -440,23 +421,18 @@ class _StepIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = [
-      AppColors.primary,
-      AppColors.mintDeep,
-      AppColors.violet,
-    ];
-    final steps = [_SosStep.breathe, _SosStep.grounding, _SosStep.audio];
-    final activeIndex = steps.indexOf(current);
+    final colors = [AppColors.primary, AppColors.mintDeep, AppColors.violet];
+    final steps  = [_SosStep.breathe, _SosStep.grounding, _SosStep.audio];
+    final active = steps.indexOf(current);
 
     return Row(
       children: List.generate(3, (i) {
-        final isActive = i <= activeIndex;
         return Expanded(
           child: Container(
             margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
             height: 4,
             decoration: BoxDecoration(
-              color: isActive
+              color: i <= active
                   ? colors[i]
                   : colors[i].withValues(alpha: 0.20),
               borderRadius: BorderRadius.circular(2),
@@ -468,7 +444,7 @@ class _StepIndicator extends StatelessWidget {
   }
 }
 
-// ── Pulsing audio orb ───────────────────────────────────────────────
+// ── Pulsing audio orb ─────────────────────────────────────────────────
 
 class _AudioOrb extends StatefulWidget {
   final bool isPlaying;
@@ -486,11 +462,9 @@ class _AudioOrbState extends State<_AudioOrb>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 2000))
+        vsync: this, duration: const Duration(milliseconds: 2000))
       ..repeat(reverse: true);
-    _anim =
-        Tween<double>(begin: 0.88, end: 1.08).animate(
+    _anim = Tween<double>(begin: 0.88, end: 1.08).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
   }
@@ -521,8 +495,7 @@ class _AudioOrbState extends State<_AudioOrb>
               stops: const [0.0, 0.55, 1.0],
             ),
             border: Border.all(
-                color: AppColors.violet.withValues(alpha: 0.50),
-                width: 2),
+                color: AppColors.violet.withValues(alpha: 0.50), width: 2),
             boxShadow: [
               BoxShadow(
                 color: AppColors.violet.withValues(
