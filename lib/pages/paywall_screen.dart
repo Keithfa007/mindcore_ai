@@ -24,7 +24,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
   @override
   void initState() {
     super.initState();
-    // Guarded — IAP may throw on emulator or unsupported devices
     _sub.init().catchError((e) {
       debugPrint('PaywallScreen: IAP init failed — $e');
     });
@@ -44,7 +43,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   Future<void> _buy(ProductDetails? product) async {
     if (product == null) {
-      // Product not loaded from store yet — show friendly message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Store not available right now. Please try again.'),
@@ -75,20 +73,18 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tt       = Theme.of(context).textTheme;
-    final isDark   = Theme.of(context).brightness == Brightness.dark;
-    final cs       = Theme.of(context).colorScheme;
+    final tt          = Theme.of(context).textTheme;
+    final isDark      = Theme.of(context).brightness == Brightness.dark;
+    final cs          = Theme.of(context).colorScheme;
     final currentTier = PremiumService.currentTier.value;
 
     return Scaffold(
-      // Use the theme surface colour — NOT transparent.
-      // MaterialPageRoute is opaque so transparent renders blank on Android.
       backgroundColor: cs.surface,
       body: AnimatedBackdrop(
         child: SafeArea(
           child: Column(
             children: [
-              // ── Header bar ──────────────────────────────────────────
+              // Header
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
@@ -117,7 +113,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Heading
                       Icon(Icons.workspace_premium_rounded,
                           size: 40, color: AppColors.primary),
                       const SizedBox(height: 10),
@@ -141,7 +136,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // ── Billing toggle ──────────────────────────────
+                      // Billing toggle
                       Row(
                         children: [
                           _Toggle(
@@ -160,7 +155,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // ── Trial card (only shown when on trial tier) ──
+                      // Trial card
                       if (currentTier.tier == AppTier.trial) ...[
                         _TrialCard(
                             loading: _loading,
@@ -171,7 +166,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         const SizedBox(height: 10),
                       ],
 
-                      // ── Premium card ────────────────────────────────
+                      // Premium card
                       _PlanCard(
                         config: TierConfig.premium,
                         yearly: _selectedYearly,
@@ -188,7 +183,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      // ── Pro card ────────────────────────────────────
+                      // Pro card
                       _PlanCard(
                         config: TierConfig.pro,
                         yearly: _selectedYearly,
@@ -206,7 +201,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // ── Voice add-on packs (all tiers including trial)
+                      // Voice add-on packs
                       _VoiceAddOnSection(
                           loading: _loading,
                           onBuy: _buy,
@@ -215,7 +210,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           tt: tt),
                       const SizedBox(height: 20),
 
-                      // Footer
                       Text(
                         'Subscriptions renew automatically. Cancel anytime\nin App Store or Google Play settings.',
                         style: tt.bodySmall?.copyWith(
@@ -654,8 +648,8 @@ class _VoicePackCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(pack.displayName,
-                    style: tt.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                    style:
+                        tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 Text('${pack.minutesLabel} voice \u2022 ${pack.tagline}',
                     style: tt.bodySmall?.copyWith(
                         color: isDark
@@ -665,6 +659,7 @@ class _VoicePackCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
+          // ── FIX: constrain both width AND height to avoid infinite-width crash
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -672,15 +667,18 @@ class _VoicePackCard extends StatelessWidget {
                   style: tt.titleMedium?.copyWith(
                       fontWeight: FontWeight.w900,
                       color: AppColors.mintDeep)),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               SizedBox(
-                height: 32,
+                width: 76,   // explicit width — fixes BoxConstraints infinite width crash
+                height: 36,
                 child: FilledButton(
                   onPressed: loading ? null : () => onBuy(product),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.mintDeep,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    // Remove default minimum size & tap target expansion
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8)),
                   ),
