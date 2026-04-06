@@ -24,7 +24,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
   @override
   void initState() {
     super.initState();
-    _sub.init();
+    // Guarded — IAP may throw on emulator or unsupported devices
+    _sub.init().catchError((e) {
+      debugPrint('PaywallScreen: IAP init failed — $e');
+    });
     PremiumService.isPremium.addListener(_onPremiumChanged);
   }
 
@@ -40,10 +43,20 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _buy(ProductDetails? product) async {
-    if (product == null) return;
+    if (product == null) {
+      // Product not loaded from store yet — show friendly message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Store not available right now. Please try again.'),
+        ));
+      }
+      return;
+    }
     setState(() => _loading = true);
     try {
       await _sub.buy(product);
+    } catch (e) {
+      debugPrint('PaywallScreen: buy failed — $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -51,23 +64,31 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   Future<void> _restore() async {
     setState(() => _loading = true);
-    await _sub.restore();
-    if (mounted) setState(() => _loading = false);
+    try {
+      await _sub.restore();
+    } catch (e) {
+      debugPrint('PaywallScreen: restore failed — $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final tt     = Theme.of(context).textTheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tt       = Theme.of(context).textTheme;
+    final isDark   = Theme.of(context).brightness == Brightness.dark;
+    final cs       = Theme.of(context).colorScheme;
     final currentTier = PremiumService.currentTier.value;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // Use the theme surface colour — NOT transparent.
+      // MaterialPageRoute is opaque so transparent renders blank on Android.
+      backgroundColor: cs.surface,
       body: AnimatedBackdrop(
         child: SafeArea(
           child: Column(
             children: [
-              // ── Header bar ────────────────────────────────────────
+              // ── Header bar ──────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
@@ -120,7 +141,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // ── Billing toggle ─────────────────────────────────
+                      // ── Billing toggle ──────────────────────────────
                       Row(
                         children: [
                           _Toggle(
@@ -139,7 +160,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // ── Trial card ───────────────────────────────────
+                      // ── Trial card (only shown when on trial tier) ──
                       if (currentTier.tier == AppTier.trial) ...[
                         _TrialCard(
                             loading: _loading,
@@ -185,16 +206,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // ── Voice add-on packs ───────────────────────────
-                      if (currentTier.tier != AppTier.trial) ...[  
-                        _VoiceAddOnSection(
-                            loading: _loading,
-                            onBuy: _buy,
-                            sub: _sub,
-                            isDark: isDark,
-                            tt: tt),
-                        const SizedBox(height: 20),
-                      ],
+                      // ── Voice add-on packs (all tiers including trial)
+                      _VoiceAddOnSection(
+                          loading: _loading,
+                          onBuy: _buy,
+                          sub: _sub,
+                          isDark: isDark,
+                          tt: tt),
+                      const SizedBox(height: 20),
 
                       // Footer
                       Text(
@@ -219,7 +238,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 }
 
-// ── Billing toggle ────────────────────────────────────────────────────────
+// ── Billing toggle ─────────────────────────────────────────────────────────
 
 class _Toggle extends StatelessWidget {
   final String label;
@@ -241,8 +260,7 @@ class _Toggle extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding:
-              const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
           decoration: BoxDecoration(
             color: selected
                 ? AppColors.primary.withValues(alpha: isDark ? 0.18 : 0.10)
@@ -282,7 +300,7 @@ class _Toggle extends StatelessWidget {
   }
 }
 
-// ── Trial card ───────────────────────────────────────────────────────────
+// ── Trial card ──────────────────────────────────────────────────────────────
 
 class _TrialCard extends StatelessWidget {
   final bool loading;
@@ -315,21 +333,23 @@ class _TrialCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
-                    border:
-                        Border.all(color: accent.withValues(alpha: 0.30)),
+                    border: Border.all(color: accent.withValues(alpha: 0.30)),
                   ),
                   child: Text('7-DAY TRIAL',
                       style: tt.labelSmall?.copyWith(
-                          color: accent, fontWeight: FontWeight.w800,
+                          color: accent,
+                          fontWeight: FontWeight.w800,
                           fontSize: 10)),
                 ),
                 const SizedBox(height: 8),
                 Text('Try everything free',
                     style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: isDark ? Colors.white : const Color(0xFF0E1320))),
+                        color: isDark
+                            ? Colors.white
+                            : const Color(0xFF0E1320))),
                 const SizedBox(height: 4),
-                Text('50 messages • 5 min voice • All features',
+                Text('50 messages \u2022 5 min voice \u2022 All features',
                     style: tt.bodySmall?.copyWith(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.55)
@@ -340,7 +360,7 @@ class _TrialCard extends StatelessWidget {
           const SizedBox(width: 12),
           Column(
             children: [
-              Text('€1.99',
+              Text('\u20ac1.99',
                   style: tt.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900, color: accent)),
               Text('one-time',
@@ -365,7 +385,7 @@ class _TrialCard extends StatelessWidget {
   }
 }
 
-// ── Plan card ────────────────────────────────────────────────────────────
+// ── Plan card ───────────────────────────────────────────────────────────────
 
 class _PlanCard extends StatelessWidget {
   final TierConfig config;
@@ -398,7 +418,7 @@ class _PlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final price    = yearly ? config.yearlyPrice : config.monthlyPrice;
     final interval = yearly ? '/year' : '/mo';
-    final display  = product?.price ?? '€${price.toStringAsFixed(2)}';
+    final display  = product?.price ?? '\u20ac${price.toStringAsFixed(2)}';
 
     return GlassCard(
       glowColor: glowColor,
@@ -423,8 +443,7 @@ class _PlanCard extends StatelessWidget {
                               color: accentColor.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                  color:
-                                      accentColor.withValues(alpha: 0.35)),
+                                  color: accentColor.withValues(alpha: 0.35)),
                             ),
                             child: Text('BEST VALUE',
                                 style: tt.labelSmall?.copyWith(
@@ -478,17 +497,24 @@ class _PlanCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          _FeatureRow(icon: Icons.chat_rounded,
-              label: config.messageLabel, color: accentColor),
-          _FeatureRow(icon: Icons.mic_rounded,
-              label: config.voiceLabel, color: accentColor),
-          _FeatureRow(icon: Icons.self_improvement_rounded,
+          _FeatureRow(
+              icon: Icons.chat_rounded,
+              label: config.messageLabel,
+              color: accentColor),
+          _FeatureRow(
+              icon: Icons.mic_rounded,
+              label: config.voiceLabel,
+              color: accentColor),
+          _FeatureRow(
+              icon: Icons.self_improvement_rounded,
               label: 'All guided sessions & breathing tools',
               color: accentColor),
-          _FeatureRow(icon: Icons.insights_rounded,
+          _FeatureRow(
+              icon: Icons.insights_rounded,
               label: 'Mood history, streak & weekly AI report',
               color: accentColor),
-          _FeatureRow(icon: Icons.star_rounded,
+          _FeatureRow(
+              icon: Icons.star_rounded,
               label: 'SOS grounding mode & daily briefing',
               color: accentColor),
           const SizedBox(height: 14),
@@ -498,7 +524,8 @@ class _PlanCard extends StatelessWidget {
                 ? Container(
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1D9E75).withValues(alpha: 0.10),
+                      color:
+                          const Color(0xFF1D9E75).withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                           color: const Color(0xFF1D9E75)
@@ -536,7 +563,7 @@ class _PlanCard extends StatelessWidget {
   }
 }
 
-// ── Voice add-on section ─────────────────────────────────────────────────
+// ── Voice add-on section ────────────────────────────────────────────────────
 
 class _VoiceAddOnSection extends StatelessWidget {
   final bool loading;
@@ -562,8 +589,7 @@ class _VoiceAddOnSection extends StatelessWidget {
             const SizedBox(width: 8),
             Text('Voice Minute Top-Ups',
                 style: tt.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.mintDeep)),
+                    fontWeight: FontWeight.w800, color: AppColors.mintDeep)),
           ],
         ),
         const SizedBox(height: 4),
@@ -616,11 +642,11 @@ class _VoicePackCard extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.mintDeep.withValues(alpha: 0.12),
-              border: Border.all(
-                  color: AppColors.mintDeep.withValues(alpha: 0.30)),
+              border:
+                  Border.all(color: AppColors.mintDeep.withValues(alpha: 0.30)),
             ),
-            child: Icon(Icons.mic_rounded,
-                color: AppColors.mintDeep, size: 20),
+            child:
+                Icon(Icons.mic_rounded, color: AppColors.mintDeep, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -628,10 +654,9 @@ class _VoicePackCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(pack.displayName,
-                    style: tt.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800)),
-                Text(
-                    '${pack.minutesLabel} voice • ${pack.tagline}',
+                    style: tt.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w800)),
+                Text('${pack.minutesLabel} voice \u2022 ${pack.tagline}',
                     style: tt.bodySmall?.copyWith(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.50)
@@ -654,7 +679,8 @@ class _VoicePackCard extends StatelessWidget {
                   onPressed: loading ? null : () => onBuy(product),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.mintDeep,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8)),
                   ),
@@ -672,7 +698,7 @@ class _VoicePackCard extends StatelessWidget {
   }
 }
 
-// ── Small helpers ──────────────────────────────────────────────────────────
+// ── Feature row ─────────────────────────────────────────────────────────────
 
 class _FeatureRow extends StatelessWidget {
   final IconData icon;
