@@ -3,10 +3,12 @@
 // Fetches published posts from mindcoreai.eu via the WordPress REST API.
 // Caches responses for 1 hour so the screen loads instantly on repeat visits.
 // Falls back to cached data if the network is unavailable.
+// Checks for new posts on every app open and fires a local notification.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:mindcore_ai/services/notification_service.dart';
 
 class BlogPost {
   final int    id;
@@ -38,13 +40,13 @@ class BlogPost {
       };
 
   factory BlogPost.fromJson(Map<String, dynamic> j) => BlogPost(
-        id:       (j['id'] as int?    ) ?? 0,
+        id:       (j['id']       as int?)    ?? 0,
         title:    (j['title']    as String?) ?? '',
         excerpt:  (j['excerpt']  as String?) ?? '',
         content:  (j['content']  as String?) ?? '',
         date:     (j['date']     as String?) ?? '',
         link:     (j['link']     as String?) ?? '',
-        imageUrl: j['imageUrl']  as String?,
+        imageUrl:  j['imageUrl'] as String?,
       );
 }
 
@@ -53,9 +55,10 @@ class BlogService {
       'https://mindcoreai.eu/wp-json/wp/v2/posts'
       '?_embed&per_page=20&orderby=date&order=desc&status=publish';
 
-  static const _kCache     = 'blog_posts_v1';
-  static const _kCacheTime = 'blog_posts_time_v1';
-  static const _cacheTtlMs = 60 * 60 * 1000; // 1 hour
+  static const _kCache        = 'blog_posts_v1';
+  static const _kCacheTime    = 'blog_posts_time_v1';
+  static const _kLastSeenId   = 'blog_last_seen_post_id';
+  static const _cacheTtlMs    = 60 * 60 * 1000; // 1 hour
 
   // ── Public API ─────────────────────────────────────────────────────
 
@@ -76,22 +79,61 @@ class BlogService {
         return _loadCache(prefs) ?? [];
       }
 
-      final raw     = jsonDecode(response.body) as List;
-      final posts   = raw
+      final raw   = jsonDecode(response.body) as List;
+      final posts = raw
           .map((item) => _parsePost(item as Map<String, dynamic>))
           .where((p) => p.title.isNotEmpty)
           .toList();
 
-      // Save to cache
-      await prefs.setString(_kCache,
-          jsonEncode(posts.map((p) => p.toJson()).toList()));
+      await prefs.setString(
+          _kCache, jsonEncode(posts.map((p) => p.toJson()).toList()));
       await prefs.setInt(
           _kCacheTime, DateTime.now().millisecondsSinceEpoch);
 
       return posts;
     } catch (_) {
-      // Network error — return stale cache if available
       return _loadCache(prefs) ?? [];
+    }
+  }
+
+  /// Called on every app open.
+  /// Silently fetches the latest post, compares to the last seen ID,
+  /// and fires a notification if there is something new.
+  static Future<void> checkForNewPost() async {
+    try {
+      final response = await http
+          .get(Uri.parse(
+              'https://mindcoreai.eu/wp-json/wp/v2/posts'
+              '?per_page=1&orderby=date&order=desc&status=publish'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return;
+
+      final raw = jsonDecode(response.body) as List;
+      if (raw.isEmpty) return;
+
+      final latest   = raw.first as Map<String, dynamic>;
+      final latestId = latest['id'] as int? ?? 0;
+      if (latestId == 0) return;
+
+      final prefs      = await SharedPreferences.getInstance();
+      final lastSeenId = prefs.getInt(_kLastSeenId) ?? 0;
+
+      if (latestId > lastSeenId) {
+        // New post found — update stored ID first, then notify
+        await prefs.setInt(_kLastSeenId, latestId);
+
+        // Only notify if the user has seen at least one post before
+        // (avoids notifying on very first ever launch).
+        if (lastSeenId > 0) {
+          final title = _stripHtml(
+              latest['title']?['rendered']?.toString() ?? 'New article');
+          await NotificationService.instance
+              .showNewBlogPostNotification(postTitle: title);
+        }
+      }
+    } catch (_) {
+      // Silently fail — never interrupt the app experience
     }
   }
 
@@ -106,7 +148,8 @@ class BlogService {
     try {
       final list = jsonDecode(raw) as List;
       return list
-          .map((e) => BlogPost.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) =>
+              BlogPost.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
     } catch (_) {
       return null;
@@ -121,10 +164,8 @@ class BlogService {
     final excerpt = _stripHtml(json['excerpt']?['rendered']?.toString() ?? '');
     final content = _stripHtml(json['content']?['rendered']?.toString() ?? '');
     final link    = json['link']?.toString() ?? '';
-    final rawDate = json['date']?.toString() ?? '';
-    final date    = _formatDate(rawDate);
+    final date    = _formatDate(json['date']?.toString() ?? '');
 
-    // Featured image via _embedded
     String? imageUrl;
     try {
       final embedded = json['_embedded'] as Map?;
@@ -143,19 +184,18 @@ class BlogService {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   static String _stripHtml(String html) {
-    // Replace block-level tags with newlines to preserve paragraph breaks
     var s = html
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-        .replaceAll(RegExp(r'</(p|div|h[1-6]|li|blockquote)>',
-            caseSensitive: false), '\n')
-        .replaceAll(RegExp(r'<[^>]+>'), '')       // strip remaining tags
+        .replaceAll(
+            RegExp(r'</(p|div|h[1-6]|li|blockquote)>', caseSensitive: false),
+            '\n')
+        .replaceAll(RegExp(r'<[^>]+>'), '')
         .replaceAll(RegExp(r'&amp;'),  '&')
         .replaceAll(RegExp(r'&lt;'),   '<')
         .replaceAll(RegExp(r'&gt;'),   '>')
         .replaceAll(RegExp(r'&nbsp;'), ' ')
         .replaceAll(RegExp(r'&#\d+;'), '')
         .replaceAll(RegExp(r'&[a-z]+;'), '');
-    // Collapse excess blank lines
     s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
     return s;
   }

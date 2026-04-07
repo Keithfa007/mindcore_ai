@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-// ── Simple data class for check-in messages ───────────────────────────────────
 class _CheckInMsg {
   final String title;
   final String body;
@@ -24,27 +23,33 @@ class NotificationService {
   bool _initialized = false;
   GlobalKey<NavigatorState>? _navigatorKey;
 
-  // ── Channel IDs ────────────────────────────────────────────────────────────────
+  // ── Channel IDs ───────────────────────────────────────────────────────────────
 
-  static const String _instantChannelId   = 'instant_channel';
-  static const String _instantChannelName = 'Instant Notifications';
-  static const String _instantChannelDesc = 'Channel for instant notifications';
+  static const _instantChannelId   = 'instant_channel';
+  static const _instantChannelName = 'Instant Notifications';
+  static const _instantChannelDesc = 'Channel for instant notifications';
 
-  static const String _dailyChannelId   = 'daily_recommendation_channel';
-  static const String _dailyChannelName = 'Daily Recommendation';
-  static const String _dailyChannelDesc = 'Daily personalised recommendations';
+  static const _dailyChannelId   = 'daily_recommendation_channel';
+  static const _dailyChannelName = 'Daily Recommendation';
+  static const _dailyChannelDesc = 'Daily personalised recommendations';
 
-  static const String _checkInChannelId   = 'checkin_channel';
-  static const String _checkInChannelName = 'Check-in Notifications';
-  static const String _checkInChannelDesc =
+  static const _checkInChannelId   = 'checkin_channel';
+  static const _checkInChannelName = 'Check-in Notifications';
+  static const _checkInChannelDesc =
       'Friendly check-ins to see how you are doing';
 
-  // ── Notification IDs ──────────────────────────────────────────────────────────
+  static const _blogChannelId   = 'blog_channel';
+  static const _blogChannelName = 'New Articles';
+  static const _blogChannelDesc =
+      'Notifies you when a new article is published on MindCore AI';
 
-  static const int _dailyNotificationId  = 2000;
-  static const int _checkInMorningId     = 4001;
-  static const int _checkInAfternoonId   = 4002;
-  static const int _checkInEveningId     = 4003;
+  // ── Notification IDs ─────────────────────────────────────────────────────────
+
+  static const int _dailyNotificationId = 2000;
+  static const int _checkInMorningId    = 4001;
+  static const int _checkInAfternoonId  = 4002;
+  static const int _checkInEveningId    = 4003;
+  static const int _blogNotificationId  = 5001;
 
   static const String _kLastScheduledSignature =
       'recommendation_last_schedule_signature';
@@ -52,28 +57,28 @@ class NotificationService {
   static const String _kCheckInFrequency = 'checkin_frequency';
 
   // ── Check-in message pool ─────────────────────────────────────────────────────
-  // Warm, human messages — not robotic or marketing-like
+
   static const _checkInMessages = [
-    _CheckInMsg('How are you doing? 💙',
+    _CheckInMsg('How are you doing? \ud83d\udc99',
         'Take a moment to check in with yourself.'),
-    _CheckInMsg('Just thinking of you 🌿',
+    _CheckInMsg('Just thinking of you \ud83c\udf3f',
         'How has your day been so far?'),
-    _CheckInMsg('Hey there ✨',
+    _CheckInMsg('Hey there \u2728',
         'How are you feeling right now?'),
-    _CheckInMsg('A gentle nudge 🕊️',
+    _CheckInMsg('A gentle nudge \ud83d\udd4a\ufe0f',
         "We're here if you need us."),
-    _CheckInMsg('How\'s your day going? ☀️',
-        'Take a breath — you\'re doing great.'),
-    _CheckInMsg('Checking in with you 💭',
+    _CheckInMsg('How\'s your day going? \u2600\ufe0f',
+        'Take a breath \u2014 you\'re doing great.'),
+    _CheckInMsg('Checking in with you \ud83d\udcad',
         'How are you really doing today?'),
-    _CheckInMsg('A quiet moment 🌸',
+    _CheckInMsg('A quiet moment \ud83c\udf38',
         'Be kind to yourself today.'),
-    _CheckInMsg('Thinking of you 💚',
+    _CheckInMsg('Thinking of you \ud83d\udc9a',
         'How is your heart today?'),
-    _CheckInMsg('How\'s your evening? 🌙',
+    _CheckInMsg('How\'s your evening? \ud83c\udf19',
         'You deserve a moment of peace.'),
-    _CheckInMsg('Just here if you need us 🍃',
-        'No pressure — just checking in.'),
+    _CheckInMsg('Just here if you need us \ud83c\udf43',
+        'No pressure \u2014 just checking in.'),
   ];
 
   // ── Init ─────────────────────────────────────────────────────────────────────
@@ -93,8 +98,7 @@ class NotificationService {
       tz.setLocalLocation(tz.getLocation('UTC'));
     }
 
-    const androidInit =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidInit);
     await _plugin.initialize(
       initSettings,
@@ -102,43 +106,29 @@ class NotificationService {
     );
 
     if (Platform.isAndroid) {
-      final android = _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
 
-      // Instant channel
-      await android?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          _instantChannelId, _instantChannelName,
-          description: _instantChannelDesc,
-          importance: Importance.max,
-        ),
-      );
-      // Daily recommendation channel
-      await android?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          _dailyChannelId, _dailyChannelName,
-          description: _dailyChannelDesc,
-          importance: Importance.max,
-        ),
-      );
-      // Check-in channel
-      await android?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          _checkInChannelId, _checkInChannelName,
-          description: _checkInChannelDesc,
-          importance: Importance.high,
-        ),
-      );
+      for (final ch in [
+        const AndroidNotificationChannel(_instantChannelId, _instantChannelName,
+            description: _instantChannelDesc, importance: Importance.max),
+        const AndroidNotificationChannel(_dailyChannelId, _dailyChannelName,
+            description: _dailyChannelDesc, importance: Importance.max),
+        const AndroidNotificationChannel(_checkInChannelId, _checkInChannelName,
+            description: _checkInChannelDesc, importance: Importance.high),
+        const AndroidNotificationChannel(_blogChannelId, _blogChannelName,
+            description: _blogChannelDesc, importance: Importance.high),
+      ]) {
+        await android?.createNotificationChannel(ch);
+      }
     }
 
     _initialized = true;
 
-    // Auto-schedule check-ins if enabled
-    final prefs = await SharedPreferences.getInstance();
-    final checkInEnabled  = prefs.getBool(_kCheckInEnabled) ?? true;
-    final checkInFreq     = prefs.getInt(_kCheckInFrequency) ?? 2;
+    final prefs         = await SharedPreferences.getInstance();
+    final checkInEnabled = prefs.getBool(_kCheckInEnabled) ?? true;
+    final checkInFreq    = prefs.getInt(_kCheckInFrequency) ?? 2;
     if (checkInEnabled) {
       await scheduleCheckInNotifications(timesPerDay: checkInFreq);
     }
@@ -152,8 +142,7 @@ class NotificationService {
       final routeName = data['routeName']?.toString();
       final arguments = data['arguments'];
       if (routeName == null || routeName.isEmpty) return;
-      _navigatorKey?.currentState
-          ?.pushNamed(routeName, arguments: arguments);
+      _navigatorKey?.currentState?.pushNamed(routeName, arguments: arguments);
     } catch (_) {}
   }
 
@@ -172,6 +161,32 @@ class NotificationService {
       ),
     );
     await _plugin.show(1000, title, body, details);
+  }
+
+  // ── New blog post notification ───────────────────────────────────────────────
+  // Fires immediately when the app detects a post it hasn’t seen before.
+  // Tapping it opens the blog screen.
+
+  Future<void> showNewBlogPostNotification({
+    required String postTitle,
+  }) async {
+    final payload = jsonEncode({'routeName': '/blog'});
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _blogChannelId, _blogChannelName,
+        channelDescription: _blogChannelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+        styleInformation: BigTextStyleInformation(''),
+      ),
+    );
+    await _plugin.show(
+      _blogNotificationId,
+      'New article \ud83d\udcd6',
+      postTitle,
+      details,
+      payload: payload,
+    );
   }
 
   // ── Daily recommendation notification ───────────────────────────────────────────
@@ -223,7 +238,8 @@ class NotificationService {
 
     await _plugin.cancel(_dailyNotificationId);
 
-    Future<void> doSchedule(AndroidScheduleMode mode) => _plugin.zonedSchedule(
+    Future<void> doSchedule(AndroidScheduleMode mode) =>
+        _plugin.zonedSchedule(
           _dailyNotificationId, title, body, scheduled, details,
           payload: payload,
           matchDateTimeComponents: DateTimeComponents.time,
@@ -247,7 +263,8 @@ class NotificationService {
 
   Future<void> scheduleDailyResetNotification({
     int hour = 8, int minute = 0, bool openSettingsIfNeeded = false,
-  }) => scheduleDailyRecommendationNotification(
+  }) =>
+      scheduleDailyRecommendationNotification(
         uniqueKey: 'fallback_daily_reset',
         title: 'Your daily recommendation is ready',
         body: 'Open MindCore AI for a calm reset and one gentle next step.',
@@ -263,8 +280,6 @@ class NotificationService {
   }
 
   // ── Check-in notifications ─────────────────────────────────────────────────────
-  // Scheduled at slightly odd times so they feel human, not robotic.
-  // Messages rotate daily from the pool.
 
   Future<void> scheduleCheckInNotifications({required int timesPerDay}) async {
     await cancelCheckInNotifications();
@@ -273,40 +288,29 @@ class NotificationService {
         .difference(DateTime(DateTime.now().year))
         .inDays;
 
-    // Morning: 9:47 AM
     await _scheduleOneCheckIn(
-      id: _checkInMorningId,
-      hour: 9, minute: 47,
+      id: _checkInMorningId, hour: 9,  minute: 47,
       msgIndex: (dayOfYear * 3) % _checkInMessages.length,
     );
-
-    // Evening: 7:15 PM (always)
     await _scheduleOneCheckIn(
-      id: _checkInEveningId,
-      hour: 19, minute: 15,
+      id: _checkInEveningId, hour: 19, minute: 15,
       msgIndex: (dayOfYear * 3 + 2) % _checkInMessages.length,
     );
-
-    // Afternoon: 2:23 PM (only for 3x/day)
     if (timesPerDay >= 3) {
       await _scheduleOneCheckIn(
-        id: _checkInAfternoonId,
-        hour: 14, minute: 23,
+        id: _checkInAfternoonId, hour: 14, minute: 23,
         msgIndex: (dayOfYear * 3 + 1) % _checkInMessages.length,
       );
     }
 
-    // Persist settings
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kCheckInEnabled, true);
     await prefs.setInt(_kCheckInFrequency, timesPerDay);
   }
 
   Future<void> _scheduleOneCheckIn({
-    required int id,
-    required int hour,
-    required int minute,
-    required int msgIndex,
+    required int id, required int hour,
+    required int minute, required int msgIndex,
   }) async {
     final msg     = _checkInMessages[msgIndex];
     final payload = jsonEncode({'routeName': '/home'});
