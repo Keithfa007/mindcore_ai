@@ -1,4 +1,9 @@
 // lib/services/usage_service.dart
+//
+// Tracks message + voice usage per billing period.
+// bonusVoiceSeconds (purchased voice packs) lives on the USER document
+// so it is NEVER wiped at month rollover.
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,7 +15,7 @@ import 'package:mindcore_ai/services/premium_service.dart';
 class UsageSnapshot {
   final int messagesUsed;
   final int voiceSecondsUsed;
-  final int bonusVoiceSeconds; // from purchased voice packs
+  final int bonusVoiceSeconds; // purchased packs — never resets
   final TierConfig tier;
 
   const UsageSnapshot({
@@ -21,23 +26,24 @@ class UsageSnapshot {
   });
 
   static const empty = UsageSnapshot(
-    messagesUsed: 0,
+    messagesUsed:     0,
     voiceSecondsUsed: 0,
-    tier: TierConfig.trial,
+    tier:             TierConfig.trial,
   );
 
   int get messagesRemaining {
     if (tier.isUnlimited) return 9999;
-    return (tier.monthlyMessages - messagesUsed).clamp(0, tier.monthlyMessages);
+    return (tier.monthlyMessages - messagesUsed)
+        .clamp(0, tier.monthlyMessages);
   }
 
-  // Total available = plan allowance + bonus from packs
-  int get totalVoiceSeconds =>
-      tier.monthlyVoiceSeconds + bonusVoiceSeconds;
+  // Total = plan allowance + bonus from purchased packs
+  int get totalVoiceSeconds => tier.monthlyVoiceSeconds + bonusVoiceSeconds;
 
   int get voiceSecondsRemaining {
     if (tier.monthlyVoiceSeconds == -1) return 9999;
-    return (totalVoiceSeconds - voiceSecondsUsed).clamp(0, totalVoiceSeconds);
+    return (totalVoiceSeconds - voiceSecondsUsed)
+        .clamp(0, totalVoiceSeconds);
   }
 
   int get voiceMinutesRemaining => (voiceSecondsRemaining / 60).floor();
@@ -67,10 +73,10 @@ class UsageSnapshot {
     TierConfig? tier,
   }) {
     return UsageSnapshot(
-      messagesUsed:     messagesUsed     ?? this.messagesUsed,
-      voiceSecondsUsed: voiceSecondsUsed ?? this.voiceSecondsUsed,
+      messagesUsed:      messagesUsed      ?? this.messagesUsed,
+      voiceSecondsUsed:  voiceSecondsUsed  ?? this.voiceSecondsUsed,
       bonusVoiceSeconds: bonusVoiceSeconds ?? this.bonusVoiceSeconds,
-      tier:             tier             ?? this.tier,
+      tier:              tier              ?? this.tier,
     );
   }
 }
@@ -81,11 +87,13 @@ class UsageService {
 
   final snapshot = ValueNotifier<UsageSnapshot>(UsageSnapshot.empty);
 
-  static const _kMsgs        = 'usage_msgs_';
-  static const _kVoice       = 'usage_voice_';
-  static const _kBonusVoice  = 'usage_bonus_voice_';
-  static const _kPeriod      = 'usage_period';
-  static const _kTier        = 'usage_tier';
+  // Period-scoped keys (messages + voice used reset monthly)
+  static const _kMsgs   = 'usage_msgs_';
+  static const _kVoice  = 'usage_voice_';
+  static const _kPeriod = 'usage_period';
+  static const _kTier   = 'usage_tier';
+  // Bonus never resets — stored without period suffix
+  static const _kBonus  = 'usage_bonus_voice_total';
 
   bool _initialised = false;
   int  _voiceBuffer = 0;
@@ -100,10 +108,7 @@ class UsageService {
     if (user != null) await _syncFromFirestore(user.uid);
 
     FirebaseAuth.instance.authStateChanges().listen((user) async {
-      if (user == null) {
-        snapshot.value = UsageSnapshot.empty;
-        return;
-      }
+      if (user == null) { snapshot.value = UsageSnapshot.empty; return; }
       await _syncFromFirestore(user.uid);
     });
 
@@ -113,7 +118,7 @@ class UsageService {
     });
   }
 
-  // ── Message gating ────────────────────────────────────────────────────
+  // ── Message gating ─────────────────────────────────────────────────
 
   Future<bool> tryConsumeMessage(BuildContext context) async {
     final snap = snapshot.value;
@@ -132,11 +137,11 @@ class UsageService {
     final updated = snap.copyWith(messagesUsed: snap.messagesUsed + 1);
     snapshot.value = updated;
     await _persistLocally(updated);
-    _incrementFirestore('messagesUsed', 1);
+    _incrementPeriodFirestore('messagesUsed', 1);
     return true;
   }
 
-  // ── Voice gating ──────────────────────────────────────────────────────
+  // ── Voice gating ──────────────────────────────────────────────────
 
   Future<bool> tryConsumeVoice(BuildContext context) async {
     final snap = snapshot.value;
@@ -167,46 +172,41 @@ class UsageService {
     final snap = snapshot.value;
     if (!snap.canUseVoice) return false;
 
-    final updated = snap.copyWith(
-      voiceSecondsUsed: snap.voiceSecondsUsed + 1,
-    );
+    final updated =
+        snap.copyWith(voiceSecondsUsed: snap.voiceSecondsUsed + 1);
     snapshot.value = updated;
 
     _voiceBuffer++;
     if (_voiceBuffer >= 10) {
-      _incrementFirestore('voiceSecondsUsed', _voiceBuffer);
+      _incrementPeriodFirestore('voiceSecondsUsed', _voiceBuffer);
       _voiceBuffer = 0;
     }
 
     return updated.canUseVoice;
   }
 
-  // ── Voice pack top-up ─────────────────────────────────────────────────
+  // ── Voice pack top-up ───────────────────────────────────────────────
+  // Bonus lives on the USER document — never resets at month rollover.
 
-  /// Called when a user purchases a voice add-on pack.
-  /// Adds the pack minutes to their bonus balance for the current period.
   Future<void> addVoiceMinutes(int minutes) async {
-    final snap      = snapshot.value;
     final addSeconds = minutes * 60;
-    final updated   = snap.copyWith(
-      bonusVoiceSeconds: snap.bonusVoiceSeconds + addSeconds,
+    final updated    = snapshot.value.copyWith(
+      bonusVoiceSeconds: snapshot.value.bonusVoiceSeconds + addSeconds,
     );
     snapshot.value = updated;
     await _persistLocally(updated);
 
-    // Also persist bonus to Firestore
+    // Write to users/{uid} (NOT the period sub-document)
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       try {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(uid)
-            .collection('usage')
-            .doc(_currentPeriod())
             .set(
           {
             'bonusVoiceSeconds': FieldValue.increment(addSeconds),
-            'updatedAt':         FieldValue.serverTimestamp(),
+            'bonusUpdatedAt':    FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
         );
@@ -220,42 +220,55 @@ class UsageService {
 
   Future<void> flushVoiceBuffer() async {
     if (_voiceBuffer > 0) {
-      await _incrementFirestore('voiceSecondsUsed', _voiceBuffer);
+      await _incrementPeriodFirestore('voiceSecondsUsed', _voiceBuffer);
       _voiceBuffer = 0;
     }
     await _persistLocally(snapshot.value);
   }
 
-  // ── Firestore sync ────────────────────────────────────────────────────
+  // ── Firestore sync ──────────────────────────────────────────────────
 
   Future<void> _syncFromFirestore(String uid) async {
     final period     = _currentPeriod();
     final tierConfig = PremiumService.currentTier.value;
 
     try {
-      final doc = await FirebaseFirestore.instance
+      // Read period doc (messages + voice used)
+      final periodRef = FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .collection('usage')
-          .doc(period)
-          .get();
+          .doc(period);
+
+      // Read user doc (bonus voice pack balance)
+      final userRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid);
+
+      final results = await Future.wait([
+        periodRef.get(),
+        userRef.get(),
+      ]);
+
+      final periodDoc = results[0];
+      final userDoc   = results[1];
 
       int msgs   = 0;
       int voices = 0;
-      int bonus  = 0;
+      // Bonus comes from the USER doc — persists forever
+      final int bonus = (userDoc.data()?['bonusVoiceSeconds'] as int?) ?? 0;
 
-      if (doc.exists) {
-        msgs   = (doc.data()?['messagesUsed']     as int?) ?? 0;
-        voices = (doc.data()?['voiceSecondsUsed'] as int?) ?? 0;
-        bonus  = (doc.data()?['bonusVoiceSeconds'] as int?) ?? 0;
+      if (periodDoc.exists) {
+        msgs   = (periodDoc.data()?['messagesUsed']    as int?) ?? 0;
+        voices = (periodDoc.data()?['voiceSecondsUsed'] as int?) ?? 0;
       } else {
-        await doc.reference.set({
-          'messagesUsed':      0,
-          'voiceSecondsUsed':  0,
-          'bonusVoiceSeconds': 0,
-          'tier':              tierConfig.firestoreKey,
-          'periodStart':       FieldValue.serverTimestamp(),
-          'updatedAt':         FieldValue.serverTimestamp(),
+        // Create period doc on first access this month
+        await periodDoc.reference.set({
+          'messagesUsed':     0,
+          'voiceSecondsUsed': 0,
+          'tier':             tierConfig.firestoreKey,
+          'periodStart':      FieldValue.serverTimestamp(),
+          'updatedAt':        FieldValue.serverTimestamp(),
         });
       }
 
@@ -273,7 +286,8 @@ class UsageService {
     }
   }
 
-  Future<void> _incrementFirestore(String field, int amount) async {
+  // Increments fields on the period sub-document only (usage that resets monthly)
+  Future<void> _incrementPeriodFirestore(String field, int amount) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
@@ -295,23 +309,23 @@ class UsageService {
     }
   }
 
-  // ── Local cache ───────────────────────────────────────────────────────
+  // ── Local cache ────────────────────────────────────────────────────
 
   Future<void> _loadFromCache() async {
     final prefs  = await SharedPreferences.getInstance();
     final period = _currentPeriod();
     final cached = prefs.getString(_kPeriod);
 
+    // Wipe period-scoped keys on rollover, but leave bonus intact
     if (cached != null && cached != period) {
-      await prefs.remove(_kMsgs + cached);
+      await prefs.remove(_kMsgs  + cached);
       await prefs.remove(_kVoice + cached);
-      await prefs.remove(_kBonusVoice + cached);
       await prefs.setString(_kPeriod, period);
     }
 
-    final msgs   = prefs.getInt(_kMsgs + period)       ?? 0;
-    final voices = prefs.getInt(_kVoice + period)      ?? 0;
-    final bonus  = prefs.getInt(_kBonusVoice + period) ?? 0;
+    final msgs   = prefs.getInt(_kMsgs  + period) ?? 0;
+    final voices = prefs.getInt(_kVoice + period) ?? 0;
+    final bonus  = prefs.getInt(_kBonus)           ?? 0;  // no period suffix
     final tier   = TierConfig.fromKey(prefs.getString(_kTier));
 
     snapshot.value = UsageSnapshot(
@@ -326,9 +340,9 @@ class UsageService {
     final prefs  = await SharedPreferences.getInstance();
     final period = _currentPeriod();
     await prefs.setString(_kPeriod, period);
-    await prefs.setInt(_kMsgs        + period, snap.messagesUsed);
-    await prefs.setInt(_kVoice       + period, snap.voiceSecondsUsed);
-    await prefs.setInt(_kBonusVoice  + period, snap.bonusVoiceSeconds);
+    await prefs.setInt(_kMsgs  + period, snap.messagesUsed);
+    await prefs.setInt(_kVoice + period, snap.voiceSecondsUsed);
+    await prefs.setInt(_kBonus, snap.bonusVoiceSeconds);      // no period suffix
     await prefs.setString(_kTier, snap.tier.firestoreKey);
   }
 
@@ -337,7 +351,7 @@ class UsageService {
     return '${now.year}-${now.month.toString().padLeft(2, '0')}';
   }
 
-  // ── Limit dialog ──────────────────────────────────────────────────────
+  // ── Limit dialog ──────────────────────────────────────────────────
 
   Future<void> _showLimitDialog(
     BuildContext context, {
@@ -348,8 +362,9 @@ class UsageService {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title:   Text(title),
         content: Text(body),
         actions: [
           TextButton(

@@ -8,17 +8,19 @@ import 'package:mindcore_ai/models/tier_config.dart';
 class PremiumService {
   PremiumService._();
 
-  static final isPremium = ValueNotifier<bool>(false);
+  static final isPremium   = ValueNotifier<bool>(false);
   static final currentTier = ValueNotifier<TierConfig>(TierConfig.trial);
 
-  static const _kIsPremium = 'mindcore_is_premium';
-  static const _kTierKey = 'mindcore_tier_key';
+  static const _kIsPremium  = 'mindcore_is_premium';
+  static const _kTierKey    = 'mindcore_tier_key';
   static const _kTrialStart = 'mindcore_trial_start';
-  static const _trialDays = 30;
+
+  // Trial is 7 days at €1.99 (one-time purchase)
+  static const int _trialDays = 7;
 
   static bool _initialised = false;
 
-  // ─── Init ─────────────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────────────
 
   static Future<void> init() async {
     if (_initialised) return;
@@ -26,15 +28,14 @@ class PremiumService {
 
     final prefs = await SharedPreferences.getInstance();
 
-    // Record trial start on first ever launch
-    if (prefs.getString(_kTrialStart) == null) {
-      await prefs.setString(
-        _kTrialStart,
-        DateTime.now().toIso8601String(),
-      );
+    // Record trial start on very first launch (local)
+    final trialStartRaw = prefs.getString(_kTrialStart);
+    if (trialStartRaw == null) {
+      final now = DateTime.now().toIso8601String();
+      await prefs.setString(_kTrialStart, now);
     }
 
-    isPremium.value = prefs.getBool(_kIsPremium) ?? false;
+    isPremium.value   = prefs.getBool(_kIsPremium) ?? false;
     currentTier.value = TierConfig.fromKey(prefs.getString(_kTierKey));
 
     FirebaseAuth.instance.authStateChanges().listen((user) async {
@@ -46,52 +47,48 @@ class PremiumService {
     });
   }
 
-  // ─── Trial helpers ────────────────────────────────────────────────────
+  // ── Trial helpers ─────────────────────────────────────────────────────
 
-  /// True if the 30-day trial window is still open
+  /// True if the 7-day trial window is still open.
   static Future<bool> isTrialWindowOpen() async {
     if (isPremium.value) return true;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kTrialStart);
-    if (raw == null) return true;
-    final start = DateTime.tryParse(raw);
+    final start = await _trialStart();
     if (start == null) return true;
-    final elapsed = DateTime.now().difference(start).inDays;
-    return elapsed < _trialDays;
+    return DateTime.now().difference(start).inDays < _trialDays;
   }
 
-  /// How many days remain in trial window
+  /// Days remaining in trial (0 if premium or expired).
   static Future<int> trialDaysRemaining() async {
     if (isPremium.value) return 0;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kTrialStart);
-    if (raw == null) return _trialDays;
-    final start = DateTime.tryParse(raw);
+    final start = await _trialStart();
     if (start == null) return _trialDays;
     final elapsed = DateTime.now().difference(start).inDays;
     return (_trialDays - elapsed).clamp(0, _trialDays);
   }
 
-  /// User can access the app if:
-  ///   - They have an active subscription, OR
-  ///   - They are within the 30-day trial window
-  /// Usage limits (50 msgs / 5 min voice) are enforced separately by UsageService
+  /// User can access the app if subscribed OR within the 7-day trial window.
   static Future<bool> hasAccess() async {
     if (isPremium.value) return true;
     return isTrialWindowOpen();
   }
 
-  // ─── Write ────────────────────────────────────────────────────────────
+  // ── Write ──────────────────────────────────────────────────────────────
 
   static Future<void> activate({required TierConfig tier}) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
+    final prefs       = await SharedPreferences.getInstance();
+    final trialStart  = prefs.getString(_kTrialStart) ??
+        DateTime.now().toIso8601String();
+
     await FirebaseFirestore.instance.collection('users').doc(uid).set(
       {
-        'isPremium': true,
-        'tier': tier.firestoreKey,
+        'isPremium':          true,
+        'tier':               tier.firestoreKey,
         'premiumActivatedAt': FieldValue.serverTimestamp(),
+        // Persist trial start to Firestore so reinstalls don’t reset it
+        'trialStartedAt':     trialStart,
       },
       SetOptions(merge: true),
     );
@@ -117,23 +114,63 @@ class PremiumService {
     return isPremium.value;
   }
 
-  // ─── Private ──────────────────────────────────────────────────────────
+  // ── Private ───────────────────────────────────────────────────────────
 
   static Future<void> _refreshFromFirestore(String uid) async {
     try {
-      final doc =
-          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
 
-      final remote = doc.data()?['isPremium'] as bool? ?? false;
-      final tierKey = doc.data()?['tier'] as String? ?? 'trial';
+      final data      = doc.data();
+      final remote    = data?['isPremium']   as bool?   ?? false;
+      final tierKey   = data?['tier']        as String? ?? 'trial';
+
+      // Restore trial start from Firestore if present (survives reinstall)
+      final remoteTrial = data?['trialStartedAt'] as String?;
+      if (remoteTrial != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final local = prefs.getString(_kTrialStart);
+        // Only restore if local is missing or Firestore has an earlier date
+        if (local == null) {
+          await prefs.setString(_kTrialStart, remoteTrial);
+        } else {
+          final localDt  = DateTime.tryParse(local);
+          final remoteDt = DateTime.tryParse(remoteTrial);
+          if (localDt != null &&
+              remoteDt != null &&
+              remoteDt.isBefore(localDt)) {
+            await prefs.setString(_kTrialStart, remoteTrial);
+          }
+        }
+      } else {
+        // First login: push local trial start to Firestore so it’s preserved
+        final prefs      = await SharedPreferences.getInstance();
+        final localTrial = prefs.getString(_kTrialStart);
+        if (localTrial != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .set({'trialStartedAt': localTrial}, SetOptions(merge: true));
+        }
+      }
+
       await _setLocal(remote, TierConfig.fromKey(tierKey));
     } catch (e) {
       debugPrint('PremiumService: Firestore refresh failed — $e');
     }
   }
 
+  static Future<DateTime?> _trialStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw   = prefs.getString(_kTrialStart);
+    if (raw == null) return null;
+    return DateTime.tryParse(raw);
+  }
+
   static Future<void> _setLocal(bool premium, TierConfig tier) async {
-    isPremium.value = premium;
+    isPremium.value   = premium;
     currentTier.value = tier;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kIsPremium, premium);
