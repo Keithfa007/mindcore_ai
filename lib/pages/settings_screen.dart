@@ -1,9 +1,9 @@
 // lib/pages/settings_screen.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:mindcore_ai/services/settings_service.dart';
 import 'package:mindcore_ai/services/notification_service.dart';
-import 'package:mindcore_ai/services/openai_tts_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/services/usage_service.dart';
 import 'package:mindcore_ai/services/subscription_service.dart';
@@ -30,17 +30,18 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  BreathePreset _preset    = BreathePreset.box;
-  int           _duration  = 60;
-  bool          _haptics   = true;
+  BreathePreset _preset   = BreathePreset.box;
+  int           _duration = 60;
+  bool          _haptics  = true;
   final _durations = const [30, 60, 90, 180];
 
+  // Notifications
   bool      _dailyReminderEnabled = false;
   TimeOfDay _dailyReminderTime    = const TimeOfDay(hour: 8, minute: 0);
+  bool      _checkInEnabled       = true;
+  int       _checkInFrequency     = 2; // 2 or 3 times per day
 
-  bool _ttsEnabled        = true;
-  bool _moodAdaptiveVoice = true;
-  bool _loading           = true;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -55,8 +56,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final haptics      = await SettingsService.getHaptics();
       final dailyEnabled = await SettingsService.getDailyReminderEnabled();
       final dailyTime    = await SettingsService.getDailyReminderTime();
-      final ttsEnabled   = await OpenAiTtsService.instance.getEnabled();
-      final moodAdaptive = await OpenAiTtsService.instance.getMoodAdaptive();
+      final prefs        = await SharedPreferences.getInstance();
+      final checkInEnabled  = prefs.getBool('checkin_enabled') ?? true;
+      final checkInFreq     = prefs.getInt('checkin_frequency') ?? 2;
       if (!mounted) return;
       setState(() {
         _preset               = preset;
@@ -64,15 +66,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _haptics              = haptics;
         _dailyReminderEnabled = dailyEnabled;
         _dailyReminderTime    = dailyTime;
-        _ttsEnabled           = ttsEnabled;
-        _moodAdaptiveVoice    = moodAdaptive;
+        _checkInEnabled       = checkInEnabled;
+        _checkInFrequency     = checkInFreq;
         _loading              = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed to load settings: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load settings: $e')));
     }
   }
 
@@ -122,58 +124,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                 children: [
 
-                  // ── Plan & Billing ─────────────────────────────────
-                  _SectionLabel(label: 'Plan & Billing',
+                  // ── Plan & Billing ───────────────────────────────────────
+                  _SectionLabel(
+                      label: 'Plan & Billing',
                       icon: Icons.workspace_premium_rounded,
                       color: AppColors.primary),
                   _PlanBillingCard(
                     onManagePlan: _openPaywall,
-                    onBuyVoice:   _openVoiceTopUp,
+                    onBuyVoice: _openVoiceTopUp,
                   ),
                   const SizedBox(height: 24),
 
-                  // ── Voice & Audio ──────────────────────────────────
-                  _SectionLabel(label: 'Voice & Audio',
-                      icon: Icons.graphic_eq_rounded,
+                  // ── Voice (voice chat settings only) ─────────────────────
+                  _SectionLabel(
+                      label: 'Voice Chat',
+                      icon: Icons.mic_rounded,
                       color: AppColors.mintDeep),
                   _SettingsCard(children: [
-                    _ToggleRow(
-                      icon: Icons.record_voice_over_rounded,
-                      title: 'Voice responses',
-                      subtitle: 'Read chat replies and tips aloud',
-                      value: _ttsEnabled,
-                      onChanged: (v) async {
-                        setState(() => _ttsEnabled = v);
-                        await OpenAiTtsService.instance.setEnabled(v);
-                        if (!v) await OpenAiTtsService.instance.stop();
-                      },
-                    ),
-                    _Divider(),
-                    _ToggleRow(
-                      icon: Icons.auto_awesome_rounded,
-                      title: 'Mood-adaptive voice',
-                      subtitle: 'Tone adapts gently to your mood',
-                      value: _moodAdaptiveVoice,
-                      enabled: _ttsEnabled,
-                      onChanged: (v) async {
-                        setState(() => _moodAdaptiveVoice = v);
-                        await OpenAiTtsService.instance.setMoodAdaptive(v);
-                      },
-                    ),
-                    _Divider(),
                     _NavRow(
                       icon: Icons.tune_rounded,
                       title: 'Voice settings',
-                      subtitle: 'Speed, style and test voice',
-                      onTap: () => Navigator.push(context,
+                      subtitle:
+                          'Speed, style and test voice for voice chat',
+                      onTap: () => Navigator.push(
+                          context,
                           MaterialPageRoute(
-                              builder: (_) => const VoiceSettingsScreen())),
+                              builder: (_) =>
+                                  const VoiceSettingsScreen())),
                     ),
                   ]),
                   const SizedBox(height: 24),
 
-                  // ── Breathing ──────────────────────────────────────
-                  _SectionLabel(label: 'Breathing',
+                  // ── Breathing ─────────────────────────────────────────────
+                  _SectionLabel(
+                      label: 'Breathing',
                       icon: Icons.air_rounded,
                       color: AppColors.violet),
                   _SettingsCard(children: [
@@ -199,8 +183,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       items: _durations
                           .map((s) => DropdownMenuItem(
                               value: s,
-                              child: Text(
-                                  s >= 60 ? '${s ~/ 60} min' : '$s sec')))
+                              child: Text(s >= 60
+                                  ? '${s ~/ 60} min'
+                                  : '$s sec')))
                           .toList(),
                       onChanged: (v) async {
                         if (v == null) return;
@@ -212,7 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _ToggleRow(
                       icon: Icons.vibration_rounded,
                       title: 'Haptics',
-                      subtitle: 'Vibration feedback during exercises',
+                      subtitle: 'Gentle vibration on phase change',
                       value: _haptics,
                       onChanged: (v) async {
                         setState(() => _haptics = v);
@@ -222,19 +207,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ]),
                   const SizedBox(height: 24),
 
-                  // ── Reminders ──────────────────────────────────────
-                  _SectionLabel(label: 'Reminders',
-                      icon: Icons.notifications_none_rounded,
-                      color: const Color(0xFFBA7517)),   // amber
+                  // ── Notifications ──────────────────────────────────────────
+                  _SectionLabel(
+                      label: 'Notifications',
+                      icon: Icons.notifications_outlined,
+                      color: const Color(0xFFBA7517)),
                   _SettingsCard(children: [
+
+                    // Daily recommendation
                     _ToggleRow(
-                      icon: Icons.alarm_rounded,
-                      title: 'Daily reminder',
-                      subtitle: 'At ${_dailyReminderTime.format(context)}',
+                      icon: Icons.recommend_rounded,
+                      title: 'Daily recommendation',
+                      subtitle:
+                          'Personalised tip at ${_dailyReminderTime.format(context)}',
                       value: _dailyReminderEnabled,
                       onChanged: (v) async {
                         setState(() => _dailyReminderEnabled = v);
-                        await SettingsService.setDailyReminderEnabled(v);
+                        await SettingsService
+                            .setDailyReminderEnabled(v);
                         if (!v) {
                           await NotificationService.instance
                               .cancelDailyResetNotification();
@@ -258,7 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _Divider(),
                     _NavRow(
                       icon: Icons.schedule_rounded,
-                      title: 'Reminder time',
+                      title: 'Recommendation time',
                       subtitle: _dailyReminderTime.format(context),
                       enabled: _dailyReminderEnabled,
                       onTap: !_dailyReminderEnabled
@@ -268,7 +258,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   context: context,
                                   initialTime: _dailyReminderTime);
                               if (picked == null) return;
-                              setState(() => _dailyReminderTime = picked);
+                              setState(
+                                  () => _dailyReminderTime = picked);
                               await SettingsService
                                   .setDailyReminderTime(picked);
                               final s = await ProactiveSupportService
@@ -286,27 +277,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               );
                             },
                     ),
-                  ]),
-                  const SizedBox(height: 24),
+                    _Divider(),
 
-                  // ── AI Persona ─────────────────────────────────────
-                  _SectionLabel(label: 'AI Persona',
-                      icon: Icons.psychology_alt_rounded,
-                      color: const Color(0xFFD85A30)),   // coral
-                  _SettingsCard(children: [
-                    _NavRow(
-                      icon: Icons.psychology_alt_rounded,
-                      title: 'Conversation style',
-                      subtitle: 'Choose how MindCore AI speaks to you',
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(
-                              builder: (_) => const ChatPersonaScreen())),
+                    // Check-in notifications
+                    _ToggleRow(
+                      icon: Icons.favorite_border_rounded,
+                      title: 'Check-in notifications',
+                      subtitle:
+                          'We check how you\u2019re doing $_checkInFrequency\u00d7 a day',
+                      value: _checkInEnabled,
+                      onChanged: (v) async {
+                        setState(() => _checkInEnabled = v);
+                        final prefs =
+                            await SharedPreferences.getInstance();
+                        await prefs.setBool('checkin_enabled', v);
+                        if (v) {
+                          await NotificationService.instance
+                              .scheduleCheckInNotifications(
+                                  timesPerDay: _checkInFrequency);
+                        } else {
+                          await NotificationService.instance
+                              .cancelCheckInNotifications();
+                        }
+                      },
+                    ),
+                    _Divider(),
+                    _DropdownRow<int>(
+                      icon: Icons.repeat_rounded,
+                      title: 'Check-in frequency',
+                      value: _checkInFrequency,
+                      items: const [
+                        DropdownMenuItem(
+                            value: 2, child: Text('Twice a day')),
+                        DropdownMenuItem(
+                            value: 3,
+                            child: Text('Three times a day')),
+                      ],
+                      onChanged: (v) async {
+                        if (v == null) return;
+                        setState(() => _checkInFrequency = v);
+                        final prefs =
+                            await SharedPreferences.getInstance();
+                        await prefs.setInt('checkin_frequency', v);
+                        if (_checkInEnabled) {
+                          await NotificationService.instance
+                              .scheduleCheckInNotifications(
+                                  timesPerDay: v);
+                        }
+                      },
                     ),
                   ]),
                   const SizedBox(height: 24),
 
-                  // ── Trust & Safety ─────────────────────────────────
-                  _SectionLabel(label: 'Trust & Safety',
+                  // ── AI Persona ─────────────────────────────────────────────
+                  _SectionLabel(
+                      label: 'AI Persona',
+                      icon: Icons.psychology_alt_rounded,
+                      color: const Color(0xFFD85A30)),
+                  _SettingsCard(children: [
+                    _NavRow(
+                      icon: Icons.psychology_alt_rounded,
+                      title: 'Conversation style',
+                      subtitle:
+                          'Choose how MindCore AI speaks to you',
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const ChatPersonaScreen())),
+                    ),
+                  ]),
+                  const SizedBox(height: 24),
+
+                  // ── Trust & Safety ───────────────────────────────────────
+                  _SectionLabel(
+                      label: 'Trust & Safety',
                       icon: Icons.shield_outlined,
                       color: AppColors.primary),
                   _SettingsCard(children: [
@@ -314,7 +359,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.health_and_safety_outlined,
                       title: 'Safety resources',
                       subtitle: 'Support lines and guidance',
-                      onTap: () => Navigator.push(context,
+                      onTap: () => Navigator.push(
+                          context,
                           MaterialPageRoute(
                               builder: (_) => const SafetyScreen())),
                     ),
@@ -322,27 +368,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _NavRow(
                       icon: Icons.lock_outline_rounded,
                       title: 'Privacy & controls',
-                      subtitle: 'Export, delete and storage options',
-                      onTap: () => Navigator.push(context,
+                      subtitle:
+                          'Export, delete and storage options',
+                      onTap: () => Navigator.push(
+                          context,
                           MaterialPageRoute(
-                              builder: (_) => const PrivacyControlsScreen())),
+                              builder: (_) =>
+                                  const PrivacyControlsScreen())),
                     ),
                     _Divider(),
                     _NavRow(
                       icon: Icons.info_outline_rounded,
                       title: 'Disclaimer',
-                      subtitle: 'Not a substitute for professional help',
-                      onTap: () => Navigator.push(context,
+                      subtitle:
+                          'Not a substitute for professional help',
+                      onTap: () => Navigator.push(
+                          context,
                           MaterialPageRoute(
-                              builder: (_) => const DisclaimerScreen())),
+                              builder: (_) =>
+                                  const DisclaimerScreen())),
                     ),
                   ]),
                   const SizedBox(height: 24),
 
-                  // ── Data ───────────────────────────────────────────
-                  _SectionLabel(label: 'Data',
+                  // ── Data ─────────────────────────────────────────────────
+                  _SectionLabel(
+                      label: 'Data',
                       icon: Icons.storage_rounded,
-                      color: const Color(0xFF888780)),   // muted gray
+                      color: const Color(0xFF888780)),
                   _SettingsCard(children: [
                     _ActionRow(
                       icon: Icons.delete_outline_rounded,
@@ -360,7 +413,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-// ── Section label ─────────────────────────────────────────────────────────────
+// ── Section label ───────────────────────────────────────────────────────────────
 
 class _SectionLabel extends StatelessWidget {
   final String label;
@@ -408,14 +461,15 @@ class _SettingsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.7)),
+        border:
+            Border.all(color: theme.dividerColor.withValues(alpha: 0.7)),
       ),
       child: Column(children: children),
     );
   }
 }
 
-// ── Row types ─────────────────────────────────────────────────────────────────
+// ── Row types ────────────────────────────────────────────────────────────────
 
 class _ToggleRow extends StatelessWidget {
   final IconData icon;
@@ -502,7 +556,8 @@ class _NavRow extends StatelessWidget {
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         child: Row(
           children: [
             Icon(icon,
@@ -524,7 +579,8 @@ class _NavRow extends StatelessWidget {
                               ? null
                               : (isDark
                                   ? Colors.white.withValues(alpha: 0.30)
-                                  : Colors.black.withValues(alpha: 0.25)))),
+                                  : Colors.black
+                                      .withValues(alpha: 0.25)))),
                   Text(subtitle,
                       style: tt.bodySmall?.copyWith(
                           color: isDark
@@ -567,7 +623,8 @@ class _ActionRow extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         child: Row(
           children: [
             Icon(icon, size: 18, color: iconColor),
@@ -578,7 +635,8 @@ class _ActionRow extends StatelessWidget {
                 children: [
                   Text(title,
                       style: tt.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600, color: iconColor)),
+                          fontWeight: FontWeight.w600,
+                          color: iconColor)),
                   Text(subtitle,
                       style: tt.bodySmall?.copyWith(
                           color: isDark
@@ -624,7 +682,8 @@ class _DropdownRow<T> extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: Text(title,
-                style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                style: tt.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
           ),
           DropdownButton<T>(
             value: value,
@@ -646,11 +705,12 @@ class _Divider extends StatelessWidget {
         height: 0,
         thickness: 0.5,
         indent: 48,
-        color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
+        color:
+            Theme.of(context).dividerColor.withValues(alpha: 0.5),
       );
 }
 
-// ── Plan & Billing card ───────────────────────────────────────────────────────
+// ── Plan & Billing card ──────────────────────────────────────────────────────
 
 class _PlanBillingCard extends StatelessWidget {
   final VoidCallback onManagePlan;
@@ -692,7 +752,6 @@ class _PlanBillingCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Plan badge
                   Row(
                     children: [
                       Container(
@@ -707,14 +766,18 @@ class _PlanBillingCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.workspace_premium_rounded,
-                                size: 13, color: accent),
+                            Icon(
+                                Icons.workspace_premium_rounded,
+                                size: 13,
+                                color: accent),
                             const SizedBox(width: 5),
-                            Text(tier.displayName.toUpperCase(),
-                                style: tt.labelSmall?.copyWith(
-                                    color: accent,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 11)),
+                            Text(
+                              tier.displayName.toUpperCase(),
+                              style: tt.labelSmall?.copyWith(
+                                  color: accent,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11),
+                            ),
                           ],
                         ),
                       ),
@@ -724,15 +787,15 @@ class _PlanBillingCard extends StatelessWidget {
                           '\u20ac${tier.monthlyPrice.toStringAsFixed(2)}/mo',
                           style: tt.bodySmall?.copyWith(
                               color: isDark
-                                  ? Colors.white.withValues(alpha: 0.50)
-                                  : Colors.black.withValues(alpha: 0.45),
+                                  ? Colors.white
+                                      .withValues(alpha: 0.50)
+                                  : Colors.black
+                                      .withValues(alpha: 0.45),
                               fontWeight: FontWeight.w600),
                         ),
                     ],
                   ),
                   const SizedBox(height: 16),
-
-                  // Messages
                   _UsageLabel(
                     icon: Icons.chat_rounded,
                     label: 'Messages',
@@ -745,10 +808,10 @@ class _PlanBillingCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   _UsageBar(
-                      fraction: msgFrac, color: accent, warn: msgFrac > 0.80),
+                      fraction: msgFrac,
+                      color: accent,
+                      warn: msgFrac > 0.80),
                   const SizedBox(height: 14),
-
-                  // Voice
                   _UsageLabel(
                     icon: Icons.mic_rounded,
                     label: 'Voice minutes',
@@ -764,15 +827,14 @@ class _PlanBillingCard extends StatelessWidget {
                       color: AppColors.mintDeep,
                       warn: voiceFrac > 0.80),
                   const SizedBox(height: 16),
-
-                  // Buttons
                   Row(
                     children: [
                       Expanded(
                         child: FilledButton.icon(
                           onPressed: onManagePlan,
                           icon: const Icon(
-                              Icons.workspace_premium_rounded, size: 16),
+                              Icons.workspace_premium_rounded,
+                              size: 16),
                           label: Text(
                             tier.tier == AppTier.trial
                                 ? 'Upgrade'
@@ -782,7 +844,8 @@ class _PlanBillingCard extends StatelessWidget {
                           ),
                           style: FilledButton.styleFrom(
                               backgroundColor: accent,
-                              minimumSize: const Size.fromHeight(44),
+                              minimumSize:
+                                  const Size.fromHeight(44),
                               shape: RoundedRectangleBorder(
                                   borderRadius:
                                       BorderRadius.circular(10))),
@@ -793,13 +856,15 @@ class _PlanBillingCard extends StatelessWidget {
                         child: OutlinedButton.icon(
                           onPressed: onBuyVoice,
                           icon: Icon(Icons.mic_rounded,
-                              size: 16, color: AppColors.mintDeep),
+                              size: 16,
+                              color: AppColors.mintDeep),
                           label: Text('Voice mins',
                               style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   color: AppColors.mintDeep)),
                           style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(44),
+                            minimumSize:
+                                const Size.fromHeight(44),
                             side: BorderSide(
                                 color: AppColors.mintDeep
                                     .withValues(alpha: 0.50)),
@@ -846,8 +911,8 @@ class _UsageLabel extends StatelessWidget {
           Icon(icon, size: 13, color: color),
           const SizedBox(width: 6),
           Text(label,
-              style:
-                  tt.labelSmall?.copyWith(fontWeight: FontWeight.w700)),
+              style: tt.labelSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)),
         ]),
         Text(detail,
             style: tt.labelSmall?.copyWith(
@@ -858,8 +923,6 @@ class _UsageLabel extends StatelessWidget {
     );
   }
 }
-
-// ── Usage bar ─────────────────────────────────────────────────────────────────
 
 class _UsageBar extends StatelessWidget {
   final double fraction;
@@ -889,7 +952,7 @@ class _UsageBar extends StatelessWidget {
   }
 }
 
-// ── Voice top-up sheet ────────────────────────────────────────────────────────
+// ── Voice top-up sheet ─────────────────────────────────────────────────────
 
 class _VoiceTopUpSheet extends StatefulWidget {
   const _VoiceTopUpSheet();
@@ -927,7 +990,7 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
       await _sub.buy(product);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      debugPrint('VoiceTopUpSheet: buy failed — $e');
+      debugPrint('VoiceTopUpSheet: buy failed \u2014 $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -975,8 +1038,8 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                     shape: BoxShape.circle,
                     color: AppColors.mintDeep.withValues(alpha: 0.12),
                     border: Border.all(
-                        color:
-                            AppColors.mintDeep.withValues(alpha: 0.30)),
+                        color: AppColors.mintDeep
+                            .withValues(alpha: 0.30)),
                   ),
                   child: Icon(Icons.mic_rounded,
                       color: AppColors.mintDeep, size: 20),
@@ -1032,7 +1095,8 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                                 .withValues(alpha: 0.25)),
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment:
+                            MainAxisAlignment.center,
                         children: [
                           Text('${pack.minutes}',
                               style: tt.titleMedium?.copyWith(
@@ -1051,7 +1115,8 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
                         children: [
                           Text(pack.displayName,
                               style: tt.titleSmall?.copyWith(
@@ -1083,8 +1148,9 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                                 : () => _buy(pack.productId),
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.mintDeep,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12),
+                              padding:
+                                  const EdgeInsets.symmetric(
+                                      horizontal: 12),
                               minimumSize: Size.zero,
                               tapTargetSize:
                                   MaterialTapTargetSize.shrinkWrap,
@@ -1102,7 +1168,8 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                                 : Text('Buy',
                                     style: tt.labelSmall?.copyWith(
                                         color: Colors.white,
-                                        fontWeight: FontWeight.w800)),
+                                        fontWeight:
+                                            FontWeight.w800)),
                           ),
                         ),
                       ],
