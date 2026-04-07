@@ -1090,13 +1090,15 @@ class _ChatScreenState extends State<ChatScreen> {
             orElse: () =>
                 ConversationMeta(id: _currentConvId, title: 'Chat'))
         .title;
-    final baseTitle =
-        _stripLeadingEmoji(rawTitle);
+    final baseTitle      = _stripLeadingEmoji(rawTitle);
     final decoratedTitle = _currentMoodEmoji == null
         ? baseTitle
         : '$baseTitle ${_currentMoodEmoji!}';
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safeBottom  = MediaQuery.of(context).viewPadding.bottom;
+
+    // Mood button: show current logged emoji, or 🙂 as default
+    final moodButtonEmoji = _currentMoodEmoji ?? '🙂';
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -1109,8 +1111,7 @@ class _ChatScreenState extends State<ChatScreen> {
             if (navigator.canPop()) {
               navigator.pop();
             } else {
-              Navigator.of(context)
-                  .pushReplacementNamed('/home');
+              Navigator.of(context).pushReplacementNamed('/home');
             }
           },
         ),
@@ -1118,10 +1119,22 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           const UsageBanner(compact: true),
           const SizedBox(width: 4),
-          IconButton(
-              icon: const Icon(Icons.mood),
-              tooltip: 'Log mood',
-              onPressed: _onLogMoodPressed),
+          // Colour emoji mood button
+          Tooltip(
+            message: 'Log mood',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: _onLogMoodPressed,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 8),
+                child: Text(
+                  moodButtonEmoji,
+                  style: const TextStyle(fontSize: 22),
+                ),
+              ),
+            ),
+          ),
           IconButton(
               icon: const Icon(Icons.folder_open),
               tooltip: 'Switch chat',
