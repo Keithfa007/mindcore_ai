@@ -185,9 +185,7 @@ def publish_to_wordpress(topic_data, content, image_id=None):
         },
     }
 
-    if image_id:
-        post_payload["featured_media"] = image_id
-
+    # Step 1: Create post WITHOUT featured image (Hostinger AI theme bug workaround)
     response = requests.post(
         f"{WP_URL}/wp-json/wp/v2/posts",
         headers=headers,
@@ -195,14 +193,29 @@ def publish_to_wordpress(topic_data, content, image_id=None):
         timeout=30,
     )
 
-    if response.status_code == 201:
-        post = response.json()
-        print(f"   ✅  Draft saved  →  {post.get('link', 'N/A')}")
-        return post
-    else:
+    if response.status_code != 201:
         raise RuntimeError(
             f"WordPress publish failed ({response.status_code}): {response.text}"
         )
+
+    post = response.json()
+    post_id = post["id"]
+    print(f"   ✅  Draft saved  →  {post.get('link', 'N/A')}")
+
+    # Step 2: Attach featured image separately (avoids Hostinger theme 500 error)
+    if image_id:
+        update_response = requests.post(
+            f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
+            headers=headers,
+            json={"featured_media": image_id},
+            timeout=30,
+        )
+        if update_response.status_code == 200:
+            print(f"   ✅  Featured image attached")
+        else:
+            print(f"   ⚠️   Image attach failed (post still saved): {update_response.text}")
+
+    return post
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
