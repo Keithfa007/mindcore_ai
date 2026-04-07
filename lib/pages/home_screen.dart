@@ -20,6 +20,7 @@ import 'package:mindcore_ai/services/mood_log_service.dart';
 import 'package:mindcore_ai/services/notification_service.dart';
 import 'package:mindcore_ai/services/settings_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
+import 'package:mindcore_ai/services/blog_service.dart';
 import 'package:mindcore_ai/ai/proactive_support_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -71,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen>
     _loadAll();
     _loadAI();
     _entranceCtrl.forward();
+
+    // Check for new blog posts silently on every open.
+    // Fires a notification if a post was published since last visit.
+    BlogService.checkForNewPost().ignore();
   }
 
   @override
