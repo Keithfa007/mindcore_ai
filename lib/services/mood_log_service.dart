@@ -95,53 +95,34 @@ class MoodRepo {
   }
 }
 
-/// Compatibility layer so this call compiles:
-/// final ok = await MoodLogService.logMood(...);
 class MoodLogService {
-  // ✅ ADDED: list store used by MoodHistoryScreen (emoji/label/note history)
   static const String _historyKey = 'mood_history_entries_v1';
 
-  /// Save a mood with metadata, map to a 1..5 score for charts.
-  /// Returns true if Firestore sync succeeded, false otherwise.
   static Future<bool> logMood({
     required String emoji,
     required String label,
     String note = '',
     DateTime? timestamp,
   }) async {
-    final when = timestamp ?? DateTime.now();
-    final score = _scoreFromEmojiOrLabel(emoji, label);
+    final when  = timestamp ?? DateTime.now();
+    final score = _scoreFromLabel(label);
 
-    dev.log('MoodLogService.logMood called: $emoji $label score=$score note="$note"');
+    dev.log('MoodLogService.logMood: $emoji $label score=$score');
 
-    // 1) Save numeric score for charts (local)
     await MoodRepo.instance.add(score, when: when);
 
-    // 2) Save metadata locally (emoji/label/note) keyed by day
     final prefs = await SharedPreferences.getInstance();
-    final key = _metaKeyForDate(when);
-    final meta = {'emoji': emoji, 'label': label, 'note': note};
-    await prefs.setString(key, jsonEncode(meta));
+    final key   = _metaKeyForDate(when);
+    await prefs.setString(key, jsonEncode({'emoji': emoji, 'label': label, 'note': note}));
 
-    // ✅ 2.5) ALSO append to the history list store (for MoodHistoryScreen logs)
     await _appendHistoryEntry(
-      emoji: emoji,
-      label: label,
-      note: note,
-      timestamp: when,
-    );
+        emoji: emoji, label: label, note: note, timestamp: when);
 
-    // 3) Sync to Firestore (cloud) - best effort
     try {
-      dev.log('Attempting Firestore mood write...');
       await MoodFirestoreService.instance.logMoodV2(
-        emoji: emoji,
-        label: label,
-        score: score,
-        note: note.isEmpty ? null : note,
-        timestamp: when,
+        emoji: emoji, label: label, score: score,
+        note: note.isEmpty ? null : note, timestamp: when,
       );
-      dev.log('Firestore mood write OK');
       return true;
     } catch (e) {
       dev.log('Firestore mood write FAILED: $e');
@@ -149,98 +130,72 @@ class MoodLogService {
     }
   }
 
-  /// Pull recent moods from Firestore and replace local cache (offline-first sync).
-  /// Call this after login.
   static Future<void> syncFromFirestore({int limit = 200}) async {
     try {
-      dev.log('Syncing moods from Firestore...');
       final remote = await MoodFirestoreService.instance.getRecentMoods(limit: limit);
+      if (remote.isEmpty) return;
 
-      if (remote.isEmpty) {
-        dev.log('No remote moods found.');
-        return;
-      }
-
-      // Build chart entries (score + timestamp)
-      final entries = <MoodEntry>[];
-      final prefs = await SharedPreferences.getInstance();
-
-      // ✅ Also rebuild the mood_history_entries_v1 list from remote (so logs match after sync)
-      final historyList = <Map<String, dynamic>>[];
+      final entries      = <MoodEntry>[];
+      final historyList  = <Map<String, dynamic>>[];
+      final prefs        = await SharedPreferences.getInstance();
 
       for (final m in remote) {
         final tsAny = m['timestamp'];
-        final when = tsAny is Timestamp ? tsAny.toDate() : DateTime.now();
-
+        final when  = tsAny is Timestamp ? tsAny.toDate() : DateTime.now();
         final scoreAny = m['score'];
         final score = (scoreAny is num ? scoreAny.toInt() : 3).clamp(1, 5);
-
-        final id = (m['id'] ?? '').toString().isNotEmpty
+        final id    = (m['id'] ?? '').toString().isNotEmpty
             ? (m['id'] ?? '').toString()
             : when.millisecondsSinceEpoch.toString();
 
-        entries.add(MoodEntry(
-          id: id,
-          timestamp: when,
-          score: score,
-        ));
+        entries.add(MoodEntry(id: id, timestamp: when, score: score));
 
-        // Restore metadata per day (emoji/label/note)
         final emoji = (m['emoji'] ?? '').toString();
         final label = (m['label'] ?? '').toString();
-        final note = (m['note'] ?? '').toString();
+        final note  = (m['note']  ?? '').toString();
 
-        if (emoji.isNotEmpty || label.isNotEmpty || note.isNotEmpty) {
-          final key = _metaKeyForDate(when);
-          final meta = {'emoji': emoji, 'label': label, 'note': note};
-          await prefs.setString(key, jsonEncode(meta));
+        if (emoji.isNotEmpty || label.isNotEmpty) {
+          await prefs.setString(_metaKeyForDate(when),
+              jsonEncode({'emoji': emoji, 'label': label, 'note': note}));
         }
 
-        // ✅ Build history entry
         historyList.add({
-          'ts': when.toIso8601String(),
-          'emoji': emoji.isEmpty ? '🙂' : emoji,
-          'mood': label.isEmpty ? 'Neutral' : label,
-          'note': note,
+          'ts':    when.toIso8601String(),
+          'emoji': emoji.isEmpty ? '\ud83d\ude42' : emoji,
+          'mood':  label.isEmpty ? 'Okay' : label,
+          'note':  note,
         });
       }
 
-      // Store newest-first like fetchAll() expects
       entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       await MoodRepo.instance.replaceAll(entries);
 
-      // ✅ Store history list (newest-first)
-      historyList.sort((a, b) => (b['ts'] as String).compareTo(a['ts'] as String));
+      historyList.sort((a, b) =>
+          (b['ts'] as String).compareTo(a['ts'] as String));
       await prefs.setString(_historyKey, jsonEncode(historyList));
-
-      dev.log('Firestore → local mood sync complete. Entries: ${entries.length}');
     } catch (e) {
       dev.log('Firestore → local mood sync failed: $e');
     }
   }
 
-  /// Get today’s metadata back (emoji/label/note).
   static Future<Map<String, String>> todayMeta() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = _metaKeyForDate(DateTime.now());
-    final raw = prefs.getString(key);
+    final raw   = prefs.getString(_metaKeyForDate(DateTime.now()));
     if (raw == null || raw.isEmpty) return {};
     final Map<String, dynamic> j = jsonDecode(raw);
     return {
       'emoji': (j['emoji'] ?? '').toString(),
       'label': (j['label'] ?? '').toString(),
-      'note': (j['note'] ?? '').toString(),
+      'note':  (j['note']  ?? '').toString(),
     };
   }
 
-  /// Forwarder so Home can also call MoodLogService.last7Normalized()
-  static Future<List<double>> last7Normalized() => MoodRepo.instance.last7Normalized();
+  static Future<List<double>> last7Normalized() =>
+      MoodRepo.instance.last7Normalized();
 
-  // ---- helpers ----
   static String _metaKeyForDate(DateTime d) =>
       'mood_meta_${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  // ✅ ADDED: append to mood_history_entries_v1
   static Future<void> _appendHistoryEntry({
     required String emoji,
     required String label,
@@ -248,9 +203,8 @@ class MoodLogService {
     required DateTime timestamp,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_historyKey);
-
-    final list = <Map<String, dynamic>>[];
+    final raw   = prefs.getString(_historyKey);
+    final list  = <Map<String, dynamic>>[];
     if (raw != null && raw.isNotEmpty) {
       try {
         final decoded = jsonDecode(raw);
@@ -261,58 +215,53 @@ class MoodLogService {
         }
       } catch (_) {}
     }
-
     list.add({
-      'ts': timestamp.toIso8601String(),
+      'ts':    timestamp.toIso8601String(),
       'emoji': emoji,
-      'mood': label,
-      'note': note,
+      'mood':  label,
+      'note':  note,
     });
-
     await prefs.setString(_historyKey, jsonEncode(list));
   }
 
-  static int _scoreFromEmojiOrLabel(String emoji, String label) {
-    final byEmoji = <String, int>{
-      // very low
-      '😞': 1, '😢': 1, '😭': 1,
+  // ── Score mapping ──────────────────────────────────────────────────────────
+  // Maps mood labels to 1–5 score for charting and pattern detection.
+  // Scores are intentionally generous so hopeful states show progress.
 
-      // low / stressed / panic / frustrated
-      '😰': 2, '😟': 2, '😕': 2, '☹️': 2, '😠': 2, '😡': 2,
-
-      // neutral / tired
-      '😐': 3, '😶': 3, '😴': 3, '🙂': 3,
-
-      // good
-      '😊': 4, '😀': 4,
-
-      // great
-      '😄': 5, '😁': 5, '🤩': 5, '😍': 5,
-    };
-
-    final byLabel = <String, int>{
-      // 1
-      'awful': 1, 'terrible': 1, 'very low': 1,
-
-      // 2
-      'bad': 2, 'low': 2, 'sad': 2, 'anxious': 2, 'panic': 2,
-      'frustrated': 2, 'stressed': 2,
-
-      // 3
-      'okay': 3, 'neutral': 3, 'meh': 3, 'tired': 3,
-
-      // 4
-      'good': 4, 'better': 4, 'calm': 4,
-
-      // 5
-      'great': 5, 'excellent': 5, 'amazing': 5,
-    };
-
-    final e = byEmoji[emoji];
-    if (e != null) return e;
-
-    final l = byLabel[label.trim().toLowerCase()];
-    return l ?? 3;
+  static int _scoreFromLabel(String label) {
+    switch (label.toLowerCase().trim()) {
+      // 5 — thriving
+      case 'amazing':   return 5;
+      case 'grateful':  return 5;
+      // 4 — doing well
+      case 'happy':     return 4;
+      case 'peaceful':  return 4;
+      case 'calm':      return 4;
+      case 'motivated': return 4;
+      case 'good':      return 4;
+      case 'better':    return 4;
+      // 3 — okay / neutral
+      case 'okay':      return 3;
+      case 'neutral':   return 3;
+      case 'tired':     return 3;
+      case 'unsettled': return 3;
+      case 'meh':       return 3;
+      // 2 — struggling
+      case 'sad':        return 2;
+      case 'anxious':    return 2;
+      case 'frustrated': return 2;
+      case 'tearful':    return 2;
+      case 'numb':       return 2;
+      case 'low':        return 2;
+      case 'stressed':   return 2;
+      case 'angry':      return 2;
+      // 1 — really struggling
+      case 'overwhelmed': return 1;
+      case 'hopeless':    return 1;
+      case 'awful':       return 1;
+      case 'terrible':    return 1;
+      case 'panic':       return 1;
+      default:            return 3;
+    }
   }
-
 }
