@@ -1,3 +1,5 @@
+// lib/pages/home_screen.dart
+// TTS removed from home screen — voice is only in voice chat and breathing
 import 'package:flutter/material.dart';
 import '../widgets/page_scaffold.dart';
 import '../widgets/surfaces.dart';
@@ -20,10 +22,6 @@ import 'package:mindcore_ai/services/notification_service.dart';
 import 'package:mindcore_ai/services/settings_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/ai/proactive_support_service.dart';
-import 'package:mindcore_ai/services/openai_tts_service.dart';
-import 'package:mindcore_ai/pages/helpers/route_observer.dart';
-import 'package:mindcore_ai/widgets/tts_replay_button.dart';
-import 'package:mindcore_ai/widgets/tts_speaker_button.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,7 +30,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with AutoStopTtsRouteAware<HomeScreen>, TickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final TextEditingController _plan = TextEditingController();
   bool _savingPlan = false;
 
@@ -48,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   // Staggered entrance animations
   late final AnimationController _entranceCtrl;
-  final List<Animation<double>> _fadeAnims = [];
+  final List<Animation<double>> _fadeAnims  = [];
   final List<Animation<Offset>> _slideAnims = [];
   static const int _cardCount = 8;
 
@@ -62,8 +60,8 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     for (int i = 0; i < _cardCount; i++) {
-      final start = (i * 0.10).clamp(0.0, 0.88);
-      final end   = (start + 0.36).clamp(0.0, 1.0);
+      final start    = (i * 0.10).clamp(0.0, 0.88);
+      final end      = (start + 0.36).clamp(0.0, 1.0);
       final interval = Interval(start, end, curve: Curves.easeOut);
       _fadeAnims.add(
         Tween<double>(begin: 0.0, end: 1.0)
@@ -84,7 +82,6 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _plan.dispose();
     _entranceCtrl.dispose();
-    OpenAiTtsService.instance.stop();
     super.dispose();
   }
 
@@ -96,7 +93,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Load briefing + pattern + report + streak in parallel ───────────────
   Future<void> _loadAI() async {
     setState(() => _briefingLoading = true);
     final results = await Future.wait([
@@ -107,15 +103,14 @@ class _HomeScreenState extends State<HomeScreen>
     ]);
     if (!mounted) return;
     setState(() {
-      _briefing      = results[0] as String?;
-      _prediction    = results[1] as MoodPrediction?;
-      _weeklyReport  = results[2] as WeeklyReport?;
-      _streak        = results[3] as int? ?? 0;
+      _briefing        = results[0] as String?;
+      _prediction      = results[1] as MoodPrediction?;
+      _weeklyReport    = results[2] as WeeklyReport?;
+      _streak          = results[3] as int? ?? 0;
       _briefingLoading = false;
     });
   }
 
-  // ── Load mood + suggestion ────────────────────────────────────────────
   Future<void> _loadAll() async {
     await DailyPlanService.getTodayNote();
     final mood       = await MoodRepo.instance.last7Normalized();
@@ -123,6 +118,7 @@ class _HomeScreenState extends State<HomeScreen>
     final reminderEnabled = await SettingsService.getDailyReminderEnabled();
     final reminderTime    = await SettingsService.getDailyReminderTime();
 
+    // Always schedule the daily recommendation notification if enabled
     if (reminderEnabled) {
       await NotificationService.instance
           .scheduleDailyRecommendationNotification(
@@ -141,20 +137,6 @@ class _HomeScreenState extends State<HomeScreen>
       _plan.text         = '';
       _last7             = mood;
       _supportSuggestion = suggestion;
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final autoSpeakText = suggestion.subtitle.trim().isNotEmpty
-          ? '${suggestion.title}. ${suggestion.subtitle.split('.').first.trim()}'
-          : suggestion.title;
-      await OpenAiTtsService.instance.maybeSpeakOncePerDay(
-        uniqueKey: suggestion.id,
-        text: autoSpeakText,
-        surface: TtsSurface.recommendation,
-        moodLabel: 'calm',
-        messageId: 'home_recommendation_${suggestion.id}',
-      );
     });
   }
 
@@ -191,7 +173,6 @@ class _HomeScreenState extends State<HomeScreen>
     Navigator.of(context).pushNamed(route);
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────
   String get _greeting {
     final h = DateTime.now().hour;
     if (h >= 5  && h < 9)  return 'Early start';
@@ -215,33 +196,28 @@ class _HomeScreenState extends State<HomeScreen>
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
           children: [
 
-            // ── Hero: Logo + Streak + Greeting + Briefing ───────────────
+            // Hero
             _animated(
               0,
               Padding(
                 padding: const EdgeInsets.fromLTRB(0, 28, 0, 8),
                 child: Column(
                   children: [
-                    // Animated branded logo — same as login screen
                     const AnimatedLogo(size: 160),
                     const SizedBox(height: 16),
-
-                    // Streak badge
                     StreakBadge(streak: _streak),
                     const SizedBox(height: 14),
-
-                    // Greeting
                     Text(
                       _greeting,
                       style: tt.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white : const Color(0xFF0E1320),
+                        color: isDark
+                            ? Colors.white
+                            : const Color(0xFF0E1320),
                         letterSpacing: -0.8,
                       ),
                     ),
                     const SizedBox(height: 10),
-
-                    // AI briefing
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 500),
                       child: _briefingLoading
@@ -258,20 +234,19 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 20),
 
-            // ── SOS button ─────────────────────────────────────────────
+            // SOS button
             _animated(
               1,
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _SosButton(
                   onTap: () => Navigator.of(context).pushNamed('/sos'),
-                  isDark: isDark,
-                  tt: tt,
+                  isDark: isDark, tt: tt,
                 ),
               ),
             ),
 
-            // ── Mood pattern chip ──────────────────────────────────────
+            // Mood pattern chip
             if (_prediction != null)
               _animated(
                 2,
@@ -286,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
 
-            // ── Weekly report ───────────────────────────────────────────
+            // Weekly report
             if (_weeklyReport != null)
               _animated(
                 3,
@@ -297,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
 
-            // ── Daily Reset ─────────────────────────────────────────────
+            // Daily Reset
             _animated(
               4,
               ValueListenableBuilder<bool>(
@@ -310,7 +285,8 @@ class _HomeScreenState extends State<HomeScreen>
                       children: [
                         const SectionHeroCard(
                           title: 'Daily Reset',
-                          subtitle: 'A quick moment to breathe and recenter',
+                          subtitle:
+                              'A quick moment to breathe and recenter',
                         ),
                         const SizedBox(height: 8),
                         SizedBox(
@@ -344,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 12),
 
-            // ── Chat buttons ─────────────────────────────────────────────
+            // Chat buttons
             _animated(
               5,
               Row(
@@ -358,18 +334,43 @@ class _HomeScreenState extends State<HomeScreen>
                           Container(
                             width: 50, height: 50,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF4D7CFF), Color(0xFF74C3FF)]),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFF4D7CFF), Color(0xFF74C3FF)],
+                              ),
                               shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.35),
+                                  blurRadius: 16, offset: const Offset(0, 6),
+                                )
+                              ],
                             ),
-                            child: const Icon(Icons.chat_rounded, color: Colors.white, size: 24),
+                            child: const Icon(Icons.chat_rounded,
+                                color: Colors.white, size: 24),
                           ),
                           const SizedBox(height: 10),
-                          Text('Text Chat', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                          Text('Text Chat',
+                              style: tt.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800)),
                           const SizedBox(height: 4),
-                          Text('Type your thoughts', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.55)), textAlign: TextAlign.center),
+                          Text('Type your thoughts',
+                              style: tt.bodySmall?.copyWith(
+                                  color: cs.onSurface.withValues(alpha: 0.55)),
+                              textAlign: TextAlign.center),
                           const SizedBox(height: 12),
-                          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.of(context).pushNamed('/chat'), style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)), child: const Text('Open'))),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(context)
+                                  .pushNamed('/chat'),
+                              style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 10)),
+                              child: const Text('Open'),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -384,18 +385,50 @@ class _HomeScreenState extends State<HomeScreen>
                           Container(
                             width: 50, height: 50,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF32D0BE), Color(0xFF89E0CF)]),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFF32D0BE), Color(0xFF89E0CF)
+                                ],
+                              ),
                               shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: AppColors.mintDeep.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.mintDeep
+                                      .withValues(alpha: 0.35),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6),
+                                )
+                              ],
                             ),
-                            child: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
+                            child: const Icon(Icons.mic_rounded,
+                                color: Colors.white, size: 24),
                           ),
                           const SizedBox(height: 10),
-                          Text('Voice Chat', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                          Text('Voice Chat',
+                              style: tt.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800)),
                           const SizedBox(height: 4),
-                          Text('Speak hands-free', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.55)), textAlign: TextAlign.center),
+                          Text('Speak hands-free',
+                              style: tt.bodySmall?.copyWith(
+                                  color: cs.onSurface.withValues(alpha: 0.55)),
+                              textAlign: TextAlign.center),
                           const SizedBox(height: 12),
-                          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.of(context).pushNamed('/voice-chat'), style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10), backgroundColor: AppColors.mintDeep, foregroundColor: Colors.white), child: const Text('Open'))),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(context)
+                                  .pushNamed('/voice-chat'),
+                              style: FilledButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 10),
+                                backgroundColor: AppColors.mintDeep,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Open'),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -405,7 +438,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 12),
 
-            // ── Guided Sessions ──────────────────────────────────────────
+            // Guided Sessions
             _animated(
               6,
               ValueListenableBuilder<bool>(
@@ -416,9 +449,25 @@ class _HomeScreenState extends State<HomeScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SectionHeroCard(title: 'Guided Sessions', subtitle: 'Ready-to-play calming audio journeys for focus, sleep, panic, and emotional reset'),
+                        const SectionHeroCard(
+                          title: 'Guided Sessions',
+                          subtitle:
+                              'Ready-to-play calming audio journeys for focus, sleep, panic, and emotional reset',
+                        ),
                         const SizedBox(height: 10),
-                        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _openPremiumRoute('/guided-sessions'), icon: Icon(isPremium ? Icons.self_improvement_rounded : Icons.lock_rounded), label: Text(isPremium ? 'Open Guided Sessions' : 'Unlock Guided Sessions'))),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () =>
+                                _openPremiumRoute('/guided-sessions'),
+                            icon: Icon(isPremium
+                                ? Icons.self_improvement_rounded
+                                : Icons.lock_rounded),
+                            label: Text(isPremium
+                                ? 'Open Guided Sessions'
+                                : 'Unlock Guided Sessions'),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -427,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 12),
 
-            // ── Recommended for you ──────────────────────────────────────
+            // Recommended for you — no TTS buttons
             if (_supportSuggestion != null)
               _animated(
                 7,
@@ -437,7 +486,11 @@ class _HomeScreenState extends State<HomeScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionHeroCard(title: 'Recommended for you', subtitle: 'A gentle nudge based on your recent activity'),
+                      const SectionHeroCard(
+                        title: 'Recommended for you',
+                        subtitle:
+                            'A gentle nudge based on your recent activity',
+                      ),
                       const SizedBox(height: 12),
                       NestCard(
                         child: Row(
@@ -449,7 +502,11 @@ class _HomeScreenState extends State<HomeScreen>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(_supportSuggestion!.title, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                                  Text(
+                                    _supportSuggestion!.title,
+                                    style: tt.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w700),
+                                  ),
                                   const SizedBox(height: 6),
                                   Text(_supportSuggestion!.subtitle),
                                 ],
@@ -459,14 +516,13 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(child: FilledButton.icon(onPressed: _openRecommendation, icon: Icon(_supportSuggestion!.icon, size: 18), label: Text(_supportSuggestion!.ctaLabel))),
-                          const SizedBox(width: 10),
-                          TtsSpeakerButton(text: '${_supportSuggestion!.title}. ${_supportSuggestion!.subtitle}', surface: TtsSurface.recommendation, moodLabel: 'calm', messageId: 'speak_recommendation_${_supportSuggestion!.id}'),
-                          const SizedBox(width: 8),
-                          const TtsReplayButton(surface: TtsSurface.recommendation),
-                        ],
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _openRecommendation,
+                          icon: Icon(_supportSuggestion!.icon, size: 18),
+                          label: Text(_supportSuggestion!.ctaLabel),
+                        ),
                       ),
                     ],
                   ),
@@ -474,19 +530,24 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             if (_supportSuggestion != null) const SizedBox(height: 12),
 
-            // ── Journal ───────────────────────────────────────────────────
+            // Journal
             GlassCard(
               padding: const EdgeInsets.all(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionHeroCard(title: 'Journal', subtitle: 'You can write anything here.'),
+                  const SectionHeroCard(
+                      title: 'Journal', subtitle: 'You can write anything here.'),
                   const SizedBox(height: 12),
                   NestCard(
                     child: TextField(
-                      controller: _plan, maxLines: 4,
+                      controller: _plan,
+                      maxLines: 4,
                       textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(hintText: 'A few lines is enough\u2026', border: InputBorder.none),
+                      decoration: const InputDecoration(
+                        hintText: 'A few lines is enough\u2026',
+                        border: InputBorder.none,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -498,21 +559,44 @@ class _HomeScreenState extends State<HomeScreen>
                           Expanded(
                             child: FilledButton(
                               onPressed: _savingPlan ? null : _saveJournal,
-                              child: Padding(padding: const EdgeInsets.symmetric(vertical: 12.0), child: Text(_savingPlan ? 'Saving\u2026' : 'Save entry')),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12.0),
+                                child: Text(_savingPlan
+                                    ? 'Saving\u2026'
+                                    : 'Save entry'),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 10),
                           OutlinedButton.icon(
-                            onPressed: () => _openPremiumRoute('/daily-hub'),
-                            icon: Icon(isPremium ? Icons.visibility_rounded : Icons.lock_rounded, size: 16),
-                            label: const Padding(padding: EdgeInsets.symmetric(vertical: 12.0), child: Text('View')),
+                            onPressed: () =>
+                                _openPremiumRoute('/daily-hub'),
+                            icon: Icon(
+                              isPremium
+                                  ? Icons.visibility_rounded
+                                  : Icons.lock_rounded,
+                              size: 16,
+                            ),
+                            label: const Padding(
+                              padding:
+                                  EdgeInsets.symmetric(vertical: 12.0),
+                              child: Text('View'),
+                            ),
                           ),
                         ],
                       );
                     },
                   ),
                   const SizedBox(height: 10),
-                  Text('Saved locally on your device.', style: tt.bodySmall?.copyWith(color: isDark ? Colors.white.withValues(alpha: 0.45) : Colors.black.withValues(alpha: 0.45))),
+                  Text(
+                    'Saved locally on your device.',
+                    style: tt.bodySmall?.copyWith(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.45)
+                          : Colors.black.withValues(alpha: 0.45),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -523,45 +607,79 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ── SOS button ───────────────────────────────────────────────────────────
+// ── SOS button ────────────────────────────────────────────────────────────────────
 
 class _SosButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isDark;
   final TextTheme tt;
-  const _SosButton({required this.onTap, required this.isDark, required this.tt});
+  const _SosButton(
+      {required this.onTap, required this.isDark, required this.tt});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.55 : 0.40), width: 1.5),
-          color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.10 : 0.07),
-          boxShadow: [BoxShadow(color: const Color(0xFFFF6B6B).withValues(alpha: 0.18), blurRadius: 18, spreadRadius: 1)],
+          border: Border.all(
+            color: const Color(0xFFFF6B6B)
+                .withValues(alpha: isDark ? 0.55 : 0.40),
+            width: 1.5,
+          ),
+          color: const Color(0xFFFF6B6B)
+              .withValues(alpha: isDark ? 0.10 : 0.07),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF6B6B).withValues(alpha: 0.18),
+              blurRadius: 18, spreadRadius: 1,
+            )
+          ],
         ),
         child: Row(
           children: [
             Container(
               width: 38, height: 38,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFF6B6B).withValues(alpha: 0.15)),
-              child: const Icon(Icons.warning_amber_rounded, color: Color(0xFFFF6B6B), size: 20),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFFF6B6B).withValues(alpha: 0.15),
+              ),
+              child: const Icon(Icons.warning_amber_rounded,
+                  color: Color(0xFFFF6B6B), size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('SOS \u2014 I need help right now', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFFFF6B6B))),
+                  Text(
+                    'SOS \u2014 I need help right now',
+                    style: tt.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFFFF6B6B),
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text('Tap for instant grounding: breathe, ground, audio', style: tt.bodySmall?.copyWith(color: isDark ? Colors.white.withValues(alpha: 0.50) : Colors.black.withValues(alpha: 0.50))),
+                  Text(
+                    'Tap for instant grounding: breathe, ground, audio',
+                    style: tt.bodySmall?.copyWith(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.50)
+                          : Colors.black.withValues(alpha: 0.50),
+                    ),
+                  ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: const Color(0xFFFF6B6B).withValues(alpha: 0.70), size: 20),
+            Icon(
+              Icons.chevron_right_rounded,
+              color:
+                  const Color(0xFFFF6B6B).withValues(alpha: 0.70),
+              size: 20,
+            ),
           ],
         ),
       ),
@@ -569,13 +687,14 @@ class _SosButton extends StatelessWidget {
   }
 }
 
-// ── Weekly report card ─────────────────────────────────────────────────
+// ── Weekly report card ─────────────────────────────────────────────────────────
 
 class _WeeklyReportCard extends StatelessWidget {
   final WeeklyReport report;
   final TextTheme tt;
   final bool isDark;
-  const _WeeklyReportCard({required this.report, required this.tt, required this.isDark});
+  const _WeeklyReportCard(
+      {required this.report, required this.tt, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -585,22 +704,43 @@ class _WeeklyReportCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: AppColors.violet.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
+              border:
+                  Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
             ),
-            child: Text('Weekly Report', style: tt.labelSmall?.copyWith(color: AppColors.violet, fontWeight: FontWeight.w800)),
+            child: Text('Weekly Report',
+                style: tt.labelSmall?.copyWith(
+                    color: AppColors.violet, fontWeight: FontWeight.w800)),
           ),
           const SizedBox(height: 12),
-          Text(report.summary, style: tt.bodyMedium?.copyWith(color: isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF0E1320), height: 1.5)),
+          Text(
+            report.summary,
+            style: tt.bodyMedium?.copyWith(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.85)
+                  : const Color(0xFF0E1320),
+              height: 1.5,
+            ),
+          ),
           const SizedBox(height: 14),
-          _ReportRow(icon: Icons.star_rounded, color: AppColors.mintDeep, label: 'Best day', value: report.bestDay, tt: tt, isDark: isDark),
+          _ReportRow(
+              icon: Icons.star_rounded, color: AppColors.mintDeep,
+              label: 'Best day', value: report.bestDay,
+              tt: tt, isDark: isDark),
           const SizedBox(height: 8),
-          _ReportRow(icon: Icons.lightbulb_rounded, color: AppColors.primary, label: 'What helped', value: report.highlight, tt: tt, isDark: isDark),
+          _ReportRow(
+              icon: Icons.lightbulb_rounded, color: AppColors.primary,
+              label: 'What helped', value: report.highlight,
+              tt: tt, isDark: isDark),
           const SizedBox(height: 8),
-          _ReportRow(icon: Icons.visibility_rounded, color: AppColors.violet, label: 'Watch out', value: report.watchOut, tt: tt, isDark: isDark),
+          _ReportRow(
+              icon: Icons.visibility_rounded, color: AppColors.violet,
+              label: 'Watch out', value: report.watchOut,
+              tt: tt, isDark: isDark),
         ],
       ),
     );
@@ -614,7 +754,10 @@ class _ReportRow extends StatelessWidget {
   final String value;
   final TextTheme tt;
   final bool isDark;
-  const _ReportRow({required this.icon, required this.color, required this.label, required this.value, required this.tt, required this.isDark});
+  const _ReportRow({
+    required this.icon, required this.color, required this.label,
+    required this.value, required this.tt, required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -626,9 +769,16 @@ class _ReportRow extends StatelessWidget {
         Expanded(
           child: RichText(
             text: TextSpan(
-              style: tt.bodySmall?.copyWith(color: isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF475467), height: 1.4),
+              style: tt.bodySmall?.copyWith(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.65)
+                    : const Color(0xFF475467),
+                height: 1.4,
+              ),
               children: [
-                TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w800)),
+                TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
                 TextSpan(text: value),
               ],
             ),
@@ -639,7 +789,7 @@ class _ReportRow extends StatelessWidget {
   }
 }
 
-// ── Briefing shimmer ──────────────────────────────────────────────────────
+// ── Briefing shimmer ───────────────────────────────────────────────────────────────
 
 class _BriefingShimmer extends StatefulWidget {
   final bool isDark;
@@ -656,7 +806,9 @@ class _BriefingShimmerState extends State<_BriefingShimmer>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
@@ -671,22 +823,37 @@ class _BriefingShimmerState extends State<_BriefingShimmer>
       builder: (_, __) {
         final alpha = 0.08 + _anim.value * 0.12;
         return Column(children: [
-          Container(width: 240, height: 13, decoration: BoxDecoration(color: (widget.isDark ? Colors.white : Colors.black).withValues(alpha: alpha), borderRadius: BorderRadius.circular(6))),
+          Container(
+            width: 240, height: 13,
+            decoration: BoxDecoration(
+              color: (widget.isDark ? Colors.white : Colors.black)
+                  .withValues(alpha: alpha),
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
           const SizedBox(height: 6),
-          Container(width: 180, height: 11, decoration: BoxDecoration(color: (widget.isDark ? Colors.white : Colors.black).withValues(alpha: alpha * 0.7), borderRadius: BorderRadius.circular(6))),
+          Container(
+            width: 180, height: 11,
+            decoration: BoxDecoration(
+              color: (widget.isDark ? Colors.white : Colors.black)
+                  .withValues(alpha: alpha * 0.7),
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
         ]);
       },
     );
   }
 }
 
-// ── Briefing text ─────────────────────────────────────────────────────────
+// ── Briefing text ───────────────────────────────────────────────────────────────
 
 class _BriefingText extends StatelessWidget {
   final String text;
   final bool isDark;
   final TextTheme tt;
-  const _BriefingText({required this.text, required this.isDark, required this.tt});
+  const _BriefingText(
+      {required this.text, required this.isDark, required this.tt});
 
   @override
   Widget build(BuildContext context) {
@@ -697,7 +864,9 @@ class _BriefingText extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: tt.bodyMedium?.copyWith(
-          color: isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF475467),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.65)
+              : const Color(0xFF475467),
           height: 1.5,
           letterSpacing: 0.1,
         ),
