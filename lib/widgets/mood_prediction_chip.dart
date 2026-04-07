@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:mindcore_ai/ai/mood_pattern_service.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 
-/// Glassmorphism insight card shown when a mood pattern is detected.
+/// Glassmorphism insight card shown when a genuine mood pattern is detected.
 class MoodPredictionChip extends StatelessWidget {
   final MoodPrediction prediction;
   final VoidCallback? onAction;
@@ -21,7 +21,7 @@ class MoodPredictionChip extends StatelessWidget {
     final accent = prediction.accentColor;
 
     return GlassCard(
-      glowColor: accent.withValues(alpha: 0.40),
+      glowColor: accent.withValues(alpha: 0.35),
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,26 +46,32 @@ class MoodPredictionChip extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Headline + badge
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: Text(
                         prediction.headline,
                         style: tt.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: isDark ? Colors.white : const Color(0xFF0E1320),
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF0E1320),
                         ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: accent.withValues(alpha: isDark ? 0.20 : 0.12),
+                        color: accent.withValues(
+                            alpha: isDark ? 0.20 : 0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        'Pattern',
+                        'Insight',
                         style: tt.labelSmall?.copyWith(
                           color: accent,
                           fontWeight: FontWeight.w800,
@@ -76,16 +82,21 @@ class MoodPredictionChip extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
+
+                // Detail
                 Text(
                   prediction.detail,
                   style: tt.bodySmall?.copyWith(
                     color: isDark
-                        ? Colors.white.withValues(alpha: 0.60)
+                        ? Colors.white.withValues(alpha: 0.62)
                         : const Color(0xFF475467),
-                    height: 1.45,
+                    height: 1.5,
                   ),
                 ),
-                if (prediction.actionLabel != null && onAction != null) ...[
+
+                // Action link
+                if (prediction.actionLabel != null &&
+                    onAction != null) ...[
                   const SizedBox(height: 10),
                   GestureDetector(
                     onTap: onAction,
