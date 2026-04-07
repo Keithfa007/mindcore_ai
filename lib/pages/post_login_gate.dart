@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
 import 'onboarding_screen.dart';
 import 'paywall_screen.dart';
-import 'package:mindcore_ai/services/daily_motivation_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/animated_logo.dart';
@@ -31,6 +30,7 @@ class _PostLoginGateState extends State<PostLoginGate> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    //await prefs.remove('onboarding_done_v1'); // TEMP — delete after testing
     final done   = prefs.getBool(_kOnboardingDone) ?? false;
     final access = await PremiumService.hasAccess();
 
@@ -42,7 +42,6 @@ class _PostLoginGateState extends State<PostLoginGate> {
 
     if (done && access) {
       await Future.delayed(const Duration(milliseconds: 350));
-      await DailyMotivationService.maybeSpeakOnAppOpen(moodLabel: 'neutral');
     }
   }
 
@@ -51,7 +50,6 @@ class _PostLoginGateState extends State<PostLoginGate> {
     await prefs.setBool(_kOnboardingDone, true);
     if (!mounted) return;
     await Future.delayed(const Duration(milliseconds: 350));
-    await DailyMotivationService.maybeSpeakOnAppOpen(moodLabel: 'neutral');
     setState(() => _onboardingDone = true);
   }
 

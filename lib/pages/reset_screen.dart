@@ -5,7 +5,6 @@ import 'package:mindcore_ai/widgets/glass_card.dart';
 
 import 'package:mindcore_ai/pages/helpers/mood_picker_sheet.dart';
 import 'package:mindcore_ai/services/reset_metrics_service.dart';
-import 'package:mindcore_ai/services/affirmation_service.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/pages/helpers/route_observer.dart';
@@ -74,10 +73,7 @@ class _ResetScreenState extends State<ResetScreen>
         afterStress: _after,
         moodLabel: _moodLabel,
       );
-      await AffirmationService.getDailyAffirmation(
-        moodLabel: _moodLabel,
-        speak: true,
-      );
+      
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Reset saved. Nice work.')),
