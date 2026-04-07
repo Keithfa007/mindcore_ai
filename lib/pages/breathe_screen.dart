@@ -1,5 +1,4 @@
 // lib/pages/breathe_screen.dart
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -108,6 +107,9 @@ class _BreatheScreenState extends State<BreatheScreen>
   AiBreathingCoachPlan _coachPlan = AiBreathingCoachPlan.fallback('calm');
   double _lastAnimValue = 0.0;
 
+  // Single calming color used throughout — no color switching
+  static const _calmColor = Color(0xFF2D7DD2);
+
   @override
   void initState() {
     super.initState();
@@ -149,10 +151,10 @@ class _BreatheScreenState extends State<BreatheScreen>
 
   String get _presetName {
     switch (_settings.preset) {
-      case _Preset.box:          return 'Box';
-      case _Preset.equal:        return 'Equal';
+      case _Preset.box:            return 'Box';
+      case _Preset.equal:          return 'Equal';
       case _Preset.fourSevenEight: return '4-7-8';
-      case _Preset.custom:       return 'Custom';
+      case _Preset.custom:         return 'Custom';
     }
   }
 
@@ -177,7 +179,7 @@ class _BreatheScreenState extends State<BreatheScreen>
     if (_settings.haptics) HapticFeedback.mediumImpact();
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Session complete')));
+          .showSnackBar(const SnackBar(content: Text('Session complete ✔')));
       setState(() {});
     }
   }
@@ -199,10 +201,10 @@ class _BreatheScreenState extends State<BreatheScreen>
     final b = _dHold1.inMilliseconds;
     final c = _dExhale.inMilliseconds;
     _Phase next;
-    if (t < a)         next = _Phase.inhale;
-    else if (t < a+b)  next = _Phase.hold1;
+    if (t < a)          next = _Phase.inhale;
+    else if (t < a+b)   next = _Phase.hold1;
     else if (t < a+b+c) next = _Phase.exhale;
-    else               next = _Phase.hold2;
+    else                next = _Phase.hold2;
     if (next != _phaseVN.value) {
       _phaseVN.value = next;
       if (_settings.haptics) HapticFeedback.lightImpact();
@@ -215,8 +217,8 @@ class _BreatheScreenState extends State<BreatheScreen>
     _lastSpokenPhase = p;
     String text;
     switch (p) {
-      case _Phase.inhale: text = _aiCoachEnabled ? _coachPlan.inhale : 'Inhale'; break;
-      case _Phase.exhale: text = _aiCoachEnabled ? _coachPlan.exhale : 'Exhale'; break;
+      case _Phase.inhale: text = _aiCoachEnabled ? _coachPlan.inhale : 'Breathe in'; break;
+      case _Phase.exhale: text = _aiCoachEnabled ? _coachPlan.exhale : 'Breathe out'; break;
       case _Phase.hold1: case _Phase.hold2:
         text = _aiCoachEnabled ? _coachPlan.hold : 'Hold'; break;
     }
@@ -240,7 +242,7 @@ class _BreatheScreenState extends State<BreatheScreen>
       return;
     }
     _completedCycles = 0;
-    _coachMoodLabel = _settings.tts ? 'calm' : 'neutral';
+    _coachMoodLabel = 'calm';
     await _prepareAiCoach();
     _cyclesVN.value = 0; _lastSpokenPhase = null;
     _c.duration = _cycle; _lastAnimValue = _c.value;
@@ -284,36 +286,30 @@ class _BreatheScreenState extends State<BreatheScreen>
         _c.repeat(period: _cycle); _speakPhase(_phaseVN.value);
       } else {
         OpenAiTtsService.instance.stop();
+        _running = false;
       }
     });
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────
+  // ── Phase helpers ───────────────────────────────────────────────────
 
+  // Calm, unhurried labels — no all-caps urgency
   String _phaseLabel(_Phase p) {
     switch (p) {
-      case _Phase.inhale: return 'INHALE';
-      case _Phase.hold1:  return 'HOLD';
-      case _Phase.exhale: return 'EXHALE';
-      case _Phase.hold2:  return 'HOLD';
+      case _Phase.inhale: return 'Breathe In';
+      case _Phase.hold1:  return 'Hold';
+      case _Phase.exhale: return 'Breathe Out';
+      case _Phase.hold2:  return 'Rest';
     }
   }
 
+  // Soft guidance — present tense, no imperatives
   String _phaseGuidance(_Phase p) {
     switch (p) {
-      case _Phase.inhale: return 'Breathe in gently through your nose';
-      case _Phase.hold1:  return 'Hold — stay calm and still';
-      case _Phase.exhale: return 'Breathe out slowly through your mouth';
-      case _Phase.hold2:  return 'Hold — prepare for next breath';
-    }
-  }
-
-  Color _phaseColor(_Phase p) {
-    switch (p) {
-      case _Phase.inhale: return AppColors.primary;
-      case _Phase.hold1:  return AppColors.mintDeep;
-      case _Phase.exhale: return AppColors.violet;
-      case _Phase.hold2:  return AppColors.primary;
+      case _Phase.inhale: return 'Fill your lungs slowly and gently…';
+      case _Phase.hold1:  return 'Hold softly — you are safe…';
+      case _Phase.exhale: return 'Let it all go… release completely…';
+      case _Phase.hold2:  return 'Rest here a moment…';
     }
   }
 
@@ -331,33 +327,19 @@ class _BreatheScreenState extends State<BreatheScreen>
     return safeDiv(ms-a-b-c, d);
   }
 
+  // Gentle scale — not too dramatic, easeInOut both ways
   double _orbScale() {
     final p = _phaseLocalProgress();
-    final phase = _phaseVN.value;
-    switch (phase) {
+    switch (_phaseVN.value) {
       case _Phase.inhale:
-        return _lerp(0.58, 1.0, Curves.easeOut.transform(p));
+        return _lerp(0.65, 0.94, Curves.easeInOut.transform(p));
       case _Phase.hold1:
-        return 1.0;
+        return 0.94;
       case _Phase.exhale:
-        return _lerp(1.0, 0.58, Curves.easeIn.transform(p));
+        return _lerp(0.94, 0.65, Curves.easeInOut.transform(p));
       case _Phase.hold2:
-        return 0.58;
+        return 0.65;
     }
-  }
-
-  int _phaseSecondsLeft() {
-    final ms = _c.value * _cycle.inMilliseconds;
-    final a = _dInhale.inMilliseconds.toDouble();
-    final b = _dHold1.inMilliseconds.toDouble();
-    final c = _dExhale.inMilliseconds.toDouble();
-    final d = _dHold2.inMilliseconds.toDouble();
-    double remaining;
-    if (ms < a)         remaining = a - ms;
-    else if (ms < a+b)  remaining = a + b - ms;
-    else if (ms < a+b+c) remaining = a + b + c - ms;
-    else                remaining = a + b + c + d - ms;
-    return ((remaining / 1000).ceil()).clamp(0, 99);
   }
 
   double _lerp(double a, double b, double t) => a + (b - a) * t;
@@ -368,7 +350,6 @@ class _BreatheScreenState extends State<BreatheScreen>
   Widget build(BuildContext context) {
     final tt     = Theme.of(context).textTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cs     = Theme.of(context).colorScheme;
 
     return PageScaffold(
       appBar: const AppTopBar(title: 'Breathe'),
@@ -379,13 +360,11 @@ class _BreatheScreenState extends State<BreatheScreen>
           child: Column(
             children: [
 
-              // ── Top bar row ────────────────────────────────────────
+              // ── Top info row ──────────────────────────────────────
               Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(20, 12, 12, 0),
+                padding: const EdgeInsets.fromLTRB(20, 10, 12, 0),
                 child: Row(
                   children: [
-                    // Preset + cycle count
                     ValueListenableBuilder<int>(
                       valueListenable: _cyclesVN,
                       builder: (_, cycles, __) => Column(
@@ -394,54 +373,35 @@ class _BreatheScreenState extends State<BreatheScreen>
                           Text(
                             '$_presetName breathing',
                             style: tt.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.4,
                               color: isDark
-                                  ? Colors.white.withValues(alpha: 0.50)
-                                  : Colors.black.withValues(alpha: 0.40),
+                                  ? Colors.white.withValues(alpha: 0.40)
+                                  : Colors.black.withValues(alpha: 0.35),
                             ),
                           ),
-                          Text(
-                            '$cycles cycle${cycles == 1 ? '' : 's'}'
-                            '${_settings.targetCycles > 0 ? ' / ${_settings.targetCycles}' : ''}',
-                            style: tt.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.70)
-                                  : Colors.black.withValues(alpha: 0.60),
+                          if (cycles > 0)
+                            Text(
+                              '$cycles breath${cycles == 1 ? '' : 's'}'
+                              '${_settings.targetCycles > 0 ? ' of ${_settings.targetCycles}' : ''}',
+                              style: tt.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.55)
+                                    : Colors.black.withValues(alpha: 0.50),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
                     const Spacer(),
-                    // Voice cue indicator
                     if (_settings.tts)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.mintDeep.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color:
-                                  AppColors.mintDeep.withValues(alpha: 0.30)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.record_voice_over_rounded,
-                                size: 12, color: AppColors.mintDeep),
-                            const SizedBox(width: 4),
-                            Text('Voice on',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.mintDeep)),
-                          ],
-                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(Icons.record_voice_over_rounded,
+                            size: 16,
+                            color: _calmColor.withValues(alpha: 0.60)),
                       ),
-                    const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.tune_rounded),
                       tooltip: 'Settings',
@@ -451,109 +411,74 @@ class _BreatheScreenState extends State<BreatheScreen>
                 ),
               ),
 
-              // ── Breathing orb ──────────────────────────────────────
+              // ── Orb ─────────────────────────────────────────────────
               Expanded(
                 child: Center(
                   child: AnimatedBuilder(
                     animation: _c,
                     builder: (_, __) {
-                      final scale    = _running ? _orbScale() : 0.70;
-                      final progress = _running ? _phaseLocalProgress() : 0.0;
-                      final phase    = _phaseVN.value;
-                      final color    = _phaseColor(phase);
-                      final secsLeft = _running ? _phaseSecondsLeft() : 0;
+                      final scale = _running ? _orbScale() : 0.72;
 
                       return SizedBox(
-                        width: 290,
-                        height: 290,
+                        width: 280, height: 280,
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Outermost glow
+                            // Outermost soft halo
                             Transform.scale(
-                              scale: scale * 1.50,
+                              scale: scale * 1.55,
                               child: Container(
-                                width: 200,
-                                height: 200,
+                                width: 200, height: 200,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: color.withValues(alpha: 0.04),
+                                  color: _calmColor.withValues(alpha: 0.04),
                                 ),
                               ),
                             ),
-                            // Middle glow
+                            // Middle halo
                             Transform.scale(
-                              scale: scale * 1.25,
+                              scale: scale * 1.28,
                               child: Container(
-                                width: 200,
-                                height: 200,
+                                width: 200, height: 200,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: color.withValues(alpha: 0.07),
+                                  color: _calmColor.withValues(alpha: 0.07),
                                 ),
                               ),
                             ),
-                            // Arc progress ring
-                            if (_running)
-                              CustomPaint(
-                                size: const Size(290, 290),
-                                painter: _ArcPainter(
-                                    progress: progress, color: color),
+                            // Inner halo
+                            Transform.scale(
+                              scale: scale * 1.10,
+                              child: Container(
+                                width: 200, height: 200,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _calmColor.withValues(alpha: 0.10),
+                                ),
                               ),
-                            // Main orb
+                            ),
+                            // Main orb — no text inside, just light
                             Transform.scale(
                               scale: scale,
                               child: Container(
-                                width: 200,
-                                height: 200,
+                                width: 200, height: 200,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   gradient: RadialGradient(
                                     colors: [
-                                      color.withValues(alpha: 0.65),
-                                      color.withValues(alpha: 0.28),
-                                      color.withValues(alpha: 0.05),
+                                      Colors.white.withValues(alpha: 0.30),
+                                      _calmColor.withValues(alpha: 0.50),
+                                      _calmColor.withValues(alpha: 0.22),
+                                      _calmColor.withValues(alpha: 0.04),
                                     ],
-                                    stops: const [0.0, 0.55, 1.0],
+                                    stops: const [0.0, 0.25, 0.60, 1.0],
                                   ),
                                   border: Border.all(
-                                      color: color.withValues(alpha: 0.45),
-                                      width: 1.5),
+                                    color: _calmColor.withValues(alpha: 0.25),
+                                    width: 1.0,
+                                  ),
                                 ),
                               ),
-                            ),
-                            // Center content
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_running) ...[
-                                  Text(
-                                    '$secsLeft',
-                                    style: const TextStyle(
-                                      fontSize: 58,
-                                      fontWeight: FontWeight.w200,
-                                      color: Colors.white,
-                                      height: 1.0,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _phaseLabel(phase),
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                      letterSpacing: 2.5,
-                                    ),
-                                  ),
-                                ] else
-                                  Icon(
-                                    Icons.air_rounded,
-                                    size: 44,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.60),
-                                  ),
-                              ],
                             ),
                           ],
                         ),
@@ -563,59 +488,85 @@ class _BreatheScreenState extends State<BreatheScreen>
                 ),
               ),
 
-              // ── Phase guidance text ─────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+              // ── Phase label ────────────────────────────────────────
+              SizedBox(
+                height: 36,
                 child: ValueListenableBuilder<_Phase>(
                   valueListenable: _phaseVN,
                   builder: (_, phase, __) => AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 350),
+                    duration: const Duration(milliseconds: 700),
                     transitionBuilder: (child, anim) =>
                         FadeTransition(opacity: anim, child: child),
-                    child: Column(
-                      key: ValueKey(phase),
-                      children: [
-                        Text(
-                          _running ? _phaseGuidance(phase) : 'Tap start when you are ready',
-                          textAlign: TextAlign.center,
-                          style: tt.bodyMedium?.copyWith(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.55)
-                                : Colors.black.withValues(alpha: 0.50),
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      _running ? _phaseLabel(phase) : '',
+                      key: ValueKey(_running ? phase : 'idle'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 5,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.85)
+                            : const Color(0xFF1A3550),
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 6),
 
-              // ── Timing pills ────────────────────────────────────────
+              // ── Guidance text ──────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: ValueListenableBuilder<_Phase>(
+                  valueListenable: _phaseVN,
+                  builder: (_, phase, __) => AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 600),
+                    transitionBuilder: (child, anim) =>
+                        FadeTransition(opacity: anim, child: child),
+                    child: Text(
+                      _running
+                          ? _phaseGuidance(phase)
+                          : 'Find a comfortable position and press start',
+                      key: ValueKey(_running ? phase : 'idle'),
+                      textAlign: TextAlign.center,
+                      style: tt.bodySmall?.copyWith(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.38)
+                            : Colors.black.withValues(alpha: 0.35),
+                        height: 1.5,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── Timing pills (informational only) ────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _TimingPill(
-                        label: 'Inhale', seconds: _settings.inhaleS,
-                        color: AppColors.primary, isDark: isDark, tt: tt),
+                        label: 'In', seconds: _settings.inhaleS,
+                        isDark: isDark, tt: tt),
                     if (_settings.hold1S > 0) ...[
                       const SizedBox(width: 6),
                       _TimingPill(
                           label: 'Hold', seconds: _settings.hold1S,
-                          color: AppColors.mintDeep, isDark: isDark, tt: tt),
+                          isDark: isDark, tt: tt),
                     ],
                     const SizedBox(width: 6),
                     _TimingPill(
-                        label: 'Exhale', seconds: _settings.exhaleS,
-                        color: AppColors.violet, isDark: isDark, tt: tt),
+                        label: 'Out', seconds: _settings.exhaleS,
+                        isDark: isDark, tt: tt),
                     if (_settings.hold2S > 0) ...[
                       const SizedBox(width: 6),
                       _TimingPill(
-                          label: 'Hold', seconds: _settings.hold2S,
-                          color: AppColors.primary, isDark: isDark, tt: tt),
+                          label: 'Rest', seconds: _settings.hold2S,
+                          isDark: isDark, tt: tt),
                     ],
                   ],
                 ),
@@ -623,17 +574,17 @@ class _BreatheScreenState extends State<BreatheScreen>
 
               const SizedBox(height: 20),
 
-              // ── Controls ────────────────────────────────────────────
+              // ── Controls ──────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
                 child: Row(
                   children: [
                     Expanded(
                       flex: 3,
                       child: GradientButton.primary(
                         _loadingCoach
-                            ? 'Preparing…'
-                            : (_running ? 'Pause' : 'Start'),
+                            ? 'Getting ready…'
+                            : (_running ? 'Pause' : 'Begin'),
                         onPressed: _loadingCoach ? null : _toggle,
                       ),
                     ),
@@ -648,7 +599,8 @@ class _BreatheScreenState extends State<BreatheScreen>
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14)),
                           ),
-                          child: const Icon(Icons.refresh_rounded, size: 20),
+                          child: const Icon(
+                              Icons.refresh_rounded, size: 20),
                         ),
                       ),
                     ),
@@ -663,78 +615,38 @@ class _BreatheScreenState extends State<BreatheScreen>
   }
 }
 
-// ── Arc progress painter ──────────────────────────────────────────────────────
-
-class _ArcPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-  const _ArcPainter({required this.progress, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 5;
-
-    // Track
-    final track = Paint()
-      ..color = color.withValues(alpha: 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.5
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, track);
-
-    // Progress arc
-    if (progress > 0) {
-      final arc = Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.5
-        ..strokeCap = StrokeCap.round;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        -math.pi / 2,
-        2 * math.pi * progress,
-        false,
-        arc,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ArcPainter old) =>
-      old.progress != progress || old.color != color;
-}
-
 // ── Timing pill ───────────────────────────────────────────────────────────────
 
 class _TimingPill extends StatelessWidget {
   final String label;
   final int seconds;
-  final Color color;
   final bool isDark;
   final TextTheme tt;
   const _TimingPill({
-    required this.label, required this.seconds, required this.color,
+    required this.label, required this.seconds,
     required this.isDark, required this.tt,
   });
 
   @override
   Widget build(BuildContext context) {
+    const c = Color(0xFF2D7DD2);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.12 : 0.08),
+        color: c.withValues(alpha: isDark ? 0.10 : 0.07),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
+        border: Border.all(color: c.withValues(alpha: 0.20)),
       ),
       child: Column(
         children: [
           Text('${seconds}s',
               style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w900, color: color)),
+                  fontSize: 13, fontWeight: FontWeight.w700,
+                  color: c.withValues(alpha: 0.80))),
           Text(label,
               style: tt.bodySmall?.copyWith(
-                  fontSize: 10, color: color.withValues(alpha: 0.75))),
+                  fontSize: 10,
+                  color: c.withValues(alpha: 0.55))),
         ],
       ),
     );
@@ -774,8 +686,8 @@ class _BreatheSettingsSheetState extends State<_BreatheSettingsSheet> {
     setState(() {
       _preset = p;
       switch (p) {
-        case _Preset.box:          _inh=4; _h1=4; _exh=4; _h2=4; break;
-        case _Preset.equal:        _inh=5; _h1=0; _exh=5; _h2=0; break;
+        case _Preset.box:            _inh=4; _h1=4; _exh=4; _h2=4; break;
+        case _Preset.equal:          _inh=5; _h1=0; _exh=5; _h2=0; break;
         case _Preset.fourSevenEight: _inh=4; _h1=7; _exh=8; _h2=0; break;
         case _Preset.custom: break;
       }
@@ -811,10 +723,12 @@ class _BreatheSettingsSheetState extends State<_BreatheSettingsSheet> {
                 ),
               ),
               Text('Breathing settings',
-                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  style: tt.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 16),
               Text('Technique',
-                  style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  style: tt.labelLarge
+                      ?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 6, children: [
                 _chip('Box 4-4-4-4', _Preset.box),
@@ -825,40 +739,42 @@ class _BreatheSettingsSheetState extends State<_BreatheSettingsSheet> {
               const SizedBox(height: 16),
               if (_preset == _Preset.custom) ...[
                 _LabeledSlider(label: 'Inhale', value: _inh.toDouble(),
-                    min: 1, max: 12, divisions: 11,
+                    min: 2, max: 12, divisions: 10,
                     onChanged: (v) => setState(() => _inh = v.round())),
                 _LabeledSlider(label: 'Hold 1', value: _h1.toDouble(),
                     min: 0, max: 12, divisions: 12,
                     onChanged: (v) => setState(() => _h1 = v.round())),
                 _LabeledSlider(label: 'Exhale', value: _exh.toDouble(),
-                    min: 1, max: 16, divisions: 15,
+                    min: 2, max: 16, divisions: 14,
                     onChanged: (v) => setState(() => _exh = v.round())),
                 _LabeledSlider(label: 'Hold 2', value: _h2.toDouble(),
                     min: 0, max: 12, divisions: 12,
                     onChanged: (v) => setState(() => _h2 = v.round())),
               ] else
-                _ReadOnlyDurations(inh: _inh, h1: _h1, exh: _exh, h2: _h2),
+                _ReadOnlyDurations(
+                    inh: _inh, h1: _h1, exh: _exh, h2: _h2),
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Haptic feedback'),
-                subtitle: const Text('Vibrate on phase change'),
+                subtitle: const Text('Gentle vibration on phase change'),
                 value: _haptics,
                 onChanged: (v) => setState(() => _haptics = v),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Voice cues'),
-                subtitle: const Text('Speaks Inhale / Hold / Exhale'),
+                title: const Text('Voice guidance'),
+                subtitle: const Text(
+                    'Softly speaks each phase'),
                 value: _tts,
                 onChanged: (v) => setState(() => _tts = v),
               ),
               _LabeledSlider(
-                label: 'Target cycles (0 = infinite)',
-                value: _target.toDouble(), min: 0, max: 12, divisions: 12,
+                label: 'Target breaths (0 = no limit)',
+                value: _target.toDouble(), min: 0, max: 20, divisions: 20,
                 onChanged: (v) => setState(() => _target = v.round()),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Row(children: [
                 Expanded(
                   child: OutlinedButton(
@@ -896,7 +812,8 @@ class _BreatheSettingsSheetState extends State<_BreatheSettingsSheet> {
 class _ReadOnlyDurations extends StatelessWidget {
   final int inh, h1, exh, h2;
   const _ReadOnlyDurations(
-      {required this.inh, required this.h1, required this.exh, required this.h2});
+      {required this.inh, required this.h1,
+       required this.exh, required this.h2});
 
   @override
   Widget build(BuildContext context) {
@@ -905,13 +822,13 @@ class _ReadOnlyDurations extends StatelessWidget {
         .bodyMedium
         ?.copyWith(fontWeight: FontWeight.w700);
     return Row(children: [
-      Expanded(child: _pill('Inhale', '${inh}s', style)),
+      Expanded(child: _pill('In', '${inh}s', style)),
       const SizedBox(width: 6),
-      Expanded(child: _pill('Hold 1', '${h1}s', style)),
+      Expanded(child: _pill('Hold', '${h1}s', style)),
       const SizedBox(width: 6),
-      Expanded(child: _pill('Exhale', '${exh}s', style)),
+      Expanded(child: _pill('Out', '${exh}s', style)),
       const SizedBox(width: 6),
-      Expanded(child: _pill('Hold 2', '${h2}s', style)),
+      Expanded(child: _pill('Rest', '${h2}s', style)),
     ]);
   }
 
@@ -919,9 +836,9 @@ class _ReadOnlyDurations extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(children: [
         Text(label,
@@ -950,7 +867,7 @@ class _LabeledSlider extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('$label: ${value.round()}s',
+        Text('$label — ${value.round()}s',
             style: Theme.of(context)
                 .textTheme
                 .labelLarge
