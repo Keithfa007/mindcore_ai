@@ -109,15 +109,15 @@ class MoodPatternService {
         .toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-    // Mood entries — last 14 days, compact format
+    // Mood entries — score only (MoodEntry has no label field)
     final moodLines = recent.take(20).map((e) {
-      final d = e.timestamp;
+      final d   = e.timestamp;
       final dow = _dowName(d.weekday);
-      return '$dow ${d.day}/${d.month}: score=${e.score}/5 label=${e.label}';
+      return '$dow ${d.day}/${d.month}: score=${e.score}/5';
     }).toList();
 
     // Day-of-week averages for today
-    final todayDow   = now.weekday;
+    final todayDow       = now.weekday;
     final sameDowEntries = all
         .where((e) => e.timestamp.weekday == todayDow)
         .toList();
@@ -135,16 +135,15 @@ class MoodPatternService {
       final entries = await JournalService.getEntries();
       for (final e in entries.take(3)) {
         final text = e.note.trim();
-        journalLines.add(
-            text.length > 120 ? text.substring(0, 120) : text);
+        journalLines.add(text.length > 120 ? text.substring(0, 120) : text);
       }
     } catch (_) {}
 
     // Recent user chat messages — last 5, 80 chars each
     final chatLines = <String>[];
     try {
-      final convId = await ChatPersistence.ensureDefault();
-      final msgs   = await ChatPersistence.load(convId);
+      final convId  = await ChatPersistence.ensureDefault();
+      final msgs    = await ChatPersistence.load(convId);
       final userMsgs = msgs
           .where((m) => m.role == 'user')
           .toList()
@@ -158,10 +157,10 @@ class MoodPatternService {
     } catch (_) {}
 
     return {
-      'moodLines':   moodLines,
-      'todayDow':    _dowName(todayDow),
-      'todayDowAvg': todayDowAvg,
-      'overallAvg':  overallAvg,
+      'moodLines':    moodLines,
+      'todayDow':     _dowName(todayDow),
+      'todayDowAvg':  todayDowAvg,
+      'overallAvg':   overallAvg,
       'sameDowCount': sameDowEntries.length,
       'journalLines': journalLines,
       'chatLines':    chatLines,
@@ -169,18 +168,19 @@ class MoodPatternService {
     };
   }
 
-  // ── AI call ─────────────────────────────────────────────────────────────
+  // ── AI call ──────────────────────────────────────────────────────────────
 
   static Future<MoodPrediction?> _callAI(
       Map<String, dynamic> ctx, DateTime now) async {
     final apiKey = Env.openaiKey;
-    if (apiKey.trim().isEmpty) return _mathFallback(
-        await MoodRepo.instance.fetchAll(), now);
+    if (apiKey.trim().isEmpty) {
+      return _mathFallback(await MoodRepo.instance.fetchAll(), now);
+    }
 
     final moodLines    = (ctx['moodLines']    as List).cast<String>();
-    final todayDow     = ctx['todayDow']    as String;
-    final todayDowAvg  = ctx['todayDowAvg'] as double?;
-    final overallAvg   = ctx['overallAvg']  as double?;
+    final todayDow     = ctx['todayDow']     as String;
+    final todayDowAvg  = ctx['todayDowAvg']  as double?;
+    final overallAvg   = ctx['overallAvg']   as double?;
     final sameDowCount = ctx['sameDowCount'] as int;
     final journalLines = (ctx['journalLines'] as List).cast<String>();
     final chatLines    = (ctx['chatLines']    as List).cast<String>();
@@ -226,19 +226,19 @@ class MoodPatternService {
         '(at least 3 data points supporting it). Do not invent patterns.');
     sb.writeln(
         '- If today is historically a harder day for this user, mention that '
-        'it is relevant RIGHT NOW (e.g. "Today is Thursday — your data shows '
-        'Thursdays tend to be tougher").');
+        'it is relevant RIGHT NOW.');
     sb.writeln(
         '- If journal or chat shows recurring emotional themes, reference them.');
-    sb.writeln(
-        '- If the data shows no real pattern, return exactly: NONE');
+    sb.writeln('- If the data shows no real pattern, return exactly: NONE');
     sb.writeln(
         '- Be warm but honest. No empty positivity. No fake encouragement.');
     sb.writeln('- headline: max 8 words');
-    sb.writeln('- detail: 2 sentences max, specific to the actual data, under 35 words');
+    sb.writeln(
+        '- detail: 2 sentences max, specific to the actual data, under 35 words');
     sb.writeln('- type must be one of: declining, improving, weekly_pattern, '
         'time_pattern, journal_pattern, positive');
-    sb.writeln('- actionRoute must be one of: /breathe, /reset, /chat, /daily-hub');
+    sb.writeln(
+        '- actionRoute must be one of: /breathe, /reset, /chat, /daily-hub');
     sb.writeln();
     sb.writeln(
         'Return ONLY valid JSON (no markdown, no backticks) in this exact format:');
@@ -295,7 +295,7 @@ class MoodPatternService {
     }
   }
 
-  // ── Math fallback (strict thresholds) ───────────────────────────────
+  // ── Math fallback (strict thresholds) ────────────────────────────────
   // Only fires on very clear signals — no guessing.
 
   static MoodPrediction? _mathFallback(List<MoodEntry> all, DateTime now) {
@@ -309,11 +309,11 @@ class MoodPatternService {
     if (days.length < 5) return null;
 
     final lastFive = days.reversed.take(5).toList().reversed.toList();
-    final avgs = lastFive
+    final avgs     = lastFive
         .map((k) => byDay[k]!.reduce((a, b) => a + b) / byDay[k]!.length)
         .toList();
 
-    // Strict 5-day declining streak (all lower than previous)
+    // Strict 5-day declining streak
     bool declining = true;
     for (int i = 1; i < avgs.length; i++) {
       if (avgs[i] >= avgs[i - 1]) { declining = false; break; }
@@ -322,7 +322,7 @@ class MoodPatternService {
       return const MoodPrediction(
         headline: 'Your mood has been sliding this week',
         detail:
-            'The last five days show a consistent downward trend. A breathing session or a quick reset might help you level out.',
+            'The last five days show a consistent downward trend. A breathing session might help you level out.',
         icon: Icons.trending_down_rounded,
         accentColor: Color(0xFF9B7FFF),
         actionLabel: 'Try breathing',
@@ -389,8 +389,8 @@ class MoodPatternService {
   static MoodPrediction? _decode(String raw) {
     if (raw.isEmpty) return null;
     try {
-      final data  = jsonDecode(raw) as Map<String, dynamic>;
-      final type  = data['type']?.toString() ?? 'weekly_pattern';
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final type = data['type']?.toString() ?? 'weekly_pattern';
       return MoodPrediction(
         headline:    data['headline']?.toString() ?? '',
         detail:      data['detail']?.toString() ?? '',
@@ -405,12 +405,12 @@ class MoodPatternService {
   }
 
   static String _reverseType(IconData icon) {
-    if (icon == Icons.trending_down_rounded) return 'declining';
-    if (icon == Icons.trending_up_rounded)   return 'improving';
+    if (icon == Icons.trending_down_rounded)  return 'declining';
+    if (icon == Icons.trending_up_rounded)    return 'improving';
     if (icon == Icons.calendar_today_rounded) return 'weekly_pattern';
-    if (icon == Icons.wb_twilight_rounded)   return 'time_pattern';
-    if (icon == Icons.auto_awesome_rounded)  return 'journal_pattern';
-    if (icon == Icons.star_rounded)          return 'positive';
+    if (icon == Icons.wb_twilight_rounded)    return 'time_pattern';
+    if (icon == Icons.auto_awesome_rounded)   return 'journal_pattern';
+    if (icon == Icons.star_rounded)           return 'positive';
     return 'weekly_pattern';
   }
 
