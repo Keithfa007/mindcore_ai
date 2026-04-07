@@ -112,8 +112,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return PageScaffold(
       appBar: const AppTopBar(title: 'Settings'),
       bottomIndex: 6,
@@ -125,7 +123,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
 
                   // ── Plan & Billing ─────────────────────────────────
-                  _SectionLabel(label: 'Plan & Billing', icon: Icons.workspace_premium_rounded, color: AppColors.primary),
+                  _SectionLabel(label: 'Plan & Billing',
+                      icon: Icons.workspace_premium_rounded,
+                      color: AppColors.primary),
                   _PlanBillingCard(
                     onManagePlan: _openPaywall,
                     onBuyVoice:   _openVoiceTopUp,
@@ -133,7 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 24),
 
                   // ── Voice & Audio ──────────────────────────────────
-                  _SectionLabel(label: 'Voice & Audio', icon: Icons.graphic_eq_rounded, color: AppColors.mintDeep),
+                  _SectionLabel(label: 'Voice & Audio',
+                      icon: Icons.graphic_eq_rounded,
+                      color: AppColors.mintDeep),
                   _SettingsCard(children: [
                     _ToggleRow(
                       icon: Icons.record_voice_over_rounded,
@@ -164,20 +166,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Voice settings',
                       subtitle: 'Speed, style and test voice',
                       onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const VoiceSettingsScreen())),
+                          MaterialPageRoute(
+                              builder: (_) => const VoiceSettingsScreen())),
                     ),
                   ]),
                   const SizedBox(height: 24),
 
                   // ── Breathing ──────────────────────────────────────
-                  _SectionLabel(label: 'Breathing', icon: Icons.air_rounded, color: AppColors.violet),
+                  _SectionLabel(label: 'Breathing',
+                      icon: Icons.air_rounded,
+                      color: AppColors.violet),
                   _SettingsCard(children: [
                     _DropdownRow<BreathePreset>(
                       icon: Icons.self_improvement_rounded,
                       title: 'Preset',
                       value: _preset,
                       items: BreathePreset.values
-                          .map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
+                          .map((p) => DropdownMenuItem(
+                              value: p, child: Text(p.label)))
                           .toList(),
                       onChanged: (v) async {
                         if (v == null) return;
@@ -193,7 +199,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       items: _durations
                           .map((s) => DropdownMenuItem(
                               value: s,
-                              child: Text(s >= 60 ? '${s ~/ 60} min' : '$s sec')))
+                              child: Text(
+                                  s >= 60 ? '${s ~/ 60} min' : '$s sec')))
                           .toList(),
                       onChanged: (v) async {
                         if (v == null) return;
@@ -216,7 +223,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 24),
 
                   // ── Reminders ──────────────────────────────────────
-                  _SectionLabel(label: 'Reminders', icon: Icons.notifications_none_rounded, color: AppColors.amber),
+                  _SectionLabel(label: 'Reminders',
+                      icon: Icons.notifications_none_rounded,
+                      color: const Color(0xFFBA7517)),   // amber
                   _SettingsCard(children: [
                     _ToggleRow(
                       icon: Icons.alarm_rounded,
@@ -227,10 +236,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         setState(() => _dailyReminderEnabled = v);
                         await SettingsService.setDailyReminderEnabled(v);
                         if (!v) {
-                          await NotificationService.instance.cancelDailyResetNotification();
+                          await NotificationService.instance
+                              .cancelDailyResetNotification();
                           return;
                         }
-                        final s = await ProactiveSupportService.buildHomeSuggestion();
+                        final s = await ProactiveSupportService
+                            .buildHomeSuggestion();
                         await NotificationService.instance
                             .scheduleDailyRecommendationNotification(
                           uniqueKey: s.id,
@@ -258,7 +269,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   initialTime: _dailyReminderTime);
                               if (picked == null) return;
                               setState(() => _dailyReminderTime = picked);
-                              await SettingsService.setDailyReminderTime(picked);
+                              await SettingsService
+                                  .setDailyReminderTime(picked);
                               final s = await ProactiveSupportService
                                   .buildHomeSuggestion();
                               await NotificationService.instance
@@ -278,27 +290,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 24),
 
                   // ── AI Persona ─────────────────────────────────────
-                  _SectionLabel(label: 'AI Persona', icon: Icons.psychology_alt_rounded, color: AppColors.coral),
+                  _SectionLabel(label: 'AI Persona',
+                      icon: Icons.psychology_alt_rounded,
+                      color: const Color(0xFFD85A30)),   // coral
                   _SettingsCard(children: [
                     _NavRow(
                       icon: Icons.psychology_alt_rounded,
                       title: 'Conversation style',
                       subtitle: 'Choose how MindCore AI speaks to you',
                       onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const ChatPersonaScreen())),
+                          MaterialPageRoute(
+                              builder: (_) => const ChatPersonaScreen())),
                     ),
                   ]),
                   const SizedBox(height: 24),
 
                   // ── Trust & Safety ─────────────────────────────────
-                  _SectionLabel(label: 'Trust & Safety', icon: Icons.shield_outlined, color: AppColors.glowBlue),
+                  _SectionLabel(label: 'Trust & Safety',
+                      icon: Icons.shield_outlined,
+                      color: AppColors.primary),
                   _SettingsCard(children: [
                     _NavRow(
                       icon: Icons.health_and_safety_outlined,
                       title: 'Safety resources',
                       subtitle: 'Support lines and guidance',
                       onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const SafetyScreen())),
+                          MaterialPageRoute(
+                              builder: (_) => const SafetyScreen())),
                     ),
                     _Divider(),
                     _NavRow(
@@ -306,7 +324,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Privacy & controls',
                       subtitle: 'Export, delete and storage options',
                       onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const PrivacyControlsScreen())),
+                          MaterialPageRoute(
+                              builder: (_) => const PrivacyControlsScreen())),
                     ),
                     _Divider(),
                     _NavRow(
@@ -314,13 +333,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Disclaimer',
                       subtitle: 'Not a substitute for professional help',
                       onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const DisclaimerScreen())),
+                          MaterialPageRoute(
+                              builder: (_) => const DisclaimerScreen())),
                     ),
                   ]),
                   const SizedBox(height: 24),
 
                   // ── Data ───────────────────────────────────────────
-                  _SectionLabel(label: 'Data', icon: Icons.storage_rounded, color: AppColors.muted),
+                  _SectionLabel(label: 'Data',
+                      icon: Icons.storage_rounded,
+                      color: const Color(0xFF888780)),   // muted gray
                   _SettingsCard(children: [
                     _ActionRow(
                       icon: Icons.delete_outline_rounded,
@@ -344,7 +366,8 @@ class _SectionLabel extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
-  const _SectionLabel({required this.label, required this.icon, required this.color});
+  const _SectionLabel(
+      {required this.label, required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -632,7 +655,8 @@ class _Divider extends StatelessWidget {
 class _PlanBillingCard extends StatelessWidget {
   final VoidCallback onManagePlan;
   final VoidCallback onBuyVoice;
-  const _PlanBillingCard({required this.onManagePlan, required this.onBuyVoice});
+  const _PlanBillingCard(
+      {required this.onManagePlan, required this.onBuyVoice});
 
   @override
   Widget build(BuildContext context) {
@@ -656,7 +680,8 @@ class _PlanBillingCard extends StatelessWidget {
 
             final msgFrac = tier.isUnlimited
                 ? 0.0
-                : (snap.messagesUsed / tier.monthlyMessages).clamp(0.0, 1.0);
+                : (snap.messagesUsed / tier.monthlyMessages)
+                    .clamp(0.0, 1.0);
             final voiceFrac = tier.monthlyVoiceSeconds <= 0
                 ? 0.0
                 : (snap.voiceSecondsUsed / tier.monthlyVoiceSeconds)
@@ -667,7 +692,7 @@ class _PlanBillingCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Plan badge row
+                  // Plan badge
                   Row(
                     children: [
                       Container(
@@ -719,7 +744,8 @@ class _PlanBillingCard extends StatelessWidget {
                     tt: tt,
                   ),
                   const SizedBox(height: 6),
-                  _UsageBar(fraction: msgFrac, color: accent, warn: msgFrac > 0.80),
+                  _UsageBar(
+                      fraction: msgFrac, color: accent, warn: msgFrac > 0.80),
                   const SizedBox(height: 14),
 
                   // Voice
@@ -751,13 +777,15 @@ class _PlanBillingCard extends StatelessWidget {
                             tier.tier == AppTier.trial
                                 ? 'Upgrade'
                                 : 'Change plan',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800),
                           ),
                           style: FilledButton.styleFrom(
                               backgroundColor: accent,
                               minimumSize: const Size.fromHeight(44),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10))),
+                                  borderRadius:
+                                      BorderRadius.circular(10))),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -773,10 +801,11 @@ class _PlanBillingCard extends StatelessWidget {
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(44),
                             side: BorderSide(
-                                color:
-                                    AppColors.mintDeep.withValues(alpha: 0.50)),
+                                color: AppColors.mintDeep
+                                    .withValues(alpha: 0.50)),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
+                                borderRadius:
+                                    BorderRadius.circular(10)),
                           ),
                         ),
                       ),
@@ -817,7 +846,8 @@ class _UsageLabel extends StatelessWidget {
           Icon(icon, size: 13, color: color),
           const SizedBox(width: 6),
           Text(label,
-              style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w700)),
+              style:
+                  tt.labelSmall?.copyWith(fontWeight: FontWeight.w700)),
         ]),
         Text(detail,
             style: tt.labelSmall?.copyWith(
@@ -887,8 +917,8 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
     final product = _sub.voicePackProduct(productId);
     if (product == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Store not available. Try again.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Store not available. Try again.')));
       }
       return;
     }
@@ -912,7 +942,8 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom + 24),
@@ -944,7 +975,8 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                     shape: BoxShape.circle,
                     color: AppColors.mintDeep.withValues(alpha: 0.12),
                     border: Border.all(
-                        color: AppColors.mintDeep.withValues(alpha: 0.30)),
+                        color:
+                            AppColors.mintDeep.withValues(alpha: 0.30)),
                   ),
                   child: Icon(Icons.mic_rounded,
                       color: AppColors.mintDeep, size: 20),
@@ -977,24 +1009,27 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Divider(height: 16,
+            child: Divider(
+                height: 16,
                 color: isDark
                     ? Colors.white.withValues(alpha: 0.10)
                     : Colors.black.withValues(alpha: 0.08)),
           ),
           ...VoicePackConfig.all.map((pack) => Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 8),
                 child: Row(
                   children: [
                     Container(
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: AppColors.mintDeep.withValues(alpha: 0.10),
+                        color: AppColors.mintDeep
+                            .withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: AppColors.mintDeep.withValues(alpha: 0.25)),
+                            color: AppColors.mintDeep
+                                .withValues(alpha: 0.25)),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1019,12 +1054,13 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(pack.displayName,
-                              style: tt.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w800)),
+                              style: tt.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800)),
                           Text(pack.tagline,
                               style: tt.bodySmall?.copyWith(
                                   color: isDark
-                                      ? Colors.white.withValues(alpha: 0.50)
+                                      ? Colors.white
+                                          .withValues(alpha: 0.50)
                                       : const Color(0xFF475467))),
                         ],
                       ),
@@ -1042,17 +1078,19 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
                           width: 76,
                           height: 36,
                           child: FilledButton(
-                            onPressed:
-                                _loading ? null : () => _buy(pack.productId),
+                            onPressed: _loading
+                                ? null
+                                : () => _buy(pack.productId),
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.mintDeep,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12),
                               minimumSize: Size.zero,
                               tapTargetSize:
                                   MaterialTapTargetSize.shrinkWrap,
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
+                                  borderRadius:
+                                      BorderRadius.circular(8)),
                             ),
                             child: _loading
                                 ? const SizedBox(
