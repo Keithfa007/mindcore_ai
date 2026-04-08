@@ -4,12 +4,18 @@ MindCore AI Video Pipeline — Step 2
 Reads script from outputs/script_output.json
 Sends to Fish Audio TTS API and saves voiceover as outputs/voiceover.mp3
 
-VOICE SETUP:
-  To use a custom voice:
-  1. Go to fish.audio and find the voice you want
-  2. Click the voice → click 'Clone' to copy it to your account
-  3. Go to your account → My Voices → copy the model ID
-  4. Add it as FISH_VOICE_ID secret in GitHub Settings → Secrets → Actions
+VOICE:
+  Preferred voice: fish.audio/app/text-to-speech/?modelId=eed26f2294d64177911af612473cca98
+  Voice ID: eed26f2294d64177911af612473cca98
+
+  To activate this voice you need Fish Audio Plus ($5.50/month):
+  1. Upgrade at fish.audio/plan
+  2. Go to the voice page above
+  3. Click Clone → it creates a copy in your account
+  4. Go to My Voices → copy the new model ID
+  5. Add as FISH_VOICE_ID secret in GitHub Settings → Secrets → Actions
+
+  Until then the pipeline runs with Fish Audio's default voice.
 """
 
 import os
@@ -38,9 +44,11 @@ if not FISH_API_KEY:
 
 print(f"[generate_voice] API key length: {len(FISH_API_KEY)} chars")
 
-# Custom voice ID — set FISH_VOICE_ID secret in GitHub to use a cloned voice
-# To clone the voice: fish.audio → find voice → Clone → copy new model ID
-VOICE_ID = os.environ.get("FISH_VOICE_ID", "").strip()
+# Preferred MindCore AI voice (warm, calm male)
+# Overridden by FISH_VOICE_ID GitHub secret if set
+# Requires Fish Audio Plus plan + voice cloned to your account
+DEFAULT_VOICE_ID = "eed26f2294d64177911af612473cca98"
+VOICE_ID = os.environ.get("FISH_VOICE_ID", "").strip() or DEFAULT_VOICE_ID
 
 headers = {
     "Authorization": f"Bearer {FISH_API_KEY}",
@@ -53,16 +61,12 @@ payload = {
     "mp3_bitrate": 128,
     "latency": "normal",
     "normalize": True,
+    "reference_id": VOICE_ID,
 }
 
-if VOICE_ID:
-    payload["reference_id"] = VOICE_ID
-    print(f"[generate_voice] Using custom voice ID: {VOICE_ID[:8]}...")
-else:
-    print("[generate_voice] No FISH_VOICE_ID set — using Fish Audio default voice")
-    print("[generate_voice] → Clone your preferred voice at fish.audio then add FISH_VOICE_ID secret")
-
+print(f"[generate_voice] Voice ID: {VOICE_ID}")
 print("[generate_voice] Calling Fish Audio API...")
+
 response = requests.post(
     "https://api.fish.audio/v1/tts",
     headers=headers,
@@ -70,12 +74,20 @@ response = requests.post(
     timeout=120,
 )
 
+# If voice not found (free plan or not cloned) — fall back to default voice
+if response.status_code == 400 and "Reference not found" in response.text:
+    print("[generate_voice] ⚠️  Voice not found — falling back to default voice")
+    print("[generate_voice] ⚠️  To fix: upgrade to Fish Audio Plus + clone the voice to your account")
+    payload.pop("reference_id", None)
+    response = requests.post(
+        "https://api.fish.audio/v1/tts",
+        headers=headers,
+        json=payload,
+        timeout=120,
+    )
+
 if response.status_code != 200:
     print(f"[generate_voice] ❌ Error {response.status_code}: {response.text}")
-    if response.status_code == 400 and "Reference not found" in response.text:
-        print("[generate_voice] ⚠️  Voice ID not found — the voice must be cloned to YOUR account first")
-        print("[generate_voice] ⚠️  Go to fish.audio → find the voice → click Clone → copy the new ID")
-        print("[generate_voice] ⚠️  Add the new ID as FISH_VOICE_ID in GitHub Secrets")
     raise Exception(f"Fish Audio API failed: {response.status_code}")
 
 with open(AUDIO_FILE, "wb") as f:
