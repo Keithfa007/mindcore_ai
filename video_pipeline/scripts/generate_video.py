@@ -32,87 +32,76 @@ headers = {
     "Content-Type": "application/json",
 }
 
-# ── Step 1: Query available models to find correct t2v model ID ────────────
+# ── Step 1: Query available models and print ALL IDs ──────────────────────
 print("[generate_video] Querying WaveSpeed model list...")
 models_response = requests.get(
     "https://api.wavespeed.ai/api/v3/models",
     headers=headers,
-    params={"page": 1, "page_size": 100},
+    params={"page": 1, "page_size": 200},
     timeout=30,
 )
 
 print(f"[generate_video] Models API: HTTP {models_response.status_code}")
 
 if models_response.status_code == 200:
-    models_data = models_response.json()
-    # Print all models containing "wan" and "t2v" or "text-to-video"
-    all_models = models_data.get("data", {}).get("models", [])
-    if not all_models:
-        # Try flat list
-        all_models = models_data.get("data", [])
+    raw = models_response.json()
 
-    print(f"[generate_video] Total models returned: {len(all_models)}")
-    print("[generate_video] === Video models (t2v / text-to-video) ===")
+    # data can be a list OR a dict with a models key — handle both
+    data = raw.get("data", raw)
+    if isinstance(data, dict):
+        all_models = data.get("models", data.get("items", []))
+    else:
+        all_models = data  # it's already a list
+
+    print(f"[generate_video] Total models: {len(all_models)}")
+    print("[generate_video] === ALL MODEL IDs ===")
     for m in all_models:
-        model_id = m.get("id", "") or m.get("model_id", "") or str(m)
-        if any(k in model_id.lower() for k in ["t2v", "text-to-video", "text_to_video"]):
-            print(f"  {model_id}")
-    print("[generate_video] === All WAN models ===")
-    for m in all_models:
-        model_id = m.get("id", "") or m.get("model_id", "") or str(m)
-        if "wan" in model_id.lower():
-            print(f"  {model_id}")
-    print("[generate_video] ===================")
+        if isinstance(m, dict):
+            mid = m.get("id", m.get("model_id", m.get("name", str(m))))
+        else:
+            mid = str(m)
+        print(f"  {mid}")
+    print("[generate_video] === END MODEL LIST ===")
 else:
-    print(f"[generate_video] Models list response: {models_response.text[:500]}")
+    print(f"[generate_video] Models list failed: {models_response.text[:300]}")
 
-# ── Step 2: Try known model IDs in order until one works ──────────────────
-CANDIDATE_MODELS = [
-    "wavespeed-ai/wan-2.1-t2v",
-    "wavespeed-ai/wan2.1-t2v-720p",
-    "wavespeed-ai/wan-2-1-t2v",
-    "alibaba/wan-2.1-t2v-plus-720p",
-    "alibaba-wan-2.1-t2v-plus-720p",
-    "wan-2.1-t2v-plus-720p",
-    "pixverse/pixverse-v4.5-t2v-fast",  # fallback: Pixverse fast t2v
+# ── Step 2: Try candidate model IDs until one works ───────────────────────
+CANDIDATES = [
+    # WAN text-to-video variants to try
+    ("wavespeed-ai/wan-2.1-t2v",         {"prompt": video_prompt, "negative_prompt": "text, watermark, logo, face, person, human, hands, blurry", "size": "720*1280", "duration": 5}),
+    ("wavespeed-ai/wan2.1-t2v-720p",     {"prompt": video_prompt, "negative_prompt": "text, watermark, logo, face, person, human, hands, blurry", "size": "720*1280", "duration": 5}),
+    ("alibaba/wan-2.1-t2v-plus-720p",    {"prompt": video_prompt, "negative_prompt": "text, watermark, logo, face, person, human, hands, blurry", "size": "720*1280", "duration": 5}),
+    ("alibaba/wan-2.2-t2v-plus-480p",    {"prompt": video_prompt, "negative_prompt": "text, watermark, logo, face, person, human, hands, blurry", "size": "480*848",  "duration": 5}),
+    ("alibaba/wan-2.5-text-to-video",    {"prompt": video_prompt, "negative_prompt": "text, watermark, logo, face, person, human, hands, blurry", "size": "720*1280", "duration": 5}),
+    # Pixverse fast t2v as reliable fallback
+    ("pixverse/pixverse-v4.5-t2v-fast",  {"prompt": video_prompt, "negative_prompt": "text, watermark, logo, face, person, human, hands, blurry", "duration": 5, "aspect_ratio": "9:16"}),
+    ("pixverse/pixverse-v5-t2v",         {"prompt": video_prompt, "negative_prompt": "text, watermark, logo, face, person, human, hands, blurry", "duration": 5, "aspect_ratio": "9:16"}),
 ]
-
-payload_base = {
-    "prompt": video_prompt,
-    "negative_prompt": "text, watermark, logo, face, person, human, hands, words, letters, nsfw, blurry",
-}
 
 working_model = None
 request_id    = None
 
-for model_id in CANDIDATE_MODELS:
+for model_id, payload in CANDIDATES:
     url = f"https://api.wavespeed.ai/api/v3/{model_id}"
-    print(f"[generate_video] Trying: {url}")
-
-    # Build payload — try different param names per model
-    payload = {**payload_base}
-    if "pixverse" in model_id:
-        payload["duration"] = 5
-        payload["aspect_ratio"] = "9:16"
-    else:
-        payload["size"]     = "720*1280"
-        payload["duration"] = 5
-
+    print(f"[generate_video] Trying: {model_id}")
     r = requests.post(url, headers=headers, json=payload, timeout=30)
-    print(f"[generate_video]   → HTTP {r.status_code}: {r.text[:150]}")
+    print(f"[generate_video]   → HTTP {r.status_code}: {r.text[:200]}")
 
     if r.status_code == 200:
         data = r.json()
         request_id = data.get("data", {}).get("id")
         if request_id:
             working_model = model_id
-            print(f"[generate_video] ✅ Model works: {model_id} | Job ID: {request_id}")
+            print(f"[generate_video] ✅ Model works: {model_id} | Job: {request_id}")
             break
 
 if not request_id:
-    raise Exception("No working WaveSpeed model found. Check logs above for available models.")
+    raise Exception(
+        "No working WaveSpeed model found. "
+        "Check the === ALL MODEL IDs === section above to find the correct text-to-video model ID."
+    )
 
-# ── Step 3: Poll for completion ────────────────────────────────────────────
+# ── Step 3: Poll for result ────────────────────────────────────────────────
 poll_url = f"https://api.wavespeed.ai/api/v3/predictions/{request_id}/result"
 max_wait = 300
 interval = 15
@@ -146,8 +135,7 @@ while elapsed < max_wait:
             f.write(video_response.content)
 
         size_mb = VIDEO_FILE.stat().st_size / (1024 * 1024)
-        print(f"[generate_video] ✅ Video saved: {VIDEO_FILE} ({size_mb:.1f} MB)")
-        print(f"[generate_video] ✅ Working model: {working_model}")
+        print(f"[generate_video] ✅ Done! Model: {working_model} | Size: {size_mb:.1f} MB")
         break
 
     elif status == "failed":
