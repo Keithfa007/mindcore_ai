@@ -27,9 +27,11 @@ print(f"[generate_voice] Hook: {script_data.get('hook')}")
 # ── Fish Audio API ─────────────────────────────────────────────────────────
 FISH_API_KEY = os.environ["FISH_AUDIO_API_KEY"]
 
-# Reference voice ID — warm, trustworthy male voice
-# Replace with your preferred Fish Audio voice model ID after testing
-VOICE_ID = os.environ.get("FISH_VOICE_ID", "5564ffbc9c2c4143806b5773e604c503")
+# Warm, calm male voice selected for MindCore AI
+# FISH_VOICE_ID secret overrides this if set in GitHub Secrets
+VOICE_ID = os.environ.get("FISH_VOICE_ID", "0b74ead073f2474a904f69033535b98e")
+
+print(f"[generate_voice] Using voice ID: {VOICE_ID}")
 
 headers = {
     "Authorization": f"Bearer {FISH_API_KEY}",
@@ -55,6 +57,7 @@ response = requests.post(
 
 if response.status_code != 200:
     print(f"[generate_voice] ❌ Fish Audio error {response.status_code}: {response.text}")
+    print(f"[generate_voice] Check that FISH_AUDIO_API_KEY secret is correct in GitHub Settings → Secrets")
     raise Exception(f"Fish Audio API failed: {response.status_code}")
 
 with open(AUDIO_FILE, "wb") as f:
