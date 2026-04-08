@@ -27,34 +27,41 @@ print(f"[generate_voice] Hook: {script_data.get('hook')}")
 # ── Fish Audio API ─────────────────────────────────────────────────────────
 FISH_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
 
-# Debug: print masked key so we can verify it's loading correctly
-if FISH_API_KEY:
-    masked = FISH_API_KEY[:6] + "..." + FISH_API_KEY[-4:]
-    print(f"[generate_voice] API key loaded: {masked} (length: {len(FISH_API_KEY)})")
-else:
-    print("[generate_voice] ❌ FISH_AUDIO_API_KEY is empty or not set!")
+if not FISH_API_KEY:
     raise Exception("FISH_AUDIO_API_KEY secret is missing or empty")
 
-# Warm, calm male voice selected for MindCore AI
-VOICE_ID = os.environ.get("FISH_VOICE_ID", "0b74ead073f2474a904f69033535b98e")
-print(f"[generate_voice] Using voice ID: {VOICE_ID}")
+masked = FISH_API_KEY[:6] + "..." + FISH_API_KEY[-4:]
+print(f"[generate_voice] API key loaded: {masked} (length: {len(FISH_API_KEY)})")
 
-# Fish Audio uses just the raw token — no "Bearer" prefix
+# ── Auth header — Fish Audio accepts raw token ─────────────────────────────
 headers = {
     "Authorization": FISH_API_KEY,
     "Content-Type": "application/json",
 }
 
+# ── Payload — no reference_id, uses Fish Audio default voice ───────────────
+# To use a custom voice later:
+#   1. Go to fish.audio → create/clone a voice
+#   2. Copy its model ID
+#   3. Add FISH_VOICE_ID secret to GitHub and uncomment reference_id below
+VOICE_ID = os.environ.get("FISH_VOICE_ID", "")
+
 payload = {
     "text": spoken_script,
-    "reference_id": VOICE_ID,
     "format": "mp3",
     "mp3_bitrate": 128,
     "latency": "normal",
     "normalize": True,
 }
 
-print("[generate_voice] Calling Fish Audio API (no Bearer prefix)...")
+# Only add reference_id if a valid voice ID is explicitly set
+if VOICE_ID and len(VOICE_ID) > 10:
+    payload["reference_id"] = VOICE_ID
+    print(f"[generate_voice] Using custom voice ID: {VOICE_ID}")
+else:
+    print("[generate_voice] Using Fish Audio default voice")
+
+print("[generate_voice] Calling Fish Audio API...")
 response = requests.post(
     "https://api.fish.audio/v1/tts",
     headers=headers,
@@ -62,9 +69,9 @@ response = requests.post(
     timeout=120,
 )
 
-# If raw token fails, retry with Bearer prefix
+# Retry with Bearer prefix if raw token rejected
 if response.status_code == 401:
-    print("[generate_voice] Raw token 401 — retrying with Bearer prefix...")
+    print("[generate_voice] Retrying with Bearer prefix...")
     headers["Authorization"] = f"Bearer {FISH_API_KEY}"
     response = requests.post(
         "https://api.fish.audio/v1/tts",
@@ -75,9 +82,6 @@ if response.status_code == 401:
 
 if response.status_code != 200:
     print(f"[generate_voice] ❌ Fish Audio error {response.status_code}: {response.text}")
-    print(f"[generate_voice] Key length was: {len(FISH_API_KEY)}")
-    print(f"[generate_voice] Go to fish.audio → profile → API Keys and regenerate your key,")
-    print(f"[generate_voice] then update FISH_AUDIO_API_KEY in GitHub Settings → Secrets → Actions")
     raise Exception(f"Fish Audio API failed: {response.status_code}")
 
 with open(AUDIO_FILE, "wb") as f:
