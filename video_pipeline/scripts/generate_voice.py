@@ -30,22 +30,16 @@ FISH_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
 if not FISH_API_KEY:
     raise Exception("FISH_AUDIO_API_KEY secret is missing or empty")
 
-masked = FISH_API_KEY[:6] + "..." + FISH_API_KEY[-4:]
-print(f"[generate_voice] API key loaded: {masked} (length: {len(FISH_API_KEY)})")
+print(f"[generate_voice] API key length: {len(FISH_API_KEY)} chars")
 
-# ── Auth header — Fish Audio accepts raw token ─────────────────────────────
+# Fish Audio requires Bearer prefix
 headers = {
-    "Authorization": FISH_API_KEY,
+    "Authorization": f"Bearer {FISH_API_KEY}",
     "Content-Type": "application/json",
 }
 
-# ── Payload — no reference_id, uses Fish Audio default voice ───────────────
-# To use a custom voice later:
-#   1. Go to fish.audio → create/clone a voice
-#   2. Copy its model ID
-#   3. Add FISH_VOICE_ID secret to GitHub and uncomment reference_id below
-VOICE_ID = os.environ.get("FISH_VOICE_ID", "")
-
+# Using Fish Audio default voice — no reference_id needed
+# A custom voice can be added later once cloned to your Fish Audio account
 payload = {
     "text": spoken_script,
     "format": "mp3",
@@ -54,31 +48,13 @@ payload = {
     "normalize": True,
 }
 
-# Only add reference_id if a valid voice ID is explicitly set
-if VOICE_ID and len(VOICE_ID) > 10:
-    payload["reference_id"] = VOICE_ID
-    print(f"[generate_voice] Using custom voice ID: {VOICE_ID}")
-else:
-    print("[generate_voice] Using Fish Audio default voice")
-
-print("[generate_voice] Calling Fish Audio API...")
+print("[generate_voice] Calling Fish Audio API with default voice...")
 response = requests.post(
     "https://api.fish.audio/v1/tts",
     headers=headers,
     json=payload,
     timeout=120,
 )
-
-# Retry with Bearer prefix if raw token rejected
-if response.status_code == 401:
-    print("[generate_voice] Retrying with Bearer prefix...")
-    headers["Authorization"] = f"Bearer {FISH_API_KEY}"
-    response = requests.post(
-        "https://api.fish.audio/v1/tts",
-        headers=headers,
-        json=payload,
-        timeout=120,
-    )
 
 if response.status_code != 200:
     print(f"[generate_voice] ❌ Fish Audio error {response.status_code}: {response.text}")
