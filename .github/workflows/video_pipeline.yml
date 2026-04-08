@@ -29,9 +29,11 @@ jobs:
         run: |
           pip install -r video_pipeline/requirements.txt
 
-      # ── 4. Verify FFmpeg (pre-installed on ubuntu-latest — no install needed)
-      - name: Verify FFmpeg
-        run: ffmpeg -version | head -1
+      # ── 4. Install FFmpeg (fast — skips apt-get update) ───────────────
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
 
       # ── 5. Create outputs directory ───────────────────────────────────
       - name: Create outputs directory
@@ -49,7 +51,6 @@ jobs:
         working-directory: video_pipeline
         env:
           FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
-          FISH_VOICE_ID: ${{ secrets.FISH_VOICE_ID }}
         run: python scripts/generate_voice.py
 
       # ── 8. Generate background video ──────────────────────────────────
