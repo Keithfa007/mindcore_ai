@@ -33,20 +33,22 @@ headers = {
     "Content-Type": "application/json",
 }
 
-# WaveSpeed API v3 — WAN 2.1 text-to-video 720p
-# Budget friendly at ~$0.01/sec. Upgrade to wavespeed-ai/wan-2-1-t2v-1080p for higher quality.
-MODEL_ID    = "wavespeed-ai/wan-2-1-t2v-720p"
-SUBMIT_URL  = f"https://api.wavespeed.ai/api/v3/{MODEL_ID}"
+# Correct model ID — Alibaba WAN 2.1 Text-to-Video 720p
+# Budget: ~$0.01/sec. To upgrade swap for: alibaba/wan-2.2-t2v-plus-1080p
+MODEL_ID   = "alibaba/wan-2.1-t2v-plus-720p"
+SUBMIT_URL = f"https://api.wavespeed.ai/api/v3/{MODEL_ID}"
 
 payload = {
     "prompt": video_prompt,
     "negative_prompt": "text, watermark, logo, face, person, human, hands, words, letters, nsfw, blurry",
-    "num_frames": 81,       # ~5 seconds at 16fps
-    "aspect_ratio": "9:16", # TikTok / Reels vertical format
-    "resolution": "720p",
+    "size": "720*1280",   # 9:16 vertical — TikTok / Reels format
+    "duration": 5,
 }
 
-print(f"[generate_video] Submitting to: {SUBMIT_URL}")
+print(f"[generate_video] Model:    {MODEL_ID}")
+print(f"[generate_video] Endpoint: {SUBMIT_URL}")
+print(f"[generate_video] Submitting job...")
+
 submit_response = requests.post(
     SUBMIT_URL,
     headers=headers,
@@ -54,14 +56,14 @@ submit_response = requests.post(
     timeout=60,
 )
 
+print(f"[generate_video] HTTP {submit_response.status_code}: {submit_response.text[:300]}")
+
 if submit_response.status_code != 200:
-    print(f"[generate_video] ❌ Submission error {submit_response.status_code}: {submit_response.text}")
     raise Exception(f"WaveSpeed submission failed: {submit_response.status_code}")
 
 submit_data = submit_response.json()
-print(f"[generate_video] Response: {json.dumps(submit_data, indent=2)[:300]}")
+request_id  = submit_data.get("data", {}).get("id")
 
-request_id = submit_data.get("data", {}).get("id")
 if not request_id:
     raise Exception(f"No request_id returned: {submit_data}")
 
@@ -69,11 +71,9 @@ print(f"[generate_video] ✅ Job submitted. ID: {request_id}")
 
 # ── Poll for completion ────────────────────────────────────────────────────
 poll_url = f"https://api.wavespeed.ai/api/v3/predictions/{request_id}/result"
-max_wait = 300   # 5 minutes max
-interval = 15    # poll every 15 seconds
-elapsed  = 0
-
-print(f"[generate_video] Polling: {poll_url}")
+max_wait  = 300   # 5 minutes max
+interval  = 15    # poll every 15 seconds
+elapsed   = 0
 
 while elapsed < max_wait:
     time.sleep(interval)
@@ -82,7 +82,7 @@ while elapsed < max_wait:
     poll_response = requests.get(poll_url, headers=headers, timeout=30)
 
     if poll_response.status_code != 200:
-        print(f"[generate_video] Poll {poll_response.status_code} — retrying in {interval}s...")
+        print(f"[generate_video] Poll {poll_response.status_code} — retrying...")
         continue
 
     poll_data = poll_response.json()
