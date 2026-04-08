@@ -29,12 +29,9 @@ jobs:
         run: |
           pip install -r video_pipeline/requirements.txt
 
-      # ── 4. Install FFmpeg ─────────────────────────────────────────────
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
-          ffmpeg -version
+      # ── 4. Verify FFmpeg (pre-installed on ubuntu-latest — no install needed)
+      - name: Verify FFmpeg
+        run: ffmpeg -version | head -1
 
       # ── 5. Create outputs directory ───────────────────────────────────
       - name: Create outputs directory
