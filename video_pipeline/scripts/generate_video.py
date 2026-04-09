@@ -1,437 +1,133 @@
-#!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v2.1
-=================================
-FIX: Audio-first approach — generate VO per scene, measure duration,
-     then request a video clip of the exact matching length (5s or 8s).
-     No more looping.
-
-Pipeline:
-  1. Claude generates script (VO ≤ 7.5s per scene → fits in 8s clip)
-  2. Fish Audio generates one MP3 per scene
-  3. ffprobe measures each MP3 duration
-  4. WaveSpeed WAN 2.2 T2V 720p requested with duration=5 or duration=8
-  5. Poll + download all 4 raw video clips
-  6. Mux audio onto each clip (freeze last frame if video slightly short)
-  7. FFmpeg xfade crossfade concat → final MP4
+generate_video.py
+MindCore AI Video Pipeline — Step 3
+Reads video_prompt from outputs/script_output.json
+Calls WaveSpeed AI API to generate background video
+Saves to outputs/background_video.mp4
 """
 
-import json
 import os
-import subprocess
-import sys
+import json
 import time
+import requests
 from pathlib import Path
 
-import anthropic
-import requests
+# ── Paths ──────────────────────────────────────────────────────────────────
+BASE_DIR    = Path(__file__).resolve().parent.parent
+OUTPUT_DIR  = BASE_DIR / "outputs"
+SCRIPT_FILE = OUTPUT_DIR / "script_output.json"
+VIDEO_FILE  = OUTPUT_DIR / "background_video.mp4"
 
-# ── Config ────────────────────────────────────────────────────────────────────
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
-FISH_AUDIO_API_KEY = os.environ["FISH_AUDIO_API_KEY"]
+# ── Config ─────────────────────────────────────────────────────────────────
 WAVESPEED_API_KEY  = os.environ["WAVESPEED_API_KEY"]
-FISH_VOICE_ID      = os.environ.get("FISH_VOICE_ID", "eed26f2294d64177911af612473cca98")
+SUBMIT_URL         = "https://api.wavespeed.ai/api/v3/wavespeed-ai/wan-2.1/t2v-720p"
+RESULT_URL         = "https://api.wavespeed.ai/api/v3/predictions/{task_id}/result"
+POLL_INTERVAL      = 15    # seconds between status checks
+TIMEOUT            = 600   # max seconds to wait
 
-# WAN 2.2 T2V 720p — supports explicit duration param (5 or 8 seconds)
-WAVESPEED_SUBMIT_URL = "https://api.wavespeed.ai/api/v3/wavespeed-ai/wan-2.2/t2v-720p"
-WAVESPEED_RESULT_URL = "https://api.wavespeed.ai/api/v3/predictions/{task_id}/result"
-FISH_TTS_URL         = "https://api.fish.audio/v1/tts"
+# ── Load script output ─────────────────────────────────────────────────────
+if not SCRIPT_FILE.exists():
+    raise FileNotFoundError(f"Script output not found: {SCRIPT_FILE}")
 
-OUTPUT_DIR          = Path("video_pipeline/output")
-SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
-CROSSFADE_DUR       = 0.5   # seconds
-POLL_INTERVAL       = 15    # seconds between polls
-VIDEO_TIMEOUT       = 600   # max seconds to wait per clip
-SUPPORTED_DURATIONS = [5, 8] # WAN 2.2 T2V 720p supported clip lengths
+with open(SCRIPT_FILE, "r") as f:
+    script_data = json.load(f)
 
-SEO_KEYWORDS = [
-    "AI mental health coach for men",
-    "recovery support anxiety depression",
-    "sobriety mental wellness app",
-]
+# Support both single prompt and multi-scene prompts array
+if "video_prompts" in script_data:
+    # Use the first prompt for single-clip v1 generation
+    video_prompt = script_data["video_prompts"][0]
+elif "video_prompt" in script_data:
+    video_prompt = script_data["video_prompt"]
+else:
+    raise KeyError("No video_prompt or video_prompts found in script_output.json")
 
+print(f"[generate_video] Video prompt: {video_prompt[:80]}...")
 
-# ── Step 1 — Script ───────────────────────────────────────────────────────────
+# ── Submit video generation task ───────────────────────────────────────────
+headers = {
+    "Authorization": f"Bearer {WAVESPEED_API_KEY}",
+    "Content-Type": "application/json",
+}
 
-def generate_script() -> dict:
-    """
-    Claude generates a tight 4-scene script.
-    Word counts are enforced so VO audio fits inside the 8s clip ceiling:
-      Hook:         8–12 words  (~4–5s)
-      Problem:      12–16 words (~5–7s)
-      Story:        14–18 words (~6–8s)
-      Solution+CTA: 12–16 words (~5–7s)
-    """
-    print("📝  Generating 4-scene script with Claude...")
+payload = {
+    "prompt": video_prompt,
+    "negative_prompt": "text, watermark, logo, blurry, low quality, distorted, cartoon, anime",
+    "size": "1280*720",
+    "num_inference_steps": 30,
+    "duration": 5,
+    "guidance_scale": 5,
+    "flow_shift": 5,
+    "seed": -1,
+    "enable_prompt_optimizer": True,
+    "enable_safety_checker": True,
+}
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+print("[generate_video] Submitting video generation task to WaveSpeed...")
 
-    prompt = f"""You are a viral performance marketing copywriter for MindCore AI —
-an AI mental wellness companion targeting men in recovery or struggling with
-anxiety, depression, and isolation.
+resp = requests.post(SUBMIT_URL, headers=headers, json=payload, timeout=30)
 
-Write a 4-scene video ad script: Hook → Problem → Story → Solution+CTA.
+if resp.status_code != 200:
+    print(f"[generate_video] ❌ WaveSpeed submit error {resp.status_code}: {resp.text}")
+    raise Exception(f"WaveSpeed submit failed: {resp.status_code}")
 
-TARGET: Men 35+. Tone: raw, honest, brotherly. Not clinical.
-SEO KEYWORDS to weave in naturally: {", ".join(SEO_KEYWORDS)}
+data    = resp.json()
+task_id = (
+    data.get("data", {}).get("id")
+    or data.get("id")
+    or data.get("task_id")
+)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STRICT WORD COUNT RULES (read at ~140 words/min):
-• hook:         8–12 words   (~4–5 seconds spoken)
-• problem:      12–16 words  (~5–7 seconds spoken)
-• story:        14–18 words  (~6–8 seconds spoken)
-• solution_cta: 12–16 words  (~5–7 seconds spoken)
-Do NOT exceed these limits. Short = punchy = viral.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+if not task_id:
+    raise Exception(f"No task_id returned: {data}")
 
-VISUAL PROMPT RULES (for AI cinematic video generation):
-• 45–60 words each
-• Cinematic 720p realism — prestige drama quality
-• Describe: subject, action, lighting, camera movement, mood
-• Style keywords: cinematic, shallow depth of field, film grain,
-  golden hour or blue hour, dramatic, slow motion, etc.
-• No text, no logos, no UI elements
+print(f"[generate_video] Task submitted. ID: {task_id}")
 
-Return ONLY valid JSON with no markdown fences:
-{{
-  "hook": {{"voiceover": "...", "visual_prompt": "..."}},
-  "problem": {{"voiceover": "...", "visual_prompt": "..."}},
-  "story": {{"voiceover": "...", "visual_prompt": "..."}},
-  "solution_cta": {{"voiceover": "...", "visual_prompt": "..."}}
-}}"""
+# ── Poll for result ────────────────────────────────────────────────────────
+print("[generate_video] Polling for completion...")
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1200,
-        messages=[{"role": "user", "content": prompt}],
+deadline = time.time() + TIMEOUT
+
+while time.time() < deadline:
+    time.sleep(POLL_INTERVAL)
+
+    result_resp = requests.get(
+        RESULT_URL.format(task_id=task_id),
+        headers={"Authorization": f"Bearer {WAVESPEED_API_KEY}"},
+        timeout=30,
     )
+    result_resp.raise_for_status()
+    result_data = result_resp.json()
 
-    raw = message.content[0].text.strip()
-    if raw.startswith("```"):
-        parts = raw.split("```")
-        raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
+    inner  = result_data.get("data", result_data)
+    status = inner.get("status", "unknown")
 
-    script = json.loads(raw)
-    print("  ✅  Script generated")
-    return script
+    print(f"[generate_video] Status: {status}")
 
+    if status == "completed":
+        outputs = inner.get("outputs", [])
+        if not outputs:
+            raise Exception(f"Completed but no outputs in response: {result_data}")
+        video_url = outputs[0]
+        break
 
-# ── Step 2 — Fish Audio TTS ───────────────────────────────────────────────────
+    if status in ("failed", "error", "cancelled"):
+        raise Exception(f"Video generation failed with status '{status}': {result_data}")
 
-def generate_tts(text: str, output_path: str) -> float:
-    """Generate VO with Fish Audio Plus. Returns duration in seconds."""
-    headers = {
-        "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "text": text,
-        "reference_id": FISH_VOICE_ID,
-        "format": "mp3",
-        "mp3_bitrate": 128,
-        "latency": "normal",
-        "normalize": True,
-    }
+else:
+    raise TimeoutError(f"Video generation timed out after {TIMEOUT}s (task: {task_id})")
 
-    resp = requests.post(FISH_TTS_URL, headers=headers, json=payload, stream=True, timeout=60)
-    resp.raise_for_status()
+# ── Download video ─────────────────────────────────────────────────────────
+print(f"[generate_video] Downloading video from {video_url}...")
 
-    with open(output_path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+download_resp = requests.get(video_url, stream=True, timeout=120)
+download_resp.raise_for_status()
 
-    return get_media_duration(output_path)
+with open(VIDEO_FILE, "wb") as f:
+    for chunk in download_resp.iter_content(chunk_size=65_536):
+        if chunk:
+            f.write(chunk)
 
-
-def get_media_duration(path: str) -> float:
-    """ffprobe: return duration in seconds."""
-    result = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path],
-        capture_output=True, text=True, check=True,
-    )
-    return float(json.loads(result.stdout)["format"]["duration"])
-
-
-# ── Step 3 — Duration Matching ────────────────────────────────────────────────
-
-def choose_video_duration(audio_duration: float) -> int:
-    """
-    Pick the smallest WaveSpeed-supported duration that covers the audio.
-    Adds 0.6s breathing room so the last word doesn't land on the final frame.
-    Caps at 8s (WAN 2.2 max).
-    """
-    needed = audio_duration + 0.6
-    for d in SUPPORTED_DURATIONS:
-        if d >= needed:
-            return d
-    print(f"  ⚠️  Audio ({audio_duration:.2f}s) > 8s cap — clamping to 8s")
-    return 8
-
-
-# ── Step 4 — WaveSpeed Video Generation ──────────────────────────────────────
-
-def submit_video(visual_prompt: str, duration: int) -> str:
-    """Submit a T2V job. Returns task_id."""
-    headers = {
-        "Authorization": f"Bearer {WAVESPEED_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "prompt": visual_prompt,
-        "size": "1280*720",
-        "duration": duration,        # ← THE KEY FIX: match audio length
-        "seed": -1,
-        "enable_prompt_optimizer": True,
-    }
-
-    resp = requests.post(WAVESPEED_SUBMIT_URL, headers=headers, json=payload, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-
-    task_id = (
-        data.get("data", {}).get("id")
-        or data.get("id")
-        or data.get("task_id")
-    )
-    if not task_id:
-        raise RuntimeError(f"No task_id in response: {data}")
-
-    return task_id
-
-
-def poll_video(task_id: str) -> str:
-    """Poll until complete. Returns video URL."""
-    headers  = {"Authorization": f"Bearer {WAVESPEED_API_KEY}"}
-    url      = WAVESPEED_RESULT_URL.format(task_id=task_id)
-    deadline = time.time() + VIDEO_TIMEOUT
-
-    while time.time() < deadline:
-        resp   = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
-        inner  = resp.json().get("data", resp.json())
-        status = inner.get("status", "unknown")
-
-        if status == "completed":
-            outputs = inner.get("outputs", [])
-            if outputs:
-                return outputs[0]
-            raise RuntimeError(f"Completed but no outputs: {inner}")
-
-        if status in ("failed", "error", "cancelled"):
-            raise RuntimeError(f"Generation failed [{status}]: {inner}")
-
-        print(f"      ⏳  {task_id[:8]}… {status}")
-        time.sleep(POLL_INTERVAL)
-
-    raise TimeoutError(f"Timed out after {VIDEO_TIMEOUT}s  task={task_id}")
-
-
-def download_file(url: str, output_path: str):
-    resp = requests.get(url, stream=True, timeout=120)
-    resp.raise_for_status()
-    with open(output_path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=65_536):
-            if chunk:
-                f.write(chunk)
-
-
-# ── Step 5 — Mux audio onto video (no looping, ever) ─────────────────────────
-
-def merge_audio_video(video_path: str, audio_path: str, output_path: str):
-    """
-    Mux VO onto video without any looping.
-
-    Case A  (audio > video): Freeze the last video frame to cover the
-            remaining audio using tpad=stop_mode=clone. No loop.
-
-    Case B  (video >= audio): Pad the audio with silence via apad so
-            streams have equal length, then -shortest trims to video end.
-    """
-    v_dur = get_media_duration(video_path)
-    a_dur = get_media_duration(audio_path)
-    diff  = a_dur - v_dur  # positive = audio is longer
-
-    if diff > 0:
-        # Freeze last frame of video to cover audio overhang
-        freeze_extra = diff + 0.2
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", video_path,
-            "-i", audio_path,
-            "-filter_complex",
-            f"[0:v]tpad=stop_mode=clone:stop_duration={freeze_extra:.3f}[vout]",
-            "-map", "[vout]",
-            "-map", "1:a:0",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-r", "24",
-            "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
-            output_path,
-        ]
-    else:
-        # Audio is shorter — pad audio with silence
-        pad_dur = abs(diff) + 0.1
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", video_path,
-            "-i", audio_path,
-            "-filter_complex", f"[1:a]apad=pad_dur={pad_dur:.3f}[aout]",
-            "-map", "0:v",
-            "-map", "[aout]",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-r", "24",
-            "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
-            "-shortest",
-            output_path,
-        ]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print("FFmpeg stderr:", result.stderr[-2000:])
-        raise RuntimeError(f"merge_audio_video failed → {output_path}")
-
-
-# ── Step 6 — FFmpeg xfade crossfade concat ───────────────────────────────────
-
-def crossfade_concat(clip_paths: list[str], output_path: str):
-    """Concatenate clips with xfade (video) + acrossfade (audio)."""
-    n = len(clip_paths)
-    if n == 1:
-        import shutil
-        shutil.copy(clip_paths[0], output_path)
-        return
-
-    durations = [get_media_duration(p) for p in clip_paths]
-    print(f"  Merged clip durations: {[f'{d:.2f}s' for d in durations]}")
-
-    input_args = []
-    for p in clip_paths:
-        input_args += ["-i", p]
-
-    video_filters = []
-    audio_filters = []
-
-    offset = durations[0] - CROSSFADE_DUR
-    video_filters.append(
-        f"[0:v][1:v]xfade=transition=fade:duration={CROSSFADE_DUR}:offset={offset:.4f}[xv1]"
-    )
-    audio_filters.append(
-        f"[0:a][1:a]acrossfade=d={CROSSFADE_DUR}:c1=tri:c2=tri[xa1]"
-    )
-
-    for i in range(2, n):
-        offset += durations[i - 1] - CROSSFADE_DUR
-        prev_v = f"[xv{i - 1}]"
-        prev_a = f"[xa{i - 1}]"
-        out_v  = "[vout]" if i == n - 1 else f"[xv{i}]"
-        out_a  = "[aout]" if i == n - 1 else f"[xa{i}]"
-        video_filters.append(
-            f"{prev_v}[{i}:v]xfade=transition=fade:duration={CROSSFADE_DUR}:offset={offset:.4f}{out_v}"
-        )
-        audio_filters.append(
-            f"{prev_a}[{i}:a]acrossfade=d={CROSSFADE_DUR}:c1=tri:c2=tri{out_a}"
-        )
-
-    if n == 2:
-        video_filters[0] = video_filters[0].replace("[xv1]", "[vout]")
-        audio_filters[0] = audio_filters[0].replace("[xa1]", "[aout]")
-
-    filter_complex = ";".join(video_filters + audio_filters)
-
-    cmd = (
-        ["ffmpeg", "-y"]
-        + input_args
-        + [
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-            "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart",
-            output_path,
-        ]
-    )
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print("FFmpeg stderr:", result.stderr[-2000:])
-        raise RuntimeError("crossfade_concat failed")
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    print("\n🎬  MindCore AI Video Pipeline v2.1  (audio-first, no looping)")
-    print("=" * 60)
-
-    # 1. Script
-    script = generate_script()
-    (OUTPUT_DIR / "script_v2.json").write_text(json.dumps(script, indent=2))
-    print()
-    for scene in SCENE_ORDER:
-        wc = len(script[scene]["voiceover"].split())
-        print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
-
-    # 2. TTS first — measure duration before requesting video
-    print("\n🎙️   Generating voiceovers (Fish Audio Plus)...")
-    audio_paths:     dict[str, str]   = {}
-    audio_durations: dict[str, float] = {}
-    video_durations: dict[str, int]   = {}
-
-    for scene in SCENE_ORDER:
-        path = str(OUTPUT_DIR / f"{scene}_vo.mp3")
-        a_dur = generate_tts(script[scene]["voiceover"], path)
-        v_dur = choose_video_duration(a_dur)
-        audio_paths[scene]     = path
-        audio_durations[scene] = a_dur
-        video_durations[scene] = v_dur
-        print(f"  [{scene}]  audio={a_dur:.2f}s  →  requesting {v_dur}s video")
-
-    # 3. Submit all video jobs
-    print("\n🎥   Submitting video generation (WAN 2.2 T2V 720p)...")
-    task_ids: dict[str, str] = {}
-
-    for scene in SCENE_ORDER:
-        task_id = submit_video(script[scene]["visual_prompt"], video_durations[scene])
-        task_ids[scene] = task_id
-        print(f"  [{scene}]  task={task_id}  (duration={video_durations[scene]}s)")
-        time.sleep(2)
-
-    # 4. Poll + download
-    print("\n⏳   Polling WaveSpeed...")
-    raw_video_paths: dict[str, str] = {}
-
-    for scene in SCENE_ORDER:
-        print(f"  [{scene}]  {task_ids[scene][:8]}…")
-        video_url = poll_video(task_ids[scene])
-        out = str(OUTPUT_DIR / f"{scene}_raw.mp4")
-        download_file(video_url, out)
-        raw_video_paths[scene] = out
-        print(f"    ✅  {out}  ({get_media_duration(out):.2f}s)")
-
-    # 5. Mux audio
-    print("\n🔊   Merging audio onto clips...")
-    merged_paths: list[str] = []
-
-    for scene in SCENE_ORDER:
-        out = str(OUTPUT_DIR / f"{scene}_merged.mp4")
-        merge_audio_video(raw_video_paths[scene], audio_paths[scene], out)
-        merged_paths.append(out)
-        print(f"  [{scene}]  {out}  ({get_media_duration(out):.2f}s)")
-
-    # 6. Crossfade concat
-    print("\n✂️    Crossfade concat → final video...")
-    final = str(OUTPUT_DIR / "mindcore_ai_ad_v2.mp4")
-    crossfade_concat(merged_paths, final)
-
-    print(f"\n✅   {final}  ({get_media_duration(final):.2f}s total)")
-    print("\n🚀   Pipeline complete!")
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as exc:
-        print(f"\n❌  {exc}", file=sys.stderr)
-        raise SystemExit(1)
+size_mb = VIDEO_FILE.stat().st_size / (1024 * 1024)
+print(f"[generate_video] ✅ Video saved: {VIDEO_FILE} ({size_mb:.2f} MB)")
