@@ -20,7 +20,7 @@ jobs:
   generate-video:
     name: Generate Video (9:16 TikTok/Facebook)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repo
@@ -72,22 +72,19 @@ jobs:
           echo "Starting MindCore AI Video Pipeline"
           python video_pipeline/generate_video_v2.py
 
-      - name: Upload final video
+      # ── Single artifact bundle with everything you need to post ────────────
+      - name: Upload post bundle (video + upload guide + script)
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: mindcore-video-run-${{ github.run_number }}
-          path: video_pipeline/output/mindcore_ai_ad_v2.mp4
+          name: mindcore-post-bundle-run-${{ github.run_number }}
+          path: |
+            video_pipeline/output/mindcore_ai_ad_v2.mp4
+            video_pipeline/output/upload_guide.txt
+            video_pipeline/output/script_v2.json
           retention-days: 30
 
-      - name: Upload script
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: mindcore-script-run-${{ github.run_number }}
-          path: video_pipeline/output/script_v2.json
-          retention-days: 30
-
+      # ── On failure, upload everything for debugging ────────────────────────
       - name: Upload debug artifacts on failure
         uses: actions/upload-artifact@v4
         if: failure()
@@ -102,6 +99,8 @@ jobs:
           echo "## MindCore AI Video Pipeline v3" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "**Format:** 9:16 vertical -- TikTok + Facebook Reels" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           if [ -f "video_pipeline/output/script_v2.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script_v2.json')); print(d.get('video_type','unknown').upper())" 2>/dev/null || echo "UNKNOWN")
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script_v2.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
@@ -109,14 +108,26 @@ jobs:
             echo "**Video type:** $TYPE" >> $GITHUB_STEP_SUMMARY
             echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
             echo "**SEO keyword:** $KW" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Script" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat video_pipeline/output/script_v2.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
+
+          if [ -f "video_pipeline/output/upload_guide.txt" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Upload Guide (TikTok + Facebook)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat video_pipeline/output/upload_guide.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
           if [ -f "video_pipeline/output/mindcore_ai_ad_v2.mp4" ]; then
             SIZE=$(du -sh video_pipeline/output/mindcore_ai_ad_v2.mp4 | cut -f1)
-            echo "### Final Video: $SIZE -- download from Artifacts" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Final Video: $SIZE" >> $GITHUB_STEP_SUMMARY
+            echo "Download the **mindcore-post-bundle** from Artifacts above -- contains the MP4, upload guide TXT, and script JSON." >> $GITHUB_STEP_SUMMARY
           else
             echo "### Pipeline did not produce a final video" >> $GITHUB_STEP_SUMMARY
           fi
