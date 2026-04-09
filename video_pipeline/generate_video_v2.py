@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v3.7
+MindCore AI Video Pipeline v3.8
 =================================
 Smart content/ad rotation pipeline.
 
-SYNC FIX (v3.7):
-  - Removed xfade crossfade entirely -- it was causing video/audio desync
-  - Root cause: xfade shortens total video duration by (n-1)*0.5s but
-    sequential audio concat does not, so they drift out of sync by scene 3-4
-  - Now uses simple concat (hard cuts) for BOTH video and audio
-  - Each merged clip = audio_duration + 0.8s silence tail
-  - Hard cut between scenes is clean and sync is mathematically guaranteed
-  - The 0.8s tail provides the natural breathing room between scenes
+VALIDATION LAYER (v3.8):
+  Two checkpoints before any WaveSpeed credit is spent:
+
+  CHECKPOINT 1 -- Word count (after script generation):
+    Each scene has hard word count limits. If Claude exceeds them,
+    the script is automatically regenerated (up to 3 attempts).
+    No TTS, no video until script passes.
+
+  CHECKPOINT 2 -- Audio duration (after TTS generation):
+    Each audio clip is measured. If any scene audio + tail exceeds
+    the max supported clip (8s), the pipeline fails immediately.
+    No WaveSpeed calls are made.
+
+  Word limits at 0.85x TTS (~1.95 words/sec):
+    hook:         6-10 words  -> ~3-5s -> fits 5s clip
+    problem:      10-14 words -> ~5-7s -> fits 8s clip
+    story:        12-16 words -> ~6-8s -> fits 8s clip
+    solution_cta: 10-14 words -> ~5-7s -> fits 8s clip
+    Max audio per scene: 7.0s (8s clip - 0.8s tail - 0.2s margin)
 """
 
 import json
@@ -49,17 +60,24 @@ POLL_INTERVAL       = 15
 VIDEO_TIMEOUT       = 600
 SUPPORTED_DURATIONS = [5, 8]
 
-# 1.5s buffer ensures WaveSpeed clip is long enough to cover VO + tail
-AUDIO_BUFFER_SECS   = 1.5
-
-# Silence after VO ends before next scene -- 0.8s = natural dramatic beat
-# With hard cuts this IS the full gap the viewer hears between scenes
-SCENE_TAIL_SECS     = 0.8
-
-TTS_SPEED           = 0.85
+AUDIO_BUFFER_SECS   = 1.5   # buffer when requesting WaveSpeed clip
+SCENE_TAIL_SECS     = 0.8   # silence after VO ends before next scene
+TTS_SPEED           = 0.85  # slightly slower, warmer delivery
 
 CLAUDE_MAX_RETRIES  = 10
 CLAUDE_RETRY_BASE   = 30
+
+# Hard word count limits per scene -- enforced by CHECKPOINT 1
+WORD_LIMITS = {
+    "hook":         (6, 10),
+    "problem":      (10, 14),
+    "story":        (12, 16),
+    "solution_cta": (10, 14),
+}
+
+# Max audio seconds per scene -- enforced by CHECKPOINT 2
+# = largest clip (8s) - tail (0.8s) - safety margin (0.2s) = 7.0s
+MAX_AUDIO_SECS = max(SUPPORTED_DURATIONS) - SCENE_TAIL_SECS - 0.2
 
 SEO_KEYWORDS = [
     "AI mental health coach for men",
@@ -92,6 +110,77 @@ def load_niche_keywords() -> dict:
         return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"]}
     with open(kw_path) as f:
         return json.load(f)
+
+
+# -- CHECKPOINT 1 -- Word count validation ------------------------------------
+
+def validate_word_counts(script: dict) -> tuple:
+    """Returns (passed: bool, errors: list[str])."""
+    errors = []
+    for scene in SCENE_ORDER:
+        vo     = script[scene]["voiceover"]
+        wc     = len(vo.split())
+        lo, hi = WORD_LIMITS[scene]
+        if wc < lo:
+            errors.append(f"  [{scene}] {wc} words -- too short (min {lo}): '{vo}'")
+        elif wc > hi:
+            errors.append(f"  [{scene}] {wc} words -- TOO LONG (max {hi}): '{vo}'")
+    return (len(errors) == 0), errors
+
+
+def generate_script_with_validation(generate_fn, generate_args, max_attempts=3):
+    """
+    Call generate_fn, validate word counts, auto-retry if invalid.
+    Fails fast before any TTS or WaveSpeed calls.
+    """
+    for attempt in range(1, max_attempts + 1):
+        script = generate_fn(*generate_args)
+        passed, errors = validate_word_counts(script)
+
+        if passed:
+            print(f"  CHECKPOINT 1 PASSED -- all word counts within limits")
+            return script
+
+        print(f"  CHECKPOINT 1 FAILED (attempt {attempt}/{max_attempts}):")
+        for e in errors:
+            print(e)
+
+        if attempt < max_attempts:
+            print(f"  Regenerating script...")
+        else:
+            raise RuntimeError(
+                f"Script failed word count validation after {max_attempts} attempts.\n"
+                + "\n".join(errors)
+            )
+
+    raise RuntimeError("Unexpected exit from validation loop")
+
+
+# -- CHECKPOINT 2 -- Audio duration validation --------------------------------
+
+def validate_audio_durations(audio_durations: dict) -> None:
+    """
+    Verify every scene audio fits inside the max clip duration.
+    Raises RuntimeError BEFORE any WaveSpeed calls if validation fails.
+    No credits are wasted on a video that would be broken.
+    """
+    errors = []
+    for scene in SCENE_ORDER:
+        a_dur = audio_durations[scene]
+        if a_dur > MAX_AUDIO_SECS:
+            errors.append(
+                f"  [{scene}] audio={a_dur:.2f}s exceeds max {MAX_AUDIO_SECS:.1f}s "
+                f"(8s clip - {SCENE_TAIL_SECS}s tail - 0.2s margin)"
+            )
+
+    if errors:
+        raise RuntimeError(
+            "CHECKPOINT 2 FAILED -- audio too long, aborting before WaveSpeed:\n"
+            + "\n".join(errors)
+            + "\nRe-run -- script will be regenerated with shorter voiceovers."
+        )
+
+    print(f"  CHECKPOINT 2 PASSED -- all audio within {MAX_AUDIO_SECS:.1f}s limit")
 
 
 # -- Step 1a -- Fetch Trending Topic ------------------------------------------
@@ -190,24 +279,19 @@ FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
 They feel alone. They don't ask for help. Speak directly to them.
 
-STRICT WORD COUNT RULES -- HARD limits, do not exceed:
-- hook:         6-10 words   -- pattern-interrupt opener. Short. Punchy. Stops the scroll.
-- problem:      10-14 words  -- name the pain, make them feel seen
-- story:        12-16 words  -- insight, real talk, perspective shift, or fact
-- solution_cta: 10-14 words  -- hopeful close. May mention MindCore AI ONLY if natural.
+STRICT WORD COUNT RULES -- enforced by automated validator. Rejected and regenerated if exceeded.
+- hook:         6-10 words   -- SHORT. Pattern-interrupt. Stops the scroll.
+- problem:      10-14 words  -- Name the pain. Make them feel seen.
+- story:        12-16 words  -- Insight, real talk, perspective shift.
+- solution_cta: 10-14 words  -- Hopeful close. Mention MindCore AI ONLY if natural.
 
-WHY THESE LIMITS MATTER: VO is read at ~120 words/min. Exceeding limits cuts words off.
+COUNT YOUR WORDS before outputting. Exceeding limits wastes API credits.
 
-SEO RULES:
-- Weave '{keyword}' naturally at least once
-- Hook must stop the scroll immediately
-- Second person only ("you", "your")
+SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
 
 VISUAL PROMPT RULES (vertical 9:16 portrait for mobile):
-- 45-60 words each
-- Cinematic realism, prestige drama quality, close-up portrait shots
+- 45-60 words each, cinematic realism, close-up portrait shots
 - No text, no logos, no UI, no phones
-- Describe: subject, action, lighting, camera, mood
 - Style: shallow depth of field, film grain, golden/blue hour, dramatic
 
 Return ONLY valid JSON, no markdown fences:
@@ -247,13 +331,13 @@ CRITICAL RULES:
 
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
-STRICT WORD COUNT RULES -- HARD limits, do not exceed:
+STRICT WORD COUNT RULES -- enforced by automated validator. Rejected and regenerated if exceeded.
 - hook:         6-10 words
 - problem:      10-14 words
 - story:        12-16 words
 - solution_cta: 10-14 words -- include CTA and accurate trial description
 
-WHY THESE LIMITS MATTER: VO is read at ~120 words/min. Exceeding limits cuts words off.
+COUNT YOUR WORDS before outputting. Exceeding limits wastes API credits.
 
 VISUAL PROMPT RULES (vertical 9:16 portrait):
 - 45-60 words, cinematic realism, portrait framing
@@ -349,10 +433,8 @@ def choose_video_duration(audio_duration: float) -> int:
     needed = audio_duration + AUDIO_BUFFER_SECS
     for d in SUPPORTED_DURATIONS:
         if d >= needed:
-            print(f"    audio={audio_duration:.2f}s + {AUDIO_BUFFER_SECS}s buffer -> requesting {d}s clip")
             return d
-    print(f"    WARNING: audio={audio_duration:.2f}s > 8s cap -- clamping.")
-    return 8
+    return max(SUPPORTED_DURATIONS)
 
 
 # -- Step 4 -- WaveSpeed Video ------------------------------------------------
@@ -415,13 +497,6 @@ def download_file(url: str, output_path: str):
 # -- Step 5 -- Mux audio onto video -------------------------------------------
 
 def merge_audio_video(video_path: str, audio_path: str, output_path: str):
-    """
-    Mux VO onto video and hard-trim to exactly audio_duration + SCENE_TAIL_SECS.
-
-    Video is always longer than audio (we request with 1.5s buffer).
-    We simply trim at the right point -- no padding, no looping, no freezing needed
-    in the normal case. The tpad freeze is kept as a safety net only.
-    """
     v_dur      = get_media_duration(video_path)
     a_dur      = get_media_duration(audio_path)
     target_dur = a_dur + SCENE_TAIL_SECS
@@ -429,7 +504,6 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
     print(f"    video={v_dur:.2f}s  audio={a_dur:.2f}s  -> clip={target_dur:.2f}s")
 
     if a_dur > v_dur:
-        # Safety net only -- should never happen with 1.5s buffer
         freeze_extra = (a_dur - v_dur) + SCENE_TAIL_SECS + 0.2
         cmd = [
             "ffmpeg", "-y",
@@ -444,7 +518,6 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
             output_path,
         ]
     else:
-        # Normal case: trim video to audio + tail, no other processing needed
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path, "-i", audio_path,
@@ -461,26 +534,12 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
         print("FFmpeg stderr:", result.stderr[-2000:])
         raise RuntimeError(f"merge_audio_video failed -> {output_path}")
 
-    actual = get_media_duration(output_path)
-    print(f"    merged: {actual:.2f}s  (target was {target_dur:.2f}s)")
+    print(f"    merged: {get_media_duration(output_path):.2f}s")
 
 
 # -- Step 6 -- Concat all scenes (hard cuts, perfect sync) --------------------
 
 def concat_clips(clip_paths: list, output_path: str):
-    """
-    Concatenate all scene clips using FFmpeg concat demuxer.
-
-    Hard cuts only -- no xfade, no crossfade.
-
-    WHY: xfade shortens total video duration by (n-1)*fade_dur but the
-    audio plays the full length, causing progressive desync that results
-    in frozen frames with audio still playing by scenes 3-4.
-
-    With hard cuts, video duration == audio duration per clip, always.
-    The 0.8s SCENE_TAIL_SECS silence after each VO provides the natural
-    breathing room between scenes. No sync drift is possible.
-    """
     n = len(clip_paths)
     if n == 1:
         import shutil
@@ -511,7 +570,7 @@ def concat_clips(clip_paths: list, output_path: str):
         print("FFmpeg stderr:", result.stderr[-2000:])
         raise RuntimeError("concat_clips failed")
 
-    print(f"  Concat: hard cuts (perfect sync) -> {get_media_duration(output_path):.2f}s")
+    print(f"  Concat done -> {get_media_duration(output_path):.2f}s total")
 
 
 # -- Step 7 -- Upload Guide ---------------------------------------------------
@@ -598,7 +657,8 @@ FULL SCRIPT (for reference)
 ----------------------------
 """
     for scene in SCENE_ORDER:
-        header += f"[{scene.upper()}]\n{script[scene]['voiceover']}\n\n"
+        wc = len(script[scene]["voiceover"].split())
+        header += f"[{scene.upper()}]  ({wc} words)\n{script[scene]['voiceover']}\n\n"
 
     header += "================================================================================\n"
     header += "  PLATFORM UPLOAD DETAILS\n"
@@ -618,20 +678,23 @@ def main():
 
     mode = determine_mode()
 
-    print(f"\n  MindCore AI Video Pipeline v3.7")
+    print(f"\n  MindCore AI Video Pipeline v3.8")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
-    print(f"  TTS speed: {TTS_SPEED}x | Scene tail: {SCENE_TAIL_SECS}s | Concat: hard cuts")
+    print(f"  TTS speed: {TTS_SPEED}x | Tail: {SCENE_TAIL_SECS}s | Max audio/scene: {MAX_AUDIO_SECS:.1f}s")
+    print(f"  Word limits: hook=6-10 | problem=10-14 | story=12-16 | cta=10-14")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+    # 1. Script + CHECKPOINT 1 (word count, auto-retry up to 3x)
+    print("\n  Generating script...")
     if mode == "ad":
         app_facts = load_app_facts()
-        script    = generate_ad_script(app_facts, client)
+        script    = generate_script_with_validation(generate_ad_script, (app_facts, client))
     else:
         topic  = fetch_trending_topic(client)
-        script = generate_content_script(topic, client)
+        script = generate_script_with_validation(generate_content_script, (topic, client))
 
     (OUTPUT_DIR / "script_v2.json").write_text(json.dumps(script, indent=2))
     print(f"\n  Video type: {script.get('video_type', mode)}")
@@ -639,9 +702,12 @@ def main():
     print(f"  SEO kw:     {script.get('seo_keyword', 'N/A')}")
     print()
     for scene in SCENE_ORDER:
-        wc = len(script[scene]["voiceover"].split())
-        print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
+        wc     = len(script[scene]["voiceover"].split())
+        lo, hi = WORD_LIMITS[scene]
+        status = "OK" if lo <= wc <= hi else "!!"
+        print(f"  [{scene:15s}]  {wc:2d} words [{status}]  |  {script[scene]['voiceover']}")
 
+    # 2. TTS -- generate audio before any video calls
     print(f"\n  Generating voiceovers (Fish Audio | speed={TTS_SPEED}x)...")
     audio_paths, audio_durations, video_durations = {}, {}, {}
     for scene in SCENE_ORDER:
@@ -651,15 +717,22 @@ def main():
         audio_paths[scene]     = path
         audio_durations[scene] = a_dur
         video_durations[scene] = v_dur
+        print(f"  [{scene}]  audio={a_dur:.2f}s  -> {v_dur}s clip")
 
+    # CHECKPOINT 2 -- validate audio durations BEFORE any WaveSpeed credits spent
+    print("\n  Running CHECKPOINT 2 -- audio duration validation...")
+    validate_audio_durations(audio_durations)
+
+    # 3. Submit video jobs -- only reached if BOTH checkpoints passed
     print("\n  Submitting video generation (WAN 2.2 T2V 9:16)...")
     task_ids = {}
     for scene in SCENE_ORDER:
         task_id = submit_video(script[scene]["visual_prompt"], video_durations[scene])
         task_ids[scene] = task_id
-        print(f"  [{scene}]  task={task_id}  ({video_durations[scene]}s clip)")
+        print(f"  [{scene}]  task={task_id}  ({video_durations[scene]}s)")
         time.sleep(2)
 
+    # 4. Poll + download
     print("\n  Polling WaveSpeed...")
     raw_video_paths = {}
     for scene in SCENE_ORDER:
@@ -670,19 +743,22 @@ def main():
         raw_video_paths[scene] = out
         print(f"    raw: {get_media_duration(out):.2f}s")
 
-    print(f"\n  Merging audio + trimming clips to audio + {SCENE_TAIL_SECS}s tail...")
+    # 5. Mux audio + trim to audio + tail
+    print(f"\n  Merging audio + trimming to audio + {SCENE_TAIL_SECS}s tail...")
     merged_paths = []
     for scene in SCENE_ORDER:
         out = str(OUTPUT_DIR / f"{scene}_merged.mp4")
         merge_audio_video(raw_video_paths[scene], audio_paths[scene], out)
         merged_paths.append(out)
 
-    print("\n  Concatenating all scenes (hard cuts)...")
+    # 6. Concat (hard cuts, perfect sync)
+    print("\n  Concatenating all scenes...")
     final = str(OUTPUT_DIR / "mindcore_ai_ad_v2.mp4")
     concat_clips(merged_paths, final)
     final_dur = get_media_duration(final)
     final_mb  = Path(final).stat().st_size / (1024 * 1024)
 
+    # 7. Upload guide
     print("\n  Generating social media upload guide...")
     guide_text = generate_upload_guide(script, mode, final_dur, client)
     save_upload_guide(guide_text, script, mode, final_dur, GITHUB_RUN_NUMBER)
