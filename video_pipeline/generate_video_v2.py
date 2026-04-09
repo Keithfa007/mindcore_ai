@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v3.3
+MindCore AI Video Pipeline v3.4
 =================================
 Smart content/ad rotation pipeline.
 
@@ -8,11 +8,11 @@ MODES:
   content  (default) -- Educational/emotional video on a real problem.
   ad       (every 10th run) -- Accurate MindCore AI app ad.
 
-TIMING FIX (v3.3):
-  - Audio buffer increased from 0.6s to 1.5s -- scenes never cut off VO
-  - Word counts tightened so every scene safely fits inside a 5s or 8s clip
-  - TTS speed set to 0.85 (slightly slower) -- warmer, more dramatic delivery
-  - merge_audio_video freeze buffer increased for extra safety
+TIMING FIX (v3.4):
+  - merge_audio_video now hard-trims every clip to audio_duration + 0.3s
+  - No more silence/dead time between scenes -- next scene starts immediately
+  - 1.5s buffer still used when requesting WaveSpeed clip (ensures enough footage)
+  - tpad freeze still used when audio > video (safety net)
 """
 
 import json
@@ -51,12 +51,13 @@ POLL_INTERVAL       = 15
 VIDEO_TIMEOUT       = 600
 SUPPORTED_DURATIONS = [5, 8]
 
-# Timing: add 1.5s buffer when choosing video duration so VO never gets cut
-# e.g. 3.8s audio -> needs 5.3s -> requests 8s clip (generous breathing room)
+# 1.5s buffer when requesting WaveSpeed clip -- ensures enough footage is generated
 AUDIO_BUFFER_SECS   = 1.5
 
-# TTS speed: 0.85 = slightly slower than default -- warmer, more deliberate delivery
-# Gives more emotional weight and ensures words land before scene changes
+# How long to keep video after VO ends -- brief natural pause before next scene
+SCENE_TAIL_SECS     = 0.3
+
+# TTS speed: 0.85 = slightly slower -- warmer, more deliberate delivery
 TTS_SPEED           = 0.85
 
 # Claude retry config
@@ -192,14 +193,13 @@ FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
 They feel alone. They don't ask for help. Speak directly to them.
 
-STRICT WORD COUNT RULES -- these are HARD limits, do not exceed them:
+STRICT WORD COUNT RULES -- HARD limits, do not exceed:
 - hook:         6-10 words   -- pattern-interrupt opener. Short. Punchy. Stops the scroll.
 - problem:      10-14 words  -- name the pain, make them feel seen
 - story:        12-16 words  -- insight, real talk, perspective shift, or fact
 - solution_cta: 10-14 words  -- hopeful close. May mention MindCore AI ONLY if natural.
 
-WHY THESE LIMITS MATTER: The voiceover is read at a slow, deliberate pace (~120 words/min).
-Exceeding these limits means words get cut off. Short = powerful = complete.
+WHY THESE LIMITS MATTER: VO is read at ~120 words/min. Exceeding limits cuts words off.
 
 SEO RULES:
 - Weave '{keyword}' naturally at least once
@@ -256,8 +256,7 @@ STRICT WORD COUNT RULES -- HARD limits, do not exceed:
 - story:        12-16 words
 - solution_cta: 10-14 words -- include CTA and accurate trial description
 
-WHY THESE LIMITS MATTER: Voiceover is read at a slow, deliberate pace (~120 words/min).
-Exceeding limits means words get cut off.
+WHY THESE LIMITS MATTER: VO is read at ~120 words/min. Exceeding limits cuts words off.
 
 VISUAL PROMPT RULES (vertical 9:16 portrait):
 - 45-60 words, cinematic realism, portrait framing
@@ -317,11 +316,6 @@ def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int =
 # -- Step 2 -- Fish Audio TTS -------------------------------------------------
 
 def generate_tts(text: str, output_path: str) -> float:
-    """
-    Generate voiceover at TTS_SPEED (0.85) -- slightly slower than default.
-    Warmer, more deliberate delivery that matches dramatic visuals.
-    Returns audio duration in seconds.
-    """
     headers = {
         "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
         "Content-Type": "application/json",
@@ -333,7 +327,7 @@ def generate_tts(text: str, output_path: str) -> float:
         "mp3_bitrate": 128,
         "latency": "normal",
         "normalize": True,
-        "speed": TTS_SPEED,   # 0.85 = slightly slower, more dramatic
+        "speed": TTS_SPEED,
     }
     resp = requests.post(FISH_TTS_URL, headers=headers, json=payload, stream=True, timeout=60)
     resp.raise_for_status()
@@ -356,17 +350,16 @@ def get_media_duration(path: str) -> float:
 
 def choose_video_duration(audio_duration: float) -> int:
     """
-    Pick the smallest supported clip duration that covers the audio + buffer.
-    Buffer = AUDIO_BUFFER_SECS (1.5s) -- generous to prevent any cut-off.
-    Logs clearly so timing issues are easy to debug.
+    Request a WaveSpeed clip long enough to cover the audio + buffer.
+    The merged clip will later be trimmed to audio_duration + SCENE_TAIL_SECS,
+    so this buffer just ensures we have enough raw footage to work with.
     """
     needed = audio_duration + AUDIO_BUFFER_SECS
     for d in SUPPORTED_DURATIONS:
         if d >= needed:
-            print(f"    audio={audio_duration:.2f}s + {AUDIO_BUFFER_SECS}s buffer = {needed:.2f}s needed -> {d}s clip")
+            print(f"    audio={audio_duration:.2f}s + {AUDIO_BUFFER_SECS}s buffer -> requesting {d}s clip")
             return d
-    # Audio exceeds 8s even after buffer -- clamp and warn
-    print(f"    WARNING: audio={audio_duration:.2f}s > 8s cap -- clamping. Consider shortening VO.")
+    print(f"    WARNING: audio={audio_duration:.2f}s > 8s cap -- clamping.")
     return 8
 
 
@@ -431,43 +424,46 @@ def download_file(url: str, output_path: str):
 
 def merge_audio_video(video_path: str, audio_path: str, output_path: str):
     """
-    Mux VO onto video with no looping, no cutting.
-    Audio longer than video -> freeze last frame (tpad clone).
-    Video longer than audio -> pad audio with silence (apad).
-    Freeze buffer is extra generous (+ 0.5s) to guarantee VO completes.
+    Mux VO onto video and hard-trim output to exactly audio_duration + SCENE_TAIL_SECS.
+
+    This is the key fix for the long pause between scenes:
+    - We always request a video clip longer than the audio (buffer = 1.5s)
+    - After muxing, we trim the output to audio_duration + 0.3s using -t
+    - Result: every scene ends 0.3s after the last word -- no dead silence, no pauses
+    - If audio is somehow longer than video, we freeze the last frame first (safety net)
     """
-    v_dur = get_media_duration(video_path)
-    a_dur = get_media_duration(audio_path)
-    diff  = a_dur - v_dur
+    v_dur      = get_media_duration(video_path)
+    a_dur      = get_media_duration(audio_path)
+    target_dur = a_dur + SCENE_TAIL_SECS   # trim output to this length
 
-    print(f"    video={v_dur:.2f}s  audio={a_dur:.2f}s  diff={diff:+.2f}s")
+    print(f"    video={v_dur:.2f}s  audio={a_dur:.2f}s  output target={target_dur:.2f}s")
 
-    if diff > 0:
-        # Audio longer: freeze last frame to cover overhang + safety buffer
-        freeze_extra = diff + 0.5
+    if a_dur > v_dur:
+        # Safety net: audio longer than video -- freeze last frame to cover it
+        freeze_extra = (a_dur - v_dur) + SCENE_TAIL_SECS + 0.2
+        video_filter = f"[0:v]tpad=stop_mode=clone:stop_duration={freeze_extra:.3f}[vout]"
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path, "-i", audio_path,
-            "-filter_complex",
-            f"[0:v]tpad=stop_mode=clone:stop_duration={freeze_extra:.3f}[vout]",
+            "-filter_complex", video_filter,
             "-map", "[vout]", "-map", "1:a:0",
+            "-t", f"{target_dur:.3f}",        # hard trim to audio + tail
             "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-r", "24",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
             output_path,
         ]
     else:
-        # Video longer: pad audio with silence
-        pad_dur = abs(diff) + 0.1
+        # Normal case: video is longer -- just trim at audio_duration + tail
+        # No padding needed, -t cuts the video exactly where we want it
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path, "-i", audio_path,
-            "-filter_complex", f"[1:a]apad=pad_dur={pad_dur:.3f}[aout]",
-            "-map", "0:v", "-map", "[aout]",
+            "-map", "0:v", "-map", "1:a:0",
+            "-t", f"{target_dur:.3f}",        # hard trim -- eliminates silence gap
             "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-r", "24",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
-            "-shortest",
             output_path,
         ]
 
@@ -475,6 +471,9 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
     if result.returncode != 0:
         print("FFmpeg stderr:", result.stderr[-2000:])
         raise RuntimeError(f"merge_audio_video failed -> {output_path}")
+
+    actual_dur = get_media_duration(output_path)
+    print(f"    merged clip: {actual_dur:.2f}s")
 
 
 # -- Step 6 -- Concat all scenes ----------------------------------------------
@@ -663,10 +662,10 @@ def main():
 
     mode = determine_mode()
 
-    print(f"\n  MindCore AI Video Pipeline v3.3")
+    print(f"\n  MindCore AI Video Pipeline v3.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
-    print(f"  TTS speed: {TTS_SPEED}x | Audio buffer: {AUDIO_BUFFER_SECS}s")
+    print(f"  TTS speed: {TTS_SPEED}x | Scene tail: {SCENE_TAIL_SECS}s | Buffer: {AUDIO_BUFFER_SECS}s")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -688,7 +687,7 @@ def main():
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. TTS first -- audio drives video duration
+    # 2. TTS first -- audio duration drives everything downstream
     print(f"\n  Generating voiceovers (Fish Audio | speed={TTS_SPEED}x)...")
     audio_paths, audio_durations, video_durations = {}, {}, {}
     for scene in SCENE_ORDER:
@@ -705,7 +704,7 @@ def main():
     for scene in SCENE_ORDER:
         task_id = submit_video(script[scene]["visual_prompt"], video_durations[scene])
         task_ids[scene] = task_id
-        print(f"  [{scene}]  task={task_id}  ({video_durations[scene]}s)")
+        print(f"  [{scene}]  task={task_id}  ({video_durations[scene]}s clip)")
         time.sleep(2)
 
     # 4. Poll + download
@@ -717,16 +716,15 @@ def main():
         out = str(OUTPUT_DIR / f"{scene}_raw.mp4")
         download_file(video_url, out)
         raw_video_paths[scene] = out
-        print(f"    OK  ({get_media_duration(out):.2f}s)")
+        print(f"    raw clip: {get_media_duration(out):.2f}s")
 
-    # 5. Mux audio
-    print("\n  Merging audio onto clips...")
+    # 5. Mux audio -- trim each clip to audio_duration + SCENE_TAIL_SECS
+    print("\n  Merging audio and trimming clips to tight duration...")
     merged_paths = []
     for scene in SCENE_ORDER:
         out = str(OUTPUT_DIR / f"{scene}_merged.mp4")
         merge_audio_video(raw_video_paths[scene], audio_paths[scene], out)
         merged_paths.append(out)
-        print(f"  [{scene}]  -> {get_media_duration(out):.2f}s merged")
 
     # 6. Concat
     print("\n  Concatenating all scenes...")
