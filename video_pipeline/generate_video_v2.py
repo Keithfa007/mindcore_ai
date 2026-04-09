@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v3.8
+MindCore AI Video Pipeline v3.9
 =================================
 Smart content/ad rotation pipeline.
 
-VALIDATION LAYER (v3.8):
-  Two checkpoints before any WaveSpeed credit is spent:
+WORD LIMITS (v3.9):
+  Content and ad modes now have SEPARATE word limits.
 
-  CHECKPOINT 1 -- Word count (after script generation):
-    Each scene has hard word count limits. If Claude exceeds them,
-    the script is automatically regenerated (up to 3 attempts).
-    No TTS, no video until script passes.
+  CONTENT -- longer, more emotional, audience-first:
+    hook:         8-12 words  -- bold statement, stops the scroll
+    problem:      14-18 words -- name the pain with room to breathe
+    story:        16-20 words -- emotional depth, perspective shift
+    solution_cta: 12-16 words -- warm close, soft mention of MindCore AI
+    Target video length: ~30-35 seconds
 
-  CHECKPOINT 2 -- Audio duration (after TTS generation):
-    Each audio clip is measured. If any scene audio + tail exceeds
-    the max supported clip (8s), the pipeline fails immediately.
-    No WaveSpeed calls are made.
+  AD -- short, punchy, direct response:
+    hook:         6-10 words
+    problem:      10-14 words
+    story:        12-16 words
+    solution_cta: 10-14 words
+    Target video length: ~20-28 seconds
 
-  Word limits at 0.85x TTS (~1.95 words/sec):
-    hook:         6-10 words  -> ~3-5s -> fits 5s clip
-    problem:      10-14 words -> ~5-7s -> fits 8s clip
-    story:        12-16 words -> ~6-8s -> fits 8s clip
-    solution_cta: 10-14 words -> ~5-7s -> fits 8s clip
-    Max audio per scene: 7.0s (8s clip - 0.8s tail - 0.2s margin)
+  Both modes share the same two-checkpoint validation:
+    CHECKPOINT 1: word count (auto-retry Claude if exceeded)
+    CHECKPOINT 2: actual audio duration (fail before WaveSpeed if over 7.0s)
+
+  Hard ceiling: WaveSpeed supports max 8s clips. With 0.8s tail + 0.2s margin
+  the max audio per scene is 7.0s. The checkpoint catches any overruns.
 """
 
 import json
@@ -67,15 +71,24 @@ TTS_SPEED           = 0.85  # slightly slower, warmer delivery
 CLAUDE_MAX_RETRIES  = 10
 CLAUDE_RETRY_BASE   = 30
 
-# Hard word count limits per scene -- enforced by CHECKPOINT 1
-WORD_LIMITS = {
-    "hook":         (6, 10),
-    "problem":      (10, 14),
-    "story":        (12, 16),
-    "solution_cta": (10, 14),
+# Word count limits per scene, per mode
+# CONTENT: longer scenes for emotional depth and audience connection
+# AD: short and punchy for direct response
+WORD_LIMITS_CONTENT = {
+    "hook":         (8, 12),   # bold opener, slightly longer than ad
+    "problem":      (14, 18),  # name the pain with room to breathe
+    "story":        (16, 20),  # emotional depth, real perspective shift
+    "solution_cta": (12, 16),  # warm hopeful close
 }
 
-# Max audio seconds per scene -- enforced by CHECKPOINT 2
+WORD_LIMITS_AD = {
+    "hook":         (6, 10),   # ultra short scroll-stopper
+    "problem":      (10, 14),  # quick pain point
+    "story":        (12, 16),  # brief turning point
+    "solution_cta": (10, 14),  # direct CTA with trial info
+}
+
+# Max audio per scene before we refuse to call WaveSpeed
 # = largest clip (8s) - tail (0.8s) - safety margin (0.2s) = 7.0s
 MAX_AUDIO_SECS = max(SUPPORTED_DURATIONS) - SCENE_TAIL_SECS - 0.2
 
@@ -92,6 +105,10 @@ def determine_mode() -> str:
     if GITHUB_RUN_NUMBER % 10 == 0:
         return "ad"
     return "content"
+
+
+def get_word_limits(mode: str) -> dict:
+    return WORD_LIMITS_CONTENT if mode == "content" else WORD_LIMITS_AD
 
 
 # -- Loaders ------------------------------------------------------------------
@@ -114,13 +131,13 @@ def load_niche_keywords() -> dict:
 
 # -- CHECKPOINT 1 -- Word count validation ------------------------------------
 
-def validate_word_counts(script: dict) -> tuple:
+def validate_word_counts(script: dict, word_limits: dict) -> tuple:
     """Returns (passed: bool, errors: list[str])."""
     errors = []
     for scene in SCENE_ORDER:
         vo     = script[scene]["voiceover"]
         wc     = len(vo.split())
-        lo, hi = WORD_LIMITS[scene]
+        lo, hi = word_limits[scene]
         if wc < lo:
             errors.append(f"  [{scene}] {wc} words -- too short (min {lo}): '{vo}'")
         elif wc > hi:
@@ -128,14 +145,14 @@ def validate_word_counts(script: dict) -> tuple:
     return (len(errors) == 0), errors
 
 
-def generate_script_with_validation(generate_fn, generate_args, max_attempts=3):
+def generate_script_with_validation(generate_fn, generate_args, word_limits, max_attempts=3):
     """
-    Call generate_fn, validate word counts, auto-retry if invalid.
-    Fails fast before any TTS or WaveSpeed calls.
+    Call generate_fn, validate word counts against mode-specific limits,
+    auto-retry if invalid. Fails fast before any TTS or WaveSpeed calls.
     """
     for attempt in range(1, max_attempts + 1):
         script = generate_fn(*generate_args)
-        passed, errors = validate_word_counts(script)
+        passed, errors = validate_word_counts(script, word_limits)
 
         if passed:
             print(f"  CHECKPOINT 1 PASSED -- all word counts within limits")
@@ -162,7 +179,7 @@ def validate_audio_durations(audio_durations: dict) -> None:
     """
     Verify every scene audio fits inside the max clip duration.
     Raises RuntimeError BEFORE any WaveSpeed calls if validation fails.
-    No credits are wasted on a video that would be broken.
+    No credits wasted on a video that would be broken.
     """
     errors = []
     for scene in SCENE_ORDER:
@@ -277,21 +294,26 @@ CONTENT ANGLE: {angle}
 FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
 
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
-They feel alone. They don't ask for help. Speak directly to them.
+They feel alone. They don't ask for help. This is value-first content -- NOT an ad.
+Speak directly, emotionally, like a trusted older brother who has been through it.
 
 STRICT WORD COUNT RULES -- enforced by automated validator. Rejected and regenerated if exceeded.
-- hook:         6-10 words   -- SHORT. Pattern-interrupt. Stops the scroll.
-- problem:      10-14 words  -- Name the pain. Make them feel seen.
-- story:        12-16 words  -- Insight, real talk, perspective shift.
-- solution_cta: 10-14 words  -- Hopeful close. Mention MindCore AI ONLY if natural.
+- hook:         8-12 words   -- Bold statement or question. Stops the scroll immediately.
+- problem:      14-18 words  -- Name the pain. Make them feel completely seen. Take your time.
+- story:        16-20 words  -- Real insight, perspective shift, or truth they haven't heard.
+                                This is where emotional connection happens. Don't rush it.
+- solution_cta: 12-16 words  -- Warm, hopeful close. May naturally mention MindCore AI if it fits.
 
-COUNT YOUR WORDS before outputting. Exceeding limits wastes API credits.
+COUNT YOUR WORDS carefully before outputting. Exceeding limits causes auto-rejection.
 
 SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
+The hook must make someone stop mid-scroll. No generic openers.
 
 VISUAL PROMPT RULES (vertical 9:16 portrait for mobile):
-- 45-60 words each, cinematic realism, close-up portrait shots
-- No text, no logos, no UI, no phones
+- 45-60 words each, cinematic realism, prestige drama quality
+- Close-up portrait shots, authentic emotions, no posed looks
+- No text, no logos, no UI, no phones in frame
+- Describe: subject, action, lighting, camera movement, mood
 - Style: shallow depth of field, film grain, golden/blue hour, dramatic
 
 Return ONLY valid JSON, no markdown fences:
@@ -305,7 +327,7 @@ Return ONLY valid JSON, no markdown fences:
   "solution_cta": {{"voiceover": "...", "visual_prompt": "..."}}
 }}"""
 
-    return _call_claude_raw(prompt, client, max_tokens=1400)
+    return _call_claude_raw(prompt, client, max_tokens=1600)
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
@@ -332,12 +354,12 @@ CRITICAL RULES:
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
 STRICT WORD COUNT RULES -- enforced by automated validator. Rejected and regenerated if exceeded.
-- hook:         6-10 words
-- problem:      10-14 words
-- story:        12-16 words
-- solution_cta: 10-14 words -- include CTA and accurate trial description
+- hook:         6-10 words   -- ultra-short scroll-stopper
+- problem:      10-14 words  -- quick pain point
+- story:        12-16 words  -- brief turning point
+- solution_cta: 10-14 words  -- direct CTA with accurate trial info
 
-COUNT YOUR WORDS before outputting. Exceeding limits wastes API credits.
+COUNT YOUR WORDS carefully. Exceeding limits causes auto-rejection.
 
 VISUAL PROMPT RULES (vertical 9:16 portrait):
 - 45-60 words, cinematic realism, portrait framing
@@ -676,25 +698,33 @@ FULL SCRIPT (for reference)
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    mode = determine_mode()
+    mode        = determine_mode()
+    word_limits = get_word_limits(mode)
 
-    print(f"\n  MindCore AI Video Pipeline v3.8")
+    print(f"\n  MindCore AI Video Pipeline v3.9")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
     print(f"  TTS speed: {TTS_SPEED}x | Tail: {SCENE_TAIL_SECS}s | Max audio/scene: {MAX_AUDIO_SECS:.1f}s")
-    print(f"  Word limits: hook=6-10 | problem=10-14 | story=12-16 | cta=10-14")
+    if mode == "content":
+        print(f"  Word limits (CONTENT): hook=8-12 | problem=14-18 | story=16-20 | cta=12-16")
+    else:
+        print(f"  Word limits (AD): hook=6-10 | problem=10-14 | story=12-16 | cta=10-14")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # 1. Script + CHECKPOINT 1 (word count, auto-retry up to 3x)
+    # 1. Script + CHECKPOINT 1 (mode-specific word count, auto-retry up to 3x)
     print("\n  Generating script...")
     if mode == "ad":
         app_facts = load_app_facts()
-        script    = generate_script_with_validation(generate_ad_script, (app_facts, client))
+        script    = generate_script_with_validation(
+            generate_ad_script, (app_facts, client), word_limits
+        )
     else:
         topic  = fetch_trending_topic(client)
-        script = generate_script_with_validation(generate_content_script, (topic, client))
+        script = generate_script_with_validation(
+            generate_content_script, (topic, client), word_limits
+        )
 
     (OUTPUT_DIR / "script_v2.json").write_text(json.dumps(script, indent=2))
     print(f"\n  Video type: {script.get('video_type', mode)}")
@@ -703,7 +733,7 @@ def main():
     print()
     for scene in SCENE_ORDER:
         wc     = len(script[scene]["voiceover"].split())
-        lo, hi = WORD_LIMITS[scene]
+        lo, hi = word_limits[scene]
         status = "OK" if lo <= wc <= hi else "!!"
         print(f"  [{scene:15s}]  {wc:2d} words [{status}]  |  {script[scene]['voiceover']}")
 
@@ -719,11 +749,11 @@ def main():
         video_durations[scene] = v_dur
         print(f"  [{scene}]  audio={a_dur:.2f}s  -> {v_dur}s clip")
 
-    # CHECKPOINT 2 -- validate audio durations BEFORE any WaveSpeed credits spent
+    # CHECKPOINT 2 -- audio duration before any WaveSpeed credits spent
     print("\n  Running CHECKPOINT 2 -- audio duration validation...")
     validate_audio_durations(audio_durations)
 
-    # 3. Submit video jobs -- only reached if BOTH checkpoints passed
+    # 3. Submit video jobs (only reached if both checkpoints passed)
     print("\n  Submitting video generation (WAN 2.2 T2V 9:16)...")
     task_ids = {}
     for scene in SCENE_ORDER:
@@ -743,7 +773,7 @@ def main():
         raw_video_paths[scene] = out
         print(f"    raw: {get_media_duration(out):.2f}s")
 
-    # 5. Mux audio + trim to audio + tail
+    # 5. Mux audio + trim
     print(f"\n  Merging audio + trimming to audio + {SCENE_TAIL_SECS}s tail...")
     merged_paths = []
     for scene in SCENE_ORDER:
