@@ -31,11 +31,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
-          ffmpeg -version | head -1
+      - name: Verify FFmpeg (pre-installed on ubuntu-latest)
+        run: ffmpeg -version | head -1
 
       - name: Install Python dependencies
         run: pip install anthropic requests
