@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v3.5
+MindCore AI Video Pipeline v3.6
 =================================
 Smart content/ad rotation pipeline.
 
@@ -8,12 +8,11 @@ MODES:
   content  (default) -- Educational/emotional video on a real problem.
   ad       (every 10th run) -- Accurate MindCore AI app ad.
 
-TIMING (v3.5):
-  - SCENE_TAIL_SECS = 0.8 -- natural beat after VO ends before next scene
-  - AUDIO_BUFFER_SECS = 1.5 -- ensures WaveSpeed clip is always long enough
-  - merge_audio_video hard-trims to audio_duration + SCENE_TAIL_SECS
-  - CROSSFADE_DUR = 0.5 -- smooth fade between scenes
-  - Net gap between VOs = SCENE_TAIL_SECS + CROSSFADE_DUR = ~1.3s total felt pause
+AUDIO FIX (v3.6):
+  - _xfade_concat now uses separate video xfade + sequential audio concat
+  - Video: smooth 0.5s visual fade between scenes (unchanged)
+  - Audio: clean hard cut -- NO acrossfade, NO voices overlapping
+  - Result: last word of scene finishes cleanly, then next scene starts
 """
 
 import json
@@ -43,27 +42,19 @@ WAVESPEED_RESULT_URL = "https://api.wavespeed.ai/api/v3/predictions/{task_id}/re
 FISH_TTS_URL         = "https://api.fish.audio/v1/tts"
 SERP_API_URL         = "https://serpapi.com/search"
 
-VIDEO_SIZE          = "720*1280"       # 9:16 portrait -- TikTok + Facebook Reels
+VIDEO_SIZE          = "720*1280"
 OUTPUT_DIR          = Path("video_pipeline/output")
 PIPELINE_DIR        = Path("video_pipeline")
 SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
-CROSSFADE_DUR       = 0.5
+CROSSFADE_DUR       = 0.5   # video-only visual xfade duration
 POLL_INTERVAL       = 15
 VIDEO_TIMEOUT       = 600
 SUPPORTED_DURATIONS = [5, 8]
 
-# Buffer when requesting WaveSpeed clip -- ensures enough footage
 AUDIO_BUFFER_SECS   = 1.5
-
-# Tail after VO ends before scene transitions -- 0.8s = natural dramatic beat
-# Total felt gap between scenes = SCENE_TAIL_SECS + CROSSFADE_DUR = ~1.3s
-# Tweak this if you want more or less breathing room between scenes
 SCENE_TAIL_SECS     = 0.8
-
-# TTS speed: 0.85 = slightly slower -- warmer, more deliberate delivery
 TTS_SPEED           = 0.85
 
-# Claude retry config
 CLAUDE_MAX_RETRIES  = 10
 CLAUDE_RETRY_BASE   = 30
 
@@ -423,8 +414,7 @@ def download_file(url: str, output_path: str):
 def merge_audio_video(video_path: str, audio_path: str, output_path: str):
     """
     Mux VO onto video and hard-trim to audio_duration + SCENE_TAIL_SECS.
-    Eliminates dead silence while keeping a natural beat after each VO.
-    Total felt pause between scenes = SCENE_TAIL_SECS + CROSSFADE_DUR (~1.3s).
+    Every scene clip ends cleanly after the last word + 0.8s natural beat.
     """
     v_dur      = get_media_duration(video_path)
     a_dur      = get_media_duration(audio_path)
@@ -433,7 +423,6 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
     print(f"    video={v_dur:.2f}s  audio={a_dur:.2f}s  -> trimmed to {target_dur:.2f}s")
 
     if a_dur > v_dur:
-        # Safety net: freeze last frame if audio somehow overruns video
         freeze_extra = (a_dur - v_dur) + SCENE_TAIL_SECS + 0.2
         cmd = [
             "ffmpeg", "-y",
@@ -448,7 +437,6 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
             output_path,
         ]
     else:
-        # Normal: video is longer, hard-trim at audio + tail
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path, "-i", audio_path,
@@ -482,7 +470,7 @@ def concat_clips(clip_paths: list, output_path: str):
 
     try:
         _xfade_concat(clip_paths, durations, output_path)
-        print("  Concat: xfade crossfade")
+        print("  Concat: video xfade + sequential audio (no voice overlap)")
     except Exception as e:
         print(f"  xfade failed ({e}) -- falling back to hard-cut concat")
         _simple_concat(clip_paths, output_path)
@@ -490,34 +478,51 @@ def concat_clips(clip_paths: list, output_path: str):
 
 
 def _xfade_concat(clip_paths: list, durations: list, output_path: str):
+    """
+    Video: smooth xfade between each scene (0.5s visual fade).
+    Audio: clean sequential concat -- NO acrossfade, NO overlap.
+
+    This is the fix for two voices playing at once.
+    acrossfade was blending audio during the visual transition window,
+    causing the last word of scene N to play simultaneously with
+    the first word of scene N+1.
+
+    Now audio cuts cleanly at each boundary while video fades smoothly.
+    The visual fade hides the audio cut completely.
+    """
     n          = len(clip_paths)
     input_args = []
     for p in clip_paths:
         input_args += ["-i", p]
 
-    vf, af = [], []
+    # -- Video: xfade chain ---------------------------------------------------
+    vf     = []
     offset = durations[0] - CROSSFADE_DUR
     vf.append(f"[0:v][1:v]xfade=transition=fade:duration={CROSSFADE_DUR}:offset={offset:.4f}[xv1]")
-    af.append(f"[0:a][1:a]acrossfade=d={CROSSFADE_DUR}:c1=tri:c2=tri[xa1]")
 
     for i in range(2, n):
         offset += durations[i - 1] - CROSSFADE_DUR
         pv = f"[xv{i-1}]"
-        pa = f"[xa{i-1}]"
         ov = "[vout]" if i == n - 1 else f"[xv{i}]"
-        oa = "[aout]" if i == n - 1 else f"[xa{i}]"
         vf.append(f"{pv}[{i}:v]xfade=transition=fade:duration={CROSSFADE_DUR}:offset={offset:.4f}{ov}")
-        af.append(f"{pa}[{i}:a]acrossfade=d={CROSSFADE_DUR}:c1=tri:c2=tri{oa}")
 
     if n == 2:
         vf[0] = vf[0].replace("[xv1]", "[vout]")
-        af[0] = af[0].replace("[xa1]", "[aout]")
+
+    # -- Audio: sequential concat, zero overlap --------------------------------
+    # All N audio streams placed end-to-end with no blending whatsoever.
+    # Last word of scene finishes, then next scene audio begins. Clean cut.
+    audio_inputs = "".join(f"[{i}:a]" for i in range(n))
+    af = [f"{audio_inputs}concat=n={n}:v=0:a=1[aout]"]
+
+    filter_complex = ";".join(vf + af)
 
     cmd = (
         ["ffmpeg", "-y"] + input_args
         + [
-            "-filter_complex", ";".join(vf + af),
-            "-map", "[vout]", "-map", "[aout]",
+            "-filter_complex", filter_complex,
+            "-map", "[vout]",
+            "-map", "[aout]",
             "-c:v", "libx264", "-preset", "fast", "-crf", "18",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k",
@@ -654,15 +659,15 @@ def main():
 
     mode = determine_mode()
 
-    print(f"\n  MindCore AI Video Pipeline v3.5")
+    print(f"\n  MindCore AI Video Pipeline v3.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
-    print(f"  TTS speed: {TTS_SPEED}x | Scene tail: {SCENE_TAIL_SECS}s | Crossfade: {CROSSFADE_DUR}s")
+    print(f"  TTS speed: {TTS_SPEED}x | Scene tail: {SCENE_TAIL_SECS}s | Video xfade: {CROSSFADE_DUR}s")
+    print(f"  Audio: sequential concat (no voice overlap)")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # 1. Script
     if mode == "ad":
         app_facts = load_app_facts()
         script    = generate_ad_script(app_facts, client)
@@ -679,7 +684,6 @@ def main():
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. TTS first
     print(f"\n  Generating voiceovers (Fish Audio | speed={TTS_SPEED}x)...")
     audio_paths, audio_durations, video_durations = {}, {}, {}
     for scene in SCENE_ORDER:
@@ -690,7 +694,6 @@ def main():
         audio_durations[scene] = a_dur
         video_durations[scene] = v_dur
 
-    # 3. Submit video jobs
     print("\n  Submitting video generation (WAN 2.2 T2V 9:16)...")
     task_ids = {}
     for scene in SCENE_ORDER:
@@ -699,7 +702,6 @@ def main():
         print(f"  [{scene}]  task={task_id}  ({video_durations[scene]}s clip)")
         time.sleep(2)
 
-    # 4. Poll + download
     print("\n  Polling WaveSpeed...")
     raw_video_paths = {}
     for scene in SCENE_ORDER:
@@ -710,7 +712,6 @@ def main():
         raw_video_paths[scene] = out
         print(f"    raw: {get_media_duration(out):.2f}s")
 
-    # 5. Mux + trim
     print(f"\n  Merging audio and trimming to audio + {SCENE_TAIL_SECS}s tail...")
     merged_paths = []
     for scene in SCENE_ORDER:
@@ -718,14 +719,12 @@ def main():
         merge_audio_video(raw_video_paths[scene], audio_paths[scene], out)
         merged_paths.append(out)
 
-    # 6. Concat
     print("\n  Concatenating all scenes...")
     final = str(OUTPUT_DIR / "mindcore_ai_ad_v2.mp4")
     concat_clips(merged_paths, final)
     final_dur = get_media_duration(final)
     final_mb  = Path(final).stat().st_size / (1024 * 1024)
 
-    # 7. Upload guide
     print("\n  Generating social media upload guide...")
     guide_text = generate_upload_guide(script, mode, final_dur, client)
     save_upload_guide(guide_text, script, mode, final_dur, GITHUB_RUN_NUMBER)
