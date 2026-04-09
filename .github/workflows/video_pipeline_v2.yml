@@ -31,8 +31,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Verify FFmpeg (pre-installed on ubuntu-latest)
-        run: ffmpeg -version | head -1
+      - name: Install FFmpeg
+        # Skip apt-get update -- runner package cache is fresh, just install directly
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
 
       - name: Install Python dependencies
         run: pip install anthropic requests
