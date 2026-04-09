@@ -2,12 +2,12 @@
 """
 MindCore AI Video Pipeline v2.1
 =================================
-FIX: Audio-first approach — generate VO per scene, measure duration,
+FIX: Audio-first approach -- generate VO per scene, measure duration,
      then request a video clip of the exact matching length (5s or 8s).
-     No more looping.
+     No more looping. Includes retry logic for Anthropic 529 overload.
 
 Pipeline:
-  1. Claude generates script (VO <= 7.5s per scene -> fits in 8s clip)
+  1. Claude generates script (with retry on overload)
   2. Fish Audio generates one MP3 per scene
   3. ffprobe measures each MP3 duration
   4. WaveSpeed WAN 2.2 T2V 720p requested with duration=5 or duration=8
@@ -33,7 +33,6 @@ FISH_AUDIO_API_KEY = os.environ["FISH_AUDIO_API_KEY"]
 WAVESPEED_API_KEY  = os.environ["WAVESPEED_API_KEY"]
 FISH_VOICE_ID      = os.environ.get("FISH_VOICE_ID", "eed26f2294d64177911af612473cca98")
 
-# WAN 2.2 T2V 720p -- supports explicit duration param (5 or 8 seconds)
 WAVESPEED_SUBMIT_URL = "https://api.wavespeed.ai/api/v3/wavespeed-ai/wan-2.2/t2v-720p"
 WAVESPEED_RESULT_URL = "https://api.wavespeed.ai/api/v3/predictions/{task_id}/result"
 FISH_TTS_URL         = "https://api.fish.audio/v1/tts"
@@ -52,14 +51,13 @@ SEO_KEYWORDS = [
 ]
 
 
-# -- Step 1 -- Script ---------------------------------------------------------
+# -- Step 1 -- Script (with retry on overload) --------------------------------
 
 def generate_script() -> dict:
-    print("📝  Generating 4-scene script with Claude...")
+    print("  Generating 4-scene script with Claude...")
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    prompt = f"""You are a viral performance marketing copywriter for MindCore AI --
+    client  = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    prompt  = f"""You are a viral performance marketing copywriter for MindCore AI --
 an AI mental wellness companion targeting men in recovery or struggling with
 anxiety, depression, and isolation.
 
@@ -91,20 +89,31 @@ Return ONLY valid JSON with no markdown fences:
   "solution_cta": {{"voiceover": "...", "visual_prompt": "..."}}
 }}"""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1200,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            message = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = message.content[0].text.strip()
+            if raw.startswith("```"):
+                parts = raw.split("```")
+                raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
+            script = json.loads(raw)
+            print("  OK  Script generated")
+            return script
 
-    raw = message.content[0].text.strip()
-    if raw.startswith("```"):
-        parts = raw.split("```")
-        raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
+        except anthropic.APIStatusError as e:
+            if e.status_code == 529:
+                wait = 20 * attempt  # 20s, 40s, 60s, 80s, 100s
+                print(f"  Anthropic overloaded (529) -- attempt {attempt}/{max_retries}, retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
 
-    script = json.loads(raw)
-    print("  OK  Script generated")
-    return script
+    raise RuntimeError("Anthropic API still overloaded after all retries -- try again later")
 
 
 # -- Step 2 -- Fish Audio TTS -------------------------------------------------
@@ -225,6 +234,7 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
     diff  = a_dur - v_dur
 
     if diff > 0:
+        # Audio longer: freeze last video frame to cover overhang
         freeze_extra = diff + 0.2
         cmd = [
             "ffmpeg", "-y",
@@ -239,6 +249,7 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
             output_path,
         ]
     else:
+        # Video longer: pad audio with silence
         pad_dur = abs(diff) + 0.1
         cmd = [
             "ffmpeg", "-y",
@@ -341,7 +352,7 @@ def main():
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. TTS first
+    # 2. TTS first -- measure duration before requesting video
     print("\n  Generating voiceovers (Fish Audio Plus)...")
     audio_paths     = {}
     audio_durations = {}
