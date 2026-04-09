@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       run_note:
-        description: "Optional note for this run (e.g. weekly_ad, test)"
+        description: "Optional note for this run"
         required: false
         default: "manual"
 
@@ -13,7 +13,7 @@ on:
 
 jobs:
   generate-video:
-    name: Generate 4-Scene Cinematic Ad
+    name: Generate 4-Scene Cinematic Ad (9:16 TikTok/Facebook)
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -46,29 +46,35 @@ jobs:
           echo "Run note: ${{ github.event.inputs.run_note || 'scheduled' }}"
           python video_pipeline/generate_video_v2.py
 
-      - name: Upload output artifacts
+      # Upload ONLY the final merged video as the primary artifact
+      - name: Upload final video
         uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
-          name: mindcore-video-v2-run-${{ github.run_number }}
-          path: |
-            video_pipeline/output/mindcore_ai_ad_v2.mp4
-            video_pipeline/output/script_v2.json
-            video_pipeline/output/*_merged.mp4
-            video_pipeline/output/*_vo.mp3
+          name: mindcore-ai-ad-v2-run-${{ github.run_number }}
+          path: video_pipeline/output/mindcore_ai_ad_v2.mp4
           retention-days: 30
+
+      # On failure, upload everything for debugging
+      - name: Upload debug artifacts on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mindcore-debug-run-${{ github.run_number }}
+          path: video_pipeline/output/
+          retention-days: 7
 
       - name: Write job summary
         if: always()
         run: |
           echo "## MindCore AI Video Pipeline v2" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Note:** ${{ github.event.inputs.run_note || 'scheduled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Format:** 9:16 vertical -- TikTok + Facebook Reels" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script_v2.json" ]; then
             echo "### Generated Script" >> $GITHUB_STEP_SUMMARY
-            echo '\`\`\`json' >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
             cat video_pipeline/output/script_v2.json >> $GITHUB_STEP_SUMMARY
-            echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output/mindcore_ai_ad_v2.mp4" ]; then
             SIZE=$(du -sh video_pipeline/output/mindcore_ai_ad_v2.mp4 | cut -f1)
