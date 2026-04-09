@@ -1,6 +1,5 @@
 name: MindCore AI Video Pipeline v2
 
-# ── Triggers ──────────────────────────────────────────────────────────────────
 on:
   workflow_dispatch:
     inputs:
@@ -10,41 +9,32 @@ on:
         default: "manual"
 
   schedule:
-    # Every Monday at 09:00 UTC — weekly fresh ad content
     - cron: "0 9 * * 1"
 
-# ── Job ───────────────────────────────────────────────────────────────────────
 jobs:
   generate-video:
     name: Generate 4-Scene Cinematic Ad
     runs-on: ubuntu-latest
-    timeout-minutes: 90   # WaveSpeed 5B can take 15-20 min per clip × 4 scenes
+    timeout-minutes: 90
 
     steps:
-      # ── Checkout ───────────────────────────────────────────────────────────
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ── Python ────────────────────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
-          cache-dependency-path: "video_pipeline/requirements_v2.txt"
 
-      # ── FFmpeg ────────────────────────────────────────────────────────────
       - name: Install FFmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
           ffmpeg -version | head -1
 
-      # ── Python deps ───────────────────────────────────────────────────────
       - name: Install Python dependencies
-        run: pip install -r video_pipeline/requirements_v2.txt
+        run: pip install anthropic requests
 
-      # ── Run pipeline ──────────────────────────────────────────────────────
       - name: Run Video Pipeline v2
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -52,11 +42,10 @@ jobs:
           WAVESPEED_API_KEY: ${{ secrets.WAVESPEED_API_KEY }}
           FISH_VOICE_ID: ${{ secrets.FISH_VOICE_ID }}
         run: |
-          echo "🎬 Starting MindCore AI Video Pipeline v2"
+          echo "Starting MindCore AI Video Pipeline v2"
           echo "Run note: ${{ github.event.inputs.run_note || 'scheduled' }}"
           python video_pipeline/generate_video_v2.py
 
-      # ── Upload artifacts (always, even on failure, for debugging) ─────────
       - name: Upload output artifacts
         uses: actions/upload-artifact@v4
         if: always()
@@ -69,26 +58,21 @@ jobs:
             video_pipeline/output/*_vo.mp3
           retention-days: 30
 
-      # ── Summary ───────────────────────────────────────────────────────────
       - name: Write job summary
         if: always()
         run: |
-          echo "## 🎬 MindCore AI Video Pipeline v2" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI Video Pipeline v2" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "**Note:** ${{ github.event.inputs.run_note || 'scheduled' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script_v2.json" ]; then
-            echo "### 📝 Generated Script" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
+            echo "### Generated Script" >> $GITHUB_STEP_SUMMARY
+            echo '\`\`\`json' >> $GITHUB_STEP_SUMMARY
             cat video_pipeline/output/script_v2.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output/mindcore_ai_ad_v2.mp4" ]; then
             SIZE=$(du -sh video_pipeline/output/mindcore_ai_ad_v2.mp4 | cut -f1)
-            echo "### ✅ Final Video" >> $GITHUB_STEP_SUMMARY
-            echo "Size: \`$SIZE\`" >> $GITHUB_STEP_SUMMARY
-            echo "Download from the **Artifacts** section above ⬆️" >> $GITHUB_STEP_SUMMARY
+            echo "### Final Video: $SIZE -- download from Artifacts above" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ❌ Pipeline did not produce a final video" >> $GITHUB_STEP_SUMMARY
+            echo "### Pipeline did not produce a final video" >> $GITHUB_STEP_SUMMARY
           fi
