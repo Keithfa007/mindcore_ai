@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v3.1
+MindCore AI Video Pipeline v3.2
 =================================
 Smart content/ad rotation pipeline.
 
@@ -41,7 +41,7 @@ ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 FISH_AUDIO_API_KEY = os.environ["FISH_AUDIO_API_KEY"]
 WAVESPEED_API_KEY  = os.environ["WAVESPEED_API_KEY"]
 FISH_VOICE_ID      = os.environ.get("FISH_VOICE_ID", "eed26f2294d64177911af612473cca98")
-SERP_API_KEY       = os.environ.get("SERP_API_KEY", "")   # optional -- graceful fallback
+SERP_API_KEY       = os.environ.get("SERP_API_KEY", "")
 
 GITHUB_RUN_NUMBER  = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
@@ -50,7 +50,7 @@ WAVESPEED_RESULT_URL = "https://api.wavespeed.ai/api/v3/predictions/{task_id}/re
 FISH_TTS_URL         = "https://api.fish.audio/v1/tts"
 SERP_API_URL         = "https://serpapi.com/search"
 
-VIDEO_SIZE          = "720*1280"   # 9:16 portrait -- TikTok + Facebook Reels
+VIDEO_SIZE          = "720*1280"
 OUTPUT_DIR          = Path("video_pipeline/output")
 PIPELINE_DIR        = Path("video_pipeline")
 SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
@@ -58,6 +58,11 @@ CROSSFADE_DUR       = 0.5
 POLL_INTERVAL       = 15
 VIDEO_TIMEOUT       = 600
 SUPPORTED_DURATIONS = [5, 8]
+
+# Retry config for Anthropic 529 overload
+# 10 attempts: 30, 60, 90, 120, 150, 180, 210, 240, 270, 300s = ~25 min total max
+CLAUDE_MAX_RETRIES  = 10
+CLAUDE_RETRY_BASE   = 30   # seconds -- multiplied by attempt number
 
 SEO_KEYWORDS = [
     "AI mental health coach for men",
@@ -74,7 +79,7 @@ def determine_mode() -> str:
     return "content"
 
 
-# -- App Facts Loader ---------------------------------------------------------
+# -- Loaders ------------------------------------------------------------------
 
 def load_app_facts() -> dict:
     facts_path = PIPELINE_DIR / "app_facts.json"
@@ -84,8 +89,6 @@ def load_app_facts() -> dict:
         return json.load(f)
 
 
-# -- Niche Keywords Loader ----------------------------------------------------
-
 def load_niche_keywords() -> dict:
     kw_path = PIPELINE_DIR / "niche_keywords.json"
     if not kw_path.exists():
@@ -94,7 +97,7 @@ def load_niche_keywords() -> dict:
         return json.load(f)
 
 
-# -- Step 1a -- Fetch Trending Topic (SerpAPI) --------------------------------
+# -- Step 1a -- Fetch Trending Topic ------------------------------------------
 
 def fetch_trending_topic_serpapi(seed_query: str) -> dict:
     params = {
@@ -111,7 +114,7 @@ def fetch_trending_topic_serpapi(seed_query: str) -> dict:
 
     related_questions = data.get("related_questions", [])
     if related_questions:
-        picked = random.choice(related_questions[:6])
+        picked   = random.choice(related_questions[:6])
         question = picked.get("question", seed_query)
         return {"topic": question, "question": question, "keyword": seed_query, "source": "serpapi_people_also_ask"}
 
@@ -124,7 +127,7 @@ def fetch_trending_topic_serpapi(seed_query: str) -> dict:
 
 
 def fetch_trending_topic_claude(seed_queries: list, client: anthropic.Anthropic) -> dict:
-    seed = random.choice(seed_queries)
+    seed   = random.choice(seed_queries)
     prompt = f"""You are an SEO and content strategy expert specialising in men's mental health,
 recovery, anxiety, depression, and AI wellness.
 
@@ -145,20 +148,12 @@ Return ONLY valid JSON, no markdown:
   "source": "claude_generated"
 }}"""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=300,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = message.content[0].text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1].lstrip("json").strip()
-    return json.loads(raw)
+    return _call_claude_raw(prompt, client, max_tokens=300)
 
 
 def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
     keywords = load_niche_keywords()
-    seed = random.choice(keywords["seed_queries"])
+    seed     = random.choice(keywords["seed_queries"])
 
     if SERP_API_KEY:
         print(f"  Fetching trending topic via SerpAPI: '{seed}'")
@@ -167,9 +162,9 @@ def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
             print(f"  Topic found ({topic['source']}): {topic['topic']}")
             return topic
         except Exception as e:
-            print(f"  SerpAPI failed ({e}) -- falling back to Claude topic generation")
+            print(f"  SerpAPI failed ({e}) -- falling back to Claude")
 
-    print("  Generating topic with Claude (no SERP_API_KEY set)...")
+    print("  Generating topic with Claude...")
     topic = fetch_trending_topic_claude(keywords["seed_queries"], client)
     print(f"  Topic ({topic['source']}): {topic['topic']}")
     return topic
@@ -229,7 +224,7 @@ Return ONLY valid JSON, no markdown fences:
   "solution_cta": {{"voiceover": "...", "visual_prompt": "..."}}
 }}"""
 
-    return _call_claude(prompt, client)
+    return _call_claude_raw(prompt, client, max_tokens=1400)
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
@@ -277,16 +272,20 @@ Return ONLY valid JSON, no markdown fences:
   "solution_cta": {{"voiceover": "...", "visual_prompt": "..."}}
 }}"""
 
-    return _call_claude(prompt, client)
+    return _call_claude_raw(prompt, client, max_tokens=1400)
 
 
-def _call_claude(prompt: str, client: anthropic.Anthropic) -> dict:
-    max_retries = 5
-    for attempt in range(1, max_retries + 1):
+def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int = 1400) -> dict:
+    """
+    Call Claude with exponential backoff retry on 529 overload.
+    10 retries: waits of 30s, 60s, 90s ... 300s = up to ~25 minutes total.
+    This handles sustained overload periods gracefully.
+    """
+    for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             message = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=1400,
+                max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = message.content[0].text.strip()
@@ -294,14 +293,31 @@ def _call_claude(prompt: str, client: anthropic.Anthropic) -> dict:
                 parts = raw.split("```")
                 raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
             return json.loads(raw)
+
         except anthropic.APIStatusError as e:
             if e.status_code == 529:
-                wait = 20 * attempt
-                print(f"  Anthropic overloaded -- attempt {attempt}/{max_retries}, retry in {wait}s...")
+                if attempt == CLAUDE_MAX_RETRIES:
+                    raise RuntimeError(
+                        f"Anthropic API still overloaded after {CLAUDE_MAX_RETRIES} attempts "
+                        f"({CLAUDE_RETRY_BASE * CLAUDE_MAX_RETRIES}s total wait). "
+                        "Try re-running the workflow in a few minutes."
+                    )
+                wait = CLAUDE_RETRY_BASE * attempt
+                print(
+                    f"  Anthropic overloaded (529) -- attempt {attempt}/{CLAUDE_MAX_RETRIES}, "
+                    f"waiting {wait}s before retry..."
+                )
                 time.sleep(wait)
             else:
                 raise
-    raise RuntimeError("Anthropic API still overloaded after all retries")
+
+        except json.JSONDecodeError as e:
+            if attempt == CLAUDE_MAX_RETRIES:
+                raise RuntimeError(f"Claude returned invalid JSON after {CLAUDE_MAX_RETRIES} attempts: {e}")
+            print(f"  JSON parse error -- attempt {attempt}/{CLAUDE_MAX_RETRIES}, retrying in 10s...")
+            time.sleep(10)
+
+    raise RuntimeError("Unexpected exit from retry loop")
 
 
 # -- Step 2 -- Fish Audio TTS -------------------------------------------------
@@ -466,7 +482,7 @@ def concat_clips(clip_paths: list, output_path: str):
 
 
 def _xfade_concat(clip_paths: list, durations: list, output_path: str):
-    n = len(clip_paths)
+    n          = len(clip_paths)
     input_args = []
     for p in clip_paths:
         input_args += ["-i", p]
@@ -529,15 +545,9 @@ def _simple_concat(clip_paths: list, output_path: str):
 # -- Step 7 -- Upload Guide ---------------------------------------------------
 
 def generate_upload_guide(script: dict, mode: str, duration: float, client: anthropic.Anthropic) -> str:
-    """
-    Ask Claude to generate a complete social media upload guide based on the script.
-    Returns formatted text ready to paste into TikTok and Facebook.
-    """
     print("  Generating upload guide (TikTok + Facebook)...")
 
-    full_voiceover = " ".join(
-        script[scene]["voiceover"] for scene in SCENE_ORDER
-    )
+    full_voiceover = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode)
@@ -563,34 +573,42 @@ TIKTOK:
   3-4 mid-tier (#mentalhealthformen, #recoveryjourney), 2-3 niche low-competition
   (#sobrietyapp, #AIwellness, #mindcoreai). Start each with #.
 - Best posting times: top 3 times for this niche (day + time in UTC)
-- Suggested on-screen text (caption overlay): 1 punchy line to show at the hook moment
+- Suggested on-screen text overlay: 1 punchy line to show at the hook moment
 
 FACEBOOK REELS:
-- Title: max 255 characters -- slightly longer, more context than TikTok
-- Description: 2-3 sentences. Keyword-rich, emotionally engaging, ends with a question
-  or CTA to drive comments
+- Title: max 255 characters -- slightly more context than TikTok
+- Description: 2-3 sentences. Keyword-rich, emotionally engaging, ends with question or CTA
 - Hashtags: 5-7 hashtags (Facebook uses fewer)
 - Best posting times: top 3 times for this niche (day + time in UTC)
 
 ALSO INCLUDE:
-- Thumbnail suggestion: describe the ideal thumbnail frame from the video (first 2 seconds
-  or a specific moment) and what text to overlay if any
-- A/B test idea: one alternative hook line they could test
+- Thumbnail suggestion: describe the ideal frame and any text overlay
+- A/B test idea: one alternative hook line to test
 
-Return plain text only -- no JSON, no markdown headers with #.
-Use clear section labels like "TIKTOK TITLE:", "FACEBOOK DESCRIPTION:", etc.
+Return plain text only -- no JSON, no markdown # headers.
+Use clear labels like "TIKTOK TITLE:", "FACEBOOK DESCRIPTION:", etc.
 Keep it practical and copy-paste ready."""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1200,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return message.content[0].text.strip()
+    # Use direct client call here (not _call_claude_raw) since we want plain text not JSON
+    for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
+        try:
+            message = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return message.content[0].text.strip()
+        except anthropic.APIStatusError as e:
+            if e.status_code == 529:
+                wait = CLAUDE_RETRY_BASE * attempt
+                print(f"  Anthropic overloaded -- upload guide attempt {attempt}/{CLAUDE_MAX_RETRIES}, waiting {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
+    raise RuntimeError("Could not generate upload guide -- API overloaded")
 
 
 def save_upload_guide(guide_text: str, script: dict, mode: str, duration: float, run_number: int):
-    """Write the upload guide as a clean TXT file."""
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     topic        = script.get("topic", "N/A")
     seo_kw       = script.get("seo_keyword", "N/A")
@@ -632,17 +650,18 @@ def main():
 
     mode = determine_mode()
 
-    print(f"\n  MindCore AI Video Pipeline v3.1")
+    print(f"\n  MindCore AI Video Pipeline v3.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
+    print(f"  Retry config: up to {CLAUDE_MAX_RETRIES} attempts, {CLAUDE_RETRY_BASE}s base wait")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # 1. Generate script based on mode
+    # 1. Script
     if mode == "ad":
         app_facts = load_app_facts()
-        script = generate_ad_script(app_facts, client)
+        script    = generate_ad_script(app_facts, client)
     else:
         topic  = fetch_trending_topic(client)
         script = generate_content_script(topic, client)
@@ -656,7 +675,7 @@ def main():
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. TTS first -- measure duration before requesting video
+    # 2. TTS first
     print("\n  Generating voiceovers (Fish Audio Plus)...")
     audio_paths, audio_durations, video_durations = {}, {}, {}
     for scene in SCENE_ORDER:
@@ -668,7 +687,7 @@ def main():
         video_durations[scene] = v_dur
         print(f"  [{scene}]  audio={a_dur:.2f}s  ->  requesting {v_dur}s video")
 
-    # 3. Submit video generation jobs
+    # 3. Submit video jobs
     print("\n  Submitting video generation (WAN 2.2 T2V 9:16)...")
     task_ids = {}
     for scene in SCENE_ORDER:
@@ -688,7 +707,7 @@ def main():
         raw_video_paths[scene] = out
         print(f"    OK  ({get_media_duration(out):.2f}s)")
 
-    # 5. Mux audio onto each clip
+    # 5. Mux audio
     print("\n  Merging audio onto clips...")
     merged_paths = []
     for scene in SCENE_ORDER:
@@ -697,14 +716,14 @@ def main():
         merged_paths.append(out)
         print(f"  [{scene}]  ({get_media_duration(out):.2f}s)")
 
-    # 6. Concat all scenes
+    # 6. Concat
     print("\n  Concatenating all scenes...")
     final = str(OUTPUT_DIR / "mindcore_ai_ad_v2.mp4")
     concat_clips(merged_paths, final)
     final_dur = get_media_duration(final)
     final_mb  = Path(final).stat().st_size / (1024 * 1024)
 
-    # 7. Generate upload guide
+    # 7. Upload guide
     print("\n  Generating social media upload guide...")
     guide_text = generate_upload_guide(script, mode, final_dur, client)
     save_upload_guide(guide_text, script, mode, final_dur, GITHUB_RUN_NUMBER)
