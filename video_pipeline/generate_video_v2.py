@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v3.2
+MindCore AI Video Pipeline v3.3
 =================================
 Smart content/ad rotation pipeline.
 
 MODES:
   content  (default) -- Educational/emotional video on a real problem.
-                         Topic sourced from SerpAPI Google search (People Also Ask).
-                         Falls back to Claude-generated topic if no SERP_API_KEY.
-  ad       (every 10th run, run_number % 10 == 0)
-                      -- Accurate MindCore AI app advertisement.
-                         Reads app_facts.json -- no hallucinated features.
+  ad       (every 10th run) -- Accurate MindCore AI app ad.
 
-PIPELINE:
-  1. Determine mode (content vs ad) from GITHUB_RUN_NUMBER
-  2. Fetch trending topic (SerpAPI or Claude fallback) -- content mode only
-  3. Claude generates 4-scene script appropriate to mode
-  4. Fish Audio TTS per scene -- measure audio duration
-  5. WaveSpeed WAN 2.2 T2V 9:16 vertical -- duration matched to audio
-  6. Mux audio onto each clip (no looping)
-  7. Concat all scenes into one final MP4 (xfade or hard-cut fallback)
-  8. Generate upload_guide.txt -- ready-to-paste TikTok + Facebook post details
+TIMING FIX (v3.3):
+  - Audio buffer increased from 0.6s to 1.5s -- scenes never cut off VO
+  - Word counts tightened so every scene safely fits inside a 5s or 8s clip
+  - TTS speed set to 0.85 (slightly slower) -- warmer, more dramatic delivery
+  - merge_audio_video freeze buffer increased for extra safety
 """
 
 import json
@@ -50,7 +42,7 @@ WAVESPEED_RESULT_URL = "https://api.wavespeed.ai/api/v3/predictions/{task_id}/re
 FISH_TTS_URL         = "https://api.fish.audio/v1/tts"
 SERP_API_URL         = "https://serpapi.com/search"
 
-VIDEO_SIZE          = "720*1280"
+VIDEO_SIZE          = "720*1280"       # 9:16 portrait -- TikTok + Facebook Reels
 OUTPUT_DIR          = Path("video_pipeline/output")
 PIPELINE_DIR        = Path("video_pipeline")
 SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
@@ -59,10 +51,17 @@ POLL_INTERVAL       = 15
 VIDEO_TIMEOUT       = 600
 SUPPORTED_DURATIONS = [5, 8]
 
-# Retry config for Anthropic 529 overload
-# 10 attempts: 30, 60, 90, 120, 150, 180, 210, 240, 270, 300s = ~25 min total max
+# Timing: add 1.5s buffer when choosing video duration so VO never gets cut
+# e.g. 3.8s audio -> needs 5.3s -> requests 8s clip (generous breathing room)
+AUDIO_BUFFER_SECS   = 1.5
+
+# TTS speed: 0.85 = slightly slower than default -- warmer, more deliberate delivery
+# Gives more emotional weight and ensures words land before scene changes
+TTS_SPEED           = 0.85
+
+# Claude retry config
 CLAUDE_MAX_RETRIES  = 10
-CLAUDE_RETRY_BASE   = 30   # seconds -- multiplied by attempt number
+CLAUDE_RETRY_BASE   = 30
 
 SEO_KEYWORDS = [
     "AI mental health coach for men",
@@ -147,7 +146,6 @@ Return ONLY valid JSON, no markdown:
   "keyword": "primary SEO keyword for this topic",
   "source": "claude_generated"
 }}"""
-
     return _call_claude_raw(prompt, client, max_tokens=300)
 
 
@@ -194,22 +192,24 @@ FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
 They feel alone. They don't ask for help. Speak directly to them.
 
-STRICT WORD COUNT (spoken at ~140 words/min):
-- hook:         8-13 words  -- pattern-interrupt, shocking stat, or bold statement
-- problem:      13-18 words -- name the pain, make them feel seen
-- story:        15-20 words -- insight, real talk, perspective shift, or little-known fact
-- solution_cta: 12-16 words -- actionable takeaway or hopeful close. May softly mention
-                               MindCore AI ONLY if it fits naturally. Do NOT force it.
+STRICT WORD COUNT RULES -- these are HARD limits, do not exceed them:
+- hook:         6-10 words   -- pattern-interrupt opener. Short. Punchy. Stops the scroll.
+- problem:      10-14 words  -- name the pain, make them feel seen
+- story:        12-16 words  -- insight, real talk, perspective shift, or fact
+- solution_cta: 10-14 words  -- hopeful close. May mention MindCore AI ONLY if natural.
+
+WHY THESE LIMITS MATTER: The voiceover is read at a slow, deliberate pace (~120 words/min).
+Exceeding these limits means words get cut off. Short = powerful = complete.
 
 SEO RULES:
-- Weave '{keyword}' naturally into the voiceover at least once
-- The hook must make the viewer stop scrolling immediately
-- Speak in second person ("you", "your") -- never third person
+- Weave '{keyword}' naturally at least once
+- Hook must stop the scroll immediately
+- Second person only ("you", "your")
 
-VISUAL PROMPT RULES (vertical 9:16 for mobile -- portrait framing):
+VISUAL PROMPT RULES (vertical 9:16 portrait for mobile):
 - 45-60 words each
-- Cinematic realism, prestige drama quality, close-up and portrait shots
-- No text, no logos, no UI, no phones in frame
+- Cinematic realism, prestige drama quality, close-up portrait shots
+- No text, no logos, no UI, no phones
 - Describe: subject, action, lighting, camera, mood
 - Style: shallow depth of field, film grain, golden/blue hour, dramatic
 
@@ -239,7 +239,7 @@ Write a 4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
 TONE: Raw, honest, brotherly. Not salesy. Not clinical.
 
-VERIFIED APP FACTS (use ONLY these -- do not invent anything else):
+VERIFIED APP FACTS (use ONLY these):
 - Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
 - Premium plan: {premium['price']}. Features: {', '.join(premium['features'])}
 - Platform: {app_facts['platform']}
@@ -248,16 +248,19 @@ VERIFIED APP FACTS (use ONLY these -- do not invent anything else):
 CRITICAL RULES:
 {notes}
 
-SEO KEYWORDS to weave in naturally: {', '.join(SEO_KEYWORDS)}
+SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
-STRICT WORD COUNT (spoken at ~140 words/min):
-- hook:         8-12 words
-- problem:      12-16 words
-- story:        14-18 words
-- solution_cta: 12-16 words -- must include the CTA and accurate trial description
+STRICT WORD COUNT RULES -- HARD limits, do not exceed:
+- hook:         6-10 words
+- problem:      10-14 words
+- story:        12-16 words
+- solution_cta: 10-14 words -- include CTA and accurate trial description
 
-VISUAL PROMPT RULES (vertical 9:16 for mobile):
-- 45-60 words, cinematic 720p realism, portrait framing
+WHY THESE LIMITS MATTER: Voiceover is read at a slow, deliberate pace (~120 words/min).
+Exceeding limits means words get cut off.
+
+VISUAL PROMPT RULES (vertical 9:16 portrait):
+- 45-60 words, cinematic realism, portrait framing
 - No text, no logos, no UI elements
 - Style: shallow depth of field, film grain, dramatic lighting
 
@@ -276,11 +279,6 @@ Return ONLY valid JSON, no markdown fences:
 
 
 def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int = 1400) -> dict:
-    """
-    Call Claude with exponential backoff retry on 529 overload.
-    10 retries: waits of 30s, 60s, 90s ... 300s = up to ~25 minutes total.
-    This handles sustained overload periods gracefully.
-    """
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             message = client.messages.create(
@@ -298,22 +296,18 @@ def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int =
             if e.status_code == 529:
                 if attempt == CLAUDE_MAX_RETRIES:
                     raise RuntimeError(
-                        f"Anthropic API still overloaded after {CLAUDE_MAX_RETRIES} attempts "
-                        f"({CLAUDE_RETRY_BASE * CLAUDE_MAX_RETRIES}s total wait). "
+                        f"Anthropic API overloaded after {CLAUDE_MAX_RETRIES} attempts. "
                         "Try re-running the workflow in a few minutes."
                     )
                 wait = CLAUDE_RETRY_BASE * attempt
-                print(
-                    f"  Anthropic overloaded (529) -- attempt {attempt}/{CLAUDE_MAX_RETRIES}, "
-                    f"waiting {wait}s before retry..."
-                )
+                print(f"  Anthropic overloaded -- attempt {attempt}/{CLAUDE_MAX_RETRIES}, waiting {wait}s...")
                 time.sleep(wait)
             else:
                 raise
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             if attempt == CLAUDE_MAX_RETRIES:
-                raise RuntimeError(f"Claude returned invalid JSON after {CLAUDE_MAX_RETRIES} attempts: {e}")
+                raise RuntimeError("Claude returned invalid JSON after all retries")
             print(f"  JSON parse error -- attempt {attempt}/{CLAUDE_MAX_RETRIES}, retrying in 10s...")
             time.sleep(10)
 
@@ -323,6 +317,11 @@ def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int =
 # -- Step 2 -- Fish Audio TTS -------------------------------------------------
 
 def generate_tts(text: str, output_path: str) -> float:
+    """
+    Generate voiceover at TTS_SPEED (0.85) -- slightly slower than default.
+    Warmer, more deliberate delivery that matches dramatic visuals.
+    Returns audio duration in seconds.
+    """
     headers = {
         "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
         "Content-Type": "application/json",
@@ -334,6 +333,7 @@ def generate_tts(text: str, output_path: str) -> float:
         "mp3_bitrate": 128,
         "latency": "normal",
         "normalize": True,
+        "speed": TTS_SPEED,   # 0.85 = slightly slower, more dramatic
     }
     resp = requests.post(FISH_TTS_URL, headers=headers, json=payload, stream=True, timeout=60)
     resp.raise_for_status()
@@ -355,11 +355,18 @@ def get_media_duration(path: str) -> float:
 # -- Step 3 -- Duration Matching ----------------------------------------------
 
 def choose_video_duration(audio_duration: float) -> int:
-    needed = audio_duration + 0.6
+    """
+    Pick the smallest supported clip duration that covers the audio + buffer.
+    Buffer = AUDIO_BUFFER_SECS (1.5s) -- generous to prevent any cut-off.
+    Logs clearly so timing issues are easy to debug.
+    """
+    needed = audio_duration + AUDIO_BUFFER_SECS
     for d in SUPPORTED_DURATIONS:
         if d >= needed:
+            print(f"    audio={audio_duration:.2f}s + {AUDIO_BUFFER_SECS}s buffer = {needed:.2f}s needed -> {d}s clip")
             return d
-    print(f"  WARNING: Audio ({audio_duration:.2f}s) > 8s cap -- clamping to 8s")
+    # Audio exceeds 8s even after buffer -- clamp and warn
+    print(f"    WARNING: audio={audio_duration:.2f}s > 8s cap -- clamping. Consider shortening VO.")
     return 8
 
 
@@ -423,12 +430,21 @@ def download_file(url: str, output_path: str):
 # -- Step 5 -- Mux audio onto video -------------------------------------------
 
 def merge_audio_video(video_path: str, audio_path: str, output_path: str):
+    """
+    Mux VO onto video with no looping, no cutting.
+    Audio longer than video -> freeze last frame (tpad clone).
+    Video longer than audio -> pad audio with silence (apad).
+    Freeze buffer is extra generous (+ 0.5s) to guarantee VO completes.
+    """
     v_dur = get_media_duration(video_path)
     a_dur = get_media_duration(audio_path)
     diff  = a_dur - v_dur
 
+    print(f"    video={v_dur:.2f}s  audio={a_dur:.2f}s  diff={diff:+.2f}s")
+
     if diff > 0:
-        freeze_extra = diff + 0.2
+        # Audio longer: freeze last frame to cover overhang + safety buffer
+        freeze_extra = diff + 0.5
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path, "-i", audio_path,
@@ -441,6 +457,7 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
             output_path,
         ]
     else:
+        # Video longer: pad audio with silence
         pad_dur = abs(diff) + 0.1
         cmd = [
             "ffmpeg", "-y",
@@ -567,29 +584,26 @@ FULL VOICEOVER:
 Generate the following for EACH platform (TikTok and Facebook):
 
 TIKTOK:
-- Title: max 100 characters, front-load the keyword, make it a scroll-stopper
-- Description: max 150 characters (what shows before "more") -- hook + keyword + soft CTA
-- Hashtags: 8-12 hashtags. Mix: 2-3 broad (#mentalhealth, #menshealth),
-  3-4 mid-tier (#mentalhealthformen, #recoveryjourney), 2-3 niche low-competition
-  (#sobrietyapp, #AIwellness, #mindcoreai). Start each with #.
+- Title: max 100 characters, front-load the keyword, scroll-stopper
+- Description: max 150 characters (before "more") -- hook + keyword + soft CTA
+- Hashtags: 8-12 hashtags. Mix broad, mid-tier, niche low-competition. Start each with #.
 - Best posting times: top 3 times for this niche (day + time in UTC)
-- Suggested on-screen text overlay: 1 punchy line to show at the hook moment
+- Suggested on-screen text overlay: 1 punchy line for the hook moment
 
 FACEBOOK REELS:
-- Title: max 255 characters -- slightly more context than TikTok
-- Description: 2-3 sentences. Keyword-rich, emotionally engaging, ends with question or CTA
-- Hashtags: 5-7 hashtags (Facebook uses fewer)
+- Title: max 255 characters
+- Description: 2-3 sentences, keyword-rich, ends with question or CTA
+- Hashtags: 5-7 hashtags
 - Best posting times: top 3 times for this niche (day + time in UTC)
 
 ALSO INCLUDE:
-- Thumbnail suggestion: describe the ideal frame and any text overlay
+- Thumbnail suggestion: ideal frame + any text overlay
 - A/B test idea: one alternative hook line to test
 
 Return plain text only -- no JSON, no markdown # headers.
-Use clear labels like "TIKTOK TITLE:", "FACEBOOK DESCRIPTION:", etc.
-Keep it practical and copy-paste ready."""
+Use clear labels: TIKTOK TITLE:, FACEBOOK DESCRIPTION:, etc.
+Copy-paste ready."""
 
-    # Use direct client call here (not _call_claude_raw) since we want plain text not JSON
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             message = client.messages.create(
@@ -636,8 +650,7 @@ FULL SCRIPT (for reference)
     header += "================================================================================\n\n"
 
     full_content = header + guide_text + "\n\n================================================================================\n"
-
-    output_path = OUTPUT_DIR / "upload_guide.txt"
+    output_path  = OUTPUT_DIR / "upload_guide.txt"
     output_path.write_text(full_content, encoding="utf-8")
     print(f"  Upload guide saved -> {output_path}")
     return str(output_path)
@@ -650,10 +663,10 @@ def main():
 
     mode = determine_mode()
 
-    print(f"\n  MindCore AI Video Pipeline v3.2")
+    print(f"\n  MindCore AI Video Pipeline v3.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
-    print(f"  Retry config: up to {CLAUDE_MAX_RETRIES} attempts, {CLAUDE_RETRY_BASE}s base wait")
+    print(f"  TTS speed: {TTS_SPEED}x | Audio buffer: {AUDIO_BUFFER_SECS}s")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -675,8 +688,8 @@ def main():
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. TTS first
-    print("\n  Generating voiceovers (Fish Audio Plus)...")
+    # 2. TTS first -- audio drives video duration
+    print(f"\n  Generating voiceovers (Fish Audio | speed={TTS_SPEED}x)...")
     audio_paths, audio_durations, video_durations = {}, {}, {}
     for scene in SCENE_ORDER:
         path  = str(OUTPUT_DIR / f"{scene}_vo.mp3")
@@ -685,7 +698,6 @@ def main():
         audio_paths[scene]     = path
         audio_durations[scene] = a_dur
         video_durations[scene] = v_dur
-        print(f"  [{scene}]  audio={a_dur:.2f}s  ->  requesting {v_dur}s video")
 
     # 3. Submit video jobs
     print("\n  Submitting video generation (WAN 2.2 T2V 9:16)...")
@@ -714,7 +726,7 @@ def main():
         out = str(OUTPUT_DIR / f"{scene}_merged.mp4")
         merge_audio_video(raw_video_paths[scene], audio_paths[scene], out)
         merged_paths.append(out)
-        print(f"  [{scene}]  ({get_media_duration(out):.2f}s)")
+        print(f"  [{scene}]  -> {get_media_duration(out):.2f}s merged")
 
     # 6. Concat
     print("\n  Concatenating all scenes...")
