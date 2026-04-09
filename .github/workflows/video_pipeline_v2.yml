@@ -1,4 +1,4 @@
-name: MindCore AI Video Pipeline v2
+name: MindCore AI Video Pipeline v3
 
 on:
   workflow_dispatch:
@@ -7,13 +7,18 @@ on:
         description: "Optional note for this run"
         required: false
         default: "manual"
+      force_mode:
+        description: "Force a mode: 'content' or 'ad' (leave blank for automatic)"
+        required: false
+        default: ""
 
   schedule:
-    - cron: "0 9 * * 1"
+    # Mon, Wed, Fri at 09:00 UTC
+    - cron: "0 9 * * 1,3,5"
 
 jobs:
   generate-video:
-    name: Generate 4-Scene Cinematic Ad (9:16 TikTok/Facebook)
+    name: Generate Video (9:16 TikTok/Facebook)
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -35,27 +40,54 @@ jobs:
       - name: Install Python dependencies
         run: pip install anthropic requests
 
-      - name: Run Video Pipeline v2
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
-          WAVESPEED_API_KEY: ${{ secrets.WAVESPEED_API_KEY }}
-          FISH_VOICE_ID: ${{ secrets.FISH_VOICE_ID }}
+      - name: Show run info
         run: |
-          echo "Starting MindCore AI Video Pipeline v2"
-          echo "Run note: ${{ github.event.inputs.run_note || 'scheduled' }}"
+          RUN_NUM=${{ github.run_number }}
+          MOD=$((RUN_NUM % 10))
+          FORCE="${{ github.event.inputs.force_mode }}"
+          if [ -n "$FORCE" ]; then
+            echo "Mode: FORCED to $FORCE"
+          elif [ "$MOD" -eq 0 ]; then
+            echo "Mode: AD (run #$RUN_NUM is divisible by 10)"
+          else
+            echo "Mode: CONTENT (run #$RUN_NUM, next ad at run #$((RUN_NUM + 10 - MOD)))"
+          fi
+
+      - name: Run Video Pipeline
+        env:
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
+          WAVESPEED_API_KEY:  ${{ secrets.WAVESPEED_API_KEY }}
+          FISH_VOICE_ID:      ${{ secrets.FISH_VOICE_ID }}
+          SERP_API_KEY:       ${{ secrets.SERP_API_KEY }}
+          GITHUB_RUN_NUMBER:  ${{ github.run_number }}
+        run: |
+          # Allow force_mode override via env var if provided
+          FORCE="${{ github.event.inputs.force_mode }}"
+          if [ "$FORCE" = "ad" ]; then
+            export GITHUB_RUN_NUMBER=10   # divisible by 10 = ad mode
+          elif [ "$FORCE" = "content" ]; then
+            export GITHUB_RUN_NUMBER=1    # not divisible by 10 = content mode
+          fi
+          echo "Starting MindCore AI Video Pipeline"
           python video_pipeline/generate_video_v2.py
 
-      # Upload ONLY the final merged video as the primary artifact
       - name: Upload final video
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: mindcore-ai-ad-v2-run-${{ github.run_number }}
+          name: mindcore-video-run-${{ github.run_number }}
           path: video_pipeline/output/mindcore_ai_ad_v2.mp4
           retention-days: 30
 
-      # On failure, upload everything for debugging
+      - name: Upload script
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: mindcore-script-run-${{ github.run_number }}
+          path: video_pipeline/output/script_v2.json
+          retention-days: 30
+
       - name: Upload debug artifacts on failure
         uses: actions/upload-artifact@v4
         if: failure()
@@ -67,18 +99,24 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## MindCore AI Video Pipeline v2" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI Video Pipeline v3" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "**Format:** 9:16 vertical -- TikTok + Facebook Reels" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script_v2.json" ]; then
-            echo "### Generated Script" >> $GITHUB_STEP_SUMMARY
+            TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script_v2.json')); print(d.get('video_type','unknown').upper())" 2>/dev/null || echo "UNKNOWN")
+            TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script_v2.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
+            KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script_v2.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
+            echo "**Video type:** $TYPE" >> $GITHUB_STEP_SUMMARY
+            echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
+            echo "**SEO keyword:** $KW" >> $GITHUB_STEP_SUMMARY
+            echo "### Script" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat video_pipeline/output/script_v2.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output/mindcore_ai_ad_v2.mp4" ]; then
             SIZE=$(du -sh video_pipeline/output/mindcore_ai_ad_v2.mp4 | cut -f1)
-            echo "### Final Video: $SIZE -- download from Artifacts above" >> $GITHUB_STEP_SUMMARY
+            echo "### Final Video: $SIZE -- download from Artifacts" >> $GITHUB_STEP_SUMMARY
           else
             echo "### Pipeline did not produce a final video" >> $GITHUB_STEP_SUMMARY
           fi

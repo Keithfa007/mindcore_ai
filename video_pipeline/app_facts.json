@@ -1,0 +1,43 @@
+{
+  "name": "MindCore AI",
+  "tagline": "Your AI mental wellness companion",
+  "trial": {
+    "messages": 50,
+    "voice_minutes": 5,
+    "duration_days": 30,
+    "description": "Try it with 50 messages and 5 minutes of voice — no credit card, no commitment."
+  },
+  "plans": {
+    "premium": {
+      "name": "Premium",
+      "price": "\u20ac14.99 per month",
+      "features": [
+        "Unlimited AI chat",
+        "Extended voice chat",
+        "Mood tracking and history",
+        "Daily AI briefings",
+        "Mood pattern predictions"
+      ]
+    },
+    "pro": {
+      "name": "Pro",
+      "price": "\u20ac25 per month",
+      "features": [
+        "Everything in Premium",
+        "Priority AI responses",
+        "Advanced mood insights",
+        "Full unlimited voice chat"
+      ]
+    }
+  },
+  "platform": "Android — available now on Google Play. iOS coming soon.",
+  "target_audience": "Men 35 and over dealing with anxiety, depression, isolation, or in recovery",
+  "cta": "Download MindCore AI on Google Play",
+  "important_notes": [
+    "There is NO free plan — only a limited trial of 50 messages and 5 voice minutes over 30 days",
+    "Never say 'start free' — say 'try it' or 'start your trial'",
+    "Never invent features that are not listed above",
+    "Never mention iOS availability as current — it is coming soon only",
+    "Pricing is in Euros"
+  ]
+}

@@ -1,16 +1,30 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v2.2
+MindCore AI Video Pipeline v3.0
 =================================
-FIXES:
-  - 9:16 vertical format (720x1280) for TikTok + Facebook Reels
-  - Robust concat: xfade with silent fallback to simple concat
-  - Final MP4 is the ONLY artifact uploaded (no loose clips)
-  - Retry on Anthropic 529 overload
+Smart content/ad rotation pipeline.
+
+MODES:
+  content  (default) -- Educational/emotional video on a real problem.
+                         Topic sourced from SerpAPI Google search (People Also Ask).
+                         Falls back to Claude-generated topic if no SERP_API_KEY.
+  ad       (every 10th run, run_number % 10 == 0)
+                      -- Accurate MindCore AI app advertisement.
+                         Reads app_facts.json -- no hallucinated features.
+
+PIPELINE:
+  1. Determine mode (content vs ad) from GITHUB_RUN_NUMBER
+  2. Fetch trending topic (SerpAPI or Claude fallback) -- content mode only
+  3. Claude generates 4-scene script appropriate to mode
+  4. Fish Audio TTS per scene -- measure audio duration
+  5. WaveSpeed WAN 2.2 T2V 9:16 vertical -- duration matched to audio
+  6. Mux audio onto each clip (no looping)
+  7. Concat all scenes into one final MP4 (xfade or hard-cut fallback)
 """
 
 import json
 import os
+import random
 import subprocess
 import sys
 import time
@@ -25,14 +39,18 @@ ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 FISH_AUDIO_API_KEY = os.environ["FISH_AUDIO_API_KEY"]
 WAVESPEED_API_KEY  = os.environ["WAVESPEED_API_KEY"]
 FISH_VOICE_ID      = os.environ.get("FISH_VOICE_ID", "eed26f2294d64177911af612473cca98")
+SERP_API_KEY       = os.environ.get("SERP_API_KEY", "")   # optional -- graceful fallback
 
-# WAN 2.2 T2V 720p -- portrait 720x1280 = 9:16 for TikTok / Facebook Reels
+GITHUB_RUN_NUMBER  = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
+
 WAVESPEED_SUBMIT_URL = "https://api.wavespeed.ai/api/v3/wavespeed-ai/wan-2.2/t2v-720p"
 WAVESPEED_RESULT_URL = "https://api.wavespeed.ai/api/v3/predictions/{task_id}/result"
 FISH_TTS_URL         = "https://api.fish.audio/v1/tts"
+SERP_API_URL         = "https://serpapi.com/search"
 
 VIDEO_SIZE          = "720*1280"   # 9:16 portrait -- TikTok + Facebook Reels
 OUTPUT_DIR          = Path("video_pipeline/output")
+PIPELINE_DIR        = Path("video_pipeline")
 SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
 CROSSFADE_DUR       = 0.5
 POLL_INTERVAL       = 15
@@ -46,60 +64,271 @@ SEO_KEYWORDS = [
 ]
 
 
-# -- Step 1 -- Script (with retry on overload) --------------------------------
+# -- Mode Detection -----------------------------------------------------------
 
-def generate_script() -> dict:
-    print("  Generating 4-scene script with Claude...")
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+def determine_mode() -> str:
+    """
+    Every 10th run is an app ad. All others are value-first content videos.
+    Uses GITHUB_RUN_NUMBER so it's automatic and consistent.
+    """
+    if GITHUB_RUN_NUMBER % 10 == 0:
+        return "ad"
+    return "content"
 
-    prompt = f"""You are a viral performance marketing copywriter for MindCore AI --
-an AI mental wellness companion targeting men in recovery or struggling with
-anxiety, depression, and isolation.
 
-Write a 4-scene vertical video ad script (9:16, TikTok / Facebook Reels):
-Hook -> Problem -> Story -> Solution+CTA.
+# -- App Facts Loader ---------------------------------------------------------
 
-TARGET: Men 35+. Tone: raw, honest, brotherly. Not clinical.
-SEO KEYWORDS to weave in naturally: {", ".join(SEO_KEYWORDS)}
+def load_app_facts() -> dict:
+    facts_path = PIPELINE_DIR / "app_facts.json"
+    if not facts_path.exists():
+        raise FileNotFoundError(f"app_facts.json not found at {facts_path}")
+    with open(facts_path) as f:
+        return json.load(f)
 
-STRICT WORD COUNT RULES (read at ~140 words/min):
-- hook:         8-12 words   (~4-5 seconds spoken)
-- problem:      12-16 words  (~5-7 seconds spoken)
-- story:        14-18 words  (~6-8 seconds spoken)
-- solution_cta: 12-16 words  (~5-7 seconds spoken)
-Do NOT exceed these limits. Short = punchy = viral.
 
-VISUAL PROMPT RULES (vertical 9:16 framing for mobile):
-- 45-60 words each
-- VERTICAL framing -- close-up faces, portrait compositions, mobile-first
-- Cinematic realism, prestige drama quality
-- Describe: subject, action, lighting, camera movement, mood
-- Style: cinematic, shallow depth of field, film grain, golden/blue hour, dramatic
-- No text, no logos, no UI elements
+# -- Niche Keywords Loader ----------------------------------------------------
 
-Return ONLY valid JSON with no markdown fences:
+def load_niche_keywords() -> dict:
+    kw_path = PIPELINE_DIR / "niche_keywords.json"
+    if not kw_path.exists():
+        return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"]}
+    with open(kw_path) as f:
+        return json.load(f)
+
+
+# -- Step 1a -- Fetch Trending Topic (SerpAPI) --------------------------------
+
+def fetch_trending_topic_serpapi(seed_query: str) -> dict:
+    """
+    Calls SerpAPI to get Google 'People Also Ask' questions for a seed query.
+    Returns {topic, question, keyword} dict.
+    """
+    params = {
+        "engine": "google",
+        "q": seed_query,
+        "api_key": SERP_API_KEY,
+        "num": 10,
+        "hl": "en",
+        "gl": "us",
+    }
+    resp = requests.get(SERP_API_URL, params=params, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+
+    # Extract People Also Ask questions
+    related_questions = data.get("related_questions", [])
+    if related_questions:
+        picked = random.choice(related_questions[:6])  # pick from top 6
+        question = picked.get("question", seed_query)
+        return {
+            "topic": question,
+            "question": question,
+            "keyword": seed_query,
+            "source": "serpapi_people_also_ask",
+        }
+
+    # Fallback to organic result titles
+    organic = data.get("organic_results", [])
+    if organic:
+        title = organic[0].get("title", seed_query)
+        return {
+            "topic": title,
+            "question": title,
+            "keyword": seed_query,
+            "source": "serpapi_organic",
+        }
+
+    return {"topic": seed_query, "question": seed_query, "keyword": seed_query, "source": "seed_fallback"}
+
+
+def fetch_trending_topic_claude(seed_queries: list, client: anthropic.Anthropic) -> dict:
+    """
+    Fallback when no SERP_API_KEY -- Claude generates a high-demand, low-competition
+    topic idea based on niche knowledge.
+    """
+    seed = random.choice(seed_queries)
+    prompt = f"""You are an SEO and content strategy expert specialising in men's mental health,
+recovery, anxiety, depression, and AI wellness.
+
+Generate ONE high-demand, low-competition video topic for TikTok and Facebook Reels.
+The topic must be related to this seed: "{seed}"
+
+Criteria:
+- Phrased as a real question or struggle that men search for
+- High emotional resonance for men 35+ in recovery or struggling
+- Not too broad ("mental health tips") and not too niche
+- Something with genuine search volume but not dominated by big brands
+
+Return ONLY valid JSON, no markdown:
 {{
+  "topic": "the specific topic or question",
+  "question": "how it might be phrased as a Google search",
+  "keyword": "primary SEO keyword for this topic",
+  "source": "claude_generated"
+}}"""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=300,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = message.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1].lstrip("json").strip()
+    return json.loads(raw)
+
+
+def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
+    """Main topic fetcher -- SerpAPI if key exists, Claude fallback otherwise."""
+    keywords = load_niche_keywords()
+    seed = random.choice(keywords["seed_queries"])
+
+    if SERP_API_KEY:
+        print(f"  Fetching trending topic via SerpAPI: '{seed}'")
+        try:
+            topic = fetch_trending_topic_serpapi(seed)
+            print(f"  Topic found ({topic['source']}): {topic['topic']}")
+            return topic
+        except Exception as e:
+            print(f"  SerpAPI failed ({e}) -- falling back to Claude topic generation")
+
+    print("  Generating topic with Claude (no SERP_API_KEY set)...")
+    topic = fetch_trending_topic_claude(keywords["seed_queries"], client)
+    print(f"  Topic ({topic['source']}): {topic['topic']}")
+    return topic
+
+
+# -- Step 1b -- Script Generation ---------------------------------------------
+
+def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
+    """
+    Generates a value-first educational/emotional video script.
+    NOT an ad -- builds audience trust and SEO reach.
+    MindCore AI is only mentioned naturally at the end if it fits.
+    """
+    print(f"  Generating CONTENT script: {topic['topic']}")
+
+    keyword = topic.get("keyword", topic["topic"])
+    question = topic.get("question", topic["topic"])
+    angles   = load_niche_keywords().get("content_angles", [])
+    angle    = random.choice(angles) if angles else "real talk"
+
+    prompt = f"""You are a top-performing TikTok and Facebook Reels content creator in the men's
+mental health and recovery space. Your content gets millions of views because it speaks
+RAW TRUTH to men who are quietly struggling.
+
+Create a 4-scene viral short video script on this topic:
+TOPIC: {topic['topic']}
+SEARCH QUESTION: {question}
+SEO KEYWORD: {keyword}
+CONTENT ANGLE: {angle}
+
+FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
+
+AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
+They feel alone. They don't ask for help. Speak directly to them.
+
+STRICT WORD COUNT (spoken at ~140 words/min):
+- hook:         8-13 words  -- pattern-interrupt, shocking stat, or bold statement
+- problem:      13-18 words -- name the pain, make them feel seen
+- story:        15-20 words -- insight, real talk, perspective shift, or little-known fact
+- solution_cta: 12-16 words -- actionable takeaway or hopeful close. May softly mention
+                               MindCore AI ONLY if it fits naturally. Do NOT force it.
+
+SEO RULES:
+- Weave '{keyword}' naturally into the voiceover at least once
+- The hook must make the viewer stop scrolling immediately
+- Speak in second person ("you", "your") -- never third person
+
+VISUAL PROMPT RULES (vertical 9:16 for mobile -- portrait framing):
+- 45-60 words each
+- Cinematic realism, prestige drama quality, close-up and portrait shots
+- No text, no logos, no UI, no phones in frame
+- Describe: subject, action, lighting, camera, mood
+- Style: shallow depth of field, film grain, golden/blue hour, dramatic
+
+Return ONLY valid JSON, no markdown fences:
+{{
+  "video_type": "content",
+  "topic": "{topic['topic']}",
+  "seo_keyword": "{keyword}",
   "hook": {{"voiceover": "...", "visual_prompt": "..."}},
   "problem": {{"voiceover": "...", "visual_prompt": "..."}},
   "story": {{"voiceover": "...", "visual_prompt": "..."}},
   "solution_cta": {{"voiceover": "...", "visual_prompt": "..."}}
 }}"""
 
+    return _call_claude(prompt, client)
+
+
+def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
+    """
+    Generates an accurate MindCore AI app advertisement.
+    Reads from app_facts.json -- never invents features or pricing.
+    """
+    print("  Generating APP AD script (using verified app_facts.json)...")
+
+    trial   = app_facts["trial"]
+    premium = app_facts["plans"]["premium"]
+    notes   = "\n".join(f"- {n}" for n in app_facts["important_notes"])
+
+    prompt = f"""You are a performance marketing copywriter for MindCore AI.
+Write a 4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
+
+AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
+TONE: Raw, honest, brotherly. Not salesy. Not clinical.
+
+VERIFIED APP FACTS (use ONLY these -- do not invent anything else):
+- Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
+- Premium plan: {premium['price']}. Features: {', '.join(premium['features'])}
+- Platform: {app_facts['platform']}
+- CTA: {app_facts['cta']}
+
+CRITICAL RULES:
+{notes}
+
+SEO KEYWORDS to weave in naturally: {', '.join(SEO_KEYWORDS)}
+
+STRICT WORD COUNT (spoken at ~140 words/min):
+- hook:         8-12 words
+- problem:      12-16 words
+- story:        14-18 words
+- solution_cta: 12-16 words -- must include the CTA and accurate trial description
+
+VISUAL PROMPT RULES (vertical 9:16 for mobile):
+- 45-60 words, cinematic 720p realism, portrait framing
+- No text, no logos, no UI elements
+- Style: shallow depth of field, film grain, dramatic lighting
+
+Return ONLY valid JSON, no markdown fences:
+{{
+  "video_type": "ad",
+  "topic": "MindCore AI -- your AI mental wellness companion",
+  "seo_keyword": "AI mental health coach for men",
+  "hook": {{"voiceover": "...", "visual_prompt": "..."}},
+  "problem": {{"voiceover": "...", "visual_prompt": "..."}},
+  "story": {{"voiceover": "...", "visual_prompt": "..."}},
+  "solution_cta": {{"voiceover": "...", "visual_prompt": "..."}}
+}}"""
+
+    return _call_claude(prompt, client)
+
+
+def _call_claude(prompt: str, client: anthropic.Anthropic) -> dict:
+    """Claude API call with retry on 529 overload."""
     max_retries = 5
     for attempt in range(1, max_retries + 1):
         try:
             message = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=1200,
+                max_tokens=1400,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = message.content[0].text.strip()
             if raw.startswith("```"):
                 parts = raw.split("```")
                 raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
-            script = json.loads(raw)
-            print("  OK  Script generated")
-            return script
+            return json.loads(raw)
         except anthropic.APIStatusError as e:
             if e.status_code == 529:
                 wait = 20 * attempt
@@ -107,7 +336,6 @@ Return ONLY valid JSON with no markdown fences:
                 time.sleep(wait)
             else:
                 raise
-
     raise RuntimeError("Anthropic API still overloaded after all retries")
 
 
@@ -154,7 +382,7 @@ def choose_video_duration(audio_duration: float) -> int:
     return 8
 
 
-# -- Step 4 -- WaveSpeed ------------------------------------------------------
+# -- Step 4 -- WaveSpeed Video ------------------------------------------------
 
 def submit_video(visual_prompt: str, duration: int) -> str:
     headers = {
@@ -163,7 +391,7 @@ def submit_video(visual_prompt: str, duration: int) -> str:
     }
     payload = {
         "prompt": visual_prompt,
-        "size": VIDEO_SIZE,       # 720*1280 = 9:16 portrait
+        "size": VIDEO_SIZE,
         "duration": duration,
         "seed": -1,
         "enable_prompt_optimizer": True,
@@ -211,15 +439,9 @@ def download_file(url: str, output_path: str):
                 f.write(chunk)
 
 
-# -- Step 5 -- Mux audio onto video (no looping) ------------------------------
+# -- Step 5 -- Mux audio onto video -------------------------------------------
 
 def merge_audio_video(video_path: str, audio_path: str, output_path: str):
-    """
-    Mux VO onto video clip with no looping ever.
-    Audio longer  -> freeze last video frame via tpad.
-    Video longer  -> pad audio with silence via apad.
-    Re-encode to h264/24fps so all clips are identical for concat.
-    """
     v_dur = get_media_duration(video_path)
     a_dur = get_media_duration(audio_path)
     diff  = a_dur - v_dur
@@ -228,8 +450,7 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
         freeze_extra = diff + 0.2
         cmd = [
             "ffmpeg", "-y",
-            "-i", video_path,
-            "-i", audio_path,
+            "-i", video_path, "-i", audio_path,
             "-filter_complex",
             f"[0:v]tpad=stop_mode=clone:stop_duration={freeze_extra:.3f}[vout]",
             "-map", "[vout]", "-map", "1:a:0",
@@ -242,8 +463,7 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
         pad_dur = abs(diff) + 0.1
         cmd = [
             "ffmpeg", "-y",
-            "-i", video_path,
-            "-i", audio_path,
+            "-i", video_path, "-i", audio_path,
             "-filter_complex", f"[1:a]apad=pad_dur={pad_dur:.3f}[aout]",
             "-map", "0:v", "-map", "[aout]",
             "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-r", "24",
@@ -259,16 +479,10 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str):
         raise RuntimeError(f"merge_audio_video failed -> {output_path}")
 
 
-# -- Step 6 -- Concat all clips into one final MP4 ----------------------------
+# -- Step 6 -- Concat all scenes ----------------------------------------------
 
 def concat_clips(clip_paths: list, output_path: str):
-    """
-    Concatenate clips using xfade crossfade.
-    Falls back to simple concat filter if xfade fails (e.g. codec mismatch).
-    Final output: h264 / aac, yuv420p, 24fps, faststart -- ready for TikTok & Facebook.
-    """
     n = len(clip_paths)
-
     if n == 1:
         import shutil
         shutil.copy(clip_paths[0], output_path)
@@ -277,17 +491,13 @@ def concat_clips(clip_paths: list, output_path: str):
     durations = [get_media_duration(p) for p in clip_paths]
     print(f"  Clip durations: {[f'{d:.2f}s' for d in durations]}")
 
-    # ── Try xfade crossfade ──────────────────────────────────────────────
     try:
         _xfade_concat(clip_paths, durations, output_path)
-        print("  Concat method: xfade crossfade")
-        return
+        print("  Concat: xfade crossfade")
     except Exception as e:
-        print(f"  xfade failed ({e}) -- falling back to simple concat")
-
-    # ── Fallback: concat filter (hard cut) ───────────────────────────────
-    _simple_concat(clip_paths, output_path)
-    print("  Concat method: simple concat (hard cuts)")
+        print(f"  xfade failed ({e}) -- falling back to hard-cut concat")
+        _simple_concat(clip_paths, output_path)
+        print("  Concat: hard cuts (fallback)")
 
 
 def _xfade_concat(clip_paths: list, durations: list, output_path: str):
@@ -315,8 +525,7 @@ def _xfade_concat(clip_paths: list, durations: list, output_path: str):
         af[0] = af[0].replace("[xa1]", "[aout]")
 
     cmd = (
-        ["ffmpeg", "-y"]
-        + input_args
+        ["ffmpeg", "-y"] + input_args
         + [
             "-filter_complex", ";".join(vf + af),
             "-map", "[vout]", "-map", "[aout]",
@@ -333,17 +542,13 @@ def _xfade_concat(clip_paths: list, durations: list, output_path: str):
 
 
 def _simple_concat(clip_paths: list, output_path: str):
-    """Reliable hard-cut concat using FFmpeg concat demuxer."""
     list_file = str(OUTPUT_DIR / "concat_list.txt")
     with open(list_file, "w") as f:
         for p in clip_paths:
-            abs_path = Path(p).resolve()
-            f.write(f"file '{abs_path}'\n")
-
+            f.write(f"file '{Path(p).resolve()}'\n")
     cmd = [
         "ffmpeg", "-y",
-        "-f", "concat", "-safe", "0",
-        "-i", list_file,
+        "-f", "concat", "-safe", "0", "-i", list_file,
         "-c:v", "libx264", "-preset", "fast", "-crf", "18",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k",
@@ -361,22 +566,36 @@ def _simple_concat(clip_paths: list, output_path: str):
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("\n  MindCore AI Video Pipeline v2.2")
-    print("  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
+    mode = determine_mode()
+
+    print(f"\n  MindCore AI Video Pipeline v3.0")
+    print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
+    print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
     print("=" * 60)
 
-    # 1. Script
-    script = generate_script()
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    # 1. Generate script based on mode
+    if mode == "ad":
+        app_facts = load_app_facts()
+        script = generate_ad_script(app_facts, client)
+    else:
+        topic  = fetch_trending_topic(client)
+        script = generate_content_script(topic, client)
+
+    # Save script
     (OUTPUT_DIR / "script_v2.json").write_text(json.dumps(script, indent=2))
+    print(f"\n  Video type: {script.get('video_type', mode)}")
+    print(f"  Topic:      {script.get('topic', 'N/A')}")
+    print(f"  SEO kw:     {script.get('seo_keyword', 'N/A')}")
     print()
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. TTS first -- measure duration before requesting video
+    # 2. TTS -- generate audio first, measure durations
     print("\n  Generating voiceovers (Fish Audio Plus)...")
     audio_paths, audio_durations, video_durations = {}, {}, {}
-
     for scene in SCENE_ORDER:
         path  = str(OUTPUT_DIR / f"{scene}_vo.mp3")
         a_dur = generate_tts(script[scene]["voiceover"], path)
@@ -386,8 +605,8 @@ def main():
         video_durations[scene] = v_dur
         print(f"  [{scene}]  audio={a_dur:.2f}s  ->  requesting {v_dur}s video")
 
-    # 3. Submit video jobs
-    print("\n  Submitting video generation (WAN 2.2 T2V -- 9:16 vertical)...")
+    # 3. Submit video generation jobs
+    print("\n  Submitting video generation (WAN 2.2 T2V 9:16)...")
     task_ids = {}
     for scene in SCENE_ORDER:
         task_id = submit_video(script[scene]["visual_prompt"], video_durations[scene])
@@ -395,7 +614,7 @@ def main():
         print(f"  [{scene}]  task={task_id}  ({video_durations[scene]}s)")
         time.sleep(2)
 
-    # 4. Poll + download raw clips
+    # 4. Poll + download
     print("\n  Polling WaveSpeed...")
     raw_video_paths = {}
     for scene in SCENE_ORDER:
@@ -415,18 +634,20 @@ def main():
         merged_paths.append(out)
         print(f"  [{scene}]  ({get_media_duration(out):.2f}s)")
 
-    # 6. Concat all scenes into one final MP4
-    print("\n  Concatenating all scenes into final video...")
+    # 6. Concat all scenes
+    print("\n  Concatenating all scenes...")
     final = str(OUTPUT_DIR / "mindcore_ai_ad_v2.mp4")
     concat_clips(merged_paths, final)
 
     final_dur = get_media_duration(final)
     final_mb  = Path(final).stat().st_size / (1024 * 1024)
+
     print(f"\n  DONE")
     print(f"  File:     {final}")
     print(f"  Duration: {final_dur:.2f}s")
     print(f"  Size:     {final_mb:.1f} MB")
-    print(f"  Format:   9:16 vertical / H.264 / AAC -- ready for TikTok + Facebook")
+    print(f"  Mode:     {mode.upper()} video")
+    print(f"  Format:   9:16 / H.264 / AAC -- ready for TikTok + Facebook")
     print("\n  Pipeline complete!")
 
 
