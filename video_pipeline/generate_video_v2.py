@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v3.0
+MindCore AI Video Pipeline v3.1
 =================================
 Smart content/ad rotation pipeline.
 
@@ -20,6 +20,7 @@ PIPELINE:
   5. WaveSpeed WAN 2.2 T2V 9:16 vertical -- duration matched to audio
   6. Mux audio onto each clip (no looping)
   7. Concat all scenes into one final MP4 (xfade or hard-cut fallback)
+  8. Generate upload_guide.txt -- ready-to-paste TikTok + Facebook post details
 """
 
 import json
@@ -28,6 +29,7 @@ import random
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import anthropic
@@ -67,10 +69,6 @@ SEO_KEYWORDS = [
 # -- Mode Detection -----------------------------------------------------------
 
 def determine_mode() -> str:
-    """
-    Every 10th run is an app ad. All others are value-first content videos.
-    Uses GITHUB_RUN_NUMBER so it's automatic and consistent.
-    """
     if GITHUB_RUN_NUMBER % 10 == 0:
         return "ad"
     return "content"
@@ -99,10 +97,6 @@ def load_niche_keywords() -> dict:
 # -- Step 1a -- Fetch Trending Topic (SerpAPI) --------------------------------
 
 def fetch_trending_topic_serpapi(seed_query: str) -> dict:
-    """
-    Calls SerpAPI to get Google 'People Also Ask' questions for a seed query.
-    Returns {topic, question, keyword} dict.
-    """
     params = {
         "engine": "google",
         "q": seed_query,
@@ -115,37 +109,21 @@ def fetch_trending_topic_serpapi(seed_query: str) -> dict:
     resp.raise_for_status()
     data = resp.json()
 
-    # Extract People Also Ask questions
     related_questions = data.get("related_questions", [])
     if related_questions:
-        picked = random.choice(related_questions[:6])  # pick from top 6
+        picked = random.choice(related_questions[:6])
         question = picked.get("question", seed_query)
-        return {
-            "topic": question,
-            "question": question,
-            "keyword": seed_query,
-            "source": "serpapi_people_also_ask",
-        }
+        return {"topic": question, "question": question, "keyword": seed_query, "source": "serpapi_people_also_ask"}
 
-    # Fallback to organic result titles
     organic = data.get("organic_results", [])
     if organic:
         title = organic[0].get("title", seed_query)
-        return {
-            "topic": title,
-            "question": title,
-            "keyword": seed_query,
-            "source": "serpapi_organic",
-        }
+        return {"topic": title, "question": title, "keyword": seed_query, "source": "serpapi_organic"}
 
     return {"topic": seed_query, "question": seed_query, "keyword": seed_query, "source": "seed_fallback"}
 
 
 def fetch_trending_topic_claude(seed_queries: list, client: anthropic.Anthropic) -> dict:
-    """
-    Fallback when no SERP_API_KEY -- Claude generates a high-demand, low-competition
-    topic idea based on niche knowledge.
-    """
     seed = random.choice(seed_queries)
     prompt = f"""You are an SEO and content strategy expert specialising in men's mental health,
 recovery, anxiety, depression, and AI wellness.
@@ -179,7 +157,6 @@ Return ONLY valid JSON, no markdown:
 
 
 def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
-    """Main topic fetcher -- SerpAPI if key exists, Claude fallback otherwise."""
     keywords = load_niche_keywords()
     seed = random.choice(keywords["seed_queries"])
 
@@ -201,14 +178,8 @@ def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
 # -- Step 1b -- Script Generation ---------------------------------------------
 
 def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
-    """
-    Generates a value-first educational/emotional video script.
-    NOT an ad -- builds audience trust and SEO reach.
-    MindCore AI is only mentioned naturally at the end if it fits.
-    """
     print(f"  Generating CONTENT script: {topic['topic']}")
-
-    keyword = topic.get("keyword", topic["topic"])
+    keyword  = topic.get("keyword", topic["topic"])
     question = topic.get("question", topic["topic"])
     angles   = load_niche_keywords().get("content_angles", [])
     angle    = random.choice(angles) if angles else "real talk"
@@ -262,12 +233,7 @@ Return ONLY valid JSON, no markdown fences:
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    """
-    Generates an accurate MindCore AI app advertisement.
-    Reads from app_facts.json -- never invents features or pricing.
-    """
     print("  Generating APP AD script (using verified app_facts.json)...")
-
     trial   = app_facts["trial"]
     premium = app_facts["plans"]["premium"]
     notes   = "\n".join(f"- {n}" for n in app_facts["important_notes"])
@@ -315,7 +281,6 @@ Return ONLY valid JSON, no markdown fences:
 
 
 def _call_claude(prompt: str, client: anthropic.Anthropic) -> dict:
-    """Claude API call with retry on 529 overload."""
     max_retries = 5
     for attempt in range(1, max_retries + 1):
         try:
@@ -561,6 +526,105 @@ def _simple_concat(clip_paths: list, output_path: str):
         raise RuntimeError("simple concat failed")
 
 
+# -- Step 7 -- Upload Guide ---------------------------------------------------
+
+def generate_upload_guide(script: dict, mode: str, duration: float, client: anthropic.Anthropic) -> str:
+    """
+    Ask Claude to generate a complete social media upload guide based on the script.
+    Returns formatted text ready to paste into TikTok and Facebook.
+    """
+    print("  Generating upload guide (TikTok + Facebook)...")
+
+    full_voiceover = " ".join(
+        script[scene]["voiceover"] for scene in SCENE_ORDER
+    )
+    topic      = script.get("topic", "")
+    seo_kw     = script.get("seo_keyword", "")
+    video_type = script.get("video_type", mode)
+
+    prompt = f"""You are a social media growth expert specialising in TikTok and Facebook Reels
+for the men's mental health and recovery niche.
+
+Based on this video script, generate a complete upload guide for TikTok AND Facebook.
+
+VIDEO TYPE: {video_type.upper()}
+TOPIC: {topic}
+SEO KEYWORD: {seo_kw}
+DURATION: {duration:.1f} seconds
+FULL VOICEOVER:
+\"\"\"{full_voiceover}\"\"\"
+
+Generate the following for EACH platform (TikTok and Facebook):
+
+TIKTOK:
+- Title: max 100 characters, front-load the keyword, make it a scroll-stopper
+- Description: max 150 characters (what shows before "more") -- hook + keyword + soft CTA
+- Hashtags: 8-12 hashtags. Mix: 2-3 broad (#mentalhealth, #menshealth),
+  3-4 mid-tier (#mentalhealthformen, #recoveryjourney), 2-3 niche low-competition
+  (#sobrietyapp, #AIwellness, #mindcoreai). Start each with #.
+- Best posting times: top 3 times for this niche (day + time in UTC)
+- Suggested on-screen text (caption overlay): 1 punchy line to show at the hook moment
+
+FACEBOOK REELS:
+- Title: max 255 characters -- slightly longer, more context than TikTok
+- Description: 2-3 sentences. Keyword-rich, emotionally engaging, ends with a question
+  or CTA to drive comments
+- Hashtags: 5-7 hashtags (Facebook uses fewer)
+- Best posting times: top 3 times for this niche (day + time in UTC)
+
+ALSO INCLUDE:
+- Thumbnail suggestion: describe the ideal thumbnail frame from the video (first 2 seconds
+  or a specific moment) and what text to overlay if any
+- A/B test idea: one alternative hook line they could test
+
+Return plain text only -- no JSON, no markdown headers with #.
+Use clear section labels like "TIKTOK TITLE:", "FACEBOOK DESCRIPTION:", etc.
+Keep it practical and copy-paste ready."""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1200,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return message.content[0].text.strip()
+
+
+def save_upload_guide(guide_text: str, script: dict, mode: str, duration: float, run_number: int):
+    """Write the upload guide as a clean TXT file."""
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    topic        = script.get("topic", "N/A")
+    seo_kw       = script.get("seo_keyword", "N/A")
+    video_type   = script.get("video_type", mode).upper()
+
+    header = f"""================================================================================
+  MINDCORE AI -- VIDEO UPLOAD GUIDE
+  Run #{run_number} | {generated_at}
+================================================================================
+  Video type : {video_type}
+  Topic      : {topic}
+  SEO keyword: {seo_kw}
+  Duration   : {duration:.1f}s
+  Format     : 9:16 vertical | H.264 | AAC | TikTok + Facebook Reels ready
+================================================================================
+
+FULL SCRIPT (for reference)
+----------------------------
+"""
+    for scene in SCENE_ORDER:
+        header += f"[{scene.upper()}]\n{script[scene]['voiceover']}\n\n"
+
+    header += "================================================================================\n"
+    header += "  PLATFORM UPLOAD DETAILS\n"
+    header += "================================================================================\n\n"
+
+    full_content = header + guide_text + "\n\n================================================================================\n"
+
+    output_path = OUTPUT_DIR / "upload_guide.txt"
+    output_path.write_text(full_content, encoding="utf-8")
+    print(f"  Upload guide saved -> {output_path}")
+    return str(output_path)
+
+
 # -- Main ---------------------------------------------------------------------
 
 def main():
@@ -568,7 +632,7 @@ def main():
 
     mode = determine_mode()
 
-    print(f"\n  MindCore AI Video Pipeline v3.0")
+    print(f"\n  MindCore AI Video Pipeline v3.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Format: 9:16 vertical (720x1280) -- TikTok + Facebook Reels")
     print("=" * 60)
@@ -583,7 +647,6 @@ def main():
         topic  = fetch_trending_topic(client)
         script = generate_content_script(topic, client)
 
-    # Save script
     (OUTPUT_DIR / "script_v2.json").write_text(json.dumps(script, indent=2))
     print(f"\n  Video type: {script.get('video_type', mode)}")
     print(f"  Topic:      {script.get('topic', 'N/A')}")
@@ -593,7 +656,7 @@ def main():
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. TTS -- generate audio first, measure durations
+    # 2. TTS first -- measure duration before requesting video
     print("\n  Generating voiceovers (Fish Audio Plus)...")
     audio_paths, audio_durations, video_durations = {}, {}, {}
     for scene in SCENE_ORDER:
@@ -638,15 +701,18 @@ def main():
     print("\n  Concatenating all scenes...")
     final = str(OUTPUT_DIR / "mindcore_ai_ad_v2.mp4")
     concat_clips(merged_paths, final)
-
     final_dur = get_media_duration(final)
     final_mb  = Path(final).stat().st_size / (1024 * 1024)
 
+    # 7. Generate upload guide
+    print("\n  Generating social media upload guide...")
+    guide_text = generate_upload_guide(script, mode, final_dur, client)
+    save_upload_guide(guide_text, script, mode, final_dur, GITHUB_RUN_NUMBER)
+
     print(f"\n  DONE")
-    print(f"  File:     {final}")
-    print(f"  Duration: {final_dur:.2f}s")
-    print(f"  Size:     {final_mb:.1f} MB")
-    print(f"  Mode:     {mode.upper()} video")
+    print(f"  Video:    {final}  ({final_dur:.2f}s | {final_mb:.1f} MB)")
+    print(f"  Guide:    video_pipeline/output/upload_guide.txt")
+    print(f"  Mode:     {mode.upper()}")
     print(f"  Format:   9:16 / H.264 / AAC -- ready for TikTok + Facebook")
     print("\n  Pipeline complete!")
 
