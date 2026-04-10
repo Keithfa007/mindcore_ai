@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.0
+MindCore AI Video Pipeline -- HeyGen Edition v1.1
 ===================================================
-Clean avatar-based pipeline using KF (HeyGen AI avatar).
+Avatar-based pipeline using KF (HeyGen AI avatar).
 
 FLOW:
-  1. Generate script (Claude) -- content or ad mode
-  2. Validate word counts (max only -- short is always fine)
-  3. Submit to HeyGen -- KF delivers the script as a talking avatar video
-  4. Poll until complete
-  5. Download MP4
-  6. Generate upload guide (Claude)
+  1. Fetch trending topic (SerpAPI -> Claude fallback)
+  2. Generate script (Claude) -- content or ad mode
+  3. Validate word counts (max only)
+  4. Submit to HeyGen -- KF delivers the script, dark brand background
+  5. Poll until complete
+  6. Download MP4
+  7. Generate upload guide (Claude)
 
 No FFmpeg. No TTS. No audio sync issues.
-HeyGen handles voice, lip sync, and video rendering.
+HeyGen handles voice, lip sync, background, and rendering.
 
 MODES:
-  content  (default, 9 out of 10 runs) -- emotional, audience-first
-  ad       (every 10th run)            -- punchy, direct response
+  content  (9 out of 10 runs) -- emotional, audience-first, value content
+  ad       (every 10th run)   -- punchy, direct response, accurate app facts
 
-WORD LIMITS (max only -- short scenes are always valid):
+WORD LIMITS (max only -- short is always fine):
   CONTENT: hook=12 | problem=18 | story=20 | cta=16
   AD:      hook=10 | problem=14 | story=16 | cta=14
 """
@@ -57,7 +58,7 @@ VIDEO_TIMEOUT = 600
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
-# Max word counts per scene per mode (upper bound only)
+# Max word counts per scene per mode (upper bound only -- short is always valid)
 WORD_LIMITS_CONTENT = {
     "hook":         12,
     "problem":      18,
@@ -90,14 +91,12 @@ def get_word_limits(mode: str) -> dict:
 
 
 def load_config() -> dict:
-    cfg_path = PIPELINE_DIR / "heygen_config.json"
-    with open(cfg_path) as f:
+    with open(PIPELINE_DIR / "heygen_config.json") as f:
         return json.load(f)
 
 
 def load_app_facts() -> dict:
-    path = PIPELINE_DIR / "app_facts.json"
-    with open(path) as f:
+    with open(PIPELINE_DIR / "app_facts.json") as f:
         return json.load(f)
 
 
@@ -112,6 +111,7 @@ def load_niche_keywords() -> dict:
 # -- CHECKPOINT -- Word count validation (max only) ---------------------------
 
 def validate_word_counts(script: dict, word_limits: dict) -> tuple:
+    """Only enforces maximums. Short scenes are always valid."""
     errors = []
     for scene in SCENE_ORDER:
         vo = script[scene]["voiceover"]
@@ -123,6 +123,7 @@ def validate_word_counts(script: dict, word_limits: dict) -> tuple:
 
 
 def generate_script_with_validation(generate_fn, generate_args, word_limits, max_attempts=3):
+    """Generate script, validate, auto-retry up to max_attempts if over limits."""
     for attempt in range(1, max_attempts + 1):
         script = generate_fn(*generate_args)
         passed, errors = validate_word_counts(script, word_limits)
@@ -142,61 +143,72 @@ def generate_script_with_validation(generate_fn, generate_args, word_limits, max
     raise RuntimeError("Unexpected exit from validation loop")
 
 
-# -- Step 1a -- Trending Topic ------------------------------------------------
+# -- Step 1a -- Fetch Trending Topic ------------------------------------------
 
 def fetch_trending_topic_serpapi(seed_query: str) -> dict:
     params = {
-        "engine": "google", "q": seed_query,
-        "api_key": SERP_API_KEY, "num": 10, "hl": "en", "gl": "us",
+        "engine": "google",
+        "q": seed_query,
+        "api_key": SERP_API_KEY,
+        "num": 10,
+        "hl": "en",
+        "gl": "us",
     }
     resp = requests.get(SERP_API_URL, params=params, timeout=30)
     resp.raise_for_status()
     data = resp.json()
-    related = data.get("related_questions", [])
-    if related:
-        picked = random.choice(related[:6])
-        q = picked.get("question", seed_query)
-        return {"topic": q, "question": q, "keyword": seed_query, "source": "serpapi"}
+
+    related_questions = data.get("related_questions", [])
+    if related_questions:
+        picked   = random.choice(related_questions[:6])
+        question = picked.get("question", seed_query)
+        return {"topic": question, "question": question, "keyword": seed_query, "source": "serpapi_people_also_ask"}
+
     organic = data.get("organic_results", [])
     if organic:
-        t = organic[0].get("title", seed_query)
-        return {"topic": t, "question": t, "keyword": seed_query, "source": "serpapi_organic"}
-    return {"topic": seed_query, "question": seed_query, "keyword": seed_query, "source": "seed"}
+        title = organic[0].get("title", seed_query)
+        return {"topic": title, "question": title, "keyword": seed_query, "source": "serpapi_organic"}
+
+    return {"topic": seed_query, "question": seed_query, "keyword": seed_query, "source": "seed_fallback"}
 
 
-def fetch_trending_topic_claude(seed_queries: list, client) -> dict:
-    seed = random.choice(seed_queries)
-    prompt = f"""You are an SEO expert in men's mental health, recovery, and AI wellness.
+def fetch_trending_topic_claude(seed_queries: list, client: anthropic.Anthropic) -> dict:
+    seed   = random.choice(seed_queries)
+    prompt = f"""You are an SEO and content strategy expert specialising in men's mental health,
+recovery, anxiety, depression, and AI wellness.
 
 Generate ONE high-demand, low-competition video topic for TikTok and Facebook Reels.
-Related to this seed: "{seed}"
+The topic must be related to this seed: "{seed}"
 
 Criteria:
 - Phrased as a real question or struggle that men search for
 - High emotional resonance for men 35+ in recovery or struggling
-- Not too broad, not too niche
+- Not too broad ("mental health tips") and not too niche
+- Something with genuine search volume but not dominated by big brands
 
 Return ONLY valid JSON, no markdown:
 {{
   "topic": "the specific topic or question",
   "question": "how it might be phrased as a Google search",
-  "keyword": "primary SEO keyword",
+  "keyword": "primary SEO keyword for this topic",
   "source": "claude_generated"
 }}"""
     return _call_claude_raw(prompt, client, max_tokens=300)
 
 
-def fetch_trending_topic(client) -> dict:
+def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
     keywords = load_niche_keywords()
-    seed = random.choice(keywords["seed_queries"])
+    seed     = random.choice(keywords["seed_queries"])
+
     if SERP_API_KEY:
-        print(f"  Fetching topic via SerpAPI: '{seed}'")
+        print(f"  Fetching trending topic via SerpAPI: '{seed}'")
         try:
             topic = fetch_trending_topic_serpapi(seed)
-            print(f"  Topic ({topic['source']}): {topic['topic']}")
+            print(f"  Topic found ({topic['source']}): {topic['topic']}")
             return topic
         except Exception as e:
             print(f"  SerpAPI failed ({e}) -- falling back to Claude")
+
     print("  Generating topic with Claude...")
     topic = fetch_trending_topic_claude(keywords["seed_queries"], client)
     print(f"  Topic ({topic['source']}): {topic['topic']}")
@@ -205,17 +217,18 @@ def fetch_trending_topic(client) -> dict:
 
 # -- Step 1b -- Script Generation ---------------------------------------------
 
-def generate_content_script(topic: dict, client) -> dict:
+def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
     print(f"  Generating CONTENT script: {topic['topic']}")
     keyword  = topic.get("keyword", topic["topic"])
     question = topic.get("question", topic["topic"])
     angles   = load_niche_keywords().get("content_angles", [])
     angle    = random.choice(angles) if angles else "real talk"
 
-    prompt = f"""You are a top-performing TikTok and Facebook Reels creator in the men's
-mental health and recovery space.
+    prompt = f"""You are a top-performing TikTok and Facebook Reels content creator in the men's
+mental health and recovery space. Your content gets millions of views because it speaks
+RAW TRUTH to men who are quietly struggling.
 
-Create a 4-scene viral video script on this topic:
+Create a 4-scene viral short video script on this topic:
 TOPIC: {topic['topic']}
 SEARCH QUESTION: {question}
 SEO KEYWORD: {keyword}
@@ -224,17 +237,21 @@ CONTENT ANGLE: {angle}
 FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
 
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
-Speak like a trusted older brother who has been through it. Value-first, NOT an ad.
+They feel alone. They don't ask for help. This is value-first content -- NOT an ad.
+Speak directly, emotionally, like a trusted older brother who has been through it.
 
-WORD COUNT (hard MAXIMUM -- shorter is always fine, do not exceed these):
-- hook:         up to 12 words -- bold statement, stops the scroll
-- problem:      up to 18 words -- name the pain with room to breathe
-- story:        up to 20 words -- real insight, emotional depth
-- solution_cta: up to 16 words -- warm hopeful close, may mention MindCore AI
+WORD COUNT GUIDANCE (hard MAXIMUM enforced -- shorter is always fine):
+- hook:         up to 12 words -- Bold statement or question. Stops the scroll immediately.
+- problem:      up to 18 words -- Name the pain. Make them feel completely seen.
+- story:        up to 20 words -- Real insight, perspective shift, truth they need to hear.
+- solution_cta: up to 16 words -- Warm, hopeful close. May naturally mention MindCore AI.
 
-SEO: Include '{keyword}' naturally. Second person only ("you", "your").
+DO NOT exceed these maximums -- scripts are auto-rejected if over. Shorter is always OK.
 
-Return ONLY valid JSON, no markdown:
+SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
+The hook must make someone stop mid-scroll. No generic openers.
+
+Return ONLY valid JSON, no markdown fences:
 {{
   "video_type": "content",
   "topic": "{topic['topic']}",
@@ -244,11 +261,12 @@ Return ONLY valid JSON, no markdown:
   "story": {{"voiceover": "..."}},
   "solution_cta": {{"voiceover": "..."}}
 }}"""
+
     return _call_claude_raw(prompt, client, max_tokens=1000)
 
 
-def generate_ad_script(app_facts: dict, client) -> dict:
-    print("  Generating APP AD script...")
+def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
+    print("  Generating APP AD script (using verified app_facts.json)...")
     trial   = app_facts["trial"]
     premium = app_facts["plans"]["premium"]
     notes   = "\n".join(f"- {n}" for n in app_facts["important_notes"])
@@ -256,12 +274,12 @@ def generate_ad_script(app_facts: dict, client) -> dict:
     prompt = f"""You are a performance marketing copywriter for MindCore AI.
 Write a 4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
 
-AUDIENCE: Men 35+, recovery, anxiety, depression, isolation.
-TONE: Raw, honest, brotherly. Not salesy.
+AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
+TONE: Raw, honest, brotherly. Not salesy. Not clinical.
 
 VERIFIED APP FACTS (use ONLY these):
 - Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
-- Premium: {premium['price']}. Features: {', '.join(premium['features'])}
+- Premium plan: {premium['price']}. Features: {', '.join(premium['features'])}
 - Platform: {app_facts['platform']}
 - CTA: {app_facts['cta']}
 
@@ -270,13 +288,15 @@ CRITICAL RULES:
 
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
-WORD COUNT (hard MAXIMUM -- shorter is always fine, do not exceed these):
-- hook:         up to 10 words
-- problem:      up to 14 words
-- story:        up to 16 words
-- solution_cta: up to 14 words -- include CTA + accurate trial info
+WORD COUNT GUIDANCE (hard MAXIMUM enforced -- shorter is always fine):
+- hook:         up to 10 words -- ultra-short scroll-stopper
+- problem:      up to 14 words -- quick pain point
+- story:        up to 16 words -- brief turning point
+- solution_cta: up to 14 words -- direct CTA with accurate trial info
 
-Return ONLY valid JSON, no markdown:
+DO NOT exceed these maximums -- scripts are auto-rejected if over.
+
+Return ONLY valid JSON, no markdown fences:
 {{
   "video_type": "ad",
   "topic": "MindCore AI -- your AI mental wellness companion",
@@ -286,10 +306,11 @@ Return ONLY valid JSON, no markdown:
   "story": {{"voiceover": "..."}},
   "solution_cta": {{"voiceover": "..."}}
 }}"""
+
     return _call_claude_raw(prompt, client, max_tokens=1000)
 
 
-def _call_claude_raw(prompt: str, client, max_tokens: int = 1000) -> dict:
+def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int = 1000) -> dict:
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             message = client.messages.create(
@@ -323,14 +344,13 @@ def _call_claude_raw(prompt: str, client, max_tokens: int = 1000) -> dict:
 
 def build_full_script(script: dict) -> str:
     """
-    Combine all 4 scenes into one continuous voiceover script.
-    HeyGen speaks the whole thing as a single video -- no scene breaks needed.
-    Natural pauses come from punctuation (full stops, ellipses).
+    Combine all 4 scenes into one continuous voiceover.
+    KF speaks it as a single unbroken delivery.
+    Natural pauses come from punctuation and double spacing between scenes.
     """
     parts = []
     for scene in SCENE_ORDER:
         vo = script[scene]["voiceover"].strip()
-        # Ensure sentence ends with punctuation for natural pause
         if vo and vo[-1] not in ".!?":
             vo += "."
         parts.append(vo)
@@ -339,23 +359,20 @@ def build_full_script(script: dict) -> str:
 
 # -- Step 3 -- Submit to HeyGen -----------------------------------------------
 
-def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str = "") -> str:
+def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, background_color: str) -> str:
     """
-    Submit a video generation request to HeyGen.
-    KF speaks the full script in a single continuous video.
-    Returns the video_id for polling.
+    Submit video to HeyGen with KF avatar, chosen voice, and brand dark background.
+    Returns video_id for polling.
     """
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json",
     }
 
-    avatar_config = {
-        "avatar_id": avatar_id,
-        "type": "talking_photo",
+    voice_config = {
+        "type": "text",
+        "input_text": script_text,
     }
-
-    voice_config = {"type": "text"}
     if voice_id:
         voice_config["voice_id"] = voice_id
 
@@ -367,14 +384,14 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str = "") ->
                     "avatar_id": avatar_id,
                     "avatar_style": "normal",
                 },
-                "voice": {
-                    "type": "text",
-                    "input_text": script_text,
-                    **(  {"voice_id": voice_id} if voice_id else {} ),
+                "voice": voice_config,
+                "background": {
+                    "type": "color",
+                    "value": background_color,
                 },
             }
         ],
-        "dimension": {"width": 720, "height": 1280},  # 9:16 portrait
+        "dimension": {"width": 720, "height": 1280},
         "aspect_ratio": "9:16",
         "test": False,
     }
@@ -383,22 +400,19 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str = "") ->
     if not resp.ok:
         raise RuntimeError(f"HeyGen submit failed {resp.status_code}: {resp.text}")
 
-    data = resp.json()
+    data     = resp.json()
     video_id = data.get("data", {}).get("video_id") or data.get("video_id")
     if not video_id:
         raise RuntimeError(f"No video_id in HeyGen response: {data}")
 
-    print(f"  Submitted to HeyGen -- video_id: {video_id}")
+    print(f"  Submitted -- video_id: {video_id}")
     return video_id
 
 
 # -- Step 4 -- Poll HeyGen ----------------------------------------------------
 
 def poll_heygen_video(video_id: str) -> str:
-    """
-    Poll until HeyGen finishes rendering.
-    Returns the download URL of the completed MP4.
-    """
+    """Poll until HeyGen finishes. Returns the MP4 download URL."""
     headers  = {"X-Api-Key": HEYGEN_API_KEY}
     deadline = time.time() + VIDEO_TIMEOUT
 
@@ -444,41 +458,44 @@ def download_video(url: str, output_path: str):
 
 # -- Step 6 -- Upload Guide ---------------------------------------------------
 
-def generate_upload_guide(script: dict, mode: str, client) -> str:
+def generate_upload_guide(script: dict, mode: str, client: anthropic.Anthropic) -> str:
     print("  Generating upload guide...")
     full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode)
 
-    prompt = f"""You are a social media growth expert for TikTok and Facebook Reels
-in the men's mental health and recovery niche.
+    prompt = f"""You are a social media growth expert specialising in TikTok and Facebook Reels
+for the men's mental health and recovery niche.
 
-Generate a complete upload guide for TikTok AND Facebook Reels.
+Based on this video script, generate a complete upload guide for TikTok AND Facebook.
 
 VIDEO TYPE: {video_type.upper()}
 TOPIC: {topic}
 SEO KEYWORD: {seo_kw}
-FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
+FULL VOICEOVER:
+\"\"\"{full_vo}\"\"\"
 
 TIKTOK:
-- Title: max 100 chars, keyword-first, scroll-stopper
-- Description: max 150 chars -- hook + keyword + soft CTA
-- Hashtags: 8-12, mix broad/mid/niche. Start each with #.
+- Title: max 100 characters, front-load the keyword, scroll-stopper
+- Description: max 150 characters -- hook + keyword + soft CTA
+- Hashtags: 8-12 hashtags. Mix broad, mid-tier, niche. Start each with #.
 - Best posting times: top 3 (day + UTC time) for this niche
-- On-screen text overlay suggestion: 1 punchy line
+- On-screen text overlay suggestion: 1 punchy line for the hook moment
 
 FACEBOOK REELS:
-- Title: max 255 chars
+- Title: max 255 characters
 - Description: 2-3 sentences, keyword-rich, ends with CTA or question
 - Hashtags: 5-7
 - Best posting times: top 3 (day + UTC time)
 
-ALSO:
-- Thumbnail suggestion
-- A/B test hook idea
+ALSO INCLUDE:
+- Thumbnail suggestion: best frame + text overlay idea
+- A/B test idea: one alternative hook line to test
 
-Plain text only. Clear labels (TIKTOK TITLE:, etc). Copy-paste ready."""
+Return plain text only -- no JSON, no markdown headers.
+Use clear labels: TIKTOK TITLE:, FACEBOOK DESCRIPTION:, etc.
+Copy-paste ready."""
 
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
@@ -514,8 +531,8 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int)
   Format     : 9:16 vertical | HeyGen avatar | TikTok + Facebook Reels ready
 ================================================================================
 
-FULL SCRIPT
------------
+FULL SCRIPT (for reference)
+----------------------------
 """
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
@@ -536,15 +553,16 @@ FULL SCRIPT
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    mode        = determine_mode()
-    word_limits = get_word_limits(mode)
-    cfg         = load_config()
-    avatar_id   = cfg["avatar_id"]
-    voice_id    = cfg.get("voice_id", "")
+    mode             = determine_mode()
+    word_limits      = get_word_limits(mode)
+    cfg              = load_config()
+    avatar_id        = cfg["avatar_id"]
+    voice_id         = cfg.get("voice_id", "")
+    background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.0")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar: {cfg['avatar_name']} ({avatar_id})")
+    print(f"  Avatar: {cfg['avatar_name']} | Voice: {voice_id[:8]}... | Background: {background_color}")
     print(f"  Format: 9:16 vertical -- TikTok + Facebook Reels")
     if mode == "content":
         print(f"  Word limits (CONTENT max): hook=12 | problem=18 | story=20 | cta=16")
@@ -554,7 +572,7 @@ def main():
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # 1. Script + validation
+    # 1. Script + checkpoint validation
     print("\n  Generating script...")
     if mode == "ad":
         app_facts = load_app_facts()
@@ -577,16 +595,16 @@ def main():
         hi = word_limits[scene]
         print(f"  [{scene:15s}]  {wc:2d} words (max {hi})  |  {script[scene]['voiceover']}")
 
-    # 2. Build full script
+    # 2. Build full script text
     full_script = build_full_script(script)
     print(f"\n  Full script ({len(full_script.split())} words):")
     print(f"  {full_script}")
 
     # 3. Submit to HeyGen
-    print(f"\n  Submitting to HeyGen (avatar: {cfg['avatar_name']})...")
-    video_id = submit_heygen_video(full_script, avatar_id, voice_id)
+    print(f"\n  Submitting to HeyGen (avatar: {cfg['avatar_name']} | bg: {background_color})...")
+    video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
-    # 4. Poll
+    # 4. Poll until rendered
     print("\n  Waiting for HeyGen to render...")
     video_url = poll_heygen_video(video_id)
 

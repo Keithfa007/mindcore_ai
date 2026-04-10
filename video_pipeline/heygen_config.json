@@ -1,6 +1,6 @@
 {
   "avatar_id": "19f3a4905bd34c3d93ba1a53a2d31833",
   "avatar_name": "KF",
-  "voice_id": "",
-  "note": "Leave voice_id empty to use HeyGen default voice for this avatar. Set a specific voice_id to override."
+  "voice_id": "6be73833ef9a4eb0aeee399b8fe9d62b",
+  "background_color": "#07071a"
 }
