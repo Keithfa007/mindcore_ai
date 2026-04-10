@@ -1,45 +1,21 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.4
+MindCore AI Video Pipeline -- HeyGen Edition v2.5
 ===================================================
-Avatar-based pipeline using confirmed video avatars (full body movement).
 
-FLOW:
-  1. Randomly pick one of 5 video avatar looks
-  2. Fetch trending topic (SerpAPI -> Claude fallback)
-  3. Generate script (Claude) -- content or ad mode
-  4. Validate word counts (ads only)
-  5. Submit to HeyGen
-  6. Poll until complete (20 min timeout)
-  7. Download raw MP4
-  8. Crop to proper 9:16 portrait (ffmpeg -- removes HeyGen's square letterbox)
-  9. Generate upload guide (Claude)
+CROP FIX (v2.5):
+  Previous version stretched the square avatar to portrait (distorted).
+  New approach: scale to fill height maintaining aspect ratio, then crop center.
+  Result: no distortion, avatar fills full portrait frame naturally.
 
-SCRIPT TARGETS:
-  Content: ~60-70 seconds | ~130-150 words total
-    hook=10-15 | problem=30-40 | story=50-65 | cta=25-35
+  Square input (e.g. 1080x1080):
+    scale=1920:1920 (fills height, wider than 1080)
+    crop=1080:1920:420:0 (crop center 1080 wide)
+    → clean 1080x1920 portrait, no stretch
 
-  Ad: ~20 seconds | ~46 words total
-    hook=8 | problem=12 | story=14 | cta=12 (enforced)
-
-VIDEO FORMAT (v2.4):
-  HeyGen renders avatar in a square canvas inside portrait frame.
-  Post-processing: auto-detect black bars, crop square, scale to 1080x1920.
-  Result: proper full-frame 9:16 portrait for TikTok + Facebook Reels.
-
-MOTION PROMPT (v2.4):
-  Updated with mental health speech body language research:
-  - Grounded open stance, relaxed shoulders
-  - Slow deliberate hand gestures (open palms upward, hand on heart)
-  - Soft compassionate eye contact (not intense staring)
-  - Stillness at profound moments (pause all movement)
-  - Avoid self-soothing gestures (no neck touching, no fidgeting)
-  - Lean in for sensitive points, purposeful movement only
-
-STYLE:
-  - Written for the ear, not the eye
-  - Natural spoken rhythm, sentences flow and connect
-  - NEVER say "try it for free"
+  Portrait input with square content (e.g. 1080x1920 with 1080x1080 content):
+    First crop the black bars to get the square
+    Then apply the same scale+crop as above
 """
 
 import json
@@ -97,8 +73,6 @@ SEO_KEYWORDS = [
 ]
 
 # Mental health speech body language motion prompt (v2.4)
-# Based on research into effective body language for mental health and empathy contexts.
-# Key principles: grounded stillness, slow deliberate gestures, soft compassionate presence.
 MOTION_PROMPT = (
     "Deliver this as a grounded, emotionally present mental health speaker -- not a performer. "
 
@@ -545,23 +519,47 @@ def get_video_dimensions(path: str) -> tuple:
 
 def crop_to_portrait(raw_path: str, final_path: str):
     """
-    HeyGen renders the avatar in a square canvas placed in the center of
-    the portrait frame, leaving dark bars above and below.
-    Auto-detects dimensions, crops to square, scales to 1080x1920.
+    Convert HeyGen's square avatar output to proper 9:16 portrait.
+
+    v2.5 fix: NO MORE STRETCHING.
+    Strategy: scale to fill height (maintaining aspect ratio), then crop
+    center 1080 wide. This preserves proportions perfectly.
+    Avatar is centered so cropping sides captures the full face/body.
+
+    Square input (1080x1080):
+      scale=1920:1920 → crop=1080:1920:420:0 → 1080x1920 ✓
+
+    Portrait with square content (1080x1920, content in center 1080x1080):
+      crop bars → get 1080x1080 square → same as above → 1080x1920 ✓
     """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
 
+    # Scale the square content to fill height, then crop center width
+    # scale_dim = max dimension we need to fill 1920 height for a square
+    scale_dim = 1920
+
     if w == h:
-        print(f"  Square input -- scaling to 1080x1920")
-        filter_str = "scale=1080:1920:flags=lanczos"
+        # Already square -- scale to fill 1920 height, crop center 1080 wide
+        side_crop = (scale_dim - 1080) // 2
+        print(f"  Square {w}x{h} -- scale to {scale_dim}x{scale_dim}, crop center 1080 wide")
+        filter_str = f"scale={scale_dim}:{scale_dim}:flags=lanczos,crop=1080:1920:{side_crop}:0"
+
     elif h > w:
+        # Portrait frame with square content in center -- crop bars first
         bar = (h - w) // 2
-        print(f"  Portrait {w}x{h} -- cropping {bar}px bars, scaling to 1080x1920")
-        filter_str = f"crop={w}:{w}:0:{bar},scale=1080:1920:flags=lanczos"
+        side_crop = (scale_dim - 1080) // 2
+        print(f"  Portrait {w}x{h} -- crop {bar}px bars, scale to {scale_dim}x{scale_dim}, crop center 1080")
+        filter_str = (
+            f"crop={w}:{w}:0:{bar},"           # remove letterbox bars → square
+            f"scale={scale_dim}:{scale_dim}:flags=lanczos,"  # scale to fill height
+            f"crop=1080:1920:{side_crop}:0"     # crop center 1080 wide
+        )
+
     else:
-        print(f"  Landscape {w}x{h} -- cropping to portrait")
-        filter_str = "scale=-2:1920,crop=1080:1920"
+        # Landscape -- scale to fill portrait
+        print(f"  Landscape {w}x{h} -- scale to fill portrait")
+        filter_str = f"scale=-2:1920:flags=lanczos,crop=1080:1920"
 
     cmd = [
         "ffmpeg", "-i", raw_path,
@@ -570,9 +568,14 @@ def crop_to_portrait(raw_path: str, final_path: str):
         "-c:a", "copy",
         "-y", final_path
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  ffmpeg stderr: {result.stderr[-500:]}")
+        raise RuntimeError(f"ffmpeg failed with code {result.returncode}")
+
     size_mb = Path(final_path).stat().st_size / (1024 * 1024)
-    print(f"  Cropped to portrait: {final_path} ({size_mb:.1f} MB)")
+    w2, h2  = get_video_dimensions(final_path)
+    print(f"  Final portrait: {final_path} ({w2}x{h2} | {size_mb:.1f} MB)")
 
 
 # -- Step 6 -- Upload Guide ---------------------------------------------------
@@ -680,10 +683,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.4")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 9:16 | Avatar IV + mental health motion | auto-crop")
+    print(f"  Format: 1080x1920 9:16 | Avatar IV + motion | scale-fill crop (no stretch)")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -726,7 +729,7 @@ def main():
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
 
-    print("\n  Cropping to proper 9:16 portrait...")
+    print("\n  Converting to proper 9:16 portrait (scale-fill, no distortion)...")
     crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
