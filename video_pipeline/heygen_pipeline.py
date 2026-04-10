@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.2
+MindCore AI Video Pipeline -- HeyGen Edition v2.3
 ===================================================
 Avatar-based pipeline using confirmed video avatars (full body movement).
 
@@ -11,8 +11,9 @@ FLOW:
   4. Validate word counts (ads only)
   5. Submit to HeyGen
   6. Poll until complete (20 min timeout)
-  7. Download MP4
-  8. Generate upload guide (Claude)
+  7. Download raw MP4
+  8. Crop to proper 9:16 portrait (ffmpeg -- removes HeyGen's square letterbox)
+  9. Generate upload guide (Claude)
 
 SCRIPT TARGETS:
   Content: ~60-70 seconds | ~130-150 words total
@@ -21,11 +22,10 @@ SCRIPT TARGETS:
   Ad: ~20 seconds | ~46 words total
     hook=8 | problem=12 | story=14 | cta=12 (enforced)
 
-VIDEO FORMAT (v2.2):
-  1080x1920 portrait + aspect_ratio "9:16" -- both together to force portrait
-  use_avatar_iv_model: True
-  custom_motion_prompt -- detailed natural body language cues
-  enhance_custom_motion_prompt: True
+VIDEO FORMAT (v2.3):
+  HeyGen renders avatar in a square canvas inside portrait frame.
+  Post-processing: auto-detect black bars, crop square, scale to 1080x1920.
+  Result: proper full-frame 9:16 portrait for TikTok + Facebook Reels.
 
 STYLE:
   - Written for the ear, not the eye
@@ -36,6 +36,7 @@ STYLE:
 import json
 import os
 import random
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -86,7 +87,7 @@ SEO_KEYWORDS = [
     "sobriety mental wellness app",
 ]
 
-# Detailed natural body language motion prompt (v2.1)
+# Detailed natural body language motion prompt
 MOTION_PROMPT = (
     "Perform natural full-body movement as a real person does when speaking sincerely. "
     "Hand gestures: use open palms when being honest and open, point gently to emphasise key words, "
@@ -409,14 +410,6 @@ def build_full_script(script: dict) -> str:
 # -- Step 3 -- Submit to HeyGen -----------------------------------------------
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, background_color: str) -> str:
-    """
-    Submit to HeyGen.
-
-    v2.2 -- dimension fix:
-    Both dimension (1080x1920) AND aspect_ratio ("9:16") sent together.
-    HeyGen Avatar IV may require both to consistently output portrait format.
-    Motion prompt unchanged from v2.1 -- that is working perfectly.
-    """
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json",
@@ -440,8 +433,8 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
                 },
             }
         ],
-        "dimension":    {"width": 1080, "height": 1920},  # 9:16 portrait resolution
-        "aspect_ratio": "9:16",                             # explicit ratio to reinforce portrait
+        "dimension":    {"width": 1080, "height": 1920},
+        "aspect_ratio": "9:16",
         "use_avatar_iv_model":          True,
         "custom_motion_prompt":         MOTION_PROMPT,
         "enhance_custom_motion_prompt": True,
@@ -506,6 +499,68 @@ def download_video(url: str, output_path: str):
                 f.write(chunk)
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     print(f"  Downloaded: {output_path} ({size_mb:.1f} MB)")
+
+
+# -- Step 5b -- Crop to proper 9:16 portrait ----------------------------------
+
+def get_video_dimensions(path: str) -> tuple:
+    """
+    Use ffprobe to get actual video width and height.
+    Returns (width, height) as integers.
+    """
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "csv=p=0",
+        path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    parts  = result.stdout.strip().split(",")
+    return int(parts[0]), int(parts[1])
+
+
+def crop_to_portrait(raw_path: str, final_path: str):
+    """
+    HeyGen renders the avatar in a square canvas placed in the center of
+    the portrait frame, leaving dark bars above and below.
+
+    This function:
+    1. Reads the actual output dimensions using ffprobe
+    2. Detects the square avatar region (full width, centered)
+    3. Crops the square out and scales to 1080x1920 portrait
+    4. Copies audio unchanged
+
+    The result fills the full portrait frame for TikTok and Facebook Reels.
+    """
+    w, h = get_video_dimensions(raw_path)
+    print(f"  Raw video dimensions: {w}x{h}")
+
+    if w == h:
+        # Already square -- scale directly to portrait
+        print(f"  Square input detected -- scaling to 1080x1920")
+        filter_str = "scale=1080:1920:flags=lanczos"
+    elif h > w:
+        # Portrait with square content in center -- crop bars then scale
+        # Avatar square = w x w, centered at y = (h - w) / 2
+        bar = (h - w) // 2
+        print(f"  Portrait input {w}x{h} -- cropping {bar}px bars, scaling to 1080x1920")
+        filter_str = f"crop={w}:{w}:0:{bar},scale=1080:1920:flags=lanczos"
+    else:
+        # Landscape -- scale to fill portrait with center crop
+        print(f"  Landscape input {w}x{h} -- cropping to portrait")
+        filter_str = "scale=-2:1920,crop=1080:1920"
+
+    cmd = [
+        "ffmpeg", "-i", raw_path,
+        "-vf", filter_str,
+        "-c:v", "libx264", "-crf", "18", "-preset", "fast",
+        "-c:a", "copy",
+        "-y", final_path
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+    size_mb = Path(final_path).stat().st_size / (1024 * 1024)
+    print(f"  Cropped to portrait: {final_path} ({size_mb:.1f} MB)")
 
 
 # -- Step 6 -- Upload Guide ---------------------------------------------------
@@ -613,10 +668,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.2")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 + aspect_ratio 9:16 | Avatar IV + motion prompt")
+    print(f"  Format: 1080x1920 9:16 | Avatar IV + motion | auto-crop to portrait")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -648,22 +703,26 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    print(f"\n  Submitting to HeyGen (1080x1920 9:16 | Avatar IV + motion | look: {avatar_id[:8]}...)...")
+    print(f"\n  Submitting to HeyGen (Avatar IV + motion | look: {avatar_id[:8]}...)...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
     video_url = poll_heygen_video(video_id)
 
-    print("\n  Downloading video...")
-    final = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
-    download_video(video_url, final)
+    print("\n  Downloading raw video from HeyGen...")
+    raw_path   = str(OUTPUT_DIR / "mindcore_ai_raw.mp4")
+    final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
+    download_video(video_url, raw_path)
+
+    print("\n  Cropping to proper 9:16 portrait...")
+    crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
     guide_text = generate_upload_guide(script, mode, client)
     save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, avatar_id)
 
     print(f"\n  DONE")
-    print(f"  Video:  {final}")
+    print(f"  Video:  {final_path}")
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
     print(f"  Mode:   {mode.upper()} | ~{est_duration}s | Look: {avatar_id[:8]}...")
     print("\n  Pipeline complete!")
