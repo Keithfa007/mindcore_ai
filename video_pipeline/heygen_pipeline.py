@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.4
+MindCore AI Video Pipeline -- HeyGen Edition v1.5
 ===================================================
 Avatar-based pipeline using KF (HeyGen AI avatar).
 
@@ -8,25 +8,21 @@ FLOW:
   1. Randomly pick one of 8 avatar looks (keeps content fresh)
   2. Fetch trending topic (SerpAPI -> Claude fallback)
   3. Generate script (Claude) -- content or ad mode
-  4. Validate word counts (max only)
+  4. Validate word counts (ads only -- content has no ceiling)
   5. Submit to HeyGen -- KF delivers the script, dark brand background
   6. Poll until complete
   7. Download MP4
   8. Generate upload guide (Claude)
 
-No FFmpeg. No TTS. No audio sync issues.
-HeyGen handles voice, lip sync, background, and rendering.
+VALIDATION (v1.5):
+  Content videos: NO word count validation -- HeyGen has no clip ceiling.
+    Claude writes naturally. Quality over rigid limits.
+    Target ~45-60 seconds of natural flowing speech.
 
-MODES:
-  content  (9 out of 10 runs) -- emotional, audience-first, ~45 seconds
-  ad       (every 10th run)   -- punchy, direct response, ~20 seconds
+  Ad videos: strict max limits enforced -- must stay ~20 seconds.
+    hook=8 | problem=12 | story=14 | cta=12
 
-WORD LIMITS (max only -- short is always fine):
-  At ~130 words/min natural speaking pace:
-  CONTENT: hook=12 | problem=28 | story=38 | cta=22  (~100 words = ~45s)
-  AD:      hook=8  | problem=12 | story=14 | cta=12  (~46 words  = ~21s)
-
-SCRIPT STYLE (v1.4):
+SCRIPT STYLE:
   - Written for the ear, not the eye -- natural spoken word rhythm
   - Sentences flow and connect, never choppy or fragmented
   - NEVER say "try it for free" -- always "start your trial" or "try it"
@@ -66,14 +62,7 @@ VIDEO_TIMEOUT = 600
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
-# Max word counts per scene per mode (upper bound only -- short is always valid)
-WORD_LIMITS_CONTENT = {
-    "hook":         12,
-    "problem":      28,
-    "story":        38,
-    "solution_cta": 22,
-}
-
+# Ad word limits only -- content has no ceiling, HeyGen renders to audio length
 WORD_LIMITS_AD = {
     "hook":         8,
     "problem":      12,
@@ -94,20 +83,13 @@ def determine_mode() -> str:
     return "ad" if GITHUB_RUN_NUMBER % 10 == 0 else "content"
 
 
-def get_word_limits(mode: str) -> dict:
-    return WORD_LIMITS_CONTENT if mode == "content" else WORD_LIMITS_AD
-
-
 def load_config() -> dict:
     with open(PIPELINE_DIR / "heygen_config.json") as f:
         return json.load(f)
 
 
 def pick_avatar_look(cfg: dict) -> str:
-    """
-    Randomly pick one of the avatar look IDs each run.
-    Keeps videos looking fresh -- same person, different outfit/background.
-    """
+    """Randomly pick one of the avatar look IDs each run."""
     looks = cfg.get("avatar_look_ids", [])
     if not looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
@@ -129,25 +111,25 @@ def load_niche_keywords() -> dict:
         return json.load(f)
 
 
-# -- CHECKPOINT -- Word count validation (max only) ---------------------------
+# -- Ad validation only -------------------------------------------------------
 
-def validate_word_counts(script: dict, word_limits: dict) -> tuple:
-    """Only enforces maximums. Short scenes are always valid."""
+def validate_ad_word_counts(script: dict) -> tuple:
+    """Enforce max word counts for ad scripts only."""
     errors = []
     for scene in SCENE_ORDER:
         vo = script[scene]["voiceover"]
         wc = len(vo.split())
-        hi = word_limits[scene]
+        hi = WORD_LIMITS_AD[scene]
         if wc > hi:
             errors.append(f"  [{scene}] {wc} words -- TOO LONG (max {hi}): '{vo}'")
     return (len(errors) == 0), errors
 
 
-def generate_script_with_validation(generate_fn, generate_args, word_limits, max_attempts=3):
-    """Generate script, validate, auto-retry up to max_attempts if over limits."""
+def generate_ad_with_validation(generate_fn, generate_args, max_attempts=3):
+    """Generate ad script with word count validation and auto-retry."""
     for attempt in range(1, max_attempts + 1):
         script = generate_fn(*generate_args)
-        passed, errors = validate_word_counts(script, word_limits)
+        passed, errors = validate_ad_word_counts(script)
         if passed:
             print(f"  CHECKPOINT PASSED -- all word counts within limits")
             return script
@@ -158,7 +140,7 @@ def generate_script_with_validation(generate_fn, generate_args, word_limits, max
             print(f"  Regenerating script...")
         else:
             raise RuntimeError(
-                f"Script exceeded word count limits after {max_attempts} attempts.\n"
+                f"Ad script exceeded word count limits after {max_attempts} attempts.\n"
                 + "\n".join(errors)
             )
     raise RuntimeError("Unexpected exit from validation loop")
@@ -273,18 +255,15 @@ not like text that was written to be read. Follow these rules:
 - Each scene should feel like one continuous thought, not separate disconnected statements
 - Read it aloud in your head -- if it sounds robotic or stiff, rewrite it
 
-TARGET LENGTH: ~45 seconds total. Write enough to fill that time naturally.
+TARGET LENGTH: ~45-60 seconds of natural flowing speech. Write what the topic deserves.
+There are NO word count restrictions on content videos -- write naturally and fully.
 
-WORD COUNT (hard MAXIMUM enforced -- shorter is fine but aim to use the space):
-- hook:         up to 12 words -- One striking line that stops the scroll cold
-- problem:      up to 28 words -- Name the pain in flowing natural sentences.
-                                  Make them feel completely seen and understood.
-- story:        up to 38 words -- Real insight delivered in conversational sentences.
-                                  Build to a moment of truth. Use specific detail.
-                                  This is where emotional connection happens -- don't rush.
-- solution_cta: up to 22 words -- Warm, hopeful close in natural speech. May mention MindCore AI.
-
-DO NOT exceed these maximums -- scripts are auto-rejected if over.
+SCENE GUIDANCE (no hard limits -- write what feels right):
+- hook:         One striking line or question that stops the scroll cold
+- problem:      Name the pain fully. Make them feel completely seen. Take the space you need.
+- story:        Real insight, a turning point, truth delivered conversationally.
+                Use specific detail. Build to a moment. Don't cut it short.
+- solution_cta: Warm, hopeful close. Let it breathe. May naturally mention MindCore AI.
 
 SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
 Hook must stop the scroll. No generic openers. No "hey guys". No "in today's video".
@@ -300,7 +279,7 @@ Return ONLY valid JSON, no markdown fences:
   "solution_cta": {{"voiceover": "..."}}
 }}"""
 
-    return _call_claude_raw(prompt, client, max_tokens=1200)
+    return _call_claude_raw(prompt, client, max_tokens=1400)
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
@@ -341,13 +320,11 @@ CRITICAL RULES:
 
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
-WORD COUNT (hard MAXIMUM enforced -- shorter is fine):
+STRICT WORD COUNT (enforced -- ad must stay ~20 seconds):
 - hook:         up to 8 words  -- one sharp line, no filler
 - problem:      up to 12 words -- one pain point in natural speech
 - story:        up to 14 words -- one turning point, flowing naturally
 - solution_cta: up to 12 words -- direct, honest CTA with accurate trial info
-
-DO NOT exceed these maximums -- scripts are auto-rejected if over.
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -604,36 +581,32 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     mode             = determine_mode()
-    word_limits      = get_word_limits(mode)
     cfg              = load_config()
     avatar_id        = pick_avatar_look(cfg)
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.4")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg['avatar_name']} | Look: {avatar_id[:8]}... | Background: {background_color}")
     print(f"  Format: 9:16 vertical -- TikTok + Facebook Reels")
     if mode == "content":
-        print(f"  Target: ~45s | Word limits: hook=12 | problem=28 | story=38 | cta=22")
+        print(f"  Target: ~45-60s | No word count ceiling -- Claude writes naturally")
     else:
         print(f"  Target: ~20s | Word limits: hook=8 | problem=12 | story=14 | cta=12")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # 1. Script + checkpoint validation
+    # 1. Generate script
     print("\n  Generating script...")
     if mode == "ad":
         app_facts = load_app_facts()
-        script    = generate_script_with_validation(
-            generate_ad_script, (app_facts, client), word_limits
-        )
+        script    = generate_ad_with_validation(generate_ad_script, (app_facts, client))
     else:
         topic  = fetch_trending_topic(client)
-        script = generate_script_with_validation(
-            generate_content_script, (topic, client), word_limits
-        )
+        script = generate_content_script(topic, client)
+        print(f"  CONTENT script generated -- no word count ceiling")
 
     (OUTPUT_DIR / "script.json").write_text(json.dumps(script, indent=2))
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
@@ -645,8 +618,7 @@ def main():
     print()
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
-        hi = word_limits[scene]
-        print(f"  [{scene:15s}]  {wc:2d} words (max {hi})  |  {script[scene]['voiceover']}")
+        print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
     # 2. Build full script
     full_script = build_full_script(script)
