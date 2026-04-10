@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.7
+MindCore AI Video Pipeline -- HeyGen Edition v2.8
 ===================================================
 
-CHANGES (v2.7):
-  1. Script sanitizer -- hard-replaces banned phrases AFTER generation.
-     "try it for free" → "try it" guaranteed, regardless of what Claude outputs.
-     "download now" → "find us on Google Play" guaranteed.
+CROP FIX (v2.8):
+  Previous versions assumed bars were equal top and bottom (centered).
+  Screenshot confirmed: bars are UNEQUAL -- bigger at top than bottom.
+  Fix: use ffmpeg cropdetect to automatically scan the video and find
+  the exact content boundaries, regardless of bar size or position.
+  Background color #07071a has luma ~9; cropdetect limit=30 catches it.
 
-  2. Video quality -- 30fps output, higher bitrate (4 Mbps target) for TikTok.
-     TikTok recommends 30fps and 2+ Mbps. CRF 16 for sharper output.
+  cropdetect → find content rect → scale to fill height → crop to 1080 wide
+  Result: avatar fills full 1080x1920 portrait frame, no bars, no stretch.
 
-  3. Fixed stray backslash in poll function.
+All other v2.7 features unchanged (sanitizer, 30fps, 4Mbps, CRF 16).
 """
 
 import json
@@ -70,7 +72,6 @@ SEO_KEYWORDS = [
 ]
 
 # Banned phrases -- hard-replaced by sanitize_script() after generation
-# Format: (regex_pattern, replacement)
 BANNED_PHRASE_REPLACEMENTS = [
     (r"try\s+it\s+for\s+free",  "try it"),
     (r"download\s+now",         "find us on Google Play"),
@@ -145,11 +146,6 @@ def load_niche_keywords() -> dict:
 # -- Script sanitizer ---------------------------------------------------------
 
 def sanitize_script(script: dict) -> dict:
-    """
-    Hard-replace banned phrases in all voiceovers AFTER Claude generates the script.
-    This guarantees compliance regardless of what the model outputs.
-    Logs any replacements made so they are visible in the GitHub Actions log.
-    """
     for scene in SCENE_ORDER:
         if scene not in script:
             continue
@@ -179,7 +175,7 @@ def validate_ad_word_counts(script: dict) -> tuple:
 def generate_ad_with_validation(generate_fn, generate_args, max_attempts=3):
     for attempt in range(1, max_attempts + 1):
         script = generate_fn(*generate_args)
-        script = sanitize_script(script)          # always sanitize before validation
+        script = sanitize_script(script)
         passed, errors = validate_ad_word_counts(script)
         if passed:
             print(f"  CHECKPOINT PASSED -- all word counts within limits")
@@ -543,41 +539,109 @@ def get_video_dimensions(path: str) -> tuple:
     return int(parts[0]), int(parts[1])
 
 
+def detect_content_crop(video_path: str) -> tuple:
+    """
+    Run ffmpeg cropdetect to find the actual content area, ignoring dark bars.
+
+    Background color #07071a has luma ~9.
+    limit=30 catches anything darker than luma 30 as background.
+    round=2 for precise pixel alignment.
+    Scans first 90 frames (~3 seconds at 30fps) for a stable reading.
+
+    Returns (crop_w, crop_h, crop_x, crop_y) or None if detection fails.
+    """
+    cmd = [
+        "ffmpeg", "-i", video_path,
+        "-vf", "cropdetect=limit=30:round=2:reset=0",
+        "-frames:v", "90",
+        "-f", "null", "-"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # cropdetect writes to stderr: "crop=W:H:X:Y"
+    matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", result.stderr)
+    if not matches:
+        return None
+
+    # Use the last reading (most stable after initial frames)
+    cw, ch, cx, cy = map(int, matches[-1])
+    print(f"  cropdetect found content: {cw}x{ch} at x={cx}, y={cy}")
+    return cw, ch, cx, cy
+
+
 def crop_to_portrait(raw_path: str, final_path: str):
     """
-    Convert HeyGen output to proper 9:16 portrait.
-    Scale to fill height (no stretch), crop center 1080 wide.
+    Convert HeyGen output to proper 9:16 portrait using cropdetect.
+
+    v2.8: automatically detects where the dark background ends and the
+    actual avatar content begins, regardless of bar size or position.
+    Then scales to fill 1080x1920 without distortion (scale to fill height,
+    crop center width).
+
     Output: 30fps, CRF 16, 4 Mbps target bitrate for TikTok quality.
     """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
 
-    scale_dim = 1920
-    side_crop = (scale_dim - 1080) // 2
+    # Try cropdetect first
+    crop_result = detect_content_crop(raw_path)
 
-    if w == h:
-        print(f"  Square {w}x{h} -- scale to {scale_dim}x{scale_dim}, crop center 1080")
-        filter_str = f"fps=30,scale={scale_dim}:{scale_dim}:flags=lanczos,crop=1080:1920:{side_crop}:0"
-    elif h > w:
-        bar = (h - w) // 2
-        print(f"  Portrait {w}x{h} -- crop {bar}px bars, scale to {scale_dim}x{scale_dim}, crop center 1080")
-        filter_str = (
-            f"fps=30,"
-            f"crop={w}:{w}:0:{bar},"
-            f"scale={scale_dim}:{scale_dim}:flags=lanczos,"
-            f"crop=1080:1920:{side_crop}:0"
-        )
+    if crop_result:
+        cw, ch, cx, cy = crop_result
+
+        # Scale content to fill portrait frame without stretching:
+        # Scale so the height fills 1920, then crop center 1080 wide.
+        # If content is taller than wide (portrait-ish), scale to width instead.
+        if ch >= cw:
+            # Content is portrait or square -- scale to fill height 1920
+            scale_h = 1920
+            scale_w = round(cw * 1920 / ch)
+            # Ensure scale_w >= 1080 so we have content to crop
+            if scale_w < 1080:
+                # Content too narrow -- scale to width 1080 instead, pad height
+                filter_str = (
+                    f"crop={cw}:{ch}:{cx}:{cy},"
+                    f"scale=1080:-2:flags=lanczos,"
+                    f"pad=1080:1920:0:(1920-ih)/2:color=0x07071a,"
+                    f"fps=30"
+                )
+            else:
+                side = (scale_w - 1080) // 2
+                filter_str = (
+                    f"crop={cw}:{ch}:{cx}:{cy},"
+                    f"scale={scale_w}:{scale_h}:flags=lanczos,"
+                    f"crop=1080:1920:{side}:0,"
+                    f"fps=30"
+                )
+        else:
+            # Content is landscape -- scale to fill width 1080, pad height
+            filter_str = (
+                f"crop={cw}:{ch}:{cx}:{cy},"
+                f"scale=1080:-2:flags=lanczos,"
+                f"pad=1080:1920:0:(1920-ih)/2:color=0x07071a,"
+                f"fps=30"
+            )
+
+        print(f"  Using cropdetect filter")
+
     else:
-        print(f"  Landscape {w}x{h} -- scale to fill portrait")
-        filter_str = f"fps=30,scale=-2:1920:flags=lanczos,crop=1080:1920"
+        # Fallback: guess based on dimensions
+        print(f"  cropdetect found no bars -- using dimension-based fallback")
+        if w == h:
+            filter_str = f"fps=30,scale=1920:1920:flags=lanczos,crop=1080:1920:420:0"
+        elif h > w:
+            bar = (h - w) // 2
+            filter_str = f"fps=30,crop={w}:{w}:0:{bar},scale=1920:1920:flags=lanczos,crop=1080:1920:420:0"
+        else:
+            filter_str = f"fps=30,scale=-2:1920:flags=lanczos,crop=1080:1920"
 
     cmd = [
         "ffmpeg", "-i", raw_path,
         "-vf", filter_str,
         "-c:v", "libx264",
-        "-crf", "16",           # higher quality than before (was 18)
-        "-preset", "slow",      # better compression quality
-        "-b:v", "4M",           # 4 Mbps target -- TikTok recommends 2+ Mbps
+        "-crf", "16",
+        "-preset", "slow",
+        "-b:v", "4M",
         "-maxrate", "6M",
         "-bufsize", "8M",
         "-c:a", "copy",
@@ -585,12 +649,12 @@ def crop_to_portrait(raw_path: str, final_path: str):
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"  ffmpeg stderr: {result.stderr[-500:]}")
+        print(f"  ffmpeg stderr: {result.stderr[-800:]}")
         raise RuntimeError(f"ffmpeg failed with code {result.returncode}")
 
     size_mb = Path(final_path).stat().st_size / (1024 * 1024)
     w2, h2  = get_video_dimensions(final_path)
-    print(f"  Final portrait: {final_path} ({w2}x{h2} | {size_mb:.1f} MB | 30fps | 4Mbps)")
+    print(f"  Final portrait: {final_path} ({w2}x{h2} | {size_mb:.1f} MB)")
 
 
 # -- Step 6 -- Upload Guide ---------------------------------------------------
@@ -698,10 +762,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.7")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.8")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 9:16 30fps | Avatar IV + motion | script sanitizer active")
+    print(f"  Format: 1080x1920 9:16 30fps | cropdetect auto-crop | script sanitizer")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -717,7 +781,7 @@ def main():
     else:
         topic  = fetch_trending_topic(client)
         script = generate_content_script(topic, client)
-        script = sanitize_script(script)          # sanitize content scripts too
+        script = sanitize_script(script)
 
     (OUTPUT_DIR / "script.json").write_text(json.dumps(script, indent=2))
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
@@ -745,7 +809,7 @@ def main():
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
 
-    print("\n  Converting to TikTok-ready portrait (30fps, 4Mbps, CRF 16)...")
+    print("\n  Auto-detecting content area and cropping to 9:16 portrait...")
     crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
