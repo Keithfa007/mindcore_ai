@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.6
+MindCore AI Video Pipeline -- HeyGen Edition v2.7
 ===================================================
 
-MOTION PROMPT (v2.6):
-  Hands toned down -- mostly at rest, only move for genuinely key moments.
-  Stillness is the default. Gestures are rare and intentional.
+CHANGES (v2.7):
+  1. Script sanitizer -- hard-replaces banned phrases AFTER generation.
+     "try it for free" → "try it" guaranteed, regardless of what Claude outputs.
+     "download now" → "find us on Google Play" guaranteed.
 
-CROP FIX (v2.5 -- unchanged):
-  Scale to fill height maintaining AR, then crop center. No distortion.
+  2. Video quality -- 30fps output, higher bitrate (4 Mbps target) for TikTok.
+     TikTok recommends 30fps and 2+ Mbps. CRF 16 for sharper output.
+
+  3. Fixed stray backslash in poll function.
 """
 
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import time
@@ -63,6 +67,14 @@ SEO_KEYWORDS = [
     "AI mental health coach for men",
     "recovery support anxiety depression",
     "sobriety mental wellness app",
+]
+
+# Banned phrases -- hard-replaced by sanitize_script() after generation
+# Format: (regex_pattern, replacement)
+BANNED_PHRASE_REPLACEMENTS = [
+    (r"try\s+it\s+for\s+free",  "try it"),
+    (r"download\s+now",         "find us on Google Play"),
+    (r"free\s+trial",           "trial"),
 ]
 
 # Motion prompt v2.6 -- restrained natural hands, stillness as default
@@ -130,6 +142,27 @@ def load_niche_keywords() -> dict:
         return json.load(f)
 
 
+# -- Script sanitizer ---------------------------------------------------------
+
+def sanitize_script(script: dict) -> dict:
+    """
+    Hard-replace banned phrases in all voiceovers AFTER Claude generates the script.
+    This guarantees compliance regardless of what the model outputs.
+    Logs any replacements made so they are visible in the GitHub Actions log.
+    """
+    for scene in SCENE_ORDER:
+        if scene not in script:
+            continue
+        original = script[scene]["voiceover"]
+        cleaned  = original
+        for pattern, replacement in BANNED_PHRASE_REPLACEMENTS:
+            cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+        if cleaned != original:
+            print(f"  SANITIZED [{scene}]: '{original}' → '{cleaned}'")
+            script[scene]["voiceover"] = cleaned
+    return script
+
+
 # -- Ad validation ------------------------------------------------------------
 
 def validate_ad_word_counts(script: dict) -> tuple:
@@ -146,6 +179,7 @@ def validate_ad_word_counts(script: dict) -> tuple:
 def generate_ad_with_validation(generate_fn, generate_args, max_attempts=3):
     for attempt in range(1, max_attempts + 1):
         script = generate_fn(*generate_args)
+        script = sanitize_script(script)          # always sanitize before validation
         passed, errors = validate_ad_word_counts(script)
         if passed:
             print(f"  CHECKPOINT PASSED -- all word counts within limits")
@@ -322,9 +356,9 @@ CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
 - Read it aloud in your head -- if it sounds stiff, rewrite it
 
 BANNED PHRASES -- NEVER use these:
-- "try it for free" -- say "start your trial" or "try it" instead
+- "try it for free" -- say ONLY "try it" instead (NOT "try it for free")
+- "free trial" -- say ONLY "trial" instead
 - "download now" -- say "find us on Google Play"
-- Any phrase that sounds like ad copy or a tagline
 
 VERIFIED APP FACTS (use ONLY these):
 - Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
@@ -460,8 +494,7 @@ def poll_heygen_video(video_id: str) -> str:
             timeout=30,
         )
         resp.raise_for_status()
-        data   = resp.json().get("data", {})\
-
+        data   = resp.json().get("data", {})
         status = data.get("status", "unknown")
 
         if status == "completed":
@@ -513,7 +546,8 @@ def get_video_dimensions(path: str) -> tuple:
 def crop_to_portrait(raw_path: str, final_path: str):
     """
     Convert HeyGen output to proper 9:16 portrait.
-    Scale to fill height (no stretch), then crop center 1080 wide.
+    Scale to fill height (no stretch), crop center 1080 wide.
+    Output: 30fps, CRF 16, 4 Mbps target bitrate for TikTok quality.
     """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
@@ -523,23 +557,29 @@ def crop_to_portrait(raw_path: str, final_path: str):
 
     if w == h:
         print(f"  Square {w}x{h} -- scale to {scale_dim}x{scale_dim}, crop center 1080")
-        filter_str = f"scale={scale_dim}:{scale_dim}:flags=lanczos,crop=1080:1920:{side_crop}:0"
+        filter_str = f"fps=30,scale={scale_dim}:{scale_dim}:flags=lanczos,crop=1080:1920:{side_crop}:0"
     elif h > w:
         bar = (h - w) // 2
         print(f"  Portrait {w}x{h} -- crop {bar}px bars, scale to {scale_dim}x{scale_dim}, crop center 1080")
         filter_str = (
+            f"fps=30,"
             f"crop={w}:{w}:0:{bar},"
             f"scale={scale_dim}:{scale_dim}:flags=lanczos,"
             f"crop=1080:1920:{side_crop}:0"
         )
     else:
         print(f"  Landscape {w}x{h} -- scale to fill portrait")
-        filter_str = f"scale=-2:1920:flags=lanczos,crop=1080:1920"
+        filter_str = f"fps=30,scale=-2:1920:flags=lanczos,crop=1080:1920"
 
     cmd = [
         "ffmpeg", "-i", raw_path,
         "-vf", filter_str,
-        "-c:v", "libx264", "-crf", "18", "-preset", "fast",
+        "-c:v", "libx264",
+        "-crf", "16",           # higher quality than before (was 18)
+        "-preset", "slow",      # better compression quality
+        "-b:v", "4M",           # 4 Mbps target -- TikTok recommends 2+ Mbps
+        "-maxrate", "6M",
+        "-bufsize", "8M",
         "-c:a", "copy",
         "-y", final_path
     ]
@@ -550,7 +590,7 @@ def crop_to_portrait(raw_path: str, final_path: str):
 
     size_mb = Path(final_path).stat().st_size / (1024 * 1024)
     w2, h2  = get_video_dimensions(final_path)
-    print(f"  Final portrait: {final_path} ({w2}x{h2} | {size_mb:.1f} MB)")
+    print(f"  Final portrait: {final_path} ({w2}x{h2} | {size_mb:.1f} MB | 30fps | 4Mbps)")
 
 
 # -- Step 6 -- Upload Guide ---------------------------------------------------
@@ -627,7 +667,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 portrait | Avatar IV + motion | TikTok + Facebook
+  Format      : 1080x1920 9:16 30fps | Avatar IV + motion | TikTok + Facebook
 ================================================================================
 
 FULL SCRIPT
@@ -658,10 +698,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.6")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 9:16 | Avatar IV + restrained motion | scale-fill crop")
+    print(f"  Format: 1080x1920 9:16 30fps | Avatar IV + motion | script sanitizer active")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -677,6 +717,7 @@ def main():
     else:
         topic  = fetch_trending_topic(client)
         script = generate_content_script(topic, client)
+        script = sanitize_script(script)          # sanitize content scripts too
 
     (OUTPUT_DIR / "script.json").write_text(json.dumps(script, indent=2))
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
@@ -693,7 +734,7 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    print(f"\n  Submitting to HeyGen (Avatar IV + restrained motion | look: {avatar_id[:8]}...)...")
+    print(f"\n  Submitting to HeyGen (Avatar IV + motion | look: {avatar_id[:8]}...)...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
@@ -704,7 +745,7 @@ def main():
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
 
-    print("\n  Converting to proper 9:16 portrait (scale-fill, no distortion)...")
+    print("\n  Converting to TikTok-ready portrait (30fps, 4Mbps, CRF 16)...")
     crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
