@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.5
+MindCore AI Video Pipeline -- HeyGen Edition v1.6
 ===================================================
 Avatar-based pipeline using KF (HeyGen AI avatar).
 
@@ -8,25 +8,25 @@ FLOW:
   1. Randomly pick one of 8 avatar looks (keeps content fresh)
   2. Fetch trending topic (SerpAPI -> Claude fallback)
   3. Generate script (Claude) -- content or ad mode
-  4. Validate word counts (ads only -- content has no ceiling)
+  4. Validate word counts (ads only)
   5. Submit to HeyGen -- KF delivers the script, dark brand background
-  6. Poll until complete
+  6. Poll until complete (20 min timeout)
   7. Download MP4
   8. Generate upload guide (Claude)
 
-VALIDATION (v1.5):
-  Content videos: NO word count validation -- HeyGen has no clip ceiling.
-    Claude writes naturally. Quality over rigid limits.
-    Target ~45-60 seconds of natural flowing speech.
+SCRIPT TARGETS (v1.6):
+  Content: ~60-70 seconds | ~130-150 words total
+    hook=10-15 | problem=30-40 | story=50-65 | cta=25-35
+    Written as strong guidance -- natural flow, not rigid limits.
 
-  Ad videos: strict max limits enforced -- must stay ~20 seconds.
-    hook=8 | problem=12 | story=14 | cta=12
+  Ad: ~20 seconds | ~46 words total
+    hook=8 | problem=12 | story=14 | cta=12 (enforced hard limits)
 
-SCRIPT STYLE:
-  - Written for the ear, not the eye -- natural spoken word rhythm
-  - Sentences flow and connect, never choppy or fragmented
-  - NEVER say "try it for free" -- always "start your trial" or "try it"
-  - Avatar look rotates randomly across 8 looks each run
+STYLE:
+  - Written for the ear, not the eye
+  - Natural spoken rhythm, sentences flow and connect
+  - NEVER say "try it for free"
+  - Avatar look rotates across 8 looks each run
 """
 
 import json
@@ -57,17 +57,25 @@ PIPELINE_DIR = Path("video_pipeline")
 SCENE_ORDER  = ["hook", "problem", "story", "solution_cta"]
 
 POLL_INTERVAL = 15
-VIDEO_TIMEOUT = 600
+VIDEO_TIMEOUT = 1200  # 20 minutes -- HeyGen can be slow for longer videos
 
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
-# Ad word limits only -- content has no ceiling, HeyGen renders to audio length
+# Ad word limits (hard) -- content uses guidance only
 WORD_LIMITS_AD = {
     "hook":         8,
     "problem":      12,
     "story":        14,
     "solution_cta": 12,
+}
+
+# Content word targets (guidance) -- aim for ~130-150 total words = ~60-70s
+WORD_TARGETS_CONTENT = {
+    "hook":         (10, 15),
+    "problem":      (30, 40),
+    "story":        (50, 65),
+    "solution_cta": (25, 35),
 }
 
 SEO_KEYWORDS = [
@@ -111,10 +119,9 @@ def load_niche_keywords() -> dict:
         return json.load(f)
 
 
-# -- Ad validation only -------------------------------------------------------
+# -- Ad validation (hard limits) ----------------------------------------------
 
 def validate_ad_word_counts(script: dict) -> tuple:
-    """Enforce max word counts for ad scripts only."""
     errors = []
     for scene in SCENE_ORDER:
         vo = script[scene]["voiceover"]
@@ -126,7 +133,6 @@ def validate_ad_word_counts(script: dict) -> tuple:
 
 
 def generate_ad_with_validation(generate_fn, generate_args, max_attempts=3):
-    """Generate ad script with word count validation and auto-retry."""
     for attempt in range(1, max_attempts + 1):
         script = generate_fn(*generate_args)
         passed, errors = validate_ad_word_counts(script)
@@ -227,6 +233,11 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
     angles   = load_niche_keywords().get("content_angles", [])
     angle    = random.choice(angles) if angles else "real talk"
 
+    lo_hook,  hi_hook  = WORD_TARGETS_CONTENT["hook"]
+    lo_prob,  hi_prob  = WORD_TARGETS_CONTENT["problem"]
+    lo_story, hi_story = WORD_TARGETS_CONTENT["story"]
+    lo_cta,   hi_cta   = WORD_TARGETS_CONTENT["solution_cta"]
+
     prompt = f"""You are a top-performing TikTok and Facebook Reels content creator in the men's
 mental health and recovery space. Your content gets millions of views because it speaks
 RAW TRUTH to men who are quietly struggling.
@@ -244,26 +255,25 @@ They feel alone. They don't ask for help. This is value-first content -- NOT an 
 Speak like a real person who has been through it -- a trusted older brother, not a presenter.
 
 CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
-This script will be spoken aloud by an avatar. It must sound like a real human talking,
-not like text that was written to be read. Follow these rules:
+This script will be spoken aloud by an avatar. It must sound like a real human talking.
 - Use natural spoken language -- contractions, pauses, conversational connectors
-- Sentences must FLOW into each other. No choppy fragments. No isolated bursts.
+- Sentences must FLOW. No choppy fragments. No isolated bursts.
 - Use connectors like: "And the thing is...", "Because here's what nobody tells you...",
-  "The truth is...", "What changed everything for me was...", "And if that's you right now..."
+  "The truth is...", "What changed everything was...", "And if that's you right now..."
 - Write how people actually talk when they're being honest with a friend
-- Avoid anything that sounds like a list, a bullet point, or a headline
-- Each scene should feel like one continuous thought, not separate disconnected statements
-- Read it aloud in your head -- if it sounds robotic or stiff, rewrite it
+- Each scene = one continuous thought. Not bullet points dressed up as sentences.
+- Read it aloud in your head. If it sounds robotic or stiff, rewrite it.
 
-TARGET LENGTH: ~45-60 seconds of natural flowing speech. Write what the topic deserves.
-There are NO word count restrictions on content videos -- write naturally and fully.
+TARGET: ~60-70 seconds total. Aim for these word counts per scene:
+- hook:         {lo_hook}-{hi_hook} words  -- One striking line that stops the scroll cold
+- problem:      {lo_prob}-{hi_prob} words  -- Name the pain in flowing natural sentences.
+                                              Make them feel completely seen.
+- story:        {lo_story}-{hi_story} words -- Real insight, conversational sentences.
+                                              Build to a moment of truth with specific detail.
+- solution_cta: {lo_cta}-{hi_cta} words  -- Warm hopeful close. May mention MindCore AI.
 
-SCENE GUIDANCE (no hard limits -- write what feels right):
-- hook:         One striking line or question that stops the scroll cold
-- problem:      Name the pain fully. Make them feel completely seen. Take the space you need.
-- story:        Real insight, a turning point, truth delivered conversationally.
-                Use specific detail. Build to a moment. Don't cut it short.
-- solution_cta: Warm, hopeful close. Let it breathe. May naturally mention MindCore AI.
+Total target: ~130-150 words. Stick close to this -- TikTok videos should be 60-75 seconds,
+not 3-4 minutes. If you write significantly more, you've gone too far.
 
 SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
 Hook must stop the scroll. No generic openers. No "hey guys". No "in today's video".
@@ -279,7 +289,7 @@ Return ONLY valid JSON, no markdown fences:
   "solution_cta": {{"voiceover": "..."}}
 }}"""
 
-    return _call_claude_raw(prompt, client, max_tokens=1400)
+    return _call_claude_raw(prompt, client, max_tokens=1200)
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
@@ -297,17 +307,14 @@ TONE: Raw, honest, brotherly. Not salesy. Not clinical. Sounds like a real perso
 TARGET LENGTH: ~20 seconds total. Short, punchy, every word earns its place.
 
 CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
-This script will be spoken aloud. It must sound like a real human talking, not written copy.
 - Use natural spoken language and contractions
 - Sentences must flow -- no choppy fragments, no isolated word bursts
-- Each scene is one continuous thought delivered in natural speech
-- Read it aloud in your head -- if it sounds stiff or robotic, rewrite it
-- Short does NOT mean fragmented -- even short sentences should flow naturally
+- Read it aloud in your head -- if it sounds stiff, rewrite it
 
 BANNED PHRASES -- NEVER use these:
 - "try it for free" -- say "start your trial" or "try it" instead
 - "download now" -- say "find us on Google Play"
-- Any phrase that sounds like an ad tagline or marketing copy
+- Any phrase that sounds like ad copy or a tagline
 
 VERIFIED APP FACTS (use ONLY these):
 - Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
@@ -321,10 +328,10 @@ CRITICAL RULES:
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
 STRICT WORD COUNT (enforced -- ad must stay ~20 seconds):
-- hook:         up to 8 words  -- one sharp line, no filler
-- problem:      up to 12 words -- one pain point in natural speech
-- story:        up to 14 words -- one turning point, flowing naturally
-- solution_cta: up to 12 words -- direct, honest CTA with accurate trial info
+- hook:         up to 8 words
+- problem:      up to 12 words
+- story:        up to 14 words
+- solution_cta: up to 12 words
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -373,10 +380,6 @@ def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int =
 # -- Step 2 -- Build full script text -----------------------------------------
 
 def build_full_script(script: dict) -> str:
-    """
-    Combine all 4 scenes into one continuous voiceover.
-    Natural pauses come from punctuation and double spacing between scenes.
-    """
     parts = []
     for scene in SCENE_ORDER:
         vo = script[scene]["voiceover"].strip()
@@ -389,7 +392,6 @@ def build_full_script(script: dict) -> str:
 # -- Step 3 -- Submit to HeyGen -----------------------------------------------
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, background_color: str) -> str:
-    """Submit video to HeyGen. Returns video_id for polling."""
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json",
@@ -435,7 +437,6 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
 # -- Step 4 -- Poll HeyGen ----------------------------------------------------
 
 def poll_heygen_video(video_id: str) -> str:
-    """Poll until HeyGen finishes. Returns the MP4 download URL."""
     headers  = {"X-Api-Key": HEYGEN_API_KEY}
     deadline = time.time() + VIDEO_TIMEOUT
 
@@ -460,7 +461,8 @@ def poll_heygen_video(video_id: str) -> str:
         if status in ("failed", "error"):
             raise RuntimeError(f"HeyGen render failed: {data}")
 
-        print(f"    waiting... status={status}")
+        elapsed = int(time.time() - (deadline - VIDEO_TIMEOUT))
+        print(f"    waiting... status={status} ({elapsed}s elapsed)")
         time.sleep(POLL_INTERVAL)
 
     raise TimeoutError(f"HeyGen timed out after {VIDEO_TIMEOUT}s")
@@ -586,14 +588,14 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.5")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg['avatar_name']} | Look: {avatar_id[:8]}... | Background: {background_color}")
     print(f"  Format: 9:16 vertical -- TikTok + Facebook Reels")
     if mode == "content":
-        print(f"  Target: ~45-60s | No word count ceiling -- Claude writes naturally")
+        print(f"  Target: ~60-70s (~130-150 words) | Targets: hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
-        print(f"  Target: ~20s | Word limits: hook=8 | problem=12 | story=14 | cta=12")
+        print(f"  Target: ~20s | Limits: hook=8 | problem=12 | story=14 | cta=12")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -606,7 +608,6 @@ def main():
     else:
         topic  = fetch_trending_topic(client)
         script = generate_content_script(topic, client)
-        print(f"  CONTENT script generated -- no word count ceiling")
 
     (OUTPUT_DIR / "script.json").write_text(json.dumps(script, indent=2))
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
@@ -628,8 +629,8 @@ def main():
     print(f"\n  Submitting to HeyGen (look: {avatar_id[:8]}... | bg: {background_color})...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
-    # 4. Poll
-    print("\n  Waiting for HeyGen to render...")
+    # 4. Poll (20 min timeout)
+    print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
     video_url = poll_heygen_video(video_id)
 
     # 5. Download
@@ -645,7 +646,7 @@ def main():
     print(f"\n  DONE")
     print(f"  Video:  {final}")
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
-    print(f"  Mode:   {mode.upper()} | Est. length: ~{est_duration}s | Look: {avatar_id[:8]}...")
+    print(f"  Mode:   {mode.upper()} | ~{est_duration}s | Look: {avatar_id[:8]}...")
     print("\n  Pipeline complete!")
 
 
