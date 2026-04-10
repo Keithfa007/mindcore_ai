@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.2
+MindCore AI Video Pipeline -- HeyGen Edition v1.3
 ===================================================
 Avatar-based pipeline using KF (HeyGen AI avatar).
 
@@ -24,6 +24,11 @@ WORD LIMITS (max only -- short is always fine):
   At ~130 words/min natural speaking pace:
   CONTENT: hook=12 | problem=28 | story=38 | cta=22  (~100 words = ~45s)
   AD:      hook=8  | problem=12 | story=14 | cta=12  (~46 words  = ~21s)
+
+SCRIPT STYLE (v1.3):
+  - Written for the ear, not the eye -- natural spoken word rhythm
+  - Sentences flow and connect, never choppy or fragmented
+  - NEVER say "try it for free" -- always "start your trial" or "try it"
 """
 
 import json
@@ -60,21 +65,18 @@ CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
 # Max word counts per scene per mode (upper bound only -- short is always valid)
-# At ~130 words/min natural speaking pace:
-# CONTENT: ~100 words total = ~45 seconds
-# AD:      ~46 words total  = ~21 seconds
 WORD_LIMITS_CONTENT = {
-    "hook":         12,   # ~5s  -- punchy opener
-    "problem":      28,   # ~13s -- name the pain with room to breathe
-    "story":        38,   # ~17s -- emotional depth, real insight
-    "solution_cta": 22,   # ~10s -- warm hopeful close
+    "hook":         12,
+    "problem":      28,
+    "story":        38,
+    "solution_cta": 22,
 }
 
 WORD_LIMITS_AD = {
-    "hook":         8,    # ~4s  -- ultra short scroll-stopper
-    "problem":      12,   # ~5s  -- quick pain point
-    "story":        14,   # ~6s  -- brief turning point
-    "solution_cta": 12,   # ~5s  -- direct CTA with trial info
+    "hook":         8,
+    "problem":      12,
+    "story":        14,
+    "solution_cta": 12,
 }
 
 SEO_KEYWORDS = [
@@ -242,23 +244,35 @@ FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
 
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
 They feel alone. They don't ask for help. This is value-first content -- NOT an ad.
-Speak directly, emotionally, like a trusted older brother who has been through it.
+Speak like a real person who has been through it -- a trusted older brother, not a presenter.
+
+CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
+This script will be spoken aloud by an avatar. It must sound like a real human talking,
+not like text that was written to be read. Follow these rules:
+- Use natural spoken language -- contractions, pauses, conversational connectors
+- Sentences must FLOW into each other. No choppy fragments. No isolated bursts.
+- Use connectors like: "And the thing is...", "Because here's what nobody tells you...",
+  "The truth is...", "What changed everything for me was...", "And if that's you right now..."
+- Write how people actually talk when they're being honest with a friend
+- Avoid anything that sounds like a list, a bullet point, or a headline
+- Each scene should feel like one continuous thought, not separate disconnected statements
+- Read it aloud in your head -- if it sounds robotic or stiff, rewrite it
 
 TARGET LENGTH: ~45 seconds total. Write enough to fill that time naturally.
 
 WORD COUNT (hard MAXIMUM enforced -- shorter is fine but aim to use the space):
-- hook:         up to 12 words -- Bold statement or question. Stops the scroll cold.
-- problem:      up to 28 words -- Name the pain deeply. Take your time. Make them feel
-                                  completely seen. This is where connection begins.
-- story:        up to 38 words -- Real insight, perspective shift, truth they haven't heard.
-                                  This is where emotional connection happens. Don't rush it.
-                                  Use specific detail, not vague statements.
-- solution_cta: up to 22 words -- Warm, hopeful close. Let them breathe. May mention MindCore AI.
+- hook:         up to 12 words -- One striking line that stops the scroll cold
+- problem:      up to 28 words -- Name the pain in flowing natural sentences.
+                                  Make them feel completely seen and understood.
+- story:        up to 38 words -- Real insight delivered in conversational sentences.
+                                  Build to a moment of truth. Use specific detail.
+                                  This is where emotional connection happens -- don't rush.
+- solution_cta: up to 22 words -- Warm, hopeful close in natural speech. May mention MindCore AI.
 
 DO NOT exceed these maximums -- scripts are auto-rejected if over.
 
 SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
-The hook must make someone stop mid-scroll. No generic openers. No "hey guys".
+Hook must stop the scroll. No generic openers. No "hey guys". No "in today's video".
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -284,9 +298,22 @@ def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
 Write a 4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
 
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
-TONE: Raw, honest, brotherly. Not salesy. Not clinical.
+TONE: Raw, honest, brotherly. Not salesy. Not clinical. Sounds like a real person talking.
 
-TARGET LENGTH: ~20 seconds total. Short and punchy -- every word earns its place.
+TARGET LENGTH: ~20 seconds total. Short, punchy, every word earns its place.
+
+CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
+This script will be spoken aloud. It must sound like a real human talking, not written copy.
+- Use natural spoken language and contractions
+- Sentences must flow -- no choppy fragments, no isolated word bursts
+- Each scene is one continuous thought delivered in natural speech
+- Read it aloud in your head -- if it sounds stiff or robotic, rewrite it
+- Short does NOT mean fragmented -- even short sentences should flow naturally
+
+BANNED PHRASES -- NEVER use these:
+- "try it for free" -- say "start your trial" or "try it" instead
+- "download now" -- say "find us on Google Play"
+- Any phrase that sounds like an ad tagline or marketing copy
 
 VERIFIED APP FACTS (use ONLY these):
 - Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
@@ -300,10 +327,10 @@ CRITICAL RULES:
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
 WORD COUNT (hard MAXIMUM enforced -- shorter is fine):
-- hook:         up to 8 words  -- ultra-short scroll-stopper, no filler
-- problem:      up to 12 words -- one sharp pain point
-- story:        up to 14 words -- one turning point, one truth
-- solution_cta: up to 12 words -- direct CTA with accurate trial info
+- hook:         up to 8 words  -- one sharp line, no filler
+- problem:      up to 12 words -- one pain point in natural speech
+- story:        up to 14 words -- one turning point, flowing naturally
+- solution_cta: up to 12 words -- direct, honest CTA with accurate trial info
 
 DO NOT exceed these maximums -- scripts are auto-rejected if over.
 
@@ -574,7 +601,7 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.2")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg['avatar_name']} | Voice: {voice_id[:8]}... | Background: {background_color}")
     print(f"  Format: 9:16 vertical -- TikTok + Facebook Reels")
