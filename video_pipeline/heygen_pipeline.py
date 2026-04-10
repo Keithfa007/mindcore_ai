@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.1
+MindCore AI Video Pipeline -- HeyGen Edition v2.2
 ===================================================
 Avatar-based pipeline using confirmed video avatars (full body movement).
 
@@ -21,10 +21,10 @@ SCRIPT TARGETS:
   Ad: ~20 seconds | ~46 words total
     hook=8 | problem=12 | story=14 | cta=12 (enforced)
 
-VIDEO FORMAT (v2.1):
-  1080x1920 portrait (9:16)
+VIDEO FORMAT (v2.2):
+  1080x1920 portrait + aspect_ratio "9:16" -- both together to force portrait
   use_avatar_iv_model: True
-  custom_motion_prompt -- detailed natural body language cues (v2.1 upgrade)
+  custom_motion_prompt -- detailed natural body language cues
   enhance_custom_motion_prompt: True
 
 STYLE:
@@ -87,7 +87,6 @@ SEO_KEYWORDS = [
 ]
 
 # Detailed natural body language motion prompt (v2.1)
-# Based on real human body movement research -- activates full body engagement in Avatar IV
 MOTION_PROMPT = (
     "Perform natural full-body movement as a real person does when speaking sincerely. "
     "Hand gestures: use open palms when being honest and open, point gently to emphasise key words, "
@@ -413,13 +412,10 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
     """
     Submit to HeyGen.
 
-    v2.1 -- detailed motion prompt with specific natural body language cues:
-    - Hand gestures (open palms, pointing, expressive)
-    - Head movements (nods, tilts, subtle shake)
-    - Facial expressions (warm smile, raised eyebrows, earnest)
-    - Posture (lean forward for emotion, confident upright, weight shifts)
-    - Eye contact (steady warm intermittent)
-    - Self-adaptors (touch to chest for personal experience)
+    v2.2 -- dimension fix:
+    Both dimension (1080x1920) AND aspect_ratio ("9:16") sent together.
+    HeyGen Avatar IV may require both to consistently output portrait format.
+    Motion prompt unchanged from v2.1 -- that is working perfectly.
     """
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
@@ -444,9 +440,10 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
                 },
             }
         ],
-        "dimension": {"width": 1080, "height": 1920},
-        "use_avatar_iv_model": True,
-        "custom_motion_prompt": MOTION_PROMPT,
+        "dimension":    {"width": 1080, "height": 1920},  # 9:16 portrait resolution
+        "aspect_ratio": "9:16",                             # explicit ratio to reinforce portrait
+        "use_avatar_iv_model":          True,
+        "custom_motion_prompt":         MOTION_PROMPT,
         "enhance_custom_motion_prompt": True,
         "test": False,
     }
@@ -585,7 +582,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 portrait | Avatar IV + detailed motion | TikTok + Facebook
+  Format      : 1080x1920 9:16 portrait | Avatar IV + motion | TikTok + Facebook
 ================================================================================
 
 FULL SCRIPT
@@ -616,10 +613,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.1")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 portrait (9:16) | Avatar IV + detailed motion prompt")
+    print(f"  Format: 1080x1920 + aspect_ratio 9:16 | Avatar IV + motion prompt")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -651,7 +648,7 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    print(f"\n  Submitting to HeyGen (Avatar IV + motion | look: {avatar_id[:8]}...)...")
+    print(f"\n  Submitting to HeyGen (1080x1920 9:16 | Avatar IV + motion | look: {avatar_id[:8]}...)...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
