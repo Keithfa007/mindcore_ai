@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.3
+MindCore AI Video Pipeline -- HeyGen Edition v2.4
 ===================================================
 Avatar-based pipeline using confirmed video avatars (full body movement).
 
@@ -22,10 +22,19 @@ SCRIPT TARGETS:
   Ad: ~20 seconds | ~46 words total
     hook=8 | problem=12 | story=14 | cta=12 (enforced)
 
-VIDEO FORMAT (v2.3):
+VIDEO FORMAT (v2.4):
   HeyGen renders avatar in a square canvas inside portrait frame.
   Post-processing: auto-detect black bars, crop square, scale to 1080x1920.
   Result: proper full-frame 9:16 portrait for TikTok + Facebook Reels.
+
+MOTION PROMPT (v2.4):
+  Updated with mental health speech body language research:
+  - Grounded open stance, relaxed shoulders
+  - Slow deliberate hand gestures (open palms upward, hand on heart)
+  - Soft compassionate eye contact (not intense staring)
+  - Stillness at profound moments (pause all movement)
+  - Avoid self-soothing gestures (no neck touching, no fidgeting)
+  - Lean in for sensitive points, purposeful movement only
 
 STYLE:
   - Written for the ear, not the eye
@@ -87,21 +96,38 @@ SEO_KEYWORDS = [
     "sobriety mental wellness app",
 ]
 
-# Detailed natural body language motion prompt
+# Mental health speech body language motion prompt (v2.4)
+# Based on research into effective body language for mental health and empathy contexts.
+# Key principles: grounded stillness, slow deliberate gestures, soft compassionate presence.
 MOTION_PROMPT = (
-    "Perform natural full-body movement as a real person does when speaking sincerely. "
-    "Hand gestures: use open palms when being honest and open, point gently to emphasise key words, "
-    "use expressive hand movements to reinforce emotional points. "
-    "Head movements: nod slowly when making important statements, tilt head slightly when expressing empathy, "
-    "subtle head shake when describing pain or struggle. "
-    "Facial expressions: warm genuine smile when offering hope, raised eyebrows for emphasis, "
-    "earnest sincere expression throughout -- not a presenter, a real person talking. "
-    "Posture: lean forward slightly when making emotional or vulnerable points to show engagement, "
-    "confident upright stance when delivering strength or hope, subtle natural weight shifts. "
-    "Self-adaptor gestures: occasional subtle touch to chest when speaking from personal experience, "
-    "natural fidget-free but grounded body language. "
-    "Eye contact: steady warm intermittent eye contact with the camera -- engaged and confident, not staring. "
-    "Overall tone: a trusted older brother having an honest heartfelt conversation, not a corporate presenter."
+    "Deliver this as a grounded, emotionally present mental health speaker -- not a performer. "
+
+    "POSTURE: Stand with feet hip-width apart, upright but relaxed. Keep shoulders down and loose, "
+    "never rigid or tense. Open chest, torso facing forward -- no crossed arms or clasped hands. "
+    "Project calm stability throughout. "
+
+    "HANDS: Use slow, deliberate gestures only -- no fast or jerky movements. "
+    "Open palms facing upward or outward signal honesty and openness. "
+    "Place a hand gently on the chest or heart when speaking from personal experience -- "
+    "this deepens emotional connection. Avoid touching the neck, rubbing arms, or fidgeting "
+    "with clothing as these signal anxiety. Keep hands relaxed and purposeful. "
+
+    "HEAD AND FACE: Nod slowly and gently when making empathetic or affirming statements. "
+    "Tilt the head very slightly (around 10-15 degrees) when conveying empathy or active listening. "
+    "Smile warmly and genuinely when offering hope -- never a fixed presenter smile. "
+    "Maintain a soft, compassionate facial expression throughout -- earnest, not intense. "
+
+    "EYE CONTACT: Maintain soft, warm, intermittent eye contact with the camera. "
+    "The gaze should feel compassionate and safe, not staring or piercing. "
+    "This is the eye contact of someone who genuinely cares, not someone performing confidence. "
+
+    "MOVEMENT AND STILLNESS: Lean forward slightly toward the camera during sensitive or emotional points -- "
+    "this creates closeness and sincerity. When delivering a profound or difficult statement, "
+    "go completely still -- stop all hand gestures and movement -- and let the words land. "
+    "Silence and stillness are powerful. Do not pace or shift weight nervously. "
+
+    "OVERALL TONE: A trusted older brother or mentor having an honest, heartfelt conversation. "
+    "Grounded. Present. Vulnerable but steady. Every movement feels natural, never performed."
 )
 
 
@@ -504,10 +530,7 @@ def download_video(url: str, output_path: str):
 # -- Step 5b -- Crop to proper 9:16 portrait ----------------------------------
 
 def get_video_dimensions(path: str) -> tuple:
-    """
-    Use ffprobe to get actual video width and height.
-    Returns (width, height) as integers.
-    """
+    """Use ffprobe to get actual video width and height."""
     cmd = [
         "ffprobe", "-v", "error",
         "-select_streams", "v:0",
@@ -524,31 +547,20 @@ def crop_to_portrait(raw_path: str, final_path: str):
     """
     HeyGen renders the avatar in a square canvas placed in the center of
     the portrait frame, leaving dark bars above and below.
-
-    This function:
-    1. Reads the actual output dimensions using ffprobe
-    2. Detects the square avatar region (full width, centered)
-    3. Crops the square out and scales to 1080x1920 portrait
-    4. Copies audio unchanged
-
-    The result fills the full portrait frame for TikTok and Facebook Reels.
+    Auto-detects dimensions, crops to square, scales to 1080x1920.
     """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
 
     if w == h:
-        # Already square -- scale directly to portrait
-        print(f"  Square input detected -- scaling to 1080x1920")
+        print(f"  Square input -- scaling to 1080x1920")
         filter_str = "scale=1080:1920:flags=lanczos"
     elif h > w:
-        # Portrait with square content in center -- crop bars then scale
-        # Avatar square = w x w, centered at y = (h - w) / 2
         bar = (h - w) // 2
-        print(f"  Portrait input {w}x{h} -- cropping {bar}px bars, scaling to 1080x1920")
+        print(f"  Portrait {w}x{h} -- cropping {bar}px bars, scaling to 1080x1920")
         filter_str = f"crop={w}:{w}:0:{bar},scale=1080:1920:flags=lanczos"
     else:
-        # Landscape -- scale to fill portrait with center crop
-        print(f"  Landscape input {w}x{h} -- cropping to portrait")
+        print(f"  Landscape {w}x{h} -- cropping to portrait")
         filter_str = "scale=-2:1920,crop=1080:1920"
 
     cmd = [
@@ -668,10 +680,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.3")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 9:16 | Avatar IV + motion | auto-crop to portrait")
+    print(f"  Format: 1080x1920 9:16 | Avatar IV + mental health motion | auto-crop")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
