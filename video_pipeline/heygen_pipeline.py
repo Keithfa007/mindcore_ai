@@ -1,21 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.5
+MindCore AI Video Pipeline -- HeyGen Edition v2.6
 ===================================================
 
-CROP FIX (v2.5):
-  Previous version stretched the square avatar to portrait (distorted).
-  New approach: scale to fill height maintaining aspect ratio, then crop center.
-  Result: no distortion, avatar fills full portrait frame naturally.
+MOTION PROMPT (v2.6):
+  Hands toned down -- mostly at rest, only move for genuinely key moments.
+  Stillness is the default. Gestures are rare and intentional.
 
-  Square input (e.g. 1080x1080):
-    scale=1920:1920 (fills height, wider than 1080)
-    crop=1080:1920:420:0 (crop center 1080 wide)
-    → clean 1080x1920 portrait, no stretch
-
-  Portrait input with square content (e.g. 1080x1920 with 1080x1080 content):
-    First crop the black bars to get the square
-    Then apply the same scale+crop as above
+CROP FIX (v2.5 -- unchanged):
+  Scale to fill height maintaining AR, then crop center. No distortion.
 """
 
 import json
@@ -72,36 +65,35 @@ SEO_KEYWORDS = [
     "sobriety mental wellness app",
 ]
 
-# Mental health speech body language motion prompt (v2.4)
+# Motion prompt v2.6 -- restrained natural hands, stillness as default
 MOTION_PROMPT = (
     "Deliver this as a grounded, emotionally present mental health speaker -- not a performer. "
 
-    "POSTURE: Stand with feet hip-width apart, upright but relaxed. Keep shoulders down and loose, "
-    "never rigid or tense. Open chest, torso facing forward -- no crossed arms or clasped hands. "
-    "Project calm stability throughout. "
+    "POSTURE: Stand with feet hip-width apart, upright but relaxed. Shoulders down and loose, "
+    "never rigid. Open chest, torso forward. Project calm stability throughout. "
 
-    "HANDS: Use slow, deliberate gestures only -- no fast or jerky movements. "
-    "Open palms facing upward or outward signal honesty and openness. "
-    "Place a hand gently on the chest or heart when speaking from personal experience -- "
-    "this deepens emotional connection. Avoid touching the neck, rubbing arms, or fidgeting "
-    "with clothing as these signal anxiety. Keep hands relaxed and purposeful. "
+    "HANDS: Hands are mostly still and relaxed at rest -- this is the default state. "
+    "Do NOT gesture continuously. Reserve hand movement for only the most important moments: "
+    "a single open palm when making a key honest point, or one hand briefly touching the chest "
+    "when speaking from deep personal experience. Between these rare gestures, hands return "
+    "immediately to a relaxed resting position. Never touch the neck, rub the arms, or fidget "
+    "with clothing. Less is more -- restraint feels trustworthy. "
 
-    "HEAD AND FACE: Nod slowly and gently when making empathetic or affirming statements. "
-    "Tilt the head very slightly (around 10-15 degrees) when conveying empathy or active listening. "
-    "Smile warmly and genuinely when offering hope -- never a fixed presenter smile. "
-    "Maintain a soft, compassionate facial expression throughout -- earnest, not intense. "
+    "HEAD AND FACE: Nod slowly and gently when making empathetic statements. "
+    "A slight head tilt (10-15 degrees) when showing empathy or listening. "
+    "Smile warmly and genuinely when offering hope -- not a fixed presenter smile. "
+    "Soft, compassionate expression throughout -- earnest, not intense. "
 
-    "EYE CONTACT: Maintain soft, warm, intermittent eye contact with the camera. "
-    "The gaze should feel compassionate and safe, not staring or piercing. "
-    "This is the eye contact of someone who genuinely cares, not someone performing confidence. "
+    "EYE CONTACT: Soft, warm, intermittent eye contact with the camera. "
+    "Compassionate and safe, not staring. The gaze of someone who genuinely cares. "
 
-    "MOVEMENT AND STILLNESS: Lean forward slightly toward the camera during sensitive or emotional points -- "
-    "this creates closeness and sincerity. When delivering a profound or difficult statement, "
-    "go completely still -- stop all hand gestures and movement -- and let the words land. "
-    "Silence and stillness are powerful. Do not pace or shift weight nervously. "
+    "STILLNESS: When delivering a profound or difficult statement, go completely still -- "
+    "stop all movement including hands -- and let the words land. Stillness is powerful. "
+    "Lean forward slightly toward camera only during the most sensitive emotional points. "
+    "Do not pace or shift weight nervously. "
 
-    "OVERALL TONE: A trusted older brother or mentor having an honest, heartfelt conversation. "
-    "Grounded. Present. Vulnerable but steady. Every movement feels natural, never performed."
+    "OVERALL: A trusted older brother having a quiet, honest conversation. "
+    "Grounded. Present. Still. Every movement is earned, never performed."
 )
 
 
@@ -468,7 +460,8 @@ def poll_heygen_video(video_id: str) -> str:
             timeout=30,
         )
         resp.raise_for_status()
-        data   = resp.json().get("data", {})
+        data   = resp.json().get("data", {})\
+
         status = data.get("status", "unknown")
 
         if status == "completed":
@@ -519,45 +512,27 @@ def get_video_dimensions(path: str) -> tuple:
 
 def crop_to_portrait(raw_path: str, final_path: str):
     """
-    Convert HeyGen's square avatar output to proper 9:16 portrait.
-
-    v2.5 fix: NO MORE STRETCHING.
-    Strategy: scale to fill height (maintaining aspect ratio), then crop
-    center 1080 wide. This preserves proportions perfectly.
-    Avatar is centered so cropping sides captures the full face/body.
-
-    Square input (1080x1080):
-      scale=1920:1920 → crop=1080:1920:420:0 → 1080x1920 ✓
-
-    Portrait with square content (1080x1920, content in center 1080x1080):
-      crop bars → get 1080x1080 square → same as above → 1080x1920 ✓
+    Convert HeyGen output to proper 9:16 portrait.
+    Scale to fill height (no stretch), then crop center 1080 wide.
     """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
 
-    # Scale the square content to fill height, then crop center width
-    # scale_dim = max dimension we need to fill 1920 height for a square
     scale_dim = 1920
+    side_crop = (scale_dim - 1080) // 2
 
     if w == h:
-        # Already square -- scale to fill 1920 height, crop center 1080 wide
-        side_crop = (scale_dim - 1080) // 2
-        print(f"  Square {w}x{h} -- scale to {scale_dim}x{scale_dim}, crop center 1080 wide")
+        print(f"  Square {w}x{h} -- scale to {scale_dim}x{scale_dim}, crop center 1080")
         filter_str = f"scale={scale_dim}:{scale_dim}:flags=lanczos,crop=1080:1920:{side_crop}:0"
-
     elif h > w:
-        # Portrait frame with square content in center -- crop bars first
         bar = (h - w) // 2
-        side_crop = (scale_dim - 1080) // 2
         print(f"  Portrait {w}x{h} -- crop {bar}px bars, scale to {scale_dim}x{scale_dim}, crop center 1080")
         filter_str = (
-            f"crop={w}:{w}:0:{bar},"           # remove letterbox bars → square
-            f"scale={scale_dim}:{scale_dim}:flags=lanczos,"  # scale to fill height
-            f"crop=1080:1920:{side_crop}:0"     # crop center 1080 wide
+            f"crop={w}:{w}:0:{bar},"
+            f"scale={scale_dim}:{scale_dim}:flags=lanczos,"
+            f"crop=1080:1920:{side_crop}:0"
         )
-
     else:
-        # Landscape -- scale to fill portrait
         print(f"  Landscape {w}x{h} -- scale to fill portrait")
         filter_str = f"scale=-2:1920:flags=lanczos,crop=1080:1920"
 
@@ -683,10 +658,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.5")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 9:16 | Avatar IV + motion | scale-fill crop (no stretch)")
+    print(f"  Format: 1080x1920 9:16 | Avatar IV + restrained motion | scale-fill crop")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -718,7 +693,7 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    print(f"\n  Submitting to HeyGen (Avatar IV + motion | look: {avatar_id[:8]}...)...")
+    print(f"\n  Submitting to HeyGen (Avatar IV + restrained motion | look: {avatar_id[:8]}...)...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
