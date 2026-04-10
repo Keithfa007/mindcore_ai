@@ -1,6 +1,15 @@
 {
-  "avatar_id": "19f3a4905bd34c3d93ba1a53a2d31833",
   "avatar_name": "KF",
+  "avatar_look_ids": [
+    "e42f1ac804fe43a9bc9a0ddf2dd3994d",
+    "cfc1f8a20b43417ebaec9d7fcc611a49",
+    "ac020302d2d64b55b3c4ff3cf65fefd0",
+    "a016f02667134a26b44ed48e22b53401",
+    "9d47c9ef8a094af7ba32885dc6c4f0cb",
+    "96dd3bd781c54bd382e8c17fab856d3c",
+    "85d6e4813b6a4d1e8bf523623b9ea525",
+    "143128583b3c411a953a9dafc4210b25"
+  ],
   "voice_id": "6be73833ef9a4eb0aeee399b8fe9d62b",
   "background_color": "#07071a"
 }

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.3
+MindCore AI Video Pipeline -- HeyGen Edition v1.4
 ===================================================
 Avatar-based pipeline using KF (HeyGen AI avatar).
 
 FLOW:
-  1. Fetch trending topic (SerpAPI -> Claude fallback)
-  2. Generate script (Claude) -- content or ad mode
-  3. Validate word counts (max only)
-  4. Submit to HeyGen -- KF delivers the script, dark brand background
-  5. Poll until complete
-  6. Download MP4
-  7. Generate upload guide (Claude)
+  1. Randomly pick one of 8 avatar looks (keeps content fresh)
+  2. Fetch trending topic (SerpAPI -> Claude fallback)
+  3. Generate script (Claude) -- content or ad mode
+  4. Validate word counts (max only)
+  5. Submit to HeyGen -- KF delivers the script, dark brand background
+  6. Poll until complete
+  7. Download MP4
+  8. Generate upload guide (Claude)
 
 No FFmpeg. No TTS. No audio sync issues.
 HeyGen handles voice, lip sync, background, and rendering.
@@ -25,10 +26,11 @@ WORD LIMITS (max only -- short is always fine):
   CONTENT: hook=12 | problem=28 | story=38 | cta=22  (~100 words = ~45s)
   AD:      hook=8  | problem=12 | story=14 | cta=12  (~46 words  = ~21s)
 
-SCRIPT STYLE (v1.3):
+SCRIPT STYLE (v1.4):
   - Written for the ear, not the eye -- natural spoken word rhythm
   - Sentences flow and connect, never choppy or fragmented
   - NEVER say "try it for free" -- always "start your trial" or "try it"
+  - Avatar look rotates randomly across 8 looks each run
 """
 
 import json
@@ -99,6 +101,19 @@ def get_word_limits(mode: str) -> dict:
 def load_config() -> dict:
     with open(PIPELINE_DIR / "heygen_config.json") as f:
         return json.load(f)
+
+
+def pick_avatar_look(cfg: dict) -> str:
+    """
+    Randomly pick one of the avatar look IDs each run.
+    Keeps videos looking fresh -- same person, different outfit/background.
+    """
+    looks = cfg.get("avatar_look_ids", [])
+    if not looks:
+        raise RuntimeError("No avatar_look_ids found in heygen_config.json")
+    chosen = random.choice(looks)
+    print(f"  Avatar look: {chosen} (1 of {len(looks)} looks)")
+    return chosen
 
 
 def load_app_facts() -> dict:
@@ -383,7 +398,6 @@ def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int =
 def build_full_script(script: dict) -> str:
     """
     Combine all 4 scenes into one continuous voiceover.
-    KF speaks it as a single unbroken delivery.
     Natural pauses come from punctuation and double spacing between scenes.
     """
     parts = []
@@ -392,25 +406,19 @@ def build_full_script(script: dict) -> str:
         if vo and vo[-1] not in ".!?":
             vo += "."
         parts.append(vo)
-    return "  ".join(parts)  # double space = natural breath between scenes
+    return "  ".join(parts)
 
 
 # -- Step 3 -- Submit to HeyGen -----------------------------------------------
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, background_color: str) -> str:
-    """
-    Submit video to HeyGen with KF avatar, chosen voice, and brand dark background.
-    Returns video_id for polling.
-    """
+    """Submit video to HeyGen. Returns video_id for polling."""
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json",
     }
 
-    voice_config = {
-        "type": "text",
-        "input_text": script_text,
-    }
+    voice_config = {"type": "text", "input_text": script_text}
     if voice_id:
         voice_config["voice_id"] = voice_id
 
@@ -553,7 +561,7 @@ Copy-paste ready."""
     raise RuntimeError("Could not generate upload guide")
 
 
-def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int):
+def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int, avatar_id: str):
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     topic        = script.get("topic", "N/A")
     seo_kw       = script.get("seo_keyword", "N/A")
@@ -565,11 +573,12 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int)
   MINDCORE AI -- VIDEO UPLOAD GUIDE
   Run #{run_number} | {generated_at} | Avatar: KF
 ================================================================================
-  Video type : {video_type}
-  Topic      : {topic}
-  SEO keyword: {seo_kw}
-  Est. length: ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format     : 9:16 vertical | HeyGen avatar | TikTok + Facebook Reels ready
+  Video type  : {video_type}
+  Topic       : {topic}
+  SEO keyword : {seo_kw}
+  Avatar look : {avatar_id}
+  Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
+  Format      : 9:16 vertical | HeyGen avatar | TikTok + Facebook Reels ready
 ================================================================================
 
 FULL SCRIPT (for reference)
@@ -597,13 +606,13 @@ def main():
     mode             = determine_mode()
     word_limits      = get_word_limits(mode)
     cfg              = load_config()
-    avatar_id        = cfg["avatar_id"]
+    avatar_id        = pick_avatar_look(cfg)
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.3")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar: {cfg['avatar_name']} | Voice: {voice_id[:8]}... | Background: {background_color}")
+    print(f"  Avatar: {cfg['avatar_name']} | Look: {avatar_id[:8]}... | Background: {background_color}")
     print(f"  Format: 9:16 vertical -- TikTok + Facebook Reels")
     if mode == "content":
         print(f"  Target: ~45s | Word limits: hook=12 | problem=28 | story=38 | cta=22")
@@ -644,10 +653,10 @@ def main():
     print(f"\n  Full script:\n  {full_script}")
 
     # 3. Submit to HeyGen
-    print(f"\n  Submitting to HeyGen (avatar: {cfg['avatar_name']} | bg: {background_color})...")
+    print(f"\n  Submitting to HeyGen (look: {avatar_id[:8]}... | bg: {background_color})...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
-    # 4. Poll until rendered
+    # 4. Poll
     print("\n  Waiting for HeyGen to render...")
     video_url = poll_heygen_video(video_id)
 
@@ -659,12 +668,12 @@ def main():
     # 6. Upload guide
     print("\n  Generating upload guide...")
     guide_text = generate_upload_guide(script, mode, client)
-    save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER)
+    save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, avatar_id)
 
     print(f"\n  DONE")
     print(f"  Video:  {final}")
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
-    print(f"  Mode:   {mode.upper()} | Est. length: ~{est_duration}s | Avatar: {cfg['avatar_name']}")
+    print(f"  Mode:   {mode.upper()} | Est. length: ~{est_duration}s | Look: {avatar_id[:8]}...")
     print("\n  Pipeline complete!")
 
 
