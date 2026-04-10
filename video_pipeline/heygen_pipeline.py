@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.1
+MindCore AI Video Pipeline -- HeyGen Edition v1.2
 ===================================================
 Avatar-based pipeline using KF (HeyGen AI avatar).
 
@@ -17,12 +17,13 @@ No FFmpeg. No TTS. No audio sync issues.
 HeyGen handles voice, lip sync, background, and rendering.
 
 MODES:
-  content  (9 out of 10 runs) -- emotional, audience-first, value content
-  ad       (every 10th run)   -- punchy, direct response, accurate app facts
+  content  (9 out of 10 runs) -- emotional, audience-first, ~45 seconds
+  ad       (every 10th run)   -- punchy, direct response, ~20 seconds
 
 WORD LIMITS (max only -- short is always fine):
-  CONTENT: hook=12 | problem=18 | story=20 | cta=16
-  AD:      hook=10 | problem=14 | story=16 | cta=14
+  At ~130 words/min natural speaking pace:
+  CONTENT: hook=12 | problem=28 | story=38 | cta=22  (~100 words = ~45s)
+  AD:      hook=8  | problem=12 | story=14 | cta=12  (~46 words  = ~21s)
 """
 
 import json
@@ -59,18 +60,21 @@ CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
 # Max word counts per scene per mode (upper bound only -- short is always valid)
+# At ~130 words/min natural speaking pace:
+# CONTENT: ~100 words total = ~45 seconds
+# AD:      ~46 words total  = ~21 seconds
 WORD_LIMITS_CONTENT = {
-    "hook":         12,
-    "problem":      18,
-    "story":        20,
-    "solution_cta": 16,
+    "hook":         12,   # ~5s  -- punchy opener
+    "problem":      28,   # ~13s -- name the pain with room to breathe
+    "story":        38,   # ~17s -- emotional depth, real insight
+    "solution_cta": 22,   # ~10s -- warm hopeful close
 }
 
 WORD_LIMITS_AD = {
-    "hook":         10,
-    "problem":      14,
-    "story":        16,
-    "solution_cta": 14,
+    "hook":         8,    # ~4s  -- ultra short scroll-stopper
+    "problem":      12,   # ~5s  -- quick pain point
+    "story":        14,   # ~6s  -- brief turning point
+    "solution_cta": 12,   # ~5s  -- direct CTA with trial info
 }
 
 SEO_KEYWORDS = [
@@ -240,16 +244,21 @@ AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation
 They feel alone. They don't ask for help. This is value-first content -- NOT an ad.
 Speak directly, emotionally, like a trusted older brother who has been through it.
 
-WORD COUNT GUIDANCE (hard MAXIMUM enforced -- shorter is always fine):
-- hook:         up to 12 words -- Bold statement or question. Stops the scroll immediately.
-- problem:      up to 18 words -- Name the pain. Make them feel completely seen.
-- story:        up to 20 words -- Real insight, perspective shift, truth they need to hear.
-- solution_cta: up to 16 words -- Warm, hopeful close. May naturally mention MindCore AI.
+TARGET LENGTH: ~45 seconds total. Write enough to fill that time naturally.
 
-DO NOT exceed these maximums -- scripts are auto-rejected if over. Shorter is always OK.
+WORD COUNT (hard MAXIMUM enforced -- shorter is fine but aim to use the space):
+- hook:         up to 12 words -- Bold statement or question. Stops the scroll cold.
+- problem:      up to 28 words -- Name the pain deeply. Take your time. Make them feel
+                                  completely seen. This is where connection begins.
+- story:        up to 38 words -- Real insight, perspective shift, truth they haven't heard.
+                                  This is where emotional connection happens. Don't rush it.
+                                  Use specific detail, not vague statements.
+- solution_cta: up to 22 words -- Warm, hopeful close. Let them breathe. May mention MindCore AI.
+
+DO NOT exceed these maximums -- scripts are auto-rejected if over.
 
 SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
-The hook must make someone stop mid-scroll. No generic openers.
+The hook must make someone stop mid-scroll. No generic openers. No "hey guys".
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -262,7 +271,7 @@ Return ONLY valid JSON, no markdown fences:
   "solution_cta": {{"voiceover": "..."}}
 }}"""
 
-    return _call_claude_raw(prompt, client, max_tokens=1000)
+    return _call_claude_raw(prompt, client, max_tokens=1200)
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
@@ -277,6 +286,8 @@ Write a 4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
 TONE: Raw, honest, brotherly. Not salesy. Not clinical.
 
+TARGET LENGTH: ~20 seconds total. Short and punchy -- every word earns its place.
+
 VERIFIED APP FACTS (use ONLY these):
 - Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
 - Premium plan: {premium['price']}. Features: {', '.join(premium['features'])}
@@ -288,11 +299,11 @@ CRITICAL RULES:
 
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
-WORD COUNT GUIDANCE (hard MAXIMUM enforced -- shorter is always fine):
-- hook:         up to 10 words -- ultra-short scroll-stopper
-- problem:      up to 14 words -- quick pain point
-- story:        up to 16 words -- brief turning point
-- solution_cta: up to 14 words -- direct CTA with accurate trial info
+WORD COUNT (hard MAXIMUM enforced -- shorter is fine):
+- hook:         up to 8 words  -- ultra-short scroll-stopper, no filler
+- problem:      up to 12 words -- one sharp pain point
+- story:        up to 14 words -- one turning point, one truth
+- solution_cta: up to 12 words -- direct CTA with accurate trial info
 
 DO NOT exceed these maximums -- scripts are auto-rejected if over.
 
@@ -307,7 +318,7 @@ Return ONLY valid JSON, no markdown fences:
   "solution_cta": {{"voiceover": "..."}}
 }}"""
 
-    return _call_claude_raw(prompt, client, max_tokens=1000)
+    return _call_claude_raw(prompt, client, max_tokens=800)
 
 
 def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int = 1000) -> dict:
@@ -520,6 +531,8 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int)
     topic        = script.get("topic", "N/A")
     seo_kw       = script.get("seo_keyword", "N/A")
     video_type   = script.get("video_type", mode).upper()
+    total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
+    est_duration = round(total_words / 130 * 60)
 
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
@@ -528,6 +541,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int)
   Video type : {video_type}
   Topic      : {topic}
   SEO keyword: {seo_kw}
+  Est. length: ~{est_duration}s ({total_words} words @ ~130 wpm)
   Format     : 9:16 vertical | HeyGen avatar | TikTok + Facebook Reels ready
 ================================================================================
 
@@ -560,14 +574,14 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.1")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg['avatar_name']} | Voice: {voice_id[:8]}... | Background: {background_color}")
     print(f"  Format: 9:16 vertical -- TikTok + Facebook Reels")
     if mode == "content":
-        print(f"  Word limits (CONTENT max): hook=12 | problem=18 | story=20 | cta=16")
+        print(f"  Target: ~45s | Word limits: hook=12 | problem=28 | story=38 | cta=22")
     else:
-        print(f"  Word limits (AD max): hook=10 | problem=14 | story=16 | cta=14")
+        print(f"  Target: ~20s | Word limits: hook=8 | problem=12 | story=14 | cta=12")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -586,19 +600,21 @@ def main():
         )
 
     (OUTPUT_DIR / "script.json").write_text(json.dumps(script, indent=2))
+    total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
+    est_duration = round(total_words / 130 * 60)
     print(f"\n  Video type: {script.get('video_type', mode)}")
     print(f"  Topic:      {script.get('topic', 'N/A')}")
     print(f"  SEO kw:     {script.get('seo_keyword', 'N/A')}")
+    print(f"  Est. length: ~{est_duration}s ({total_words} total words)")
     print()
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
         hi = word_limits[scene]
         print(f"  [{scene:15s}]  {wc:2d} words (max {hi})  |  {script[scene]['voiceover']}")
 
-    # 2. Build full script text
+    # 2. Build full script
     full_script = build_full_script(script)
-    print(f"\n  Full script ({len(full_script.split())} words):")
-    print(f"  {full_script}")
+    print(f"\n  Full script:\n  {full_script}")
 
     # 3. Submit to HeyGen
     print(f"\n  Submitting to HeyGen (avatar: {cfg['avatar_name']} | bg: {background_color})...")
@@ -621,7 +637,7 @@ def main():
     print(f"\n  DONE")
     print(f"  Video:  {final}")
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
-    print(f"  Mode:   {mode.upper()} | Avatar: {cfg['avatar_name']}")
+    print(f"  Mode:   {mode.upper()} | Est. length: ~{est_duration}s | Avatar: {cfg['avatar_name']}")
     print("\n  Pipeline complete!")
 
 
