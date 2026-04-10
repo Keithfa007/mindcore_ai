@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.6
+MindCore AI Video Pipeline -- HeyGen Edition v1.7
 ===================================================
 Avatar-based pipeline using KF (HeyGen AI avatar).
 
@@ -14,13 +14,17 @@ FLOW:
   7. Download MP4
   8. Generate upload guide (Claude)
 
-SCRIPT TARGETS (v1.6):
+SCRIPT TARGETS (v1.7):
   Content: ~60-70 seconds | ~130-150 words total
     hook=10-15 | problem=30-40 | story=50-65 | cta=25-35
     Written as strong guidance -- natural flow, not rigid limits.
 
   Ad: ~20 seconds | ~46 words total
     hook=8 | problem=12 | story=14 | cta=12 (enforced hard limits)
+
+VIDEO FORMAT (v1.7):
+  1080x1920 portrait (9:16) -- proper TikTok/Reels resolution
+  aspect_ratio field removed -- was conflicting with dimension spec
 
 STYLE:
   - Written for the ear, not the eye
@@ -57,7 +61,7 @@ PIPELINE_DIR = Path("video_pipeline")
 SCENE_ORDER  = ["hook", "problem", "story", "solution_cta"]
 
 POLL_INTERVAL = 15
-VIDEO_TIMEOUT = 1200  # 20 minutes -- HeyGen can be slow for longer videos
+VIDEO_TIMEOUT = 1200  # 20 minutes
 
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
@@ -392,6 +396,11 @@ def build_full_script(script: dict) -> str:
 # -- Step 3 -- Submit to HeyGen -----------------------------------------------
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, background_color: str) -> str:
+    """
+    Submit video to HeyGen.
+    Dimension: 1080x1920 (proper 9:16 TikTok/Reels portrait).
+    aspect_ratio field omitted -- was conflicting with dimension spec.
+    """
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json",
@@ -416,8 +425,7 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
                 },
             }
         ],
-        "dimension": {"width": 720, "height": 1280},
-        "aspect_ratio": "9:16",
+        "dimension": {"width": 1080, "height": 1920},  # 9:16 TikTok/Reels portrait
         "test": False,
     }
 
@@ -557,7 +565,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 9:16 vertical | HeyGen avatar | TikTok + Facebook Reels ready
+  Format      : 1080x1920 9:16 portrait | HeyGen avatar | TikTok + Facebook Reels ready
 ================================================================================
 
 FULL SCRIPT (for reference)
@@ -588,12 +596,12 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.6")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg['avatar_name']} | Look: {avatar_id[:8]}... | Background: {background_color}")
-    print(f"  Format: 9:16 vertical -- TikTok + Facebook Reels")
+    print(f"  Format: 1080x1920 portrait (9:16) -- TikTok + Facebook Reels")
     if mode == "content":
-        print(f"  Target: ~60-70s (~130-150 words) | Targets: hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
+        print(f"  Target: ~60-70s (~130-150 words) | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
         print(f"  Target: ~20s | Limits: hook=8 | problem=12 | story=14 | cta=12")
     print("=" * 60)
@@ -626,7 +634,7 @@ def main():
     print(f"\n  Full script:\n  {full_script}")
 
     # 3. Submit to HeyGen
-    print(f"\n  Submitting to HeyGen (look: {avatar_id[:8]}... | bg: {background_color})...")
+    print(f"\n  Submitting to HeyGen (1080x1920 | look: {avatar_id[:8]}... | bg: {background_color})...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
     # 4. Poll (20 min timeout)
@@ -646,7 +654,7 @@ def main():
     print(f"\n  DONE")
     print(f"  Video:  {final}")
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
-    print(f"  Mode:   {mode.upper()} | ~{est_duration}s | Look: {avatar_id[:8]}...")
+    print(f"  Mode:   {mode.upper()} | ~{est_duration}s | 1080x1920 | Look: {avatar_id[:8]}...")
     print("\n  Pipeline complete!")
 
 
