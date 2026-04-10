@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.9
+MindCore AI Video Pipeline -- HeyGen Edition v2.0
 ===================================================
 Avatar-based pipeline using confirmed video avatars (full body movement).
 
@@ -21,10 +21,11 @@ SCRIPT TARGETS:
   Ad: ~20 seconds | ~46 words total
     hook=8 | problem=12 | story=14 | cta=12 (enforced)
 
-VIDEO FORMAT (v1.9):
+VIDEO FORMAT (v2.0):
   1080x1920 portrait (9:16)
-  use_avatar_iv_model REMOVED -- was overriding video avatar body movement
-  avatar_style omitted -- let HeyGen render naturally
+  use_avatar_iv_model: True -- required for Avatar IV motion engine
+  custom_motion_prompt -- explicitly activates full body movement and gestures
+  enhance_custom_motion_prompt: True -- AI refines the motion prompt
 
 STYLE:
   - Written for the ear, not the eye
@@ -84,6 +85,14 @@ SEO_KEYWORDS = [
     "recovery support anxiety depression",
     "sobriety mental wellness app",
 ]
+
+# Motion prompt -- explicitly activates full body movement for Avatar IV
+MOTION_PROMPT = (
+    "Speak naturally with full body engagement. Use relaxed hand gestures to emphasise key points. "
+    "Occasional nods when making important statements. Subtle shoulder and weight shifts while speaking. "
+    "Lean forward slightly for emotional moments. Natural, warm eye contact with the camera throughout. "
+    "Relaxed and grounded -- like a real person having an honest conversation, not a presenter."
+)
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -394,10 +403,11 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
     """
     Submit to HeyGen.
 
-    v1.9 changes:
-    - use_avatar_iv_model removed -- was overriding video avatar body movement
-      (Avatar IV is designed for photo/talking-photo avatars, not video avatars)
-    - avatar_style omitted -- let HeyGen render naturally
+    v2.0 -- full body movement fix:
+    - use_avatar_iv_model: True -- required to activate Avatar IV motion engine
+    - custom_motion_prompt -- explicitly requests natural hand gestures, body shifts,
+      nods, and full body engagement (without this, Avatar IV defaults to head-only)
+    - enhance_custom_motion_prompt: True -- HeyGen AI refines the motion prompt
     - 1080x1920 portrait (9:16)
     """
     headers = {
@@ -415,7 +425,6 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
                 "character": {
                     "type": "avatar",
                     "avatar_id": avatar_id,
-                    # avatar_style omitted -- let HeyGen use natural video avatar rendering
                 },
                 "voice": voice_config,
                 "background": {
@@ -425,7 +434,9 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
             }
         ],
         "dimension": {"width": 1080, "height": 1920},
-        # use_avatar_iv_model intentionally omitted -- for photo avatars only
+        "use_avatar_iv_model": True,
+        "custom_motion_prompt": MOTION_PROMPT,
+        "enhance_custom_motion_prompt": True,
         "test": False,
     }
 
@@ -563,7 +574,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 portrait | TikTok + Facebook Reels ready
+  Format      : 1080x1920 9:16 portrait | Avatar IV + motion prompt | TikTok + Facebook
 ================================================================================
 
 FULL SCRIPT
@@ -594,10 +605,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.9")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.0")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 portrait (9:16)")
+    print(f"  Format: 1080x1920 portrait (9:16) | Avatar IV + motion prompt")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -629,7 +640,7 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    print(f"\n  Submitting to HeyGen (look: {avatar_id[:8]}... | bg: {background_color})...")
+    print(f"\n  Submitting to HeyGen (Avatar IV + motion | look: {avatar_id[:8]}...)...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
