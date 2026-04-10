@@ -1,36 +1,35 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v1.8
+MindCore AI Video Pipeline -- HeyGen Edition v1.9
 ===================================================
-Avatar-based pipeline using KF (HeyGen AI avatar).
+Avatar-based pipeline using confirmed video avatars (full body movement).
 
 FLOW:
-  1. Randomly pick one of 8 avatar looks (keeps content fresh)
+  1. Randomly pick one of 5 video avatar looks
   2. Fetch trending topic (SerpAPI -> Claude fallback)
   3. Generate script (Claude) -- content or ad mode
   4. Validate word counts (ads only)
-  5. Submit to HeyGen -- KF delivers the script, dark brand background
+  5. Submit to HeyGen
   6. Poll until complete (20 min timeout)
   7. Download MP4
   8. Generate upload guide (Claude)
 
-SCRIPT TARGETS (v1.8):
+SCRIPT TARGETS:
   Content: ~60-70 seconds | ~130-150 words total
     hook=10-15 | problem=30-40 | story=50-65 | cta=25-35
 
   Ad: ~20 seconds | ~46 words total
     hook=8 | problem=12 | story=14 | cta=12 (enforced)
 
-VIDEO FORMAT (v1.8):
-  1080x1920 portrait (9:16) -- proper TikTok/Reels resolution
-  avatar_style removed -- was restricting full body movement
-  use_avatar_iv_model: true -- HeyGen's best motion engine
+VIDEO FORMAT (v1.9):
+  1080x1920 portrait (9:16)
+  use_avatar_iv_model REMOVED -- was overriding video avatar body movement
+  avatar_style omitted -- let HeyGen render naturally
 
 STYLE:
   - Written for the ear, not the eye
   - Natural spoken rhythm, sentences flow and connect
   - NEVER say "try it for free"
-  - Avatar look rotates across 8 looks each run
 """
 
 import json
@@ -66,7 +65,6 @@ VIDEO_TIMEOUT = 1200  # 20 minutes
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
-# Ad word limits (hard) -- content uses guidance only
 WORD_LIMITS_AD = {
     "hook":         8,
     "problem":      12,
@@ -74,7 +72,6 @@ WORD_LIMITS_AD = {
     "solution_cta": 12,
 }
 
-# Content word targets (guidance) -- aim for ~130-150 total words = ~60-70s
 WORD_TARGETS_CONTENT = {
     "hook":         (10, 15),
     "problem":      (30, 40),
@@ -101,7 +98,6 @@ def load_config() -> dict:
 
 
 def pick_avatar_look(cfg: dict) -> str:
-    """Randomly pick one of the avatar look IDs each run."""
     looks = cfg.get("avatar_look_ids", [])
     if not looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
@@ -123,7 +119,7 @@ def load_niche_keywords() -> dict:
         return json.load(f)
 
 
-# -- Ad validation (hard limits) ----------------------------------------------
+# -- Ad validation ------------------------------------------------------------
 
 def validate_ad_word_counts(script: dict) -> tuple:
     errors = []
@@ -276,8 +272,7 @@ TARGET: ~60-70 seconds total. Aim for these word counts per scene:
                                               Build to a moment of truth with specific detail.
 - solution_cta: {lo_cta}-{hi_cta} words  -- Warm hopeful close. May mention MindCore AI.
 
-Total target: ~130-150 words. Stick close to this -- TikTok videos should be 60-75 seconds,
-not 3-4 minutes. If you write significantly more, you've gone too far.
+Total target: ~130-150 words. Stick close to this -- TikTok videos should be 60-75 seconds.
 
 SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
 Hook must stop the scroll. No generic openers. No "hey guys". No "in today's video".
@@ -297,7 +292,7 @@ Return ONLY valid JSON, no markdown fences:
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    print("  Generating APP AD script (using verified app_facts.json)...")
+    print("  Generating APP AD script...")
     trial   = app_facts["trial"]
     premium = app_facts["plans"]["premium"]
     notes   = "\n".join(f"- {n}" for n in app_facts["important_notes"])
@@ -331,7 +326,7 @@ CRITICAL RULES:
 
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
-STRICT WORD COUNT (enforced -- ad must stay ~20 seconds):
+STRICT WORD COUNT (enforced):
 - hook:         up to 8 words
 - problem:      up to 12 words
 - story:        up to 14 words
@@ -381,7 +376,7 @@ def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int =
     raise RuntimeError("Unexpected exit from retry loop")
 
 
-# -- Step 2 -- Build full script text -----------------------------------------
+# -- Step 2 -- Build full script ----------------------------------------------
 
 def build_full_script(script: dict) -> str:
     parts = []
@@ -397,13 +392,13 @@ def build_full_script(script: dict) -> str:
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, background_color: str) -> str:
     """
-    Submit video to HeyGen.
+    Submit to HeyGen.
 
-    Key fixes (v1.8):
-    - avatar_style removed -- was restricting avatar to head-only rendering
-    - use_avatar_iv_model: true -- enables HeyGen's best motion engine (Avatar IV)
-      for more expressive, natural full-body movement
-    - 1080x1920 portrait (9:16) -- proper TikTok/Reels resolution
+    v1.9 changes:
+    - use_avatar_iv_model removed -- was overriding video avatar body movement
+      (Avatar IV is designed for photo/talking-photo avatars, not video avatars)
+    - avatar_style omitted -- let HeyGen render naturally
+    - 1080x1920 portrait (9:16)
     """
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
@@ -420,7 +415,7 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
                 "character": {
                     "type": "avatar",
                     "avatar_id": avatar_id,
-                    # avatar_style intentionally omitted -- let HeyGen render naturally
+                    # avatar_style omitted -- let HeyGen use natural video avatar rendering
                 },
                 "voice": voice_config,
                 "background": {
@@ -429,8 +424,8 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
                 },
             }
         ],
-        "dimension": {"width": 1080, "height": 1920},  # 9:16 TikTok/Reels portrait
-        "use_avatar_iv_model": True,                    # Avatar IV -- best motion engine
+        "dimension": {"width": 1080, "height": 1920},
+        # use_avatar_iv_model intentionally omitted -- for photo avatars only
         "test": False,
     }
 
@@ -447,7 +442,7 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
     return video_id
 
 
-# -- Step 4 -- Poll HeyGen ----------------------------------------------------
+# -- Step 4 -- Poll -----------------------------------------------------------
 
 def poll_heygen_video(video_id: str) -> str:
     headers  = {"X-Api-Key": HEYGEN_API_KEY}
@@ -461,8 +456,7 @@ def poll_heygen_video(video_id: str) -> str:
             timeout=30,
         )
         resp.raise_for_status()
-        data   = resp.json().get("data", {})\
-
+        data   = resp.json().get("data", {})
         status = data.get("status", "unknown")
 
         if status == "completed":
@@ -507,7 +501,7 @@ def generate_upload_guide(script: dict, mode: str, client: anthropic.Anthropic) 
     prompt = f"""You are a social media growth expert specialising in TikTok and Facebook Reels
 for the men's mental health and recovery niche.
 
-Based on this video script, generate a complete upload guide for TikTok AND Facebook.
+Generate a complete upload guide for TikTok AND Facebook.
 
 VIDEO TYPE: {video_type.upper()}
 TOPIC: {topic}
@@ -518,9 +512,9 @@ FULL VOICEOVER:
 TIKTOK:
 - Title: max 100 characters, front-load the keyword, scroll-stopper
 - Description: max 150 characters -- hook + keyword + soft CTA
-- Hashtags: 8-12 hashtags. Mix broad, mid-tier, niche. Start each with #.
+- Hashtags: 8-12. Mix broad/mid/niche. Start each with #.
 - Best posting times: top 3 (day + UTC time) for this niche
-- On-screen text overlay suggestion: 1 punchy line for the hook moment
+- On-screen text overlay suggestion: 1 punchy line
 
 FACEBOOK REELS:
 - Title: max 255 characters
@@ -529,12 +523,10 @@ FACEBOOK REELS:
 - Best posting times: top 3 (day + UTC time)
 
 ALSO INCLUDE:
-- Thumbnail suggestion: best frame + text overlay idea
-- A/B test idea: one alternative hook line to test
+- Thumbnail suggestion
+- A/B test hook idea
 
-Return plain text only -- no JSON, no markdown headers.
-Use clear labels: TIKTOK TITLE:, FACEBOOK DESCRIPTION:, etc.
-Copy-paste ready."""
+Plain text only. Clear labels. Copy-paste ready."""
 
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
@@ -564,18 +556,18 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
 
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
-  Run #{run_number} | {generated_at} | Avatar: KF
+  Run #{run_number} | {generated_at}
 ================================================================================
   Video type  : {video_type}
   Topic       : {topic}
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 portrait | Avatar IV motion | TikTok + Facebook Reels
+  Format      : 1080x1920 9:16 portrait | TikTok + Facebook Reels ready
 ================================================================================
 
-FULL SCRIPT (for reference)
-----------------------------
+FULL SCRIPT
+-----------
 """
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
@@ -602,19 +594,18 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.8")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v1.9")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar: {cfg['avatar_name']} | Look: {avatar_id[:8]}... | Background: {background_color}")
-    print(f"  Format: 1080x1920 portrait (9:16) | Avatar IV motion engine")
+    print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
+    print(f"  Format: 1080x1920 portrait (9:16)")
     if mode == "content":
-        print(f"  Target: ~60-70s (~130-150 words) | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
+        print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
-        print(f"  Target: ~20s | Limits: hook=8 | problem=12 | story=14 | cta=12")
+        print(f"  Target: ~20s | hook=8 | problem=12 | story=14 | cta=12")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # 1. Generate script
     print("\n  Generating script...")
     if mode == "ad":
         app_facts = load_app_facts()
@@ -629,30 +620,25 @@ def main():
     print(f"\n  Video type: {script.get('video_type', mode)}")
     print(f"  Topic:      {script.get('topic', 'N/A')}")
     print(f"  SEO kw:     {script.get('seo_keyword', 'N/A')}")
-    print(f"  Est. length: ~{est_duration}s ({total_words} total words)")
+    print(f"  Est. length: ~{est_duration}s ({total_words} words)")
     print()
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
         print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
 
-    # 2. Build full script
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    # 3. Submit to HeyGen
-    print(f"\n  Submitting to HeyGen (Avatar IV | 1080x1920 | look: {avatar_id[:8]}...)...")
+    print(f"\n  Submitting to HeyGen (look: {avatar_id[:8]}... | bg: {background_color})...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
 
-    # 4. Poll (20 min timeout)
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
     video_url = poll_heygen_video(video_id)
 
-    # 5. Download
     print("\n  Downloading video...")
     final = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, final)
 
-    # 6. Upload guide
     print("\n  Generating upload guide...")
     guide_text = generate_upload_guide(script, mode, client)
     save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, avatar_id)
@@ -660,7 +646,7 @@ def main():
     print(f"\n  DONE")
     print(f"  Video:  {final}")
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
-    print(f"  Mode:   {mode.upper()} | ~{est_duration}s | Avatar IV | Look: {avatar_id[:8]}...")
+    print(f"  Mode:   {mode.upper()} | ~{est_duration}s | Look: {avatar_id[:8]}...")
     print("\n  Pipeline complete!")
 
 
