@@ -1,0 +1,66 @@
+name: MindCore AI -- Introduction Video (ONE-TIME)
+
+# Manual trigger only -- run once to generate the intro video
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'yes' to confirm this is a one-time intro video run"
+        required: true
+        default: "yes"
+
+jobs:
+  generate-intro:
+    name: Generate Introduction Video
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Generate intro video
+        env:
+          HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+        run: python video_pipeline/intro_video.py
+
+      - name: Upload intro video
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: mindcore-intro-video
+          path: |
+            video_pipeline/output/mindcore_intro.mp4
+          retention-days: 90
+
+      - name: Upload raw on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mindcore-intro-debug
+          path: video_pipeline/output/
+          retention-days: 7
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## MindCore AI -- Introduction Video" >> $GITHUB_STEP_SUMMARY
+          echo "Avatar: d16b8465de694753967c8eb69591e0a4" >> $GITHUB_STEP_SUMMARY
+          echo "Format: 1080x1920 9:16 portrait" >> $GITHUB_STEP_SUMMARY
+          if [ -f "video_pipeline/output/mindcore_intro.mp4" ]; then
+            SIZE=$(du -sh video_pipeline/output/mindcore_intro.mp4 | cut -f1)
+            echo "**Video ready: $SIZE -- download mindcore_intro.mp4 from Artifacts above**" >> $GITHUB_STEP_SUMMARY
+          fi
