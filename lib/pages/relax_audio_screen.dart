@@ -1,5 +1,6 @@
 // lib/pages/relax_audio_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/page_scaffold.dart';
@@ -17,6 +18,7 @@ class RelaxTrack {
   final String? category;
   final int? durationSeconds;
   final bool isNew;
+  final DateTime? createdAt;
 
   const RelaxTrack({
     required this.id,
@@ -27,6 +29,7 @@ class RelaxTrack {
     this.category,
     this.durationSeconds,
     this.isNew = false,
+    this.createdAt,
   });
 
   bool get isRemote => audioUrl != null;
@@ -77,7 +80,7 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen>
     RelaxTrack(id: 'stress_cleanse', title: 'Stress Cleanse', subtitle: 'Flush out built-up stress and reboot your system.', assetPath: 'audio/Stress Cleanse.mp3'),
   ];
 
-  // ── Combined list: remote (new) first, then local ────────────────────────
+  // ── Combined list: remote (newest) first, then local ────────────────────
   List<RelaxTrack> get _tracks => [..._remoteTracks, ..._localTracks];
 
   @override
@@ -92,35 +95,50 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPremiumAccess());
   }
 
-  // ── Load tracks from Firestore ───────────────────────────────────────────
+  // ── Load tracks from Firestore (no composite index required) ─────────────
   Future<void> _loadRemoteTracks() async {
     try {
+      // Simple fetch — filter and sort in Dart to avoid needing a composite index
       final snapshot = await FirebaseFirestore.instance
           .collection('relax_tracks')
-          .where('active', isEqualTo: true)
-          .orderBy('created_at', descending: true)
           .get();
 
       if (!mounted) return;
 
-      final remote = snapshot.docs.map((doc) {
-        final d = doc.data();
-        return RelaxTrack(
-          id: doc.id,
-          title: d['title'] ?? '',
-          subtitle: d['category_name'] ?? '',
-          audioUrl: d['audio_url'],
-          category: d['category'],
-          durationSeconds: d['duration_seconds'] as int?,
-          isNew: d['is_new'] ?? false,
-        );
-      }).toList();
+      final remote = snapshot.docs
+          .where((doc) => doc.data()['active'] == true)
+          .map((doc) {
+            final d = doc.data();
+            final ts = d['created_at'];
+            final createdAt = ts is Timestamp ? ts.toDate() : null;
+            return RelaxTrack(
+              id: doc.id,
+              title: d['title'] ?? '',
+              subtitle: d['category_name'] ?? '',
+              audioUrl: d['audio_url'],
+              category: d['category'],
+              durationSeconds: d['duration_seconds'] as int?,
+              isNew: d['is_new'] ?? false,
+              createdAt: createdAt,
+            );
+          })
+          .toList();
+
+      // Sort newest first in Dart
+      remote.sort((a, b) {
+        if (a.createdAt == null) return 1;
+        if (b.createdAt == null) return -1;
+        return b.createdAt!.compareTo(a.createdAt!);
+      });
+
+      if (kDebugMode) debugPrint('✅ Loaded ${remote.length} remote relax tracks');
 
       setState(() {
         _remoteTracks = remote;
         _isLoadingRemote = false;
       });
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ relax_tracks Firestore error: $e');
       if (!mounted) return;
       setState(() => _isLoadingRemote = false);
     }
