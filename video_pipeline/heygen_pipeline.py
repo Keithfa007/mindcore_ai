@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.9.1
+MindCore AI Video Pipeline -- HeyGen Edition v2.9.2
 =====================================================
 
-CHANGE (v2.9.1):
-  solution_cta word limit raised from 12 → 14.
-  "Try it -- 50 messages, 5 voice minutes. Find us on Google Play." = 13 words.
-  12 was too tight for a CTA that includes both a trial fact and a platform CTA.
-  14 gives one word of breathing room. Total ad is still ~20 seconds.
+CHANGES (v2.9.2):
+  - Ad script no longer mentions specific trial numbers (50 messages, 5 voice minutes).
+    Keep it simple and emotional -- no specs in the CTA.
+  - Rotating CTA pool: 8 different CTAs, one picked per run so ads never sound the same.
 """
 
 import json
@@ -49,7 +48,7 @@ WORD_LIMITS_AD = {
     "hook":         8,
     "problem":      12,
     "story":        14,
-    "solution_cta": 14,   # raised from 12 -- 13 words is natural for CTA + platform
+    "solution_cta": 14,
 }
 
 WORD_TARGETS_CONTENT = {
@@ -63,6 +62,18 @@ SEO_KEYWORDS = [
     "AI mental health coach for men",
     "recovery support anxiety depression",
     "sobriety mental wellness app",
+]
+
+# Rotating CTA pool -- one picked randomly per ad run for variety
+AD_CTA_POOL = [
+    "Try it. Find MindCore AI on Google Play.",
+    "Start your trial. Find us on Google Play.",
+    "Give it a go. Search MindCore AI on Google Play.",
+    "Try it today. MindCore AI on Google Play.",
+    "It's waiting for you. Find MindCore AI on Google Play.",
+    "Take the first step. MindCore AI on Google Play.",
+    "You don't have to do this alone. Try MindCore AI on Google Play.",
+    "Start when you're ready. MindCore AI on Google Play.",
 ]
 
 # Banned phrases -- hard-replaced by sanitize_script() after generation
@@ -327,10 +338,9 @@ Return ONLY valid JSON, no markdown fences:
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    print("  Generating APP AD script...")
-    trial   = app_facts["trial"]
-    premium = app_facts["plans"]["premium"]
-    notes   = "\n".join(f"- {n}" for n in app_facts["important_notes"])
+    # Pick a fresh CTA each run for variety
+    cta = random.choice(AD_CTA_POOL)
+    print(f"  Generating APP AD script... CTA: \"{cta}\"")
 
     prompt = f"""You are a performance marketing copywriter for MindCore AI.
 Write a 4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
@@ -346,18 +356,19 @@ CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
 - Read it aloud in your head -- if it sounds stiff, rewrite it
 
 BANNED PHRASES -- NEVER use these:
-- "try it for free" -- say ONLY "try it" instead (NOT "try it for free")
-- "free trial" -- say ONLY "trial" instead
+- "try it for free" -- say ONLY "try it" or use the CTA below
+- "free trial" -- say ONLY "trial"
 - "download now" -- say "find us on Google Play"
+- NEVER mention specific numbers like "50 messages" or "5 voice minutes" -- keep it emotional, not technical
 
-VERIFIED APP FACTS (use ONLY these):
-- Trial: {trial['messages']} messages + {trial['voice_minutes']} voice minutes over {trial['duration_days']} days. {trial['description']}
-- Premium plan: {premium['price']}. Features: {', '.join(premium['features'])}
-- Platform: {app_facts['platform']}
-- CTA: {app_facts['cta']}
+ABOUT MINDCORE AI:
+- An AI mental health companion for men, available on Google Play
+- Offers a free trial with no credit card required
+- Gives users a real AI companion to talk to -- available any time, no judgement
 
-CRITICAL RULES:
-{notes}
+THE SOLUTION_CTA MUST END WITH EXACTLY THIS SENTENCE (word for word):
+"{cta}"
+Build naturally into it. Do not change or paraphrase the CTA sentence.
 
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
@@ -365,7 +376,7 @@ STRICT WORD COUNT (enforced):
 - hook:         up to 8 words
 - problem:      up to 12 words
 - story:        up to 14 words
-- solution_cta: up to 14 words
+- solution_cta: up to 14 words (must include the CTA sentence above)
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -723,14 +734,14 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.9.1")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.9.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
     print(f"  Format: 1080x1920 9:16 30fps | scale-to-height crop | script sanitizer")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
-        print(f"  Target: ~20s | hook=8 | problem=12 | story=14 | cta=14")
+        print(f"  Target: ~20s | hook=8 | problem=12 | story=14 | cta=14 | rotating CTA")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
