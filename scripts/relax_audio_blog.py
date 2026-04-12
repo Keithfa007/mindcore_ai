@@ -182,9 +182,9 @@ def get_or_create_wp_category(name):
     return None
 
 
-# ── Publish to WordPress as draft ─────────────────────────────────────────────
+# ── Publish to WordPress (live) ────────────────────────────────────────────────
 def publish_to_wordpress(title, content, image_id, category_id):
-    print("📰  Publishing draft to WordPress...")
+    print("📰  Publishing to WordPress...")
 
     excerpt = ""
     if "EXCERPT:" in content:
@@ -199,7 +199,7 @@ def publish_to_wordpress(title, content, image_id, category_id):
         "title":      title,
         "content":    content,
         "excerpt":    excerpt,
-        "status":     "draft",
+        "status":     "publish",
         "categories": [category_id] if category_id else [],
     }
 
@@ -215,7 +215,7 @@ def publish_to_wordpress(title, content, image_id, category_id):
 
     post    = response.json()
     post_id = post["id"]
-    print(f"   ✅  Draft saved → {post.get('link', 'N/A')}")
+    print(f"   ✅  Published → {post.get('link', 'N/A')}")
 
     if image_id:
         requests.post(
@@ -252,12 +252,12 @@ def main():
     print("\n[4/6] Setting up WordPress category...")
     category_id = get_or_create_wp_category(WP_BLOG_CATEGORY)
 
-    print("\n[5/6] Publishing to WordPress as draft...")
+    print("\n[5/6] Publishing to WordPress...")
     post = publish_to_wordpress(title, content, image_id, category_id)
 
     print("\n[6/6] Done!")
     print("\n" + "=" * 52)
-    print("🎉  Companion blog post created!")
+    print("🎉  Companion blog post published!")
     print(f"    Audio    : {title}")
     print(f"    Category : {category_name}")
     print(f"    Post URL : {post.get('link', 'N/A')}")
