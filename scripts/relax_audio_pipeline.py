@@ -1,7 +1,7 @@
 import anthropic
 import requests
 import firebase_admin
-from firebase_admin import credentials, storage, firestore
+from firebase_admin import credentials, storage, firestore, messaging
 import json
 import os
 import re
@@ -108,7 +108,6 @@ def pick_next_category_and_title(state):
     used = state.get("used_titles", [])
     available = [t for t in category["titles"] if t not in used]
 
-    # Reset titles for this category if all have been used
     if not available:
         used = [t for t in used if t not in category["titles"]]
         available = category["titles"]
@@ -163,7 +162,6 @@ Write ONLY the script. No title, no notes, no introduction. Begin immediately wi
 # CLEAN SCRIPT FOR TTS
 # ─────────────────────────────────────────
 def clean_script_for_tts(script):
-    """Strip pacing markers — Fish Audio gets clean spoken text only"""
     clean = re.sub(r'\[.*?\]', '', script)
     clean = re.sub(r'\n\s*\n\s*\n', '\n\n', clean)
     return clean.strip()
@@ -232,6 +230,22 @@ def estimate_duration(script_text):
 
 
 # ─────────────────────────────────────────
+# CLEAR is_new ON ALL PREVIOUS TRACKS
+# ─────────────────────────────────────────
+def clear_previous_is_new(db):
+    """Remove is_new badge from all existing tracks before adding the new one."""
+    docs = db.collection("relax_tracks").where("is_new", "==", True).stream()
+    batch = db.batch()
+    count = 0
+    for doc in docs:
+        batch.update(doc.reference, {"is_new": False})
+        count += 1
+    if count > 0:
+        batch.commit()
+        print(f"      ✅ Cleared is_new on {count} previous track(s)")
+
+
+# ─────────────────────────────────────────
 # SAVE TRACK TO FIRESTORE
 # ─────────────────────────────────────────
 def save_track_to_firestore(db, title, category_key, category, audio_url, filename, script_text):
@@ -255,48 +269,80 @@ def save_track_to_firestore(db, title, category_key, category, audio_url, filena
 
 
 # ─────────────────────────────────────────
+# SEND FCM PUSH NOTIFICATION
+# ─────────────────────────────────────────
+def send_push_notification(title, category_name):
+    """Send push notification to all app users via FCM topic."""
+    try:
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title="New Relaxation Session",
+                body=f"'{title}' is now available in Relaxing Audio.",
+            ),
+            data={
+                "screen": "relax_audio",
+                "category": category_name,
+            },
+            topic="relax_audio_updates",
+        )
+        response = messaging.send(message)
+        print(f"      ✅ Notification sent: {response}")
+    except Exception as e:
+        print(f"      ⚠️  Notification failed (non-fatal): {e}")
+
+
+# ─────────────────────────────────────────
 # MAIN PIPELINE
 # ─────────────────────────────────────────
 def run_pipeline():
     print("\n🎧  MindCore AI — Relax Audio Pipeline")
     print("=" * 45)
 
-    print("\n[1/6] Connecting to Firebase...")
+    print("\n[1/7] Connecting to Firebase...")
     db = init_firebase()
     print("      ✅ Connected")
 
-    print("\n[2/6] Reading pipeline state...")
+    print("\n[2/7] Reading pipeline state...")
     state = get_pipeline_state(db)
     next_index, category_key, category, title, used_titles = pick_next_category_and_title(state)
     print(f"      ✅ Category : {category['name']}")
     print(f"      ✅ Title    : {title}")
 
-    print("\n[3/6] Generating script (Anthropic API)...")
+    print("\n[3/7] Generating script (Anthropic API)...")
     script = generate_script(title, category)
     word_count = len(clean_script_for_tts(script).split())
     print(f"      ✅ Script ready ({word_count} words)")
 
-    print("\n[4/6] Generating audio (Fish Audio)...")
+    print("\n[4/7] Generating audio (Fish Audio)...")
     audio_bytes = generate_audio(script)
     size_mb = len(audio_bytes) / 1024 / 1024
     print(f"      ✅ Audio ready ({size_mb:.1f} MB)")
 
-    print("\n[5/6] Uploading to Firebase Storage...")
+    print("\n[5/7] Uploading to Firebase Storage...")
     audio_url, filename = upload_to_firebase(audio_bytes, title, category_key)
     print(f"      ✅ Uploaded : {filename}")
 
-    print("\n[6/6] Saving track metadata to Firestore...")
+    print("\n[6/7] Saving track to Firestore...")
+    clear_previous_is_new(db)
     track_id = save_track_to_firestore(
         db, title, category_key, category, audio_url, filename, script
     )
     print(f"      ✅ Track ID : {track_id}")
 
+    print("\n[7/7] Sending push notification...")
+    send_push_notification(title, category["name"])
+
+    # Save state — blog pipeline reads last_title, last_category, last_seo_keywords
     save_pipeline_state(db, {
         "last_category_index": next_index,
         "used_titles": used_titles + [title],
         "last_run": firestore.SERVER_TIMESTAMP,
         "last_title": title,
         "last_category": category_key,
+        "last_category_name": category["name"],
+        "last_seo_keywords": category["seo_keywords"],
+        "last_audio_url": audio_url,
+        "last_track_id": track_id,
     })
 
     print("\n" + "=" * 45)
