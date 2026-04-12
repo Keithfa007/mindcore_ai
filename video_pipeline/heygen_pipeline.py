@@ -1,25 +1,13 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.9
-===================================================
+MindCore AI Video Pipeline -- HeyGen Edition v2.9.1
+=====================================================
 
-CROP FIX (v2.9):
-  Screenshot confirmed: HeyGen renders avatar as LANDSCAPE (16:9) inside
-  the portrait frame, with dark bars above and below.
-
-  v2.8 bug: landscape branch was scaling to width 1080 then padding height.
-  That just reproduced the same bars in the output.
-
-  v2.9 fix: for landscape content, scale so HEIGHT fills 1920 (maintaining
-  aspect ratio -- no stretch), then crop center 1080 wide. The person stays
-  centered, sides are trimmed naturally. Result: full-frame portrait, no bars.
-
-  Example: 600x338 landscape content (16:9)
-    scale=3413:1920  (height=1920, width scales proportionally to 3413)
-    crop=1080:1920:1166:0  (crop center 1080 wide from 3413)
-    → clean 1080x1920 portrait, person centered, no bars, no stretch ✓
-
-All other v2.7/v2.8 features unchanged (sanitizer, 30fps, 4Mbps, CRF 16).
+CHANGE (v2.9.1):
+  solution_cta word limit raised from 12 → 14.
+  "Try it -- 50 messages, 5 voice minutes. Find us on Google Play." = 13 words.
+  12 was too tight for a CTA that includes both a trial fact and a platform CTA.
+  14 gives one word of breathing room. Total ad is still ~20 seconds.
 """
 
 import json
@@ -61,7 +49,7 @@ WORD_LIMITS_AD = {
     "hook":         8,
     "problem":      12,
     "story":        14,
-    "solution_cta": 12,
+    "solution_cta": 14,   # raised from 12 -- 13 words is natural for CTA + platform
 }
 
 WORD_TARGETS_CONTENT = {
@@ -377,7 +365,7 @@ STRICT WORD COUNT (enforced):
 - hook:         up to 8 words
 - problem:      up to 12 words
 - story:        up to 14 words
-- solution_cta: up to 12 words
+- solution_cta: up to 14 words
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -569,23 +557,14 @@ def detect_content_crop(video_path: str) -> tuple:
 def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
     """
     Build ffmpeg filter to convert any content rect to 1080x1920 portrait.
-
-    Strategy: scale so HEIGHT = 1920 (maintains aspect ratio, no stretch),
-    then crop center 1080 wide. Works for all content shapes:
-      - Landscape (16:9): height=1920 → width=3413 → crop center 1080 ✓
-      - Square (1:1):     height=1920 → width=1920 → crop center 1080 ✓
-      - Portrait (9:16):  height=1920 → width=1080 → no crop needed ✓
+    Scale so HEIGHT = 1920 (no stretch), then crop center 1080 wide.
     """
-    # Scale so height = 1920, width proportional
     scale_h = 1920
     scale_w = round(cw * scale_h / ch)
-
-    # Make scale_w even (libx264 requirement)
     if scale_w % 2 != 0:
         scale_w += 1
 
     if scale_w >= 1080:
-        # Wide enough to crop -- take center 1080
         x_offset = (scale_w - 1080) // 2
         return (
             f"crop={cw}:{ch}:{cx}:{cy},"
@@ -594,7 +573,6 @@ def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
             f"fps=30"
         )
     else:
-        # Too narrow (very tall portrait) -- scale to width 1080, pad height
         return (
             f"crop={cw}:{ch}:{cx}:{cy},"
             f"scale=1080:-2:flags=lanczos,"
@@ -604,13 +582,7 @@ def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
 
 
 def crop_to_portrait(raw_path: str, final_path: str):
-    """
-    Convert HeyGen output to proper 9:16 portrait.
-
-    v2.9: cropdetect finds content rect, then scale-to-height-fill + center
-    crop converts any content shape (landscape, square, portrait) to 1080x1920
-    with no bars, no distortion, person centered.
-    """
+    """Convert HeyGen output to proper 9:16 portrait using cropdetect."""
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
 
@@ -621,7 +593,6 @@ def crop_to_portrait(raw_path: str, final_path: str):
         filter_str = make_portrait_filter(cw, ch, cx, cy)
         print(f"  Filter: {filter_str}")
     else:
-        # Fallback: treat entire frame as content
         print(f"  cropdetect found no bars -- treating full frame as content")
         filter_str = make_portrait_filter(w, h, 0, 0)
 
@@ -752,14 +723,14 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.9")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.9.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
     print(f"  Format: 1080x1920 9:16 30fps | scale-to-height crop | script sanitizer")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
-        print(f"  Target: ~20s | hook=8 | problem=12 | story=14 | cta=12")
+        print(f"  Target: ~20s | hook=8 | problem=12 | story=14 | cta=14")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
