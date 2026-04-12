@@ -1,6 +1,7 @@
 // lib/pages/relax_audio_screen.dart
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/page_scaffold.dart';
 import '../widgets/surfaces.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
@@ -10,8 +11,32 @@ import 'package:mindcore_ai/services/relax_audio_engine.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 
 class RelaxTrack {
-  final String id, title, subtitle, assetPath;
-  const RelaxTrack({required this.id, required this.title, required this.subtitle, required this.assetPath});
+  final String id, title, subtitle;
+  final String? assetPath;
+  final String? audioUrl;
+  final String? category;
+  final int? durationSeconds;
+  final bool isNew;
+
+  const RelaxTrack({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    this.assetPath,
+    this.audioUrl,
+    this.category,
+    this.durationSeconds,
+    this.isNew = false,
+  });
+
+  bool get isRemote => audioUrl != null;
+
+  String? get formattedDuration {
+    if (durationSeconds == null) return null;
+    final m = durationSeconds! ~/ 60;
+    final s = durationSeconds! % 60;
+    return '${m}m ${s.toString().padLeft(2, '0')}s';
+  }
 }
 
 class RelaxAudioScreen extends StatefulWidget {
@@ -20,14 +45,18 @@ class RelaxAudioScreen extends StatefulWidget {
   State<RelaxAudioScreen> createState() => _RelaxAudioScreenState();
 }
 
-class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRouteAware<RelaxAudioScreen> {
+class _RelaxAudioScreenState extends State<RelaxAudioScreen>
+    with AutoStopTtsRouteAware<RelaxAudioScreen> {
   final AudioPlayer _player = AudioPlayer();
   int? _currentIndex;
   bool _isPlaying = false;
   bool _didHandleRouteArgs = false;
+  bool _isLoadingRemote = true;
+  List<RelaxTrack> _remoteTracks = [];
   String? _recommendedTrackTitle, _recommendedTrackSubtitle, _recommendedFrequencyLabel;
 
-  final List<RelaxTrack> _tracks = const [
+  // ── Local tracks (existing) ──────────────────────────────────────────────
+  final List<RelaxTrack> _localTracks = const [
     RelaxTrack(id: 'body_scan_emotional_tension', title: 'Body Scan for Emotional Tension', subtitle: 'Release tension gently from head to toe.', assetPath: 'audio/Body Scan for Emotional Tension.mp3'),
     RelaxTrack(id: 'calm_breathing_reset', title: 'Calm Breathing Reset', subtitle: 'Slow, guided breathing to reset your nervous system.', assetPath: 'audio/calmbreathingreset.mp3'),
     RelaxTrack(id: 'confidence_grounding', title: 'Confidence Grounding', subtitle: 'Drop into your body and reconnect with inner strength.', assetPath: 'audio/Confidence Grounding.mp3'),
@@ -48,16 +77,56 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRou
     RelaxTrack(id: 'stress_cleanse', title: 'Stress Cleanse', subtitle: 'Flush out built-up stress and reboot your system.', assetPath: 'audio/Stress Cleanse.mp3'),
   ];
 
+  // ── Combined list: remote (new) first, then local ────────────────────────
+  List<RelaxTrack> get _tracks => [..._remoteTracks, ..._localTracks];
+
   @override
   void initState() {
     super.initState();
     _player.setReleaseMode(ReleaseMode.stop);
-    _player.onPlayerComplete.listen((_) { if (!mounted) return; setState(() => _isPlaying = false); });
-    // ✅ Wait for first frame then check premium
+    _player.onPlayerComplete.listen((_) {
+      if (!mounted) return;
+      setState(() => _isPlaying = false);
+    });
+    _loadRemoteTracks();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkPremiumAccess());
   }
 
-  // ✅ Push paywall, then after it pops, if still not premium go home.
+  // ── Load tracks from Firestore ───────────────────────────────────────────
+  Future<void> _loadRemoteTracks() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('relax_tracks')
+          .where('active', isEqualTo: true)
+          .orderBy('created_at', descending: true)
+          .get();
+
+      if (!mounted) return;
+
+      final remote = snapshot.docs.map((doc) {
+        final d = doc.data();
+        return RelaxTrack(
+          id: doc.id,
+          title: d['title'] ?? '',
+          subtitle: d['category_name'] ?? '',
+          audioUrl: d['audio_url'],
+          category: d['category'],
+          durationSeconds: d['duration_seconds'] as int?,
+          isNew: d['is_new'] ?? false,
+        );
+      }).toList();
+
+      setState(() {
+        _remoteTracks = remote;
+        _isLoadingRemote = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingRemote = false);
+    }
+  }
+
+  // ── Premium gate ─────────────────────────────────────────────────────────
   Future<void> _checkPremiumAccess() async {
     if (!mounted) return;
     if (PremiumService.isPremium.value) return;
@@ -75,15 +144,23 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRou
     _didHandleRouteArgs = true;
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args is! Map) return;
-    final trackId = args['trackId']?.toString(); final trackTitle = args['trackTitle']?.toString();
-    final moodLabel = args['moodLabel']?.toString(); final autoplay = args['autoplay'] == true;
-    int index = -1; RelaxAudioRecommendation? recommendation;
+    final trackId = args['trackId']?.toString();
+    final trackTitle = args['trackTitle']?.toString();
+    final moodLabel = args['moodLabel']?.toString();
+    final autoplay = args['autoplay'] == true;
+    int index = -1;
+    RelaxAudioRecommendation? recommendation;
     if (trackId != null && trackId.isNotEmpty) index = _tracks.indexWhere((t) => t.id == trackId);
     if (index == -1 && trackTitle != null && trackTitle.isNotEmpty) index = _tracks.indexWhere((t) => t.title.toLowerCase() == trackTitle.toLowerCase());
-    if (index == -1 && moodLabel != null && moodLabel.trim().isNotEmpty) { recommendation = RelaxAudioEngine.recommend(moodLabel: moodLabel); index = _tracks.indexWhere((t) => t.title.toLowerCase() == recommendation!.title.toLowerCase()); }
+    if (index == -1 && moodLabel != null && moodLabel.trim().isNotEmpty) {
+      recommendation = RelaxAudioEngine.recommend(moodLabel: moodLabel);
+      index = _tracks.indexWhere((t) => t.title.toLowerCase() == recommendation!.title.toLowerCase());
+    }
     if (index == -1) return;
     recommendation ??= RelaxAudioEngine.recommend(moodLabel: moodLabel?.trim().isNotEmpty == true ? moodLabel! : _tracks[index].title);
-    _recommendedTrackTitle = _tracks[index].title; _recommendedTrackSubtitle = recommendation.subtitle; _recommendedFrequencyLabel = recommendation.frequencyLabel;
+    _recommendedTrackTitle = _tracks[index].title;
+    _recommendedTrackSubtitle = recommendation.subtitle;
+    _recommendedFrequencyLabel = recommendation.frequencyLabel;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       setState(() => _currentIndex = index);
@@ -92,17 +169,40 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRou
   }
 
   @override
-  void dispose() { _player.dispose(); super.dispose(); }
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
 
+  // ── Playback ─────────────────────────────────────────────────────────────
   Future<void> _playTrack(int index) async {
-    try { await _player.stop(); await _player.play(AssetSource(_tracks[index].assetPath)); if (!mounted) return; setState(() { _currentIndex = index; _isPlaying = true; }); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not play audio: $e'))); }
+    try {
+      final track = _tracks[index];
+      await _player.stop();
+      if (track.isRemote) {
+        await _player.play(UrlSource(track.audioUrl!));
+      } else {
+        await _player.play(AssetSource(track.assetPath!));
+      }
+      if (!mounted) return;
+      setState(() { _currentIndex = index; _isPlaying = true; });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not play audio: $e')));
+    }
   }
 
   Future<void> _toggleTrack(int index) async {
     if (_currentIndex == index) {
-      if (_isPlaying) { await _player.pause(); if (!mounted) return; setState(() => _isPlaying = false); }
-      else { await _player.resume(); if (!mounted) return; setState(() => _isPlaying = true); }
+      if (_isPlaying) {
+        await _player.pause();
+        if (!mounted) return;
+        setState(() => _isPlaying = false);
+      } else {
+        await _player.resume();
+        if (!mounted) return;
+        setState(() => _isPlaying = true);
+      }
       return;
     }
     await _playTrack(index);
@@ -110,11 +210,15 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRou
 
   Future<void> _stopTrack(int index) async {
     if (_currentIndex != index) return;
-    await _player.stop(); if (!mounted) return; setState(() { _isPlaying = false; _currentIndex = null; });
+    await _player.stop();
+    if (!mounted) return;
+    setState(() { _isPlaying = false; _currentIndex = null; });
   }
 
   Future<void> _stopAll() async {
-    await _player.stop(); if (!mounted) return; setState(() { _isPlaying = false; _currentIndex = null; });
+    await _player.stop();
+    if (!mounted) return;
+    setState(() { _isPlaying = false; _currentIndex = null; });
   }
 
   @override
@@ -136,7 +240,7 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRou
                 const SizedBox(height: 10),
                 Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   if (_recommendedFrequencyLabel != null) Text(_recommendedFrequencyLabel!, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.primary, fontWeight: FontWeight.w800)),
-                  if (_recommendedTrackSubtitle != null) ...[ const SizedBox(height: 4), Text(_recommendedTrackSubtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.72))) ],
+                  if (_recommendedTrackSubtitle != null) ...[const SizedBox(height: 4), Text(_recommendedTrackSubtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.72)))],
                 ])),
               ],
             ],
@@ -144,8 +248,20 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRou
             if (_currentIndex != null) Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: _stopAll, icon: const Icon(Icons.stop_circle_outlined), label: const Text('Stop all'))),
           ])),
           const SizedBox(height: 14),
+          if (_isLoadingRemote)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary))),
+            ),
           for (int i = 0; i < _tracks.length; i++) ...[
-            _AudioTrackTile(track: _tracks[i], isRecommended: _tracks[i].title == _recommendedTrackTitle, isActive: _currentIndex == i, isPlaying: _currentIndex == i && _isPlaying, onPlayPause: () => _toggleTrack(i), onStop: () => _stopTrack(i)),
+            _AudioTrackTile(
+              track: _tracks[i],
+              isRecommended: _tracks[i].title == _recommendedTrackTitle,
+              isActive: _currentIndex == i,
+              isPlaying: _currentIndex == i && _isPlaying,
+              onPlayPause: () => _toggleTrack(i),
+              onStop: () => _stopTrack(i),
+            ),
             const SizedBox(height: 10),
           ],
         ],
@@ -155,11 +271,15 @@ class _RelaxAudioScreenState extends State<RelaxAudioScreen> with AutoStopTtsRou
 }
 
 class _AudioTrackTile extends StatelessWidget {
-  final RelaxTrack track; final bool isRecommended, isActive, isPlaying; final VoidCallback onPlayPause, onStop;
+  final RelaxTrack track;
+  final bool isRecommended, isActive, isPlaying;
+  final VoidCallback onPlayPause, onStop;
   const _AudioTrackTile({required this.track, required this.isRecommended, required this.isActive, required this.isPlaying, required this.onPlayPause, required this.onStop});
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context); final cs = theme.colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return SurfaceCard(padding: EdgeInsets.zero, child: AnimatedContainer(
       duration: const Duration(milliseconds: 220), curve: Curves.easeOut,
       decoration: BoxDecoration(
@@ -169,11 +289,19 @@ class _AudioTrackTile extends StatelessWidget {
         boxShadow: [BoxShadow(color: isActive ? cs.primary.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.04), blurRadius: isActive ? 24 : 16, offset: const Offset(0, 8))],
       ),
       child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
-        _MediaControlButton(isActive: isActive, isPlaying: isPlaying, onTap: onPlayPause), const SizedBox(width: 14),
+        _MediaControlButton(isActive: isActive, isPlaying: isPlaying, onTap: onPlayPause),
+        const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Text(track.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium?.copyWith(fontWeight: isActive ? FontWeight.w800 : FontWeight.w700, height: 1.15))),
-            if (isRecommended) ...[ const SizedBox(width: 8), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.09), borderRadius: BorderRadius.circular(999)), child: Text('For you', style: theme.textTheme.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w700))) ],
+            if (track.isNew) ...[
+              const SizedBox(width: 6),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.tealAccent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)), child: Text('New', style: theme.textTheme.labelSmall?.copyWith(color: Colors.teal, fontWeight: FontWeight.w700))),
+            ],
+            if (isRecommended) ...[
+              const SizedBox(width: 8),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.09), borderRadius: BorderRadius.circular(999)), child: Text('For you', style: theme.textTheme.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w700))),
+            ],
           ]),
           const SizedBox(height: 6),
           Text(track.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.62), height: 1.22)),
@@ -181,6 +309,10 @@ class _AudioTrackTile extends StatelessWidget {
           Row(children: [
             Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: isActive ? cs.primary.withValues(alpha: 0.10) : cs.surfaceContainerHighest.withValues(alpha: 0.65), borderRadius: BorderRadius.circular(999)),
               child: Text(isActive ? (isPlaying ? 'Now playing' : 'Paused') : 'Ready', style: theme.textTheme.labelSmall?.copyWith(color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.62), fontWeight: FontWeight.w700))),
+            if (track.formattedDuration != null) ...[
+              const SizedBox(width: 8),
+              Text(track.formattedDuration!, style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.45))),
+            ],
             const Spacer(),
             if (isActive) IconButton(onPressed: onStop, tooltip: 'Stop', icon: const Icon(Icons.stop_rounded), style: IconButton.styleFrom(backgroundColor: cs.surface.withValues(alpha: 0.75), foregroundColor: cs.onSurface, side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.24)))),
           ]),
@@ -191,8 +323,10 @@ class _AudioTrackTile extends StatelessWidget {
 }
 
 class _MediaControlButton extends StatelessWidget {
-  final bool isActive, isPlaying; final VoidCallback onTap;
+  final bool isActive, isPlaying;
+  final VoidCallback onTap;
   const _MediaControlButton({required this.isActive, required this.isPlaying, required this.onTap});
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
