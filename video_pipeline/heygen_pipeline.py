@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v3.0
+MindCore AI Video Pipeline -- HeyGen Edition v3.1
 ===================================================
 
-CHANGES (v3.0):
-  - New avatar: Avatar 3 (9 look IDs)
-  - Natural gestures: motion prompt removed from API payload.
-    When use_natural_gestures=true in heygen_config.json, the avatar
-    uses its own trained movements exactly as seen in HeyGen samples.
-    use_avatar_iv_model also removed -- let HeyGen render naturally.
-  - All other features unchanged (cropdetect, sanitizer, 30fps, 4Mbps)
+CHANGES (v3.1):
+  Content scripts are now purely educational and story-driven.
+  Zero MindCore AI mentions -- content builds trust and audience.
+  The 1-in-10 ad handles all promotion. Content just gives real value.
 """
 
 import json
@@ -131,7 +128,7 @@ def sanitize_script(script: dict) -> dict:
         for pattern, replacement in BANNED_PHRASE_REPLACEMENTS:
             cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
         if cleaned != original:
-            print(f"  SANITIZED [{scene}]: '{original}' \u2192 '{cleaned}'")
+            print(f"  SANITIZED [{scene}]: '{original}' → '{cleaned}'")
             script[scene]["voiceover"] = cleaned
     return script
 
@@ -258,37 +255,44 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
 
     prompt = f"""You are a top-performing TikTok and Facebook Reels content creator in the men's
 mental health and recovery space. Your content gets millions of views because it speaks
-RAW TRUTH to men who are quietly struggling.
+RAW TRUTH and shares REAL STORIES that men 35+ actually recognise from their own lives.
 
-Create a 4-scene viral short video script on this topic:
+Create a 4-scene short video script on this topic:
 TOPIC: {topic['topic']}
 SEARCH QUESTION: {question}
 SEO KEYWORD: {keyword}
 CONTENT ANGLE: {angle}
 
-FORMAT: Hook -> Problem/Truth -> Insight/Story -> Takeaway
+FORMAT: Hook -> Problem/Truth -> Real Story or Insight -> Genuine Takeaway
 
 AUDIENCE: Men 35+, in recovery or struggling with anxiety, depression, isolation.
-They feel alone. They don't ask for help. This is value-first content -- NOT an ad.
-Speak like a real person who has been through it -- a trusted older brother, not a presenter.
+They feel alone. They don't ask for help. Speak like someone who has genuinely been through it.
 
-CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
-This script will be spoken aloud by an avatar. It must sound like a real human talking.
-- Use natural spoken language -- contractions, pauses, conversational connectors
-- Sentences must FLOW. No choppy fragments. No isolated bursts.
-- Use connectors like: "And the thing is...", "Because here's what nobody tells you...",
-  "The truth is...", "What changed everything was...", "And if that's you right now..."
-- Write how people actually talk when they're being honest with a friend
-- Each scene = one continuous thought. Not bullet points dressed up as sentences.
-- Read it aloud in your head. If it sounds robotic or stiff, rewrite it.
+THIS IS PURE VALUE CONTENT -- NOT AN AD:
+- Do NOT mention MindCore AI, any app, any product, or any service. Not even subtly.
+- Do NOT end with a download CTA or any promotional message whatsoever.
+- This video exists purely to educate, connect, and give real value.
+- Think: what would a trusted friend who has been through this tell you?
+- The last scene (solution_cta field) is a GENUINE HUMAN TAKEAWAY -- a real insight,
+  a mindset shift, or an honest truth that leaves the viewer feeling seen and hopeful.
+  It is NOT a call to action. It is NOT a plug. It is the emotional landing point.
 
-TARGET: ~60-70 seconds total. Aim for these word counts per scene:
-- hook:         {lo_hook}-{hi_hook} words  -- One striking line that stops the scroll cold
-- problem:      {lo_prob}-{hi_prob} words  -- Name the pain in flowing natural sentences.
-- story:        {lo_story}-{hi_story} words -- Real insight, build to a moment of truth.
-- solution_cta: {lo_cta}-{hi_cta} words  -- Warm hopeful close. May mention MindCore AI.
+WRITE FOR THE EAR, NOT THE EYE:
+- Natural spoken language -- contractions, pauses, conversational connectors
+- Sentences must FLOW. No choppy fragments.
+- Use connectors: "And the thing is...", "Because here's what nobody tells you...",
+  "The truth is...", "What actually helped was...", "And if that's you right now..."
+- Each scene = one continuous thought, not bullet points.
+- Read it aloud. If it sounds robotic or stiff, rewrite it.
 
-Total target: ~130-150 words. No generic openers. No "hey guys".
+TARGET word counts per scene:
+- hook:         {lo_hook}-{hi_hook} words  -- One striking line that stops the scroll
+- problem:      {lo_prob}-{hi_prob} words  -- Name the pain honestly, make them feel seen
+- story:        {lo_story}-{hi_story} words -- Real story or insight, specific and human
+- solution_cta: {lo_cta}-{hi_cta} words  -- A genuine takeaway or truth. No promotion.
+
+Total: ~130-150 words. No generic openers. No "hey guys". No "in today's video".
+Weave '{keyword}' naturally at least once.
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -398,11 +402,6 @@ def build_full_script(script: dict) -> str:
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
                         background_color: str, natural_gestures: bool) -> str:
-    """
-    Submit to HeyGen.
-    natural_gestures=True  -> no motion prompt, avatar uses its own trained movements
-    natural_gestures=False -> custom motion prompt injected (legacy behaviour)
-    """
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json",
@@ -432,7 +431,6 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
     }
 
     if not natural_gestures:
-        # Legacy: inject custom motion prompt
         MOTION_PROMPT = (
             "Deliver this as a grounded, emotionally present mental health speaker. "
             "Hands mostly still and relaxed at rest. Reserve hand movement for key moments only. "
@@ -443,7 +441,7 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
         payload["use_avatar_iv_model"]          = True
         payload["custom_motion_prompt"]         = MOTION_PROMPT
         payload["enhance_custom_motion_prompt"] = True
-        print(f"  Motion: CUSTOM PROMPT (use_natural_gestures=false)")
+        print(f"  Motion: CUSTOM PROMPT")
     else:
         print(f"  Motion: NATURAL (avatar's own trained gestures)")
 
@@ -701,15 +699,15 @@ def main():
     background_color = cfg.get("background_color", "#07071a")
     natural_gestures = cfg.get("use_natural_gestures", True)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.0")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
     print(f"  Motion: {'NATURAL (avatar gestures)' if natural_gestures else 'CUSTOM PROMPT'}")
     print(f"  Format: 1080x1920 9:16 30fps | cropdetect crop | sanitizer active")
     if mode == "content":
-        print(f"  Target: ~60-70s content | 9 content : 1 ad ratio")
+        print(f"  Content: educational + storytelling only -- zero promotion")
     else:
-        print(f"  Target: ~20s ad | rotating CTA")
+        print(f"  Ad: rotating CTA | ~20s")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
