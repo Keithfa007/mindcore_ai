@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.8
+MindCore AI Video Pipeline -- HeyGen Edition v2.9
 ===================================================
 
-CROP FIX (v2.8):
-  Previous versions assumed bars were equal top and bottom (centered).
-  Screenshot confirmed: bars are UNEQUAL -- bigger at top than bottom.
-  Fix: use ffmpeg cropdetect to automatically scan the video and find
-  the exact content boundaries, regardless of bar size or position.
-  Background color #07071a has luma ~9; cropdetect limit=30 catches it.
+CROP FIX (v2.9):
+  Screenshot confirmed: HeyGen renders avatar as LANDSCAPE (16:9) inside
+  the portrait frame, with dark bars above and below.
 
-  cropdetect → find content rect → scale to fill height → crop to 1080 wide
-  Result: avatar fills full 1080x1920 portrait frame, no bars, no stretch.
+  v2.8 bug: landscape branch was scaling to width 1080 then padding height.
+  That just reproduced the same bars in the output.
 
-All other v2.7 features unchanged (sanitizer, 30fps, 4Mbps, CRF 16).
+  v2.9 fix: for landscape content, scale so HEIGHT fills 1920 (maintaining
+  aspect ratio -- no stretch), then crop center 1080 wide. The person stays
+  centered, sides are trimmed naturally. Result: full-frame portrait, no bars.
+
+  Example: 600x338 landscape content (16:9)
+    scale=3413:1920  (height=1920, width scales proportionally to 3413)
+    crop=1080:1920:1166:0  (crop center 1080 wide from 3413)
+    → clean 1080x1920 portrait, person centered, no bars, no stretch ✓
+
+All other v2.7/v2.8 features unchanged (sanitizer, 30fps, 4Mbps, CRF 16).
 """
 
 import json
@@ -542,12 +548,7 @@ def get_video_dimensions(path: str) -> tuple:
 def detect_content_crop(video_path: str) -> tuple:
     """
     Run ffmpeg cropdetect to find the actual content area, ignoring dark bars.
-
-    Background color #07071a has luma ~9.
-    limit=30 catches anything darker than luma 30 as background.
-    round=2 for precise pixel alignment.
-    Scans first 90 frames (~3 seconds at 30fps) for a stable reading.
-
+    Background color #07071a has luma ~9; limit=30 catches it reliably.
     Returns (crop_w, crop_h, crop_x, crop_y) or None if detection fails.
     """
     cmd = [
@@ -557,83 +558,72 @@ def detect_content_crop(video_path: str) -> tuple:
         "-f", "null", "-"
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-
-    # cropdetect writes to stderr: "crop=W:H:X:Y"
     matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", result.stderr)
     if not matches:
         return None
-
-    # Use the last reading (most stable after initial frames)
     cw, ch, cx, cy = map(int, matches[-1])
     print(f"  cropdetect found content: {cw}x{ch} at x={cx}, y={cy}")
     return cw, ch, cx, cy
 
 
+def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
+    """
+    Build ffmpeg filter to convert any content rect to 1080x1920 portrait.
+
+    Strategy: scale so HEIGHT = 1920 (maintains aspect ratio, no stretch),
+    then crop center 1080 wide. Works for all content shapes:
+      - Landscape (16:9): height=1920 → width=3413 → crop center 1080 ✓
+      - Square (1:1):     height=1920 → width=1920 → crop center 1080 ✓
+      - Portrait (9:16):  height=1920 → width=1080 → no crop needed ✓
+    """
+    # Scale so height = 1920, width proportional
+    scale_h = 1920
+    scale_w = round(cw * scale_h / ch)
+
+    # Make scale_w even (libx264 requirement)
+    if scale_w % 2 != 0:
+        scale_w += 1
+
+    if scale_w >= 1080:
+        # Wide enough to crop -- take center 1080
+        x_offset = (scale_w - 1080) // 2
+        return (
+            f"crop={cw}:{ch}:{cx}:{cy},"
+            f"scale={scale_w}:{scale_h}:flags=lanczos,"
+            f"crop=1080:1920:{x_offset}:0,"
+            f"fps=30"
+        )
+    else:
+        # Too narrow (very tall portrait) -- scale to width 1080, pad height
+        return (
+            f"crop={cw}:{ch}:{cx}:{cy},"
+            f"scale=1080:-2:flags=lanczos,"
+            f"pad=1080:1920:0:(1920-ih)/2:color=0x07071a,"
+            f"fps=30"
+        )
+
+
 def crop_to_portrait(raw_path: str, final_path: str):
     """
-    Convert HeyGen output to proper 9:16 portrait using cropdetect.
+    Convert HeyGen output to proper 9:16 portrait.
 
-    v2.8: automatically detects where the dark background ends and the
-    actual avatar content begins, regardless of bar size or position.
-    Then scales to fill 1080x1920 without distortion (scale to fill height,
-    crop center width).
-
-    Output: 30fps, CRF 16, 4 Mbps target bitrate for TikTok quality.
+    v2.9: cropdetect finds content rect, then scale-to-height-fill + center
+    crop converts any content shape (landscape, square, portrait) to 1080x1920
+    with no bars, no distortion, person centered.
     """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
 
-    # Try cropdetect first
     crop_result = detect_content_crop(raw_path)
 
     if crop_result:
         cw, ch, cx, cy = crop_result
-
-        # Scale content to fill portrait frame without stretching:
-        # Scale so the height fills 1920, then crop center 1080 wide.
-        # If content is taller than wide (portrait-ish), scale to width instead.
-        if ch >= cw:
-            # Content is portrait or square -- scale to fill height 1920
-            scale_h = 1920
-            scale_w = round(cw * 1920 / ch)
-            # Ensure scale_w >= 1080 so we have content to crop
-            if scale_w < 1080:
-                # Content too narrow -- scale to width 1080 instead, pad height
-                filter_str = (
-                    f"crop={cw}:{ch}:{cx}:{cy},"
-                    f"scale=1080:-2:flags=lanczos,"
-                    f"pad=1080:1920:0:(1920-ih)/2:color=0x07071a,"
-                    f"fps=30"
-                )
-            else:
-                side = (scale_w - 1080) // 2
-                filter_str = (
-                    f"crop={cw}:{ch}:{cx}:{cy},"
-                    f"scale={scale_w}:{scale_h}:flags=lanczos,"
-                    f"crop=1080:1920:{side}:0,"
-                    f"fps=30"
-                )
-        else:
-            # Content is landscape -- scale to fill width 1080, pad height
-            filter_str = (
-                f"crop={cw}:{ch}:{cx}:{cy},"
-                f"scale=1080:-2:flags=lanczos,"
-                f"pad=1080:1920:0:(1920-ih)/2:color=0x07071a,"
-                f"fps=30"
-            )
-
-        print(f"  Using cropdetect filter")
-
+        filter_str = make_portrait_filter(cw, ch, cx, cy)
+        print(f"  Filter: {filter_str}")
     else:
-        # Fallback: guess based on dimensions
-        print(f"  cropdetect found no bars -- using dimension-based fallback")
-        if w == h:
-            filter_str = f"fps=30,scale=1920:1920:flags=lanczos,crop=1080:1920:420:0"
-        elif h > w:
-            bar = (h - w) // 2
-            filter_str = f"fps=30,crop={w}:{w}:0:{bar},scale=1920:1920:flags=lanczos,crop=1080:1920:420:0"
-        else:
-            filter_str = f"fps=30,scale=-2:1920:flags=lanczos,crop=1080:1920"
+        # Fallback: treat entire frame as content
+        print(f"  cropdetect found no bars -- treating full frame as content")
+        filter_str = make_portrait_filter(w, h, 0, 0)
 
     cmd = [
         "ffmpeg", "-i", raw_path,
@@ -649,7 +639,7 @@ def crop_to_portrait(raw_path: str, final_path: str):
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"  ffmpeg stderr: {result.stderr[-800:]}")
+        print(f"  ffmpeg stderr:\n{result.stderr[-1000:]}")
         raise RuntimeError(f"ffmpeg failed with code {result.returncode}")
 
     size_mb = Path(final_path).stat().st_size / (1024 * 1024)
@@ -762,10 +752,10 @@ def main():
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.8")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.9")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 9:16 30fps | cropdetect auto-crop | script sanitizer")
+    print(f"  Format: 1080x1920 9:16 30fps | scale-to-height crop | script sanitizer")
     if mode == "content":
         print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
     else:
@@ -809,7 +799,7 @@ def main():
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
 
-    print("\n  Auto-detecting content area and cropping to 9:16 portrait...")
+    print("\n  Converting to 9:16 portrait (scale-to-height, center crop)...")
     crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
