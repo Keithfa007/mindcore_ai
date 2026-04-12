@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v2.9.2
-=====================================================
+MindCore AI Video Pipeline -- HeyGen Edition v3.0
+===================================================
 
-CHANGES (v2.9.2):
-  - Ad script no longer mentions specific trial numbers (50 messages, 5 voice minutes).
-    Keep it simple and emotional -- no specs in the CTA.
-  - Rotating CTA pool: 8 different CTAs, one picked per run so ads never sound the same.
+CHANGES (v3.0):
+  - New avatar: Avatar 3 (9 look IDs)
+  - Natural gestures: motion prompt removed from API payload.
+    When use_natural_gestures=true in heygen_config.json, the avatar
+    uses its own trained movements exactly as seen in HeyGen samples.
+    use_avatar_iv_model also removed -- let HeyGen render naturally.
+  - All other features unchanged (cropdetect, sanitizer, 30fps, 4Mbps)
 """
 
 import json
@@ -64,7 +67,7 @@ SEO_KEYWORDS = [
     "sobriety mental wellness app",
 ]
 
-# Rotating CTA pool -- one picked randomly per ad run for variety
+# Rotating CTA pool -- one picked randomly per ad run
 AD_CTA_POOL = [
     "Try it. Find MindCore AI on Google Play.",
     "Start your trial. Find us on Google Play.",
@@ -82,37 +85,6 @@ BANNED_PHRASE_REPLACEMENTS = [
     (r"download\s+now",         "find us on Google Play"),
     (r"free\s+trial",           "trial"),
 ]
-
-# Motion prompt v2.6 -- restrained natural hands, stillness as default
-MOTION_PROMPT = (
-    "Deliver this as a grounded, emotionally present mental health speaker -- not a performer. "
-
-    "POSTURE: Stand with feet hip-width apart, upright but relaxed. Shoulders down and loose, "
-    "never rigid. Open chest, torso forward. Project calm stability throughout. "
-
-    "HANDS: Hands are mostly still and relaxed at rest -- this is the default state. "
-    "Do NOT gesture continuously. Reserve hand movement for only the most important moments: "
-    "a single open palm when making a key honest point, or one hand briefly touching the chest "
-    "when speaking from deep personal experience. Between these rare gestures, hands return "
-    "immediately to a relaxed resting position. Never touch the neck, rub the arms, or fidget "
-    "with clothing. Less is more -- restraint feels trustworthy. "
-
-    "HEAD AND FACE: Nod slowly and gently when making empathetic statements. "
-    "A slight head tilt (10-15 degrees) when showing empathy or listening. "
-    "Smile warmly and genuinely when offering hope -- not a fixed presenter smile. "
-    "Soft, compassionate expression throughout -- earnest, not intense. "
-
-    "EYE CONTACT: Soft, warm, intermittent eye contact with the camera. "
-    "Compassionate and safe, not staring. The gaze of someone who genuinely cares. "
-
-    "STILLNESS: When delivering a profound or difficult statement, go completely still -- "
-    "stop all movement including hands -- and let the words land. Stillness is powerful. "
-    "Lean forward slightly toward camera only during the most sensitive emotional points. "
-    "Do not pace or shift weight nervously. "
-
-    "OVERALL: A trusted older brother having a quiet, honest conversation. "
-    "Grounded. Present. Still. Every movement is earned, never performed."
-)
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -159,7 +131,7 @@ def sanitize_script(script: dict) -> dict:
         for pattern, replacement in BANNED_PHRASE_REPLACEMENTS:
             cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
         if cleaned != original:
-            print(f"  SANITIZED [{scene}]: '{original}' → '{cleaned}'")
+            print(f"  SANITIZED [{scene}]: '{original}' \u2192 '{cleaned}'")
             script[scene]["voiceover"] = cleaned
     return script
 
@@ -313,15 +285,10 @@ This script will be spoken aloud by an avatar. It must sound like a real human t
 TARGET: ~60-70 seconds total. Aim for these word counts per scene:
 - hook:         {lo_hook}-{hi_hook} words  -- One striking line that stops the scroll cold
 - problem:      {lo_prob}-{hi_prob} words  -- Name the pain in flowing natural sentences.
-                                              Make them feel completely seen.
-- story:        {lo_story}-{hi_story} words -- Real insight, conversational sentences.
-                                              Build to a moment of truth with specific detail.
+- story:        {lo_story}-{hi_story} words -- Real insight, build to a moment of truth.
 - solution_cta: {lo_cta}-{hi_cta} words  -- Warm hopeful close. May mention MindCore AI.
 
-Total target: ~130-150 words. Stick close to this -- TikTok videos should be 60-75 seconds.
-
-SEO: Weave '{keyword}' naturally at least once. Second person only ("you", "your").
-Hook must stop the scroll. No generic openers. No "hey guys". No "in today's video".
+Total target: ~130-150 words. No generic openers. No "hey guys".
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -338,7 +305,6 @@ Return ONLY valid JSON, no markdown fences:
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    # Pick a fresh CTA each run for variety
     cta = random.choice(AD_CTA_POOL)
     print(f"  Generating APP AD script... CTA: \"{cta}\"")
 
@@ -350,33 +316,27 @@ TONE: Raw, honest, brotherly. Not salesy. Not clinical. Sounds like a real perso
 
 TARGET LENGTH: ~20 seconds total. Short, punchy, every word earns its place.
 
-CRITICAL -- WRITE FOR THE EAR, NOT THE EYE:
-- Use natural spoken language and contractions
-- Sentences must flow -- no choppy fragments, no isolated word bursts
-- Read it aloud in your head -- if it sounds stiff, rewrite it
-
-BANNED PHRASES -- NEVER use these:
-- "try it for free" -- say ONLY "try it" or use the CTA below
+BANNED PHRASES:
+- "try it for free" -- say ONLY "try it"
 - "free trial" -- say ONLY "trial"
 - "download now" -- say "find us on Google Play"
-- NEVER mention specific numbers like "50 messages" or "5 voice minutes" -- keep it emotional, not technical
+- NEVER mention specific numbers like "50 messages" or "5 voice minutes"
 
 ABOUT MINDCORE AI:
-- An AI mental health companion for men, available on Google Play
-- Offers a free trial with no credit card required
-- Gives users a real AI companion to talk to -- available any time, no judgement
+- AI mental wellness companion for men, on Google Play
+- Free trial, no credit card required
+- Real AI conversation, any time, no judgement
 
-THE SOLUTION_CTA MUST END WITH EXACTLY THIS SENTENCE (word for word):
+THE SOLUTION_CTA MUST END WITH EXACTLY THIS SENTENCE:
 "{cta}"
-Build naturally into it. Do not change or paraphrase the CTA sentence.
 
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
 
-STRICT WORD COUNT (enforced):
+STRICT WORD COUNT:
 - hook:         up to 8 words
 - problem:      up to 12 words
 - story:        up to 14 words
-- solution_cta: up to 14 words (must include the CTA sentence above)
+- solution_cta: up to 14 words
 
 Return ONLY valid JSON, no markdown fences:
 {{
@@ -436,7 +396,13 @@ def build_full_script(script: dict) -> str:
 
 # -- Step 3 -- Submit to HeyGen -----------------------------------------------
 
-def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, background_color: str) -> str:
+def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
+                        background_color: str, natural_gestures: bool) -> str:
+    """
+    Submit to HeyGen.
+    natural_gestures=True  -> no motion prompt, avatar uses its own trained movements
+    natural_gestures=False -> custom motion prompt injected (legacy behaviour)
+    """
     headers = {
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json",
@@ -462,11 +428,24 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str, backgro
         ],
         "dimension":    {"width": 1080, "height": 1920},
         "aspect_ratio": "9:16",
-        "use_avatar_iv_model":          True,
-        "custom_motion_prompt":         MOTION_PROMPT,
-        "enhance_custom_motion_prompt": True,
         "test": False,
     }
+
+    if not natural_gestures:
+        # Legacy: inject custom motion prompt
+        MOTION_PROMPT = (
+            "Deliver this as a grounded, emotionally present mental health speaker. "
+            "Hands mostly still and relaxed at rest. Reserve hand movement for key moments only. "
+            "Slow deliberate gestures -- open palms or hand on chest for personal experience. "
+            "Nod gently on empathetic statements. Soft warm eye contact. "
+            "Go completely still at profound statements. Trusted older brother tone."
+        )
+        payload["use_avatar_iv_model"]          = True
+        payload["custom_motion_prompt"]         = MOTION_PROMPT
+        payload["enhance_custom_motion_prompt"] = True
+        print(f"  Motion: CUSTOM PROMPT (use_natural_gestures=false)")
+    else:
+        print(f"  Motion: NATURAL (avatar's own trained gestures)")
 
     resp = requests.post(HEYGEN_SUBMIT_URL, headers=headers, json=payload, timeout=30)
     if not resp.ok:
@@ -531,7 +510,6 @@ def download_video(url: str, output_path: str):
 # -- Step 5b -- Crop to proper 9:16 portrait ----------------------------------
 
 def get_video_dimensions(path: str) -> tuple:
-    """Use ffprobe to get actual video width and height."""
     cmd = [
         "ffprobe", "-v", "error",
         "-select_streams", "v:0",
@@ -545,18 +523,13 @@ def get_video_dimensions(path: str) -> tuple:
 
 
 def detect_content_crop(video_path: str) -> tuple:
-    """
-    Run ffmpeg cropdetect to find the actual content area, ignoring dark bars.
-    Background color #07071a has luma ~9; limit=30 catches it reliably.
-    Returns (crop_w, crop_h, crop_x, crop_y) or None if detection fails.
-    """
     cmd = [
         "ffmpeg", "-i", video_path,
         "-vf", "cropdetect=limit=30:round=2:reset=0",
         "-frames:v", "90",
         "-f", "null", "-"
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result  = subprocess.run(cmd, capture_output=True, text=True)
     matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", result.stderr)
     if not matches:
         return None
@@ -566,15 +539,10 @@ def detect_content_crop(video_path: str) -> tuple:
 
 
 def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
-    """
-    Build ffmpeg filter to convert any content rect to 1080x1920 portrait.
-    Scale so HEIGHT = 1920 (no stretch), then crop center 1080 wide.
-    """
     scale_h = 1920
     scale_w = round(cw * scale_h / ch)
     if scale_w % 2 != 0:
         scale_w += 1
-
     if scale_w >= 1080:
         x_offset = (scale_w - 1080) // 2
         return (
@@ -593,12 +561,10 @@ def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
 
 
 def crop_to_portrait(raw_path: str, final_path: str):
-    """Convert HeyGen output to proper 9:16 portrait using cropdetect."""
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw video dimensions: {w}x{h}")
 
     crop_result = detect_content_crop(raw_path)
-
     if crop_result:
         cw, ch, cx, cy = crop_result
         filter_str = make_portrait_filter(cw, ch, cx, cy)
@@ -638,8 +604,8 @@ def generate_upload_guide(script: dict, mode: str, client: anthropic.Anthropic) 
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode)
 
-    prompt = f"""You are a social media growth expert specialising in TikTok and Facebook Reels
-for the men's mental health and recovery niche.
+    prompt = f"""You are a social media growth expert for TikTok and Facebook Reels,
+men's mental health and recovery niche.
 
 Generate a complete upload guide for TikTok AND Facebook.
 
@@ -650,15 +616,15 @@ FULL VOICEOVER:
 \"\"\"{full_vo}\"\"\"
 
 TIKTOK:
-- Title: max 100 characters, front-load the keyword, scroll-stopper
-- Description: max 150 characters -- hook + keyword + soft CTA
-- Hashtags: 8-12. Mix broad/mid/niche. Start each with #.
-- Best posting times: top 3 (day + UTC time) for this niche
+- Title: max 100 characters, front-load the keyword
+- Description: max 150 characters
+- Hashtags: 8-12
+- Best posting times: top 3 (day + UTC time)
 - On-screen text overlay suggestion: 1 punchy line
 
 FACEBOOK REELS:
 - Title: max 255 characters
-- Description: 2-3 sentences, keyword-rich, ends with CTA or question
+- Description: 2-3 sentences, ends with CTA or question
 - Hashtags: 5-7
 - Best posting times: top 3 (day + UTC time)
 
@@ -703,7 +669,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 30fps | Avatar IV + motion | TikTok + Facebook
+  Format      : 1080x1920 9:16 30fps | Natural gestures | TikTok + Facebook
 ================================================================================
 
 FULL SCRIPT
@@ -733,15 +699,17 @@ def main():
     avatar_id        = pick_avatar_look(cfg)
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
+    natural_gestures = cfg.get("use_natural_gestures", True)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v2.9.2")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.0")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar look: {avatar_id[:8]}... (1 of {len(cfg['avatar_look_ids'])}) | bg: {background_color}")
-    print(f"  Format: 1080x1920 9:16 30fps | scale-to-height crop | script sanitizer")
+    print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
+    print(f"  Motion: {'NATURAL (avatar gestures)' if natural_gestures else 'CUSTOM PROMPT'}")
+    print(f"  Format: 1080x1920 9:16 30fps | cropdetect crop | sanitizer active")
     if mode == "content":
-        print(f"  Target: ~60-70s | hook=10-15 | problem=30-40 | story=50-65 | cta=25-35")
+        print(f"  Target: ~60-70s content | 9 content : 1 ad ratio")
     else:
-        print(f"  Target: ~20s | hook=8 | problem=12 | story=14 | cta=14 | rotating CTA")
+        print(f"  Target: ~20s ad | rotating CTA")
     print("=" * 60)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -770,8 +738,10 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    print(f"\n  Submitting to HeyGen (Avatar IV + motion | look: {avatar_id[:8]}...)...")
-    video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color)
+    print(f"\n  Submitting to HeyGen...")
+    video_id = submit_heygen_video(
+        full_script, avatar_id, voice_id, background_color, natural_gestures
+    )
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
     video_url = poll_heygen_video(video_id)
@@ -781,7 +751,7 @@ def main():
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
 
-    print("\n  Converting to 9:16 portrait (scale-to-height, center crop)...")
+    print("\n  Converting to 9:16 portrait...")
     crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
