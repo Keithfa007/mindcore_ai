@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'pages/post_login_gate.dart';
 import 'theme/app_theme.dart';
@@ -35,6 +36,12 @@ import 'services/usage_service.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
+// ── FCM background message handler (top-level, required by Firebase) ─────────
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -56,6 +63,39 @@ Future<void> main() async {
   ]);
 
   await Firebase.initializeApp();
+
+  // ── FCM setup ──────────────────────────────────────────────────────────────
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  final messaging = FirebaseMessaging.instance;
+
+  // Request permission (Android 13+)
+  await messaging.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  // Subscribe to relax audio topic — receives notification when new track drops
+  await messaging.subscribeToTopic('relax_audio_updates');
+
+  // Handle FCM tap when app is in foreground
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    final screen = message.data['screen'];
+    if (screen == 'relax_audio') {
+      appNavigatorKey.currentState?.pushNamed('/relax-audio');
+    }
+  });
+
+  // Handle FCM tap when app is opened from background/terminated
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    final screen = message.data['screen'];
+    if (screen == 'relax_audio') {
+      appNavigatorKey.currentState?.pushNamed('/relax-audio');
+    }
+  });
+
+  // ── End FCM setup ──────────────────────────────────────────────────────────
 
   await PremiumService.init();
   await UsageService.instance.init();
