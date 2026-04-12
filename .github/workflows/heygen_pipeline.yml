@@ -1,6 +1,7 @@
 name: MindCore AI -- HeyGen Avatar Pipeline
 
-# Schedule PAUSED -- enable when ready by uncommenting the schedule block
+# Automated schedule: Mon/Wed/Fri 09:00 UTC
+# Ratio: 9 content videos : 1 ad (every 10th run is an ad)
 on:
   workflow_dispatch:
     inputs:
@@ -13,9 +14,8 @@ on:
         required: false
         default: ""
 
-  # Uncomment to re-enable automated schedule (Mon/Wed/Fri 09:00 UTC)
-  # schedule:
-  #   - cron: "0 9 * * 1,3,5"
+  schedule:
+    - cron: "0 9 * * 1,3,5"
 
 jobs:
   generate-video:
@@ -48,9 +48,9 @@ jobs:
           if [ -n "$FORCE" ]; then
             echo "Mode: FORCED to $FORCE"
           elif [ "$MOD" -eq 0 ]; then
-            echo "Mode: AD (run #$RUN_NUM)"
+            echo "Mode: AD (run #$RUN_NUM) -- 1 in 10"
           else
-            echo "Mode: CONTENT (run #$RUN_NUM)"
+            echo "Mode: CONTENT (run #$RUN_NUM) -- $((10 - MOD)) until next ad"
           fi
 
       - name: Run HeyGen Pipeline
@@ -93,6 +93,7 @@ jobs:
           echo "## MindCore AI -- HeyGen Avatar Pipeline" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }} | **Avatar:** KF" >> $GITHUB_STEP_SUMMARY
           echo "**Format:** 9:16 vertical -- TikTok + Facebook Reels" >> $GITHUB_STEP_SUMMARY
+          echo "**Schedule:** Mon/Wed/Fri 09:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
