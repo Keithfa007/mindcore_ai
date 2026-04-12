@@ -32,7 +32,7 @@ def get_wp_auth():
     return {"Authorization": f"Basic {token}"}
 
 
-# ── Step 1 · SEO Research & Topic Selection ────────────────────────────────────
+# ── Step 1 · SEO Research & Topic Selection ──────────────────────────────────────────
 def research_topic():
     print("🔍  Researching best SEO topic for this week...")
 
@@ -51,7 +51,7 @@ This is an AI mental health companion app targeting:
 
 Selection criteria:
   • High Google search demand, VERY low keyword competition
-  • Mirrors real "People Also Ask" or "Related Searches" questions on Google
+  • Mirrors real “People Also Ask” or “Related Searches” questions on Google
   • Evergreen — ranks over months, not just days
   • Fits one of the three niches above
 
@@ -81,7 +81,7 @@ Respond ONLY in this exact JSON format — no markdown, no preamble:
     return data
 
 
-# ── Step 2 · Write the Blog Post ───────────────────────────────────────────────
+# ── Step 2 · Write the Blog Post ─────────────────────────────────────────────────────
 def write_blog_post(topic_data):
     print("✍️   Writing blog post...")
 
@@ -126,7 +126,7 @@ FORMAT:
     return content
 
 
-# ── Step 3 · Generate Illustration ────────────────────────────────────────────
+# ── Step 3 · Generate Illustration ────────────────────────────────────────────────────
 def generate_illustration(image_prompt):
     print("🎨  Generating DALL-E illustration...")
 
@@ -151,7 +151,7 @@ def generate_illustration(image_prompt):
     return img_bytes
 
 
-# ── Step 4 · Upload Image to WordPress ────────────────────────────────────────
+# ── Step 4 · Upload Image to WordPress ──────────────────────────────────────────────
 def upload_image_to_wordpress(image_data, title):
     print("📤  Uploading illustration to WordPress...")
 
@@ -176,7 +176,7 @@ def upload_image_to_wordpress(image_data, title):
         return None
 
 
-# ── Step 5 · Category Management ──────────────────────────────────────────────
+# ── Step 5 · Category Management ──────────────────────────────────────────────────────
 def get_or_create_categories():
     """Fetch existing WP categories and create any missing ones. Returns name→id map."""
     print("📂  Setting up categories...")
@@ -210,9 +210,9 @@ def get_or_create_categories():
     return category_map
 
 
-# ── Step 6 · Publish to WordPress as Draft ────────────────────────────────────
+# ── Step 6 · Publish to WordPress (live) ─────────────────────────────────────────────
 def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
-    print("📰  Publishing draft to WordPress...")
+    print("📰  Publishing to WordPress...")
 
     # Split excerpt from content
     excerpt = ""
@@ -238,7 +238,7 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         "title":      topic_data["topic"],
         "content":    content,
         "excerpt":    excerpt,
-        "status":     "draft",       # ← drafts for first 6 weeks
+        "status":     "publish",
         "categories": category_ids,
         "meta": {
             "_yoast_wpseo_metadesc": topic_data["meta_description"],
@@ -261,7 +261,7 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
 
     post    = response.json()
     post_id = post["id"]
-    print(f"   ✅  Draft saved  →  {post.get('link', 'N/A')}")
+    print(f"   ✅  Published  →  {post.get('link', 'N/A')}")
 
     # Attach featured image separately (avoids Hostinger theme 500 error)
     if image_id:
@@ -274,7 +274,7 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         if update_response.status_code == 200:
             print(f"   ✅  Featured image attached")
         else:
-            print(f"   ⚠️   Image attach failed (post still saved): {update_response.text}")
+            print(f"   ⚠️   Image attach failed (post still published): {update_response.text}")
 
     return post
 
@@ -305,10 +305,10 @@ def main():
         print(f"   ⚠️   Category setup failed: {exc}\n   Continuing without categories.")
         category_map = None
 
-    # 5. Publish as draft with category
+    # 5. Publish live
     publish_to_wordpress(topic_data, content, image_id, category_map)
 
-    print("\n🎉  Pipeline complete! Check WordPress › Posts › Drafts.")
+    print("\n🎉  Pipeline complete! Post is live on mindcoreai.eu")
     print("=" * 52)
 
 
