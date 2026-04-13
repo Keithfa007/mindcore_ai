@@ -77,6 +77,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final isDark      = Theme.of(context).brightness == Brightness.dark;
     final cs          = Theme.of(context).colorScheme;
     final currentTier = PremiumService.currentTier.value;
+    // Show the trial card to anyone who is not yet a paying subscriber
+    final showTrial   = !PremiumService.isPremium.value;
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -155,8 +157,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Trial card
-                      if (currentTier.tier == AppTier.trial) ...[
+                      // Trial card — shown to all non-paying users
+                      if (showTrial) ...[
                         _TrialCard(
                             loading: _loading,
                             product: _sub.trialProduct,
@@ -211,7 +213,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       const SizedBox(height: 20),
 
                       Text(
-                        'Subscriptions renew automatically. Cancel anytime\nin App Store or Google Play settings.',
+                        'Subscriptions renew automatically. Cancel anytime\nin Google Play settings.',
                         style: tt.bodySmall?.copyWith(
                             color: isDark
                                 ? Colors.white.withValues(alpha: 0.30)
@@ -659,7 +661,6 @@ class _VoicePackCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          // ── FIX: constrain both width AND height to avoid infinite-width crash
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -669,14 +670,13 @@ class _VoicePackCard extends StatelessWidget {
                       color: AppColors.mintDeep)),
               const SizedBox(height: 6),
               SizedBox(
-                width: 76,   // explicit width — fixes BoxConstraints infinite width crash
+                width: 76,
                 height: 36,
                 child: FilledButton(
                   onPressed: loading ? null : () => onBuy(product),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.mintDeep,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    // Remove default minimum size & tap target expansion
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     shape: RoundedRectangleBorder(
