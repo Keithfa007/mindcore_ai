@@ -77,7 +77,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final isDark      = Theme.of(context).brightness == Brightness.dark;
     final cs          = Theme.of(context).colorScheme;
     final currentTier = PremiumService.currentTier.value;
-    // Show the trial card to anyone who is not yet a paying subscriber
     final showTrial   = !PremiumService.isPremium.value;
 
     return Scaffold(
@@ -338,7 +337,7 @@ class _TrialCard extends StatelessWidget {
                           fontSize: 10)),
                 ),
                 const SizedBox(height: 8),
-                Text('Try everything free',
+                Text('Try 7 days for \u20ac1.99',
                     style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: isDark
@@ -520,8 +519,7 @@ class _PlanCard extends StatelessWidget {
                 ? Container(
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     decoration: BoxDecoration(
-                      color:
-                          const Color(0xFF1D9E75).withValues(alpha: 0.10),
+                      color: const Color(0xFF1D9E75).withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                           color: const Color(0xFF1D9E75)
@@ -638,11 +636,10 @@ class _VoicePackCard extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.mintDeep.withValues(alpha: 0.12),
-              border:
-                  Border.all(color: AppColors.mintDeep.withValues(alpha: 0.30)),
+              border: Border.all(
+                  color: AppColors.mintDeep.withValues(alpha: 0.30)),
             ),
-            child:
-                Icon(Icons.mic_rounded, color: AppColors.mintDeep, size: 20),
+            child: Icon(Icons.mic_rounded, color: AppColors.mintDeep, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
