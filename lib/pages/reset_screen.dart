@@ -45,24 +45,16 @@ class _ResetScreenState extends State<ResetScreen>
   }
 
   Future<void> _pickMood() async {
+    // isScrollControlled + explicit height fraction ensures all moods visible
     final res = await showModalBottomSheet<Map<String, String>?>(
       context: context,
       backgroundColor: Colors.transparent,
-      // isScrollControlled allows the sheet to grow taller than 50% screen height
       isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.75,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (_, controller) => Container(
-          margin: const EdgeInsets.only(top: 12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: const MoodPickerSheet(),
-        ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      builder: (_) => SingleChildScrollView(
+        child: const MoodPickerSheet(),
       ),
     );
     if (res == null) return;
