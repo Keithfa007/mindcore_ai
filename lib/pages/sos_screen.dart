@@ -8,6 +8,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
@@ -52,6 +53,9 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // Keep screen on for the entire SOS session
+    WakelockPlus.enable();
+
     _breathCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
@@ -72,6 +76,8 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     _breathCtrl.dispose();
     _breathTimer?.cancel();
     _player.dispose();
+    // Release wakelock when SOS screen closes
+    WakelockPlus.disable();
     super.dispose();
   }
 
@@ -245,7 +251,6 @@ class _BreatheStep extends StatelessWidget {
                 final v        = ctrl.value;
                 final isInhale = v < 0.5;
                 final localP   = isInhale ? v / 0.5 : (v - 0.5) / 0.5;
-                // Gentle easeInOut scale
                 final scale = isInhale
                     ? _lerp(0.65, 0.93,
                         Curves.easeInOut.transform(localP))
@@ -257,7 +262,6 @@ class _BreatheStep extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Outer halo
                       Transform.scale(
                         scale: scale * 1.45,
                         child: Container(
@@ -268,7 +272,6 @@ class _BreatheStep extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Middle halo
                       Transform.scale(
                         scale: scale * 1.22,
                         child: Container(
@@ -279,7 +282,6 @@ class _BreatheStep extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Main orb — no text inside
                       Transform.scale(
                         scale: scale,
                         child: Container(
@@ -307,7 +309,6 @@ class _BreatheStep extends StatelessWidget {
           ),
         ),
 
-        // Phase text below orb — fades gently
         SizedBox(
           height: 32,
           child: AnimatedBuilder(
