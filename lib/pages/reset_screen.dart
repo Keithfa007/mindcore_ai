@@ -48,7 +48,22 @@ class _ResetScreenState extends State<ResetScreen>
     final res = await showModalBottomSheet<Map<String, String>?>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _SheetShell(child: MoodPickerSheet()),
+      // isScrollControlled allows the sheet to grow taller than 50% screen height
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, controller) => Container(
+          margin: const EdgeInsets.only(top: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: const MoodPickerSheet(),
+        ),
+      ),
     );
     if (res == null) return;
     setState(() {
@@ -78,7 +93,7 @@ class _ResetScreenState extends State<ResetScreen>
         moodLabel: _moodLabel,
       );
 
-      // Also save to mood log so it appears in History page
+      // Save to mood log so it appears in History page
       await MoodLogService.logMood(
         emoji: _moodEmoji,
         label: _moodLabel,
@@ -232,23 +247,6 @@ class _ResetScreenState extends State<ResetScreen>
           ],
         ),
       ),
-    );
-  }
-}
-
-class _SheetShell extends StatelessWidget {
-  final Widget child;
-  const _SheetShell({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: child,
     );
   }
 }
