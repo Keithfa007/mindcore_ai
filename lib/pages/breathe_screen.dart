@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../widgets/page_scaffold.dart';
 import '../widgets/app_top_bar.dart';
@@ -176,6 +177,7 @@ class _BreatheScreenState extends State<BreatheScreen>
 
   void _stopWithTargetReached() {
     _running = false; _c.stop(); OpenAiTtsService.instance.stop();
+    WakelockPlus.disable();
     if (_settings.haptics) HapticFeedback.mediumImpact();
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -212,15 +214,24 @@ class _BreatheScreenState extends State<BreatheScreen>
     }
   }
 
+  // Slower, more calming TTS phrases — longer text = more natural pacing
   Future<void> _speakPhase(_Phase p) async {
     if (!_settings.tts || !_running || _lastSpokenPhase == p) return;
     _lastSpokenPhase = p;
     String text;
-    switch (p) {
-      case _Phase.inhale: text = _aiCoachEnabled ? _coachPlan.inhale : 'Breathe in'; break;
-      case _Phase.exhale: text = _aiCoachEnabled ? _coachPlan.exhale : 'Breathe out'; break;
-      case _Phase.hold1: case _Phase.hold2:
-        text = _aiCoachEnabled ? _coachPlan.hold : 'Hold'; break;
+    if (_aiCoachEnabled) {
+      switch (p) {
+        case _Phase.inhale: text = _coachPlan.inhale; break;
+        case _Phase.exhale: text = _coachPlan.exhale; break;
+        case _Phase.hold1: case _Phase.hold2: text = _coachPlan.hold; break;
+      }
+    } else {
+      switch (p) {
+        case _Phase.inhale: text = 'Breathe in slowly and deeply'; break;
+        case _Phase.hold1:  text = 'Hold... stay with it'; break;
+        case _Phase.exhale: text = 'Breathe out... let it all go'; break;
+        case _Phase.hold2:  text = 'Rest here... you are calm'; break;
+      }
     }
     await OpenAiTtsService.instance.speak(
       text, moodLabel: 'calm',
@@ -232,12 +243,14 @@ class _BreatheScreenState extends State<BreatheScreen>
   void dispose() {
     _c.dispose(); _phaseVN.dispose(); _cyclesVN.dispose();
     OpenAiTtsService.instance.stop();
+    WakelockPlus.disable();
     super.dispose();
   }
 
   void _toggle() async {
     if (_running) {
       _c.stop(); OpenAiTtsService.instance.stop();
+      WakelockPlus.disable();
       setState(() => _running = false);
       return;
     }
@@ -247,6 +260,8 @@ class _BreatheScreenState extends State<BreatheScreen>
     _cyclesVN.value = 0; _lastSpokenPhase = null;
     _c.duration = _cycle; _lastAnimValue = _c.value;
     _c.repeat(period: _cycle);
+    // Keep screen on while breathing
+    WakelockPlus.enable();
     if (_aiCoachEnabled && _settings.tts && _coachPlan.intro.isNotEmpty) {
       await OpenAiTtsService.instance.speak(
         _coachPlan.intro, moodLabel: 'calm',
@@ -263,6 +278,7 @@ class _BreatheScreenState extends State<BreatheScreen>
     _phaseVN.value = _Phase.inhale; _lastSpokenPhase = null;
     _lastAnimValue = 0.0;
     OpenAiTtsService.instance.stop();
+    WakelockPlus.disable();
     setState(() {});
   }
 
@@ -286,6 +302,7 @@ class _BreatheScreenState extends State<BreatheScreen>
         _c.repeat(period: _cycle); _speakPhase(_phaseVN.value);
       } else {
         OpenAiTtsService.instance.stop();
+        WakelockPlus.disable();
         _running = false;
       }
     });
@@ -293,7 +310,6 @@ class _BreatheScreenState extends State<BreatheScreen>
 
   // ── Phase helpers ───────────────────────────────────────────────────
 
-  // Calm, unhurried labels — no all-caps urgency
   String _phaseLabel(_Phase p) {
     switch (p) {
       case _Phase.inhale: return 'Breathe In';
@@ -303,7 +319,6 @@ class _BreatheScreenState extends State<BreatheScreen>
     }
   }
 
-  // Soft guidance — present tense, no imperatives
   String _phaseGuidance(_Phase p) {
     switch (p) {
       case _Phase.inhale: return 'Fill your lungs slowly and gently…';
@@ -327,7 +342,6 @@ class _BreatheScreenState extends State<BreatheScreen>
     return safeDiv(ms-a-b-c, d);
   }
 
-  // Gentle scale — not too dramatic, easeInOut both ways
   double _orbScale() {
     final p = _phaseLocalProgress();
     switch (_phaseVN.value) {
@@ -424,7 +438,6 @@ class _BreatheScreenState extends State<BreatheScreen>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Outermost soft halo
                             Transform.scale(
                               scale: scale * 1.55,
                               child: Container(
@@ -435,7 +448,6 @@ class _BreatheScreenState extends State<BreatheScreen>
                                 ),
                               ),
                             ),
-                            // Middle halo
                             Transform.scale(
                               scale: scale * 1.28,
                               child: Container(
@@ -446,7 +458,6 @@ class _BreatheScreenState extends State<BreatheScreen>
                                 ),
                               ),
                             ),
-                            // Inner halo
                             Transform.scale(
                               scale: scale * 1.10,
                               child: Container(
@@ -457,7 +468,6 @@ class _BreatheScreenState extends State<BreatheScreen>
                                 ),
                               ),
                             ),
-                            // Main orb — no text inside, just light
                             Transform.scale(
                               scale: scale,
                               child: Container(
@@ -543,7 +553,7 @@ class _BreatheScreenState extends State<BreatheScreen>
 
               const SizedBox(height: 12),
 
-              // ── Timing pills (informational only) ────────────────────
+              // ── Timing pills ────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(

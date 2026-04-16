@@ -5,6 +5,7 @@ import 'package:mindcore_ai/widgets/glass_card.dart';
 
 import 'package:mindcore_ai/pages/helpers/mood_picker_sheet.dart';
 import 'package:mindcore_ai/services/reset_metrics_service.dart';
+import 'package:mindcore_ai/services/mood_log_service.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/pages/helpers/route_observer.dart';
@@ -67,13 +68,24 @@ class _ResetScreenState extends State<ResetScreen>
     if (_saving) return;
     setState(() => _saving = true);
     try {
+      final now = DateTime.now();
+
+      // Save reset metrics (stress before/after)
       await ResetMetricsService.log(
-        timestamp: DateTime.now(),
+        timestamp: now,
         beforeStress: _before,
         afterStress: _after,
         moodLabel: _moodLabel,
       );
-      
+
+      // Also save to mood log so it appears in History page
+      await MoodLogService.logMood(
+        emoji: _moodEmoji,
+        label: _moodLabel,
+        note: 'Logged after Quick Reset (stress: $_before → $_after)',
+        timestamp: now,
+      );
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Reset saved. Nice work.')),
