@@ -1,7 +1,7 @@
 // lib/pages/sos_screen.dart
 //
 // Quick Reset — one-tap grounding sequence.
-// Step 1: Breathing (follow the orb)
+// Step 1: Breathing (follow the orb) — with voice guidance
 // Step 2: 5-4-3-2-1 grounding technique
 // Step 3: Calming audio
 
@@ -12,6 +12,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
+import 'package:mindcore_ai/services/openai_tts_service.dart';
 
 enum _SosStep { breathe, grounding, audio }
 
@@ -46,7 +47,11 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   Timer? _breathTimer;
   int _breathSecondsLeft = 60;
 
-  // Audio
+  // Voice guidance — tracks last spoken phase to avoid repeating
+  bool _lastWasInhale = false;
+  bool _voiceStarted = false;
+
+  // Audio (Step 3)
   final AudioPlayer _player = AudioPlayer();
   bool _audioPlaying = false;
 
@@ -59,10 +64,12 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     _breathCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
-    )..repeat();
+    )..repeat()..addListener(_onBreathTick);
 
-    _breathTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) {
+    // Speak intro after a short delay so screen has rendered
+    Future.delayed(const Duration(milliseconds: 600), _speakIntro);
+
+    _breathTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
         _breathSecondsLeft--;
@@ -71,18 +78,54 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     });
   }
 
+  // Speak a warm intro then start phase guidance
+  Future<void> _speakIntro() async {
+    if (!mounted) return;
+    await OpenAiTtsService.instance.speak(
+      'You are safe. Just breathe with me. Breathe in slowly...',
+      moodLabel: 'calm',
+      messageId: 'sos_intro',
+      surface: TtsSurface.breathe,
+    );
+    _voiceStarted = true;
+  }
+
+  // Fires on every animation tick — speaks when phase changes
+  void _onBreathTick() {
+    if (!_voiceStarted) return;
+    final isInhale = _breathCtrl.value < 0.5;
+    if (isInhale == _lastWasInhale) return;
+    _lastWasInhale = isInhale;
+    _speakPhase(isInhale);
+  }
+
+  Future<void> _speakPhase(bool isInhale) async {
+    if (!mounted || _step != _SosStep.breathe) return;
+    final text = isInhale
+        ? 'Breathe in slowly and gently...'
+        : 'Breathe out... let it all go...';
+    await OpenAiTtsService.instance.speak(
+      text,
+      moodLabel: 'calm',
+      messageId: 'sos_phase',
+      surface: TtsSurface.breathe,
+    );
+  }
+
   @override
   void dispose() {
+    _breathCtrl.removeListener(_onBreathTick);
     _breathCtrl.dispose();
     _breathTimer?.cancel();
     _player.dispose();
-    // Release wakelock when SOS screen closes
+    OpenAiTtsService.instance.stop();
     WakelockPlus.disable();
     super.dispose();
   }
 
   void _advanceStep() {
     _breathTimer?.cancel();
+    OpenAiTtsService.instance.stop();
     if (_step == _SosStep.breathe) {
       setState(() => _step = _SosStep.grounding);
     } else if (_step == _SosStep.grounding) {
@@ -130,6 +173,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                               : Colors.black.withValues(alpha: 0.40)),
                       onPressed: () {
                         _stopAudio();
+                        OpenAiTtsService.instance.stop();
                         Navigator.of(context).pop();
                       },
                     ),
@@ -150,6 +194,17 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                                     : Colors.black.withValues(alpha: 0.35))),
                       ],
                     ),
+                    const Spacer(),
+                    // Voice indicator
+                    if (_step == _SosStep.breathe)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Icon(
+                          Icons.record_voice_over_rounded,
+                          size: 18,
+                          color: _kCalmColor.withValues(alpha: 0.55),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -233,7 +288,7 @@ class _BreatheStep extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Just follow the orb. Breathe gently.',
+          'Put your phone down and just listen.',
           textAlign: TextAlign.center,
           style: tt.bodyMedium?.copyWith(
               color: isDark
@@ -337,7 +392,7 @@ class _BreatheStep extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Take your time — there is no rush',
+          'Voice is guiding you — no need to look',
           style: tt.bodySmall?.copyWith(
               color: isDark
                   ? Colors.white.withValues(alpha: 0.30)
@@ -537,7 +592,7 @@ class _AudioStep extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  isPlaying ? 'Playing…' : 'Tap to play',
+                  isPlaying ? 'Playing\u2026' : 'Tap to play',
                   style: tt.bodySmall?.copyWith(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.35)
@@ -550,7 +605,7 @@ class _AudioStep extends StatelessWidget {
           FilledButton.icon(
             onPressed: onClose,
             icon: const Icon(Icons.check_rounded, size: 18),
-            label: const Text('I feel calmer — close',
+            label: const Text('I feel calmer \u2014 close',
                 style: TextStyle(fontWeight: FontWeight.w700)),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(52),
