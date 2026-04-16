@@ -1,0 +1,79 @@
+name: MindCore AI -- Tester Recruitment Video
+
+# Manual trigger only -- run once to generate the tester recruitment video
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'yes' to confirm"
+        required: true
+        default: "yes"
+
+jobs:
+  generate-tester-video:
+    name: Generate Tester Recruitment Video
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Check for app demo
+        run: |
+          if [ -f "video_pipeline/assets/app_demo.mp4" ]; then
+            SIZE=$(du -sh video_pipeline/assets/app_demo.mp4 | cut -f1)
+            echo "App demo found: $SIZE"
+          else
+            echo "WARNING: video_pipeline/assets/app_demo.mp4 not found"
+            echo "Avatar video will be generated without app overlay"
+            echo "Commit your app screen recording to video_pipeline/assets/app_demo.mp4"
+          fi
+
+      - name: Generate tester recruitment video
+        env:
+          HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+        run: python video_pipeline/tester_recruitment.py
+
+      - name: Upload final video
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: mindcore-tester-recruitment
+          path: |
+            video_pipeline/output/tester_recruitment.mp4
+          retention-days: 90
+
+      - name: Upload all outputs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mindcore-tester-debug
+          path: video_pipeline/output/
+          retention-days: 7
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## MindCore AI -- Tester Recruitment Video" >> $GITHUB_STEP_SUMMARY
+          echo "**Avatar:** d28c74da0f674f309ecce684f42d4387" >> $GITHUB_STEP_SUMMARY
+          echo "**App overlay:** 0:28 -- 0:45 (app showcase section)" >> $GITHUB_STEP_SUMMARY
+          echo "**Format:** 1080x1920 9:16 portrait | 30fps" >> $GITHUB_STEP_SUMMARY
+          if [ -f "video_pipeline/output/tester_recruitment.mp4" ]; then
+            SIZE=$(du -sh video_pipeline/output/tester_recruitment.mp4 | cut -f1)
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Video ready: $SIZE -- download tester_recruitment.mp4 from Artifacts above**" >> $GITHUB_STEP_SUMMARY
+          fi
