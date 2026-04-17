@@ -16,10 +16,13 @@ APP OVERLAY:
   Place your app screen recording at:
   video_pipeline/assets/app_demo.mp4
   before running this workflow.
+
+SKIP_HEYGEN=1 env var: skip HeyGen render and reuse existing portrait file.
 """
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -29,7 +32,7 @@ import requests
 
 # -- Config -------------------------------------------------------------------
 
-HEYGEN_API_KEY    = os.environ["HEYGEN_API_KEY"]
+HEYGEN_API_KEY    = os.environ.get("HEYGEN_API_KEY", "")
 HEYGEN_SUBMIT_URL = "https://api.heygen.com/v2/video/generate"
 HEYGEN_STATUS_URL = "https://api.heygen.com/v1/video_status.get"
 
@@ -139,7 +142,7 @@ def poll_video(video_id: str) -> str:
         if status == "completed":
             url = data.get("video_url")
             if not url:
-                raise RuntimeError(f"Completed but no video_url")
+                raise RuntimeError("Completed but no video_url")
             print(f"  Render complete!")
             return url
 
@@ -224,7 +227,7 @@ def crop_to_portrait(raw: str, portrait: str):
         scale_w += 1
 
     if scale_w >= 1080:
-        x_off  = (scale_w - 1080) // 2
+        x_off   = (scale_w - 1080) // 2
         vfilter = (
             f"crop={cw}:{ch}:{cx}:{cy},"
             f"scale={scale_w}:{scale_h}:flags=lanczos,"
@@ -254,41 +257,55 @@ def crop_to_portrait(raw: str, portrait: str):
 
 # -- App overlay --------------------------------------------------------------
 
+def scale_app_to_portrait(app_w: int, app_h: int) -> str:
+    """
+    Build ffmpeg scale+crop filter to fit any app recording into 1080x1920.
+
+    Strategy: always scale so the SMALLER dimension fills the output,
+    then crop the excess from the center. No padding, no bars.
+
+    Cases:
+      Wide app (w > h):  scale height to 1920 → width > 1080 → crop sides
+      Tall app (h > w):  scale width to 1080  → height > 1920 → crop top/bottom
+      Square:            scale height to 1920 → crop sides
+    """
+    # Target output
+    out_w, out_h = 1080, 1920
+    target_ratio = out_w / out_h        # 0.5625
+    source_ratio = app_w / app_h
+
+    if source_ratio >= target_ratio:
+        # App is wider than 9:16 -- scale to height, crop width
+        scale_h = out_h
+        scale_w = round(app_w * scale_h / app_h)
+        if scale_w % 2:
+            scale_w += 1
+        x_off = (scale_w - out_w) // 2
+        return f"scale={scale_w}:{scale_h}:flags=lanczos,crop={out_w}:{out_h}:{x_off}:0"
+    else:
+        # App is taller than 9:16 (e.g. 1080x2340) -- scale to width, crop height
+        scale_w = out_w
+        scale_h = round(app_h * scale_w / app_w)
+        if scale_h % 2:
+            scale_h += 1
+        y_off = (scale_h - out_h) // 2
+        return f"scale={scale_w}:{scale_h}:flags=lanczos,crop={out_w}:{out_h}:0:{y_off}"
+
+
 def overlay_app_demo(portrait: str, app_demo: str, final: str):
     """
-    Overlay the app screen recording on top of the avatar video
-    during the app showcase section (OVERLAY_START to OVERLAY_END seconds).
-
-    The app demo is scaled to fill the full portrait frame during that window,
-    fading back to the avatar after. Avatar audio plays throughout.
-
-    Layout during showcase:
-      - App demo fills 100% of the frame (full takeover)
-      - Clean cut in / cut out at the window boundaries
+    Overlay the app screen recording during the app showcase section.
+    App fills the full frame (full takeover) during OVERLAY_START to OVERLAY_END.
+    Avatar audio plays throughout.
     """
     app_w, app_h = get_dimensions(app_demo)
     app_dur      = get_duration(app_demo)
     print(f"  App demo: {app_w}x{app_h} | {app_dur:.1f}s")
     print(f"  Overlay window: {OVERLAY_START}s -- {OVERLAY_END}s")
 
-    # Scale app demo to fill portrait frame (scale to height, crop width)
-    # Then overlay it on top of the avatar, enabled only during the window
-    scale_h = 1920
-    scale_w = round(app_w * scale_h / app_h)
-    if scale_w % 2:
-        scale_w += 1
+    app_scale = scale_app_to_portrait(app_w, app_h)
+    print(f"  App scale filter: {app_scale}")
 
-    if scale_w >= 1080:
-        x_off     = (scale_w - 1080) // 2
-        app_scale = f"scale={scale_w}:{scale_h}:flags=lanczos,crop=1080:1920:{x_off}:0"
-    else:
-        # App is taller than portrait -- scale to width
-        app_scale = f"scale=1080:-2:flags=lanczos,pad=1080:1920:0:(1920-ih)/2:color=black"
-
-    # ffmpeg complex filter:
-    # [0] = portrait avatar video
-    # [1] = app demo
-    # Scale app demo, then overlay at (0,0) only between OVERLAY_START and OVERLAY_END
     filter_complex = (
         f"[1:v]{app_scale}[app];"
         f"[0:v][app]overlay=0:0:"
@@ -298,11 +315,11 @@ def overlay_app_demo(portrait: str, app_demo: str, final: str):
     print(f"  Applying app overlay...")
     run_ffmpeg([
         "ffmpeg",
-        "-i", portrait,    # input 0: avatar portrait
-        "-i", app_demo,    # input 1: app screen recording
+        "-i", portrait,
+        "-i", app_demo,
         "-filter_complex", filter_complex,
-        "-map", "[out]",   # use composited video
-        "-map", "0:a",     # keep avatar audio throughout
+        "-map", "[out]",
+        "-map", "0:a",
         "-c:v", "libx264", "-crf", "16", "-preset", "slow",
         "-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M",
         "-c:a", "aac", "-b:a", "192k",
@@ -325,41 +342,47 @@ def main():
     portrait = str(OUTPUT_DIR / "tester_portrait.mp4")
     final    = str(OUTPUT_DIR / "tester_recruitment.mp4")
 
+    skip_heygen = os.environ.get("SKIP_HEYGEN", "").lower() in ("1", "true", "yes")
+
     print("\n  MindCore AI -- Tester Recruitment Video")
     print(f"  Avatar:   {AVATAR_ID}")
     print(f"  Overlay:  {OVERLAY_START}s -- {OVERLAY_END}s (app showcase)")
     print(f"  App demo: {APP_DEMO}")
+    if skip_heygen:
+        print(f"  SKIP_HEYGEN=1 -- reusing existing portrait file")
     print("=" * 52)
 
-    # Check app demo exists
     app_demo_exists = Path(APP_DEMO).exists()
     if not app_demo_exists:
-        print(f"  WARNING: {APP_DEMO} not found -- will skip overlay step")
-        print(f"  Commit your app screen recording to {APP_DEMO} to enable overlay")
+        print(f"  WARNING: {APP_DEMO} not found -- will skip overlay")
 
-    print("\n  Submitting to HeyGen...")
-    video_id  = submit_video()
+    if not skip_heygen:
+        print("\n  Submitting to HeyGen...")
+        video_id  = submit_video()
 
-    print(f"\n  Rendering (up to {VIDEO_TIMEOUT // 60} min)...")
-    video_url = poll_video(video_id)
+        print(f"\n  Rendering (up to {VIDEO_TIMEOUT // 60} min)...")
+        video_url = poll_video(video_id)
 
-    print("\n  Downloading raw video...")
-    download_video(video_url, raw)
+        print("\n  Downloading raw video...")
+        download_video(video_url, raw)
 
-    print("\n  Cropping to 9:16 portrait...")
-    crop_to_portrait(raw, portrait)
+        print("\n  Cropping to 9:16 portrait...")
+        crop_to_portrait(raw, portrait)
+    else:
+        if not Path(portrait).exists():
+            raise RuntimeError(f"SKIP_HEYGEN set but portrait not found: {portrait}")
+        print(f"\n  Reusing existing portrait: {portrait}")
 
     if app_demo_exists:
         print("\n  Overlaying app screen recording (0:28 -- 0:45)...")
         overlay_app_demo(portrait, APP_DEMO, final)
     else:
-        print("\n  No app demo found -- using portrait-only output")
-        import shutil
+        print("\n  No app demo -- using portrait-only output")
         shutil.copy(portrait, final)
         print(f"  Output: {final}")
 
-    print(f"\n  DONE -- download tester_recruitment.mp4 from Artifacts")
     dur = get_duration(final)
+    print(f"\n  DONE -- download tester_recruitment.mp4 from Artifacts")
     print(f"  Duration: {dur:.1f}s | Format: 1080x1920 9:16 portrait")
 
 
