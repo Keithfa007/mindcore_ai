@@ -32,7 +32,7 @@ def get_wp_auth():
     return {"Authorization": f"Basic {token}"}
 
 
-# ── Step 1 · SEO Research & Topic Selection ──────────────────────────────────────────
+# ── Step 1 · SEO Research & Topic Selection ────────────────────────────────────
 def research_topic():
     print("🔍  Researching best SEO topic for this week...")
 
@@ -51,7 +51,7 @@ This is an AI mental health companion app targeting:
 
 Selection criteria:
   • High Google search demand, VERY low keyword competition
-  • Mirrors real “People Also Ask” or “Related Searches” questions on Google
+  • Mirrors real "People Also Ask" or "Related Searches" questions on Google
   • Evergreen — ranks over months, not just days
   • Fits one of the three niches above
 
@@ -81,7 +81,7 @@ Respond ONLY in this exact JSON format — no markdown, no preamble:
     return data
 
 
-# ── Step 2 · Write the Blog Post ─────────────────────────────────────────────────────
+# ── Step 2 · Write the Blog Post ───────────────────────────────────────────────
 def write_blog_post(topic_data):
     print("✍️   Writing blog post...")
 
@@ -126,7 +126,7 @@ FORMAT:
     return content
 
 
-# ── Step 3 · Generate Illustration ────────────────────────────────────────────────────
+# ── Step 3 · Generate Illustration ────────────────────────────────────────────
 def generate_illustration(image_prompt):
     print("🎨  Generating DALL-E illustration...")
 
@@ -151,7 +151,7 @@ def generate_illustration(image_prompt):
     return img_bytes
 
 
-# ── Step 4 · Upload Image to WordPress ──────────────────────────────────────────────
+# ── Step 4 · Upload Image to WordPress ────────────────────────────────────────
 def upload_image_to_wordpress(image_data, title):
     print("📤  Uploading illustration to WordPress...")
 
@@ -176,12 +176,13 @@ def upload_image_to_wordpress(image_data, title):
         return None
 
 
-# ── Step 5 · Category Management ──────────────────────────────────────────────────────
+# ── Step 5 · Category Management ──────────────────────────────────────────────
 def get_or_create_categories():
     """Fetch existing WP categories and create any missing ones. Returns name→id map."""
     print("📂  Setting up categories...")
     headers = get_wp_auth()
 
+    # Fetch all existing categories
     response = requests.get(
         f"{WP_URL}/wp-json/wp/v2/categories?per_page=100",
         headers=headers,
@@ -192,8 +193,11 @@ def get_or_create_categories():
     category_map = {}
     for name in CATEGORIES:
         if name in existing:
+            # Category already exists — use its ID directly
             category_map[name] = existing[name]
+            print(f"   ✅  Found category: {name} (ID: {existing[name]})")
         else:
+            # Try to create it
             create = requests.post(
                 f"{WP_URL}/wp-json/wp/v2/categories",
                 headers={**headers, "Content-Type": "application/json"},
@@ -203,6 +207,22 @@ def get_or_create_categories():
             if create.status_code == 201:
                 category_map[name] = create.json()["id"]
                 print(f"   ✅  Created category: {name}")
+            elif create.status_code == 400:
+                # term_exists — WordPress returns the existing term_id in the error
+                try:
+                    error_data = create.json()
+                    term_id = error_data.get("data", {}).get("term_id")
+                    if not term_id:
+                        # also check additional_data
+                        additional = error_data.get("additional_data", [])
+                        term_id = additional[0] if additional else None
+                    if term_id:
+                        category_map[name] = term_id
+                        print(f"   ✅  Category exists: {name} (ID: {term_id})")
+                    else:
+                        print(f"   ⚠️   Could not resolve ID for '{name}'")
+                except Exception:
+                    print(f"   ⚠️   Could not parse error for '{name}'")
             else:
                 print(f"   ⚠️   Could not create '{name}': {create.text}")
 
@@ -210,7 +230,7 @@ def get_or_create_categories():
     return category_map
 
 
-# ── Step 6 · Publish to WordPress (live) ─────────────────────────────────────────────
+# ── Step 6 · Publish to WordPress (live) ──────────────────────────────────────
 def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
     print("📰  Publishing to WordPress...")
 
