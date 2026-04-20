@@ -1,7 +1,8 @@
 // lib/ai/weekly_report_service.dart
 //
-// Generates a personalised weekly mood report every Monday via OpenAI.
-// Cached by ISO week number so it only calls the AI once per week.
+// Generates a personalised weekly mood report via OpenAI.
+// Cached by the Monday of the current week (YYYY_MM_DD of Monday).
+// Regenerates automatically every Monday when the user opens the app.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -44,75 +45,75 @@ class WeeklyReport {
 }
 
 class WeeklyReportService {
-  static const _cacheKey = 'weekly_report_v1';
+  static const _cacheKey    = 'weekly_report_v1';
   static const _cacheWeekKey = 'weekly_report_week_v1';
 
   static WeeklyReport? _memCache;
-  static String? _memWeek;
+  static String?       _memWeek;
 
   /// Returns the report for the current week.
-  /// Generates a fresh one the first time it is called each week.
+  /// Generates a fresh one the first time it is called each week (keyed to Monday).
   /// Returns null if there is not enough data (< 3 days logged).
   static Future<WeeklyReport?> getReport() async {
-    final weekKey = _isoWeekKey();
+    final weekKey = _weekKey();
 
-    // In-memory cache
+    // In-memory cache hit
     if (_memCache != null && _memWeek == weekKey) return _memCache;
 
-    // Disk cache
-    final prefs = await SharedPreferences.getInstance();
+    // Disk cache hit
+    final prefs     = await SharedPreferences.getInstance();
     final savedWeek = prefs.getString(_cacheWeekKey);
     final savedJson = prefs.getString(_cacheKey);
     if (savedWeek == weekKey && savedJson != null && savedJson.isNotEmpty) {
       try {
-        final report =
-            WeeklyReport.fromJson(jsonDecode(savedJson) as Map<String, dynamic>);
+        final report = WeeklyReport.fromJson(
+            jsonDecode(savedJson) as Map<String, dynamic>);
         _memCache = report;
-        _memWeek = weekKey;
+        _memWeek  = weekKey;
         return report;
       } catch (_) {}
     }
 
-    // Generate fresh
+    // Generate fresh report for this week
     final report = await _generate();
     if (report != null) {
       _memCache = report;
-      _memWeek = weekKey;
-      await prefs.setString(_cacheKey, jsonEncode(report.toJson()));
+      _memWeek  = weekKey;
+      await prefs.setString(_cacheKey,     jsonEncode(report.toJson()));
       await prefs.setString(_cacheWeekKey, weekKey);
     }
     return report;
   }
 
-  // ── Internal ───────────────────────────────────────────────
+  // ── Internal ───────────────────────────────────────────────────────────────
 
-  static String _isoWeekKey() {
-    final now = DateTime.now();
-    final year = now.year;
-    // ISO week number
-    final startOfYear = DateTime(year, 1, 1);
-    final dayOfYear =
-        now.difference(startOfYear).inDays + startOfYear.weekday;
-    final week = (dayOfYear / 7).ceil();
-    return '${year}_W${week.toString().padLeft(2, '0')}';
+  /// Cache key = the date of Monday of the current week (YYYY_MM_DD).
+  /// This is simple, reliable, and resets every Monday regardless of locale.
+  static String _weekKey() {
+    final now    = DateTime.now();
+    // weekday: 1=Monday … 7=Sunday. Subtract (weekday-1) days to get Monday.
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    return '${monday.year}_${monday.month.toString().padLeft(2, '0')}_'
+        '${monday.day.toString().padLeft(2, '0')}';
   }
 
   static Future<WeeklyReport?> _generate() async {
     final apiKey = Env.openaiKey;
     if (apiKey.trim().isEmpty) return null;
 
-    // Build last 7 days data
-    final all = await MoodRepo.instance.fetchAll();
-    final now = DateTime.now();
+    // Fetch last 7 days of mood logs
+    final all   = await MoodRepo.instance.fetchAll();
+    final now   = DateTime.now();
     final start = DateTime(now.year, now.month, now.day)
         .subtract(const Duration(days: 6));
 
-    // Group by day
-    final byDay = <String, List<int>>{};
+    // Group by day name
     const dayNames = [
       '', 'Monday', 'Tuesday', 'Wednesday',
-      'Thursday', 'Friday', 'Saturday', 'Sunday'
+      'Thursday', 'Friday', 'Saturday', 'Sunday',
     ];
+    final byDay = <String, List<int>>{};
     for (final e in all) {
       final d = DateTime(
           e.timestamp.year, e.timestamp.month, e.timestamp.day);
@@ -121,40 +122,44 @@ class WeeklyReportService {
       (byDay[key] ??= []).add(e.score);
     }
 
-    if (byDay.length < 3) return null; // not enough data
+    if (byDay.length < 3) return null; // not enough data yet
 
-    // Build data string
+    // Build readable data string
     final sb = StringBuffer();
-    final sortedDays = byDay.keys.toList();
-    for (final day in sortedDays) {
+    // Sort days in calendar order for the prompt
+    final orderedDays = <String>[];
+    for (int i = 1; i <= 7; i++) {
+      if (byDay.containsKey(dayNames[i])) orderedDays.add(dayNames[i]);
+    }
+    for (final day in orderedDays) {
       final scores = byDay[day]!;
-      final avg = scores.reduce((a, b) => a + b) / scores.length;
+      final avg    = scores.reduce((a, b) => a + b) / scores.length;
       sb.writeln(
-          '- $day: avg ${avg.toStringAsFixed(1)}/5 (${scores.length} log${scores.length > 1 ? 's' : ''})');
+          '- $day: avg ${avg.toStringAsFixed(1)}/5 '
+          '(${scores.length} log${scores.length > 1 ? 's' : ''})');
     }
 
-    // Overall avg
-    final allScores = byDay.values.expand((v) => v).toList();
-    final overallAvg =
-        allScores.reduce((a, b) => a + b) / allScores.length;
-
-    // Best day
-    String bestDay = sortedDays.first;
-    double bestAvg = 0;
-    for (final day in sortedDays) {
+    // Compute best day
+    String bestDay  = orderedDays.first;
+    double bestAvg  = 0;
+    for (final day in orderedDays) {
       final scores = byDay[day]!;
-      final avg = scores.reduce((a, b) => a + b) / scores.length;
+      final avg    = scores.reduce((a, b) => a + b) / scores.length;
       if (avg > bestAvg) { bestAvg = avg; bestDay = day; }
     }
+
+    // Overall average
+    final allScores  = byDay.values.expand((v) => v).toList();
+    final overallAvg = allScores.reduce((a, b) => a + b) / allScores.length;
 
     final prompt = '''
 You are MindCore AI, a compassionate mental wellness companion.
 Analyse this user's mood data from the past 7 days and generate a short weekly report.
 
-MOOD DATA (scale 1–5, 5 = best):
+MOOD DATA (scale 1-5, 5 = best):
 ${sb.toString()}
 Overall average: ${overallAvg.toStringAsFixed(1)}/5
-Best day: $bestDay
+Best day this week: $bestDay
 
 Respond ONLY with a valid JSON object with exactly these 4 keys:
 {
@@ -192,8 +197,7 @@ RULES:
 
       if (response.statusCode != 200) return null;
 
-      final json =
-          jsonDecode(response.body) as Map<String, dynamic>;
+      final json    = jsonDecode(response.body) as Map<String, dynamic>;
       final choices = json['choices'] as List?;
       if (choices == null || choices.isEmpty) return null;
 
@@ -204,7 +208,6 @@ RULES:
           '';
       if (content.isEmpty) return null;
 
-      // Strip possible markdown fences
       final cleaned = content
           .replaceAll('```json', '')
           .replaceAll('```', '')
@@ -212,10 +215,10 @@ RULES:
 
       final parsed = jsonDecode(cleaned) as Map<String, dynamic>;
       return WeeklyReport(
-        summary: parsed['summary']?.toString() ?? '',
-        bestDay: parsed['bestDay']?.toString() ?? bestDay,
-        highlight: parsed['highlight']?.toString() ?? '',
-        watchOut: parsed['watchOut']?.toString() ?? '',
+        summary:     parsed['summary']?.toString() ?? '',
+        bestDay:     parsed['bestDay']?.toString() ?? bestDay,
+        highlight:   parsed['highlight']?.toString() ?? '',
+        watchOut:    parsed['watchOut']?.toString() ?? '',
         generatedAt: DateTime.now(),
       );
     } catch (_) {
