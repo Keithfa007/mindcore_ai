@@ -55,7 +55,57 @@ class DailyInsightEngineService {
   static const String _model = 'gpt-4o-mini';
   static String get _apiKey => Env.openaiKey;
 
-  static String _dayKey(DateTime now) => DateFormat('yyyy-MM-dd').format(now);
+  // Cache key includes full date AND day name — guarantees refresh every day
+  static String _cacheKey(DateTime now, String mood) {
+    final date    = DateFormat('yyyy-MM-dd').format(now);
+    final dayName = DateFormat('EEEE').format(now).toLowerCase(); // e.g. "monday"
+    return 'daily_insight_bundle_v2_${date}_${dayName}_${mood.toLowerCase().trim()}';
+  }
+
+  // Day-of-week context injected into the AI prompt
+  static String _dayContext(DateTime now) {
+    final day  = DateFormat('EEEE').format(now);   // e.g. "Monday"
+    final hour = now.hour;
+    final timeOfDay = hour < 9
+        ? 'early morning'
+        : hour < 12
+            ? 'morning'
+            : hour < 17
+                ? 'afternoon'
+                : hour < 21
+                    ? 'evening'
+                    : 'late night';
+
+    // Day-specific tone hints
+    String dayHint;
+    switch (day) {
+      case 'Monday':
+        dayHint = 'Monday — a fresh start. The tone should be gently energising and forward-looking.';
+        break;
+      case 'Tuesday':
+        dayHint = 'Tuesday — into the week now. Encourage steadiness and momentum.';
+        break;
+      case 'Wednesday':
+        dayHint = 'Wednesday — midweek. Acknowledge the effort so far and encourage continuing.';
+        break;
+      case 'Thursday':
+        dayHint = 'Thursday — nearly there. A tone of quiet persistence and hope for the end of the week.';
+        break;
+      case 'Friday':
+        dayHint = 'Friday — the week is ending. Reflect on what was achieved. Warmth and lightness.';
+        break;
+      case 'Saturday':
+        dayHint = 'Saturday — the weekend. Rest, recovery, and doing things that restore energy.';
+        break;
+      case 'Sunday':
+        dayHint = 'Sunday — a quieter day. Gentle reflection, preparing mentally for the week ahead.';
+        break;
+      default:
+        dayHint = '$day — be present and warm.';
+    }
+
+    return 'Today is $day $timeOfDay. $dayHint';
+  }
 
   static Future<DailyInsightBundle> getBundle({
     String moodLabel = 'calm',
@@ -63,11 +113,12 @@ class DailyInsightEngineService {
     bool forceRefresh = false,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final today = _dayKey(DateTime.now());
-    final cacheKey = 'daily_insight_bundle_v1_${today}_${moodLabel.toLowerCase().trim()}';
+    final now   = DateTime.now();
+    final key   = _cacheKey(now, moodLabel);
 
+    // Return cached version if exists and not forcing refresh
     if (!forceRefresh) {
-      final raw = prefs.getString(cacheKey);
+      final raw = prefs.getString(key);
       if (raw != null && raw.trim().isNotEmpty) {
         try {
           final parsed = jsonDecode(raw);
@@ -79,12 +130,14 @@ class DailyInsightEngineService {
     }
 
     if (_apiKey.trim().isEmpty) {
-      final fallback = DailyInsightBundle.fallback;
-      await prefs.setString(cacheKey, jsonEncode(fallback.toJson()));
-      return fallback;
+      final bundle = DailyInsightBundle.fallback;
+      await prefs.setString(key, jsonEncode(bundle.toJson()));
+      return bundle;
     }
 
     try {
+      final dayCtx = _dayContext(now);
+
       final response = await http.post(
         Uri.parse(_endpoint),
         headers: {
@@ -93,43 +146,80 @@ class DailyInsightEngineService {
         },
         body: jsonEncode({
           'model': _model,
+          'temperature': 0.75,
           'messages': [
             {
               'role': 'system',
-              'content': 'Return JSON: affirmation, tip, reflectionPrompt, summaryLine.'
+              'content': '''
+You are MindCore AI's daily insight engine.
+Generate a short, warm, personalised daily insight for a mental wellness app user.
+
+$dayCtx
+User mood: $moodLabel
+${contextSummary.isNotEmpty ? 'Context: $contextSummary' : ''}
+
+Return ONLY valid JSON with exactly these four keys:
+- affirmation: one short, genuine affirmation (not cheesy). Max 15 words.
+- tip: one practical mental wellness micro-tip relevant to the day and mood. Max 20 words.
+- reflectionPrompt: one thoughtful reflection question for the user to sit with. Max 15 words.
+- summaryLine: one poetic or grounding closing line. Max 12 words.
+
+Rules:
+- Never use toxic positivity ("You've got this!", "Everything happens for a reason!")
+- The content must feel specific to $dayCtx — not generic
+- Vary the content meaningfully from day to day
+- Warm, human, real — not clinical or hollow
+- Return JSON only. No markdown, no backticks, no extra text.
+''',
             },
             {
               'role': 'user',
-              'content': 'Mood: $moodLabel | Context: $contextSummary'
+              'content': 'Generate today\'s insight.',
             },
           ],
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
-      final body = jsonDecode(response.body);
-      final content = body['choices'][0]['message']['content'];
+      final body    = jsonDecode(response.body);
+      final content = body['choices'][0]['message']['content'] as String;
 
-      final parsed = jsonDecode(content);
-      return DailyInsightBundle.fromJson(parsed);
+      // Strip any accidental markdown fences
+      final clean = content
+          .replaceAll(RegExp(r'```json\s*'), '')
+          .replaceAll(RegExp(r'```\s*'), '')
+          .trim();
+
+      final parsed = jsonDecode(clean);
+      if (parsed is Map<String, dynamic>) {
+        final bundle = DailyInsightBundle.fromJson(parsed);
+        await prefs.setString(key, jsonEncode(bundle.toJson()));
+        return bundle;
+      }
+
+      throw Exception('Unexpected response format');
     } catch (_) {
-      final fallback = DailyInsightBundle.fallback;
-      await prefs.setString(cacheKey, jsonEncode(fallback.toJson()));
-      return fallback;
+      final bundle = DailyInsightBundle.fallback;
+      await prefs.setString(key, jsonEncode(bundle.toJson()));
+      return bundle;
     }
   }
 
+  // Removes today's cached insight so it regenerates fresh on next call
   static Future<void> invalidateToday({String? moodLabel}) async {
     final prefs = await SharedPreferences.getInstance();
-    final today = _dayKey(DateTime.now());
+    final now   = DateTime.now();
 
     if (moodLabel != null) {
-      await prefs.remove('daily_insight_bundle_v1_${today}_${moodLabel.toLowerCase().trim()}');
+      await prefs.remove(_cacheKey(now, moodLabel));
       return;
     }
 
-    final keys = prefs.getKeys().where((k) => k.startsWith('daily_insight_bundle_v1_${today}_')).toList();
-    for (final key in keys) {
-      await prefs.remove(key);
+    // Remove all today's insight keys (v1 and v2) for any mood
+    final date    = DateFormat('yyyy-MM-dd').format(now);
+    final toRemove = prefs.getKeys().where((k) =>
+        k.contains('daily_insight_bundle_') && k.contains(date)).toList();
+    for (final k in toRemove) {
+      await prefs.remove(k);
     }
   }
 }
