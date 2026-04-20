@@ -1,10 +1,12 @@
-name: MindCore AI — Blog Automation
+name: MindCore AI — Weekly Blog Automation
 
 on:
   schedule:
-    - cron: '0 8 * * 3'   # Every Wednesday at 8:00 AM UTC
-    - cron: '0 8 * * 5'   # Every Friday at 8:00 AM UTC
-  workflow_dispatch:        # Manual trigger from GitHub UI
+    - cron: '0 8 * * 1'   # Every Monday at 8:00 AM UTC
+  workflow_dispatch:        # Also allows manual trigger from GitHub UI
+
+permissions:
+  contents: write           # Needed to commit blog_history.json back to repo
 
 jobs:
   publish-blog:
@@ -25,9 +27,11 @@ jobs:
 
       - name: Run blog automation pipeline
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
-          WP_USERNAME:       ${{ secrets.WP_USERNAME }}
-          WP_APP_PASSWORD:   ${{ secrets.WP_APP_PASSWORD }}
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          WP_USERNAME:         ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD:     ${{ secrets.WP_APP_PASSWORD }}
+          GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY:   ${{ github.repository }}
         run: |
           python scripts/blog_automation.py

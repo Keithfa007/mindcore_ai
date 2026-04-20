@@ -14,6 +14,8 @@ WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 
+HISTORY_FILE = "scripts/blog_history.json"
+
 # ── Categories ─────────────────────────────────────────────────────────────────
 CATEGORIES = [
     "Anxiety & Stress",
@@ -32,9 +34,38 @@ def get_wp_auth():
     return {"Authorization": f"Basic {token}"}
 
 
+# ── History Management ─────────────────────────────────────────────────────────
+def load_history():
+    """Load previously published topics from blog_history.json."""
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    with open(HISTORY_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_history(history, new_entry):
+    """Append new post to history and save."""
+    history.append(new_entry)
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=2)
+    print(f"   ✅  History updated ({len(history)} posts logged)")
+
+
+def format_history_for_prompt(history):
+    """Format history into a clear list for the Claude prompt."""
+    if not history:
+        return "None yet — this is the first post."
+    lines = []
+    for i, entry in enumerate(history, 1):
+        lines.append(f"  {i}. [{entry['date']}] \"{entry['title']}\" — keyword: \"{entry['primary_keyword']}\"")
+    return "\n".join(lines)
+
+
 # ── Step 1 · SEO Research & Topic Selection ────────────────────────────────────
-def research_topic():
+def research_topic(history):
     print("🔍  Researching best SEO topic for this week...")
+
+    history_text = format_history_for_prompt(history)
 
     response = anthropic_client.messages.create(
         model="claude-opus-4-5",
@@ -55,7 +86,13 @@ Selection criteria:
   • Evergreen — ranks over months, not just days
   • Fits one of the three niches above
 
-Available blog categories (pick the most relevant one for your chosen topic):
+CRITICAL — ALREADY PUBLISHED POSTS (DO NOT REPEAT ANY OF THESE):
+{history_text}
+
+You MUST NOT choose any topic, title, or primary keyword that is the same as or similar to the above.
+Every post must be on a completely fresh angle.
+
+Available blog categories (pick the most relevant one):
 {chr(10).join(f'  - {c}' for c in CATEGORIES)}
 
 Respond ONLY in this exact JSON format — no markdown, no preamble:
@@ -182,7 +219,6 @@ def get_or_create_categories():
     print("📂  Setting up categories...")
     headers = get_wp_auth()
 
-    # Fetch all existing categories
     response = requests.get(
         f"{WP_URL}/wp-json/wp/v2/categories?per_page=100",
         headers=headers,
@@ -193,11 +229,8 @@ def get_or_create_categories():
     category_map = {}
     for name in CATEGORIES:
         if name in existing:
-            # Category already exists — use its ID directly
             category_map[name] = existing[name]
-            print(f"   ✅  Found category: {name} (ID: {existing[name]})")
         else:
-            # Try to create it
             create = requests.post(
                 f"{WP_URL}/wp-json/wp/v2/categories",
                 headers={**headers, "Content-Type": "application/json"},
@@ -207,22 +240,6 @@ def get_or_create_categories():
             if create.status_code == 201:
                 category_map[name] = create.json()["id"]
                 print(f"   ✅  Created category: {name}")
-            elif create.status_code == 400:
-                # term_exists — WordPress returns the existing term_id in the error
-                try:
-                    error_data = create.json()
-                    term_id = error_data.get("data", {}).get("term_id")
-                    if not term_id:
-                        # also check additional_data
-                        additional = error_data.get("additional_data", [])
-                        term_id = additional[0] if additional else None
-                    if term_id:
-                        category_map[name] = term_id
-                        print(f"   ✅  Category exists: {name} (ID: {term_id})")
-                    else:
-                        print(f"   ⚠️   Could not resolve ID for '{name}'")
-                except Exception:
-                    print(f"   ⚠️   Could not parse error for '{name}'")
             else:
                 print(f"   ⚠️   Could not create '{name}': {create.text}")
 
@@ -230,9 +247,9 @@ def get_or_create_categories():
     return category_map
 
 
-# ── Step 6 · Publish to WordPress (live) ──────────────────────────────────────
+# ── Step 6 · Publish to WordPress as Draft ────────────────────────────────────
 def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
-    print("📰  Publishing to WordPress...")
+    print("📰  Publishing draft to WordPress...")
 
     # Split excerpt from content
     excerpt = ""
@@ -258,7 +275,7 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         "title":      topic_data["topic"],
         "content":    content,
         "excerpt":    excerpt,
-        "status":     "publish",
+        "status":     "draft",
         "categories": category_ids,
         "meta": {
             "_yoast_wpseo_metadesc": topic_data["meta_description"],
@@ -281,7 +298,7 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
 
     post    = response.json()
     post_id = post["id"]
-    print(f"   ✅  Published  →  {post.get('link', 'N/A')}")
+    print(f"   ✅  Draft saved  →  {post.get('link', 'N/A')}")
 
     # Attach featured image separately (avoids Hostinger theme 500 error)
     if image_id:
@@ -294,9 +311,49 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         if update_response.status_code == 200:
             print(f"   ✅  Featured image attached")
         else:
-            print(f"   ⚠️   Image attach failed (post still published): {update_response.text}")
+            print(f"   ⚠️   Image attach failed (post still saved): {update_response.text}")
 
     return post
+
+
+# ── Step 7 · Update History File via GitHub API ───────────────────────────────
+def update_history_on_github(history, new_entry):
+    """Commit updated blog_history.json back to the repo so it persists."""
+    print("📝  Saving post to history...")
+
+    token = os.environ.get("GITHUB_TOKEN", "")
+    repo  = os.environ.get("GITHUB_REPOSITORY", "")
+
+    if not token or not repo:
+        print("   ⚠️   GITHUB_TOKEN or GITHUB_REPOSITORY not set — skipping history save")
+        return
+
+    api_url = f"https://api.github.com/repos/{repo}/contents/{HISTORY_FILE}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    # Get current SHA of the file (needed for update)
+    get_response = requests.get(api_url, headers=headers, timeout=15)
+    sha = get_response.json().get("sha") if get_response.status_code == 200 else None
+
+    # Build updated content
+    history.append(new_entry)
+    content = base64.b64encode(json.dumps(history, indent=2).encode()).decode()
+
+    payload = {
+        "message": f"blog: log post — {new_entry['title'][:60]}",
+        "content": content,
+    }
+    if sha:
+        payload["sha"] = sha
+
+    put_response = requests.put(api_url, headers=headers, json=payload, timeout=15)
+    if put_response.status_code in (200, 201):
+        print(f"   ✅  History committed to repo ({len(history)} posts total)")
+    else:
+        print(f"   ⚠️   History commit failed: {put_response.text}")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -304,8 +361,12 @@ def main():
     print("\n🚀  MindCore AI — Weekly Blog Automation Pipeline")
     print("=" * 52)
 
-    # 1. Research topic (includes category selection)
-    topic_data = research_topic()
+    # Load history to avoid duplicate topics
+    history = load_history()
+    print(f"📋  History loaded — {len(history)} posts published so far")
+
+    # 1. Research topic (passes history so Claude avoids repeats)
+    topic_data = research_topic(history)
 
     # 2. Write blog post
     content = write_blog_post(topic_data)
@@ -325,10 +386,20 @@ def main():
         print(f"   ⚠️   Category setup failed: {exc}\n   Continuing without categories.")
         category_map = None
 
-    # 5. Publish live
-    publish_to_wordpress(topic_data, content, image_id, category_map)
+    # 5. Publish as draft with category
+    post = publish_to_wordpress(topic_data, content, image_id, category_map)
 
-    print("\n🎉  Pipeline complete! Post is live on mindcoreai.eu")
+    # 6. Log this post to history so it's never repeated
+    new_entry = {
+        "date":            datetime.now().strftime("%Y-%m-%d"),
+        "title":           topic_data["topic"],
+        "primary_keyword": topic_data["primary_keyword"],
+        "category":        topic_data.get("category", ""),
+        "wp_post_id":      post.get("id"),
+    }
+    update_history_on_github(history, new_entry)
+
+    print("\n🎉  Pipeline complete! Check WordPress › Posts › Drafts.")
     print("=" * 52)
 
 
