@@ -2,8 +2,8 @@ name: 📝 Relax Audio Companion Blog
 
 on:
   schedule:
-    - cron: '0 12 * * 1'  # Every Monday at 12:00 UTC (3 hours after audio pipeline at 09:00)
-  workflow_dispatch:       # Manual trigger
+    - cron: '0 12 * * 1'  # Every Monday at 12:00 UTC (3 hours after audio pipeline)
+  workflow_dispatch:
 
 jobs:
   generate-companion-blog:
@@ -25,9 +25,10 @@ jobs:
 
       - name: Run Companion Blog Pipeline
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:           ${{ secrets.OPENAI_API_KEY }}
+          SERP_API_KEY:             ${{ secrets.SERP_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          WP_USERNAME: ${{ secrets.WP_USERNAME }}
-          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_USERNAME:              ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD:          ${{ secrets.WP_APP_PASSWORD }}
         run: python scripts/relax_audio_blog.py

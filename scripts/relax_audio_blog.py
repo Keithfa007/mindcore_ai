@@ -15,8 +15,9 @@ openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
+SERP_API_KEY    = os.environ.get("SERP_API_KEY", "")
+SERP_API_URL    = "https://serpapi.com/search"
 
-# WordPress category for audio companion posts
 WP_BLOG_CATEGORY = "Relaxation & Meditation"
 
 
@@ -33,13 +34,13 @@ def init_firebase():
 def get_latest_track(db):
     doc = db.collection("pipeline_state").document("relax_audio").get()
     if not doc.exists:
-        raise RuntimeError("No pipeline state found — run the audio pipeline first.")
+        raise RuntimeError("No pipeline state found -- run the audio pipeline first.")
     data = doc.to_dict()
-    title        = data.get("last_title")
-    category_key = data.get("last_category")
-    category_name= data.get("last_category_name")
-    seo_keywords = data.get("last_seo_keywords")
-    audio_url    = data.get("last_audio_url")
+    title         = data.get("last_title")
+    category_key  = data.get("last_category")
+    category_name = data.get("last_category_name")
+    seo_keywords  = data.get("last_seo_keywords")
+    audio_url     = data.get("last_audio_url")
     if not title:
         raise RuntimeError("last_title missing from pipeline state.")
     print(f"   ✅  Track    : {title}")
@@ -54,13 +55,101 @@ def get_wp_auth():
     return {"Authorization": f"Basic {token}"}
 
 
+# ── SERP Research ──────────────────────────────────────────────────────────────
+def fetch_serp_data(title, seo_keywords):
+    """
+    Fetch real Google search data based on the audio track title and keywords.
+    Returns People Also Ask questions and related searches to enrich the blog post.
+    Falls back to empty dict if SERP_API_KEY not set or request fails.
+    """
+    if not SERP_API_KEY:
+        print("   ⚠️   SERP_API_KEY not set -- skipping SERP research")
+        return {}
+
+    # Use the first keyword phrase as the primary seed
+    seed = seo_keywords.split(",")[0].strip() if seo_keywords else title
+    print(f"   🔍  Fetching SERP data for: '{seed}'")
+
+    try:
+        params = {
+            "engine":  "google",
+            "q":       seed,
+            "api_key": SERP_API_KEY,
+            "num":     10,
+            "hl":      "en",
+            "gl":      "us",
+        }
+        resp = requests.get(SERP_API_URL, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        paa = [
+            q.get("question", "")
+            for q in data.get("related_questions", [])[:6]
+            if q.get("question")
+        ]
+        related = [
+            r.get("query", "")
+            for r in data.get("related_searches", [])[:6]
+            if r.get("query")
+        ]
+
+        print(f"   ✅  SERP: {len(paa)} PAA questions, {len(related)} related searches")
+        return {
+            "seed_query":       seed,
+            "people_also_ask":  paa,
+            "related_searches": related,
+        }
+
+    except Exception as exc:
+        print(f"   ⚠️   SERP fetch failed ({exc}) -- continuing without SERP data")
+        return {}
+
+
+def format_serp_for_prompt(serp_data):
+    if not serp_data:
+        return "No SERP data -- use your own SEO knowledge."
+
+    lines = []
+    paa = serp_data.get("people_also_ask", [])
+    if paa:
+        lines.append("PEOPLE ALSO ASK (real Google questions to answer in the post):")
+        for q in paa:
+            lines.append(f"  - {q}")
+        lines.append("")
+
+    related = serp_data.get("related_searches", [])
+    if related:
+        lines.append("RELATED SEARCHES (weave these as secondary keywords):")
+        for r in related:
+            lines.append(f"  - {r}")
+
+    return "\n".join(lines)
+
+
 # ── Write companion blog post ──────────────────────────────────────────────────
-def write_companion_post(title, category_name, seo_keywords, audio_url):
+def write_companion_post(title, category_name, seo_keywords, audio_url, serp_data):
     print("✍️   Writing companion blog post...")
 
     audio_embed = ""
     if audio_url:
-        audio_embed = f'<p><audio controls style="width:100%"><source src="{audio_url}" type="audio/mpeg">Your browser does not support audio.</audio></p>'
+        audio_embed = (
+            f'<p><audio controls style="width:100%">'
+            f'<source src="{audio_url}" type="audio/mpeg">'
+            f'Your browser does not support audio.</audio></p>'
+        )
+
+    serp_block = format_serp_for_prompt(serp_data)
+    paa_questions = serp_data.get("people_also_ask", [])
+
+    paa_instruction = ""
+    if paa_questions:
+        paa_instruction = (
+            "\nFAQ SECTION (critical for Google featured snippets):\n"
+            "Include an <h2>Frequently Asked Questions</h2> section that directly answers "
+            "each question below. Use <h3> for each question, <p> for the answer (2-3 sentences).\n"
+            + "\n".join(f"  - {q}" for q in paa_questions)
+        )
 
     response = anthropic_client.messages.create(
         model="claude-opus-4-5",
@@ -76,15 +165,21 @@ AUDIO SESSION DETAILS:
   Category     : {category_name}
   SEO Keywords : {seo_keywords}
 
+REAL GOOGLE SEARCH DATA (use this to make the post rank):
+{serp_block}
+{paa_instruction}
+
 WRITING REQUIREMENTS:
   - 1,200-1,500 words
-  - Tone: warm, honest, human — like advice from a trusted friend who has been there
+  - Tone: warm, honest, human -- like advice from a trusted friend who has been there
   - Audience: men 35+, people in recovery, adults open to AI wellness tools
-  - The post supports and explains the audio session — why this technique helps, the science behind it, how to get the most from it
-  - Primary keyword must appear in: H1, first paragraph, at least 2 H2 sections, conclusion
-  - Secondary keywords woven in naturally
-  - Structure: H1 → intro (2 paragraphs) → 4-5 H2 sections → conclusion with CTA to open the app
-  - Real, actionable content — zero fluff
+  - The post supports and explains the audio session -- why this technique helps,
+    the science behind it, how to get the most from it
+  - Primary keyword (first keyword from SEO Keywords) must appear in:
+    H1, first paragraph, at least 2 H2 sections, and the conclusion
+  - Related searches woven in naturally as secondary keywords throughout
+  - Structure: H1 -> intro (2 paragraphs) -> 4-5 H2 sections -> FAQ section -> conclusion with CTA
+  - Real, actionable content -- zero fluff
   - Final paragraph: natural CTA to open MindCore AI and listen to the session
 
 FORMAT:
@@ -111,7 +206,7 @@ def generate_illustration(title, category_name):
     prompt = (
         f"Soft watercolour illustration for a mental wellness blog post about '{title}'. "
         f"Category: {category_name}. "
-        "Scene: a man sitting calmly in a peaceful environment — could be indoors by a window, "
+        "Scene: a man sitting calmly in a peaceful environment -- could be indoors by a window, "
         "or in nature. Warm, hopeful colours. Soft light. Grounded and real. "
         "No text, no words, no letters in the image. "
         "Style: gentle watercolour, human and approachable, suitable for a mental wellness brand."
@@ -182,8 +277,8 @@ def get_or_create_wp_category(name):
     return None
 
 
-# ── Publish to WordPress (live) ────────────────────────────────────────────────
-def publish_to_wordpress(title, content, image_id, category_id):
+# ── Publish to WordPress ───────────────────────────────────────────────────────
+def publish_to_wordpress(title, content, image_id, category_id, primary_keyword):
     print("📰  Publishing to WordPress...")
 
     excerpt = ""
@@ -195,12 +290,19 @@ def publish_to_wordpress(title, content, image_id, category_id):
     headers = get_wp_auth()
     headers["Content-Type"] = "application/json"
 
+    # Build meta description from excerpt
+    meta_desc = excerpt[:155] if excerpt else f"{title} -- MindCore AI guided relaxation."
+
     post_payload = {
         "title":      title,
         "content":    content,
         "excerpt":    excerpt,
         "status":     "publish",
         "categories": [category_id] if category_id else [],
+        "meta": {
+            "_yoast_wpseo_metadesc": meta_desc,
+            "_yoast_wpseo_focuskw":  primary_keyword,
+        },
     }
 
     response = requests.post(
@@ -215,7 +317,7 @@ def publish_to_wordpress(title, content, image_id, category_id):
 
     post    = response.json()
     post_id = post["id"]
-    print(f"   ✅  Published → {post.get('link', 'N/A')}")
+    print(f"   ✅  Published -> {post.get('link', 'N/A')}")
 
     if image_id:
         requests.post(
@@ -231,31 +333,37 @@ def publish_to_wordpress(title, content, image_id, category_id):
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
-    print("\n📝  MindCore AI — Relax Audio Companion Blog Pipeline")
+    print("\n📝  MindCore AI -- Relax Audio Companion Blog Pipeline")
     print("=" * 52)
+    print(f"   SERP API: {'✅ active' if SERP_API_KEY else '⚠️  not configured (Claude fallback)'}")
 
     print("\n[1/6] Reading latest audio track from Firestore...")
     db = init_firebase()
     title, category_key, category_name, seo_keywords, audio_url = get_latest_track(db)
 
-    print("\n[2/6] Writing companion blog post...")
-    content = write_companion_post(title, category_name, seo_keywords, audio_url)
+    print("\n[2/6] Fetching real Google SEO data (SERP)...")
+    serp_data = fetch_serp_data(title, seo_keywords)
 
-    print("\n[3/6] Generating illustration...")
+    # Primary keyword = first keyword from the category SEO keywords
+    primary_keyword = seo_keywords.split(",")[0].strip() if seo_keywords else title
+
+    print("\n[3/6] Writing companion blog post...")
+    content = write_companion_post(title, category_name, seo_keywords, audio_url, serp_data)
+
+    print("\n[4/6] Generating illustration...")
     try:
         image_data = generate_illustration(title, category_name)
         image_id   = upload_image(image_data, title)
     except Exception as exc:
-        print(f"   ⚠️   Illustration failed: {exc} — continuing without image.")
+        print(f"   ⚠️   Illustration failed: {exc} -- continuing without image.")
         image_id = None
 
-    print("\n[4/6] Setting up WordPress category...")
+    print("\n[5/6] Setting up WordPress category...")
     category_id = get_or_create_wp_category(WP_BLOG_CATEGORY)
 
-    print("\n[5/6] Publishing to WordPress...")
-    post = publish_to_wordpress(title, content, image_id, category_id)
+    print("\n[6/6] Publishing to WordPress...")
+    post = publish_to_wordpress(title, content, image_id, category_id, primary_keyword)
 
-    print("\n[6/6] Done!")
     print("\n" + "=" * 52)
     print("🎉  Companion blog post published!")
     print(f"    Audio    : {title}")
