@@ -1,0 +1,41 @@
+name: Refresh FB Keywords (Monthly)
+
+on:
+  schedule:
+    # 1st of every month at 06:00 UTC — runs before the day's scheduled post
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+jobs:
+  refresh-keywords:
+    name: Research & update keyword bank
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install anthropic
+
+      - name: Run keyword refresh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/refresh_keywords.py
+
+      - name: Commit refreshed keywords
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name  "GitHub Action"
+          git add scripts/fb_keywords.json
+          git diff --staged --quiet || git commit -m "chore: monthly keyword refresh [skip ci]"
+          git push
+        continue-on-error: true
