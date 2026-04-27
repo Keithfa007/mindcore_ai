@@ -20,13 +20,12 @@ HISTORY_FILE   = "scripts/blog_history.json"
 MIN_WORD_COUNT = 1200
 
 # Known category IDs from WordPress (avoids repeated API calls that trigger rate limits)
-# If you add new categories in WP, add them here too.
 CATEGORY_IDS = {
-    "Anxiety & Stress":      6,
-    "Recovery & Sobriety":   7,
-    "AI & Wellness":         4,
-    "Men's Mental Health":   None,   # fetched dynamically below
-    "Sleep & Burnout":       None,
+    "Anxiety & Stress":       6,
+    "Recovery & Sobriety":    7,
+    "AI & Wellness":          4,
+    "Men's Mental Health":    None,   # fetched dynamically
+    "Sleep & Burnout":        None,
     "Relationships & Family": None,
 }
 
@@ -77,7 +76,7 @@ def validate_seo(content, title, meta, primary_keyword, slug):
     print(f"   Word count : {wc}")
     print(f"   KW density : {dens:.2f}% ({kw_n} occurrences)")
     print(f"   Slug       : {slug}")
-    print("   All SEO checks passed!" if all_ok else "   Some checks failed - saved as draft for review.")
+    print("   All SEO checks passed!" if all_ok else "   Some checks failed - post still published.")
 
 
 # -- History ------------------------------------------------------------------
@@ -226,16 +225,11 @@ def upload_image_to_wordpress(image_data):
 
 # -- Step 4: Resolve category ID ----------------------------------------------
 def resolve_category_id(category_name):
-    """Return the WordPress category ID for a given name.
-    Uses hardcoded IDs first, falls back to live API fetch."""
-
-    # Try hardcoded IDs first
     if CATEGORY_IDS.get(category_name) is not None:
         cat_id = CATEGORY_IDS[category_name]
-        print(f"   Category  : {category_name} (ID: {cat_id}) [hardcoded]")
+        print(f"   Category  : {category_name} (ID: {cat_id})")
         return cat_id
 
-    # Fetch from API for categories without hardcoded IDs
     print(f"   Fetching category ID for: {category_name}")
     auth = get_wp_auth()
     resp = requests.get(
@@ -244,14 +238,12 @@ def resolve_category_id(category_name):
     )
     if resp.status_code == 200:
         for c in resp.json():
-            # Compare ignoring HTML entities
             name_clean = c["name"].replace("&amp;", "&").replace("&#039;", "'")
             if name_clean.lower() == category_name.lower():
-                CATEGORY_IDS[category_name] = c["id"]  # cache for future
-                print(f"   Category  : {category_name} (ID: {c['id']}) [fetched]")
+                CATEGORY_IDS[category_name] = c["id"]
+                print(f"   Category  : {category_name} (ID: {c['id']})")
                 return c["id"]
 
-    # Try to create it
     create = requests.post(
         f"{WP_URL}/wp-json/wp/v2/categories",
         headers={**auth, "Content-Type": "application/json"},
@@ -267,7 +259,7 @@ def resolve_category_id(category_name):
         term_id = err.get("data", {}).get("term_id") or (err.get("additional_data") or [None])[0]
         if term_id:
             CATEGORY_IDS[category_name] = int(term_id)
-            print(f"   Category  : {category_name} (ID: {term_id}) [resolved from error]")
+            print(f"   Category  : {category_name} (ID: {term_id})")
             return int(term_id)
 
     print(f"   Could not resolve category: {category_name} - posting uncategorised")
@@ -276,9 +268,8 @@ def resolve_category_id(category_name):
 
 # -- Step 5: Publish ----------------------------------------------------------
 def publish_to_wordpress(topic_data, content, image_id=None):
-    print("Publishing draft to WordPress...")
+    print("Publishing to WordPress...")
 
-    # Parse excerpt
     excerpt = ""
     if "EXCERPT:" in content:
         bits    = content.split("EXCERPT:")
@@ -300,7 +291,7 @@ def publish_to_wordpress(topic_data, content, image_id=None):
         "content":    content,
         "excerpt":    excerpt,
         "slug":       slug,
-        "status":     "draft",
+        "status":     "publish",          # <-- auto-publish live
         "categories": [cat_id] if cat_id else [],
         "meta": {
             "_yoast_wpseo_metadesc": topic_data["meta_description"],
@@ -309,7 +300,6 @@ def publish_to_wordpress(topic_data, content, image_id=None):
         },
     }
 
-    # Wait 60s before POST to avoid Hostinger rate limiting
     print("   Waiting 60s before publishing to avoid rate limit...")
     time.sleep(60)
 
@@ -328,9 +318,8 @@ def publish_to_wordpress(topic_data, content, image_id=None):
 
     post    = resp.json()
     post_id = post["id"]
-    print(f"   Draft saved -> {post.get('link', 'N/A')}")
+    print(f"   Published -> {post.get('link', 'N/A')}")
 
-    # Attach featured image separately (Hostinger theme bug workaround)
     if image_id:
         time.sleep(5)
         upd = requests.post(
@@ -397,7 +386,7 @@ def main():
         "wp_post_id":      post.get("id"),
     })
 
-    print("\nPipeline complete! Check WordPress > Posts > Drafts.")
+    print("\nPipeline complete! Post is live on mindcoreai.eu")
     print("=" * 50)
 
 
