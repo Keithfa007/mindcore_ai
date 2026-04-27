@@ -3,13 +3,12 @@ import json
 import base64
 import re
 import time
-import html
 import requests
 from anthropic import Anthropic
 from openai import OpenAI
 from datetime import datetime
 
-# ── Clients ──────────────────────────────────────────────────
+# -- Clients ------------------------------------------------------------------
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
@@ -20,17 +19,21 @@ WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 HISTORY_FILE   = "scripts/blog_history.json"
 MIN_WORD_COUNT = 1200
 
-CATEGORIES = [
-    "Anxiety & Stress",
-    "Recovery & Sobriety",
-    "Men's Mental Health",
-    "AI & Wellness",
-    "Sleep & Burnout",
-    "Relationships & Family",
-]
+# Known category IDs from WordPress (avoids repeated API calls that trigger rate limits)
+# If you add new categories in WP, add them here too.
+CATEGORY_IDS = {
+    "Anxiety & Stress":      6,
+    "Recovery & Sobriety":   7,
+    "AI & Wellness":         4,
+    "Men's Mental Health":   None,   # fetched dynamically below
+    "Sleep & Burnout":       None,
+    "Relationships & Family": None,
+}
+
+CATEGORIES = list(CATEGORY_IDS.keys())
 
 
-# ── Helpers ──────────────────────────────────────────────────
+# -- Helpers ------------------------------------------------------------------
 def get_wp_auth():
     token = base64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
     return {"Authorization": f"Basic {token}"}
@@ -48,7 +51,7 @@ def count_words_in_html(h):
 
 
 def validate_seo(content, title, meta, primary_keyword, slug):
-    print("\n\U0001f4ca  SEO Validation Report:")
+    print("\n-- SEO Validation Report --")
     kw    = primary_keyword.lower()
     text  = re.sub(r"<[^>]+>", " ", content).lower()
     words = text.split()
@@ -63,35 +66,21 @@ def validate_seo(content, title, meta, primary_keyword, slug):
         "Focus keyword in URL slug":          kw.replace(" ", "-") in slug,
         "Focus keyword in first 10% of text": kw in first,
         "Focus keyword found in content":     kw in text,
-        f"Word count >= {MIN_WORD_COUNT}":     wc >= MIN_WORD_COUNT,
+        f"Word count >= {MIN_WORD_COUNT}":    wc >= MIN_WORD_COUNT,
     }
     all_ok = True
     for label, ok in checks.items():
-        print(f"   {'\u2705' if ok else '\u274c'}  {label}")
+        icon = "OK" if ok else "FAIL"
+        print(f"   [{icon}]  {label}")
         if not ok:
             all_ok = False
-    print(f"   \U0001f4dd  Word count : {wc}")
-    print(f"   \U0001f511  KW density : {dens:.2f}% ({kw_n} occurrences)")
-    print(f"   \U0001f517  Slug       : {slug}")
-    print("   \U0001f389  All SEO checks passed!" if all_ok else
-          "   \u26a0\ufe0f   Some checks failed \u2014 saved as draft for review.")
+    print(f"   Word count : {wc}")
+    print(f"   KW density : {dens:.2f}% ({kw_n} occurrences)")
+    print(f"   Slug       : {slug}")
+    print("   All SEO checks passed!" if all_ok else "   Some checks failed - saved as draft for review.")
 
 
-def wp_post(endpoint, headers, payload, retries=3, base_delay=15):
-    """POST to WordPress with automatic retry on 429 rate limit."""
-    url = f"{WP_URL}/wp-json/wp/v2/{endpoint}"
-    for attempt in range(retries):
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        if resp.status_code == 429:
-            wait = int(resp.headers.get("Retry-After", base_delay * (attempt + 1)))
-            print(f"   \u23f3  Rate limited \u2014 waiting {wait}s (attempt {attempt + 1}/{retries})...")
-            time.sleep(wait)
-            continue
-        return resp
-    raise RuntimeError(f"WordPress {endpoint} failed after {retries} retries with 429")
-
-
-# ── History ──────────────────────────────────────────────────
+# -- History ------------------------------------------------------------------
 def load_history():
     if not os.path.exists(HISTORY_FILE):
         return []
@@ -101,52 +90,58 @@ def load_history():
 
 def format_history_for_prompt(history):
     if not history:
-        return "None yet \u2014 this is the first post."
+        return "None yet - this is the first post."
     return "\n".join(
-        f"  {i}. [{e['date']}] \"{e['title']}\" \u2014 keyword: \"{e['primary_keyword']}\""
+        f"  {i}. [{e['date']}] \"{e['title']}\" - keyword: \"{e['primary_keyword']}\""
         for i, e in enumerate(history, 1)
     )
 
 
-# ── Step 1: Research topic ──────────────────────────────────────────────
+# -- Step 1: Research topic ---------------------------------------------------
 def research_topic(history):
-    print("\U0001f50d  Researching best SEO topic for this week...")
+    print("Researching best SEO topic for this week...")
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO strategist specialising in mental wellness content.
 
 Your task: identify the single best blog topic for this week for mindcoreai.eu.
 This is an AI mental health companion app targeting:
-  \u2022 Men 35+ (primary \u2014 massively underserved)
-  \u2022 People in addiction recovery seeking mental wellness support
-  \u2022 Adults exploring AI-powered mental health tools
+  - Men 35+ (primary - massively underserved)
+  - People in addiction recovery seeking mental wellness support
+  - Adults exploring AI-powered mental health tools
 
 Selection criteria:
-  \u2022 High Google search demand, VERY low keyword competition
-  \u2022 Mirrors real \"People Also Ask\" or \"Related Searches\" questions on Google
-  \u2022 Evergreen \u2014 ranks over months, not just days
-  \u2022 Primary keyword must be 2-5 words
+  - High Google search demand, VERY low keyword competition
+  - Mirrors real "People Also Ask" or "Related Searches" questions on Google
+  - Evergreen - ranks over months, not just days
+  - Primary keyword must be 2-5 words
 
-CRITICAL \u2014 ALREADY PUBLISHED (DO NOT REPEAT):
+CRITICAL - ALREADY PUBLISHED (DO NOT REPEAT):
 {format_history_for_prompt(history)}
 
-Available categories:
-{chr(10).join(f'  - {c}' for c in CATEGORIES)}
+Available categories (pick the most relevant one exactly as written):
+  - Anxiety & Stress
+  - Recovery & Sobriety
+  - Men's Mental Health
+  - AI & Wellness
+  - Sleep & Burnout
+  - Relationships & Family
 
-Respond ONLY in this exact JSON \u2014 no markdown, no preamble:
-{{"topic":"title containing keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char description with keyword","image_prompt":"DALL-E prompt: warm soft hopeful mental wellness illustration, human, approachable, no text","rationale":"why high demand low competition","category":"exact category name"}}"""}]
+Respond ONLY in this exact JSON - no markdown, no preamble:
+{{"topic":"title containing keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char description with keyword","image_prompt":"DALL-E prompt: warm soft hopeful mental wellness illustration, human, approachable, no text or letters in image","rationale":"why high demand low competition","category":"exact category name from list above"}}"""}]
     )
-    raw  = response.content[0].text.replace("```json","").replace("```","").strip()
+    raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
     data = json.loads(raw)
-    print(f"   \u2705  Topic    : {data['topic']}")
-    print(f"   \U0001f511  KW       : {data['primary_keyword']}")
-    print(f"   \U0001f4c2  Category : {data.get('category','N/A')}")
+    print(f"   Topic    : {data['topic']}")
+    print(f"   Keyword  : {data['primary_keyword']}")
+    print(f"   Category : {data.get('category', 'N/A')}")
+    print(f"   Why      : {data['rationale']}")
     return data
 
 
-# ── Step 2: Write post ────────────────────────────────────────────────
+# -- Step 2: Write post -------------------------------------------------------
 def write_blog_post(topic_data):
-    print("\u270d\ufe0f   Writing blog post...")
+    print("Writing blog post...")
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=6000,
         messages=[{"role": "user", "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
@@ -165,55 +160,57 @@ YOAST SEO REQUIREMENTS:
   5. Minimum 1,200 words of readable content
 
 WRITING REQUIREMENTS:
-  \u2022 Warm, honest, human tone \u2014 like advice from a friend who has been there
-  \u2022 Audience: men 35+, people in recovery, adults open to AI wellness
-  \u2022 Structure: H1 \u2192 intro (2-3 para) \u2192 5-7 H2 sections (150-200 words each) \u2192 conclusion + CTA
-  \u2022 Include at least one <ul> list
-  \u2022 Final section: natural CTA to download MindCore AI
+  - Warm, honest, human tone - like advice from a friend who has been there
+  - Audience: men 35+, people in recovery, adults open to AI wellness
+  - Structure: H1 -> intro (2-3 para) -> 5-7 H2 sections (150-200 words each) -> conclusion + CTA
+  - Include at least one list
+  - Final section: natural CTA to download MindCore AI
 
 FORMAT:
-  \u2022 Clean WordPress HTML only: <h1><h2><h3><p><ul><li><strong><em>
-  \u2022 No <html><head><body><style><script>
-  \u2022 After all HTML on its own line: EXCERPT: [2-3 sentence hook with keyword]"""}]
+  - Clean WordPress HTML only: h1 h2 h3 p ul li strong em tags
+  - No html head body style script tags
+  - After all HTML on its own line: EXCERPT: [2-3 sentence hook with keyword]"""}]
     )
     content = response.content[0].text
-    wc      = count_words_in_html(content)
-    print(f"   \u2705  Written ({wc} words)")
+    wc = count_words_in_html(content)
+    print(f"   Written ({wc} words)")
     if wc < MIN_WORD_COUNT:
-        print(f"   \u26a0\ufe0f   Only {wc} words \u2014 expanding...")
+        print(f"   Only {wc} words - expanding...")
         content = expand_blog_post(content, topic_data, wc)
     return content
 
 
 def expand_blog_post(content, topic_data, current_words):
-    needed   = MIN_WORD_COUNT - current_words
+    needed = MIN_WORD_COUNT - current_words
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
         messages=[{"role": "user", "content": f"""This blog post is {current_words} words but needs {MIN_WORD_COUNT}.
 Add ~{needed} words by expanding sections or adding 2 new H2 sections.
-Same tone, HTML format, include keyword: \"{topic_data['primary_keyword']}\".
-Return the COMPLETE updated post including EXCERPT at the end.\n\n{content}"""}]
+Same tone, HTML format, include keyword: "{topic_data['primary_keyword']}".
+Return the COMPLETE updated post including EXCERPT at the end.
+
+{content}"""}]
     )
     expanded = response.content[0].text
-    print(f"   \u2705  Expanded to {count_words_in_html(expanded)} words")
+    print(f"   Expanded to {count_words_in_html(expanded)} words")
     return expanded
 
 
-# ── Step 3: Illustration ──────────────────────────────────────────────
+# -- Step 3: Illustration -----------------------------------------------------
 def generate_illustration(image_prompt):
-    print("\U0001f3a8  Generating DALL-E illustration...")
+    print("Generating DALL-E illustration...")
     resp = openai_client.images.generate(
         model="dall-e-3",
-        prompt=f"{image_prompt} Style: soft watercolour, warm gentle colours, hopeful and human, mental wellness blog. No text or letters.",
+        prompt=f"{image_prompt} Style: soft watercolour, warm gentle colours, hopeful and human, mental wellness blog. No text or letters in the image.",
         size="1792x1024", quality="standard", n=1,
     )
     img = requests.get(resp.data[0].url, timeout=30).content
-    print("   \u2705  Illustration generated")
+    print("   Illustration generated")
     return img
 
 
 def upload_image_to_wordpress(image_data):
-    print("\U0001f4e4  Uploading illustration...")
+    print("Uploading illustration...")
     filename = f"mindcore-blog-{datetime.now().strftime('%Y%m%d')}.png"
     headers  = get_wp_auth()
     headers["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -221,87 +218,76 @@ def upload_image_to_wordpress(image_data):
     resp = requests.post(f"{WP_URL}/wp-json/wp/v2/media", headers=headers, data=image_data, timeout=60)
     if resp.status_code == 201:
         mid = resp.json()["id"]
-        print(f"   \u2705  Image uploaded (ID: {mid})")
+        print(f"   Image uploaded (ID: {mid})")
         return mid
-    print(f"   \u26a0\ufe0f   Upload failed ({resp.status_code})")
+    print(f"   Upload failed ({resp.status_code})")
     return None
 
 
-# ── Step 4: Categories ──────────────────────────────────────────────
-def get_or_create_categories():
-    """Build a name->id map for all categories.
-    Decode HTML entities from WP response (& comes back as &amp;).
-    If a category already exists, grab its ID from the error response."""
-    print("\U0001f4c2  Setting up categories...")
-    auth = get_wp_auth()
+# -- Step 4: Resolve category ID ----------------------------------------------
+def resolve_category_id(category_name):
+    """Return the WordPress category ID for a given name.
+    Uses hardcoded IDs first, falls back to live API fetch."""
 
-    # Fetch existing categories and decode HTML entities in names
-    resp     = requests.get(f"{WP_URL}/wp-json/wp/v2/categories?per_page=100", headers=auth, timeout=15)
-    existing = {}
+    # Try hardcoded IDs first
+    if CATEGORY_IDS.get(category_name) is not None:
+        cat_id = CATEGORY_IDS[category_name]
+        print(f"   Category  : {category_name} (ID: {cat_id}) [hardcoded]")
+        return cat_id
+
+    # Fetch from API for categories without hardcoded IDs
+    print(f"   Fetching category ID for: {category_name}")
+    auth = get_wp_auth()
+    resp = requests.get(
+        f"{WP_URL}/wp-json/wp/v2/categories?per_page=100&search={requests.utils.quote(category_name)}",
+        headers=auth, timeout=15,
+    )
     if resp.status_code == 200:
         for c in resp.json():
-            decoded_name          = html.unescape(c["name"])  # &amp; -> &
-            existing[decoded_name] = c["id"]
+            # Compare ignoring HTML entities
+            name_clean = c["name"].replace("&amp;", "&").replace("&#039;", "'")
+            if name_clean.lower() == category_name.lower():
+                CATEGORY_IDS[category_name] = c["id"]  # cache for future
+                print(f"   Category  : {category_name} (ID: {c['id']}) [fetched]")
+                return c["id"]
 
-    print(f"   Found {len(existing)} existing categories: {list(existing.keys())}")
+    # Try to create it
+    create = requests.post(
+        f"{WP_URL}/wp-json/wp/v2/categories",
+        headers={**auth, "Content-Type": "application/json"},
+        json={"name": category_name}, timeout=15,
+    )
+    if create.status_code == 201:
+        cat_id = create.json()["id"]
+        CATEGORY_IDS[category_name] = cat_id
+        print(f"   Category  : {category_name} (ID: {cat_id}) [created]")
+        return cat_id
+    elif create.status_code == 400:
+        err = create.json()
+        term_id = err.get("data", {}).get("term_id") or (err.get("additional_data") or [None])[0]
+        if term_id:
+            CATEGORY_IDS[category_name] = int(term_id)
+            print(f"   Category  : {category_name} (ID: {term_id}) [resolved from error]")
+            return int(term_id)
 
-    category_map = {}
-    for name in CATEGORIES:
-        if name in existing:
-            category_map[name] = existing[name]
-            print(f"   \u2705  Using existing: {name} (ID: {existing[name]})")
-            continue
-
-        # Try to create
-        create = requests.post(
-            f"{WP_URL}/wp-json/wp/v2/categories",
-            headers={**auth, "Content-Type": "application/json"},
-            json={"name": name}, timeout=15,
-        )
-        if create.status_code == 201:
-            cat_id = create.json()["id"]
-            category_map[name] = cat_id
-            print(f"   \u2705  Created: {name} (ID: {cat_id})")
-        elif create.status_code == 400:
-            err = create.json()
-            # Extract existing term ID from error response
-            term_id = (err.get("data", {}).get("term_id")
-                       or (err.get("additional_data", [None])[0]))
-            if term_id:
-                category_map[name] = int(term_id)
-                print(f"   \u2705  Already exists: {name} (ID: {term_id})")
-            else:
-                print(f"   \u26a0\ufe0f   Could not resolve: {name} | {err}")
-        else:
-            print(f"   \u26a0\ufe0f   Failed ({create.status_code}): {name}")
-
-    print(f"   \u2705  {len(category_map)}/{len(CATEGORIES)} categories ready")
-    return category_map
+    print(f"   Could not resolve category: {category_name} - posting uncategorised")
+    return None
 
 
-# ── Step 5: Publish ─────────────────────────────────────────────────
-def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
-    print("\U0001f4f0  Publishing draft to WordPress...")
+# -- Step 5: Publish ----------------------------------------------------------
+def publish_to_wordpress(topic_data, content, image_id=None):
+    print("Publishing draft to WordPress...")
 
+    # Parse excerpt
     excerpt = ""
     if "EXCERPT:" in content:
-        parts, content = content.split("EXCERPT:", 1)[0], content.split("EXCERPT:", 1)
-        content, excerpt = parts.strip(), content[1].strip() if len(content) > 1 else content[0].strip()
-        # Simpler split
-    if "EXCERPT:" in topic_data.get("_raw_content", "") or "EXCERPT:" in content:
         bits    = content.split("EXCERPT:")
         content = bits[0].strip()
         excerpt = bits[1].strip() if len(bits) > 1 else ""
 
-    slug         = keyword_to_slug(topic_data["primary_keyword"])
-    category_ids = []
-    if category_map:
-        chosen = topic_data.get("category", "")
-        if chosen in category_map:
-            category_ids = [category_map[chosen]]
-            print(f"   \U0001f4c2  Category  : {chosen} (ID: {category_ids[0]})")
-        else:
-            print(f"   \u26a0\ufe0f   Category '{chosen}' not resolved \u2014 posting uncategorised")
+    slug     = keyword_to_slug(topic_data["primary_keyword"])
+    cat_name = topic_data.get("category", "")
+    cat_id   = resolve_category_id(cat_name) if cat_name else None
 
     validate_seo(content, topic_data["topic"], topic_data["meta_description"],
                  topic_data["primary_keyword"], slug)
@@ -315,7 +301,7 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         "excerpt":    excerpt,
         "slug":       slug,
         "status":     "draft",
-        "categories": category_ids,
+        "categories": [cat_id] if cat_id else [],
         "meta": {
             "_yoast_wpseo_metadesc": topic_data["meta_description"],
             "_yoast_wpseo_focuskw":  topic_data["primary_keyword"],
@@ -323,35 +309,49 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         },
     }
 
-    print("   \u23f3  Waiting 10s before publish to avoid rate limiting...")
-    time.sleep(10)
+    # Wait 60s before POST to avoid Hostinger rate limiting
+    print("   Waiting 60s before publishing to avoid rate limit...")
+    time.sleep(60)
 
-    resp = wp_post("posts", auth, payload)
-    if resp.status_code != 201:
+    for attempt in range(4):
+        resp = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", headers=auth, json=payload, timeout=30)
+        if resp.status_code == 201:
+            break
+        if resp.status_code == 429:
+            wait = int(resp.headers.get("Retry-After", 30 * (attempt + 1)))
+            print(f"   Rate limited - waiting {wait}s (attempt {attempt + 1}/4)...")
+            time.sleep(wait)
+            continue
         raise RuntimeError(f"WordPress publish failed ({resp.status_code}): {resp.text}")
+    else:
+        raise RuntimeError("WordPress publish failed after 4 attempts with 429")
 
     post    = resp.json()
     post_id = post["id"]
-    print(f"   \u2705  Draft saved  \u2192  {post.get('link', 'N/A')}")
+    print(f"   Draft saved -> {post.get('link', 'N/A')}")
 
+    # Attach featured image separately (Hostinger theme bug workaround)
     if image_id:
-        time.sleep(3)
-        upd = wp_post(f"posts/{post_id}", auth, {"featured_media": image_id})
+        time.sleep(5)
+        upd = requests.post(
+            f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
+            headers=auth, json={"featured_media": image_id}, timeout=30,
+        )
         if upd.status_code == 200:
-            print("   \u2705  Featured image attached")
+            print("   Featured image attached")
         else:
-            print(f"   \u26a0\ufe0f   Image attach failed: {upd.text}")
+            print(f"   Image attach failed: {upd.text}")
 
     return post
 
 
-# ── Step 6: Save history ─────────────────────────────────────────────
+# -- Step 6: Save history -----------------------------------------------------
 def update_history_on_github(history, new_entry):
-    print("\U0001f4dd  Saving post to history...")
+    print("Saving post to history...")
     token = os.environ.get("GITHUB_TOKEN", "")
     repo  = os.environ.get("GITHUB_REPOSITORY", "")
     if not token or not repo:
-        print("   \u26a0\ufe0f   Skipping \u2014 GITHUB_TOKEN not set")
+        print("   Skipping - GITHUB_TOKEN not set")
         return
     api_url = f"https://api.github.com/repos/{repo}/contents/{HISTORY_FILE}"
     hdrs    = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
@@ -359,23 +359,22 @@ def update_history_on_github(history, new_entry):
     sha     = get_r.json().get("sha") if get_r.status_code == 200 else None
     history.append(new_entry)
     encoded = base64.b64encode(json.dumps(history, indent=2).encode()).decode()
-    payload = {"message": f"blog: log post \u2014 {new_entry['title'][:60]}", "content": encoded}
+    payload = {"message": f"blog: log post - {new_entry['title'][:60]}", "content": encoded}
     if sha:
         payload["sha"] = sha
     put = requests.put(api_url, headers=hdrs, json=payload, timeout=15)
     if put.status_code in (200, 201):
-        print(f"   \u2705  History committed ({len(history)} posts total)")
+        print(f"   History committed ({len(history)} posts total)")
     else:
-        print(f"   \u26a0\ufe0f   History commit failed: {put.text}")
+        print(f"   History commit failed: {put.text}")
 
 
-# ── Main ──────────────────────────────────────────────────
+# -- Main ---------------------------------------------------------------------
 def main():
-    print("\n\U0001f680  MindCore AI \u2014 Weekly Blog Automation Pipeline")
-    print("=" * 52)
+    print("\n== MindCore AI - Weekly Blog Automation Pipeline ==")
 
     history    = load_history()
-    print(f"\U0001f4cb  History loaded \u2014 {len(history)} posts published so far")
+    print(f"History loaded - {len(history)} posts published so far")
 
     topic_data = research_topic(history)
     content    = write_blog_post(topic_data)
@@ -384,16 +383,10 @@ def main():
         image_data = generate_illustration(topic_data["image_prompt"])
         image_id   = upload_image_to_wordpress(image_data)
     except Exception as exc:
-        print(f"   \u26a0\ufe0f   Illustration failed: {exc}")
+        print(f"   Illustration failed: {exc}")
         image_id = None
 
-    try:
-        category_map = get_or_create_categories()
-    except Exception as exc:
-        print(f"   \u26a0\ufe0f   Category setup failed: {exc}")
-        category_map = None
-
-    post = publish_to_wordpress(topic_data, content, image_id, category_map)
+    post = publish_to_wordpress(topic_data, content, image_id)
 
     update_history_on_github(history, {
         "date":            datetime.now().strftime("%Y-%m-%d"),
@@ -404,8 +397,8 @@ def main():
         "wp_post_id":      post.get("id"),
     })
 
-    print("\n\U0001f389  Pipeline complete! Check WordPress \u203a Posts \u203a Drafts.")
-    print("=" * 52)
+    print("\nPipeline complete! Check WordPress > Posts > Drafts.")
+    print("=" * 50)
 
 
 if __name__ == "__main__":
