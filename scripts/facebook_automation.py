@@ -9,8 +9,8 @@ refresh_keywords.py.
 
 Required env vars:
   ANTHROPIC_API_KEY  - for content generation
-  FB_PAGE_ID         - 61564494039673
-  FB_ACCESS_TOKEN    - long-lived Page Access Token
+  FB_PAGE_ID         - Page asset ID (the Graph API ID, not the public profile.php ID)
+  FB_ACCESS_TOKEN    - System User token with pages_show_list, pages_read_engagement, pages_manage_posts
 """
 
 import os
@@ -138,12 +138,51 @@ Return ONLY the post text. No preamble, no explanation, no markdown fences."""
 
 
 # ── Facebook Graph API ──────────────────────────────────────────────────────
-def post_to_facebook(message: str) -> dict:
+def fetch_page_token() -> str:
+    """
+    Exchange the System User token for a page-specific access token.
+    Some Page-posting endpoints require an actual Page token, not a System User
+    token, even when the System User has CREATE_CONTENT/MANAGE tasks on the Page.
+    Calling /me/accounts returns the right page token derived from System User access.
+    """
+    url = f"https://graph.facebook.com/v21.0/me/accounts"
+    params = {"access_token": FB_ACCESS_TOKEN, "fields": "id,name,access_token,tasks"}
+    r = requests.get(url, params=params, timeout=30)
+
+    if not r.ok:
+        try:
+            err = r.json().get("error", {})
+            print(f"  ✗ /me/accounts error: {err.get('message')}")
+        except Exception:
+            print(f"  ✗ /me/accounts error: {r.text[:500]}")
+        r.raise_for_status()
+
+    pages = r.json().get("data", [])
+    print(f"  /me/accounts returned {len(pages)} page(s)")
+
+    for page in pages:
+        if str(page.get("id")) == str(FB_PAGE_ID):
+            tasks = page.get("tasks", [])
+            print(f"  Matched page: {page.get('name')} (tasks: {', '.join(tasks)})")
+            page_token = page.get("access_token")
+            if not page_token:
+                raise RuntimeError(
+                    f"Page {FB_PAGE_ID} found but no access_token returned. "
+                    f"Check System User has Full control of the page."
+                )
+            return page_token
+
+    raise RuntimeError(
+        f"Page ID {FB_PAGE_ID} not found in System User's accessible pages. "
+        f"Available IDs: {[p.get('id') for p in pages]}"
+    )
+
+
+def post_to_facebook(message: str, page_token: str) -> dict:
     url = f"https://graph.facebook.com/v21.0/{FB_PAGE_ID}/feed"
-    payload = {"message": message, "access_token": FB_ACCESS_TOKEN}
+    payload = {"message": message, "access_token": page_token}
     r = requests.post(url, data=payload, timeout=30)
 
-    # Surface Facebook's actual error message if the request fails
     if not r.ok:
         try:
             err = r.json().get("error", {})
@@ -182,8 +221,12 @@ def main():
     print(post_text)
     print("-" * 60 + "\n")
 
+    print("  Fetching page-specific access token…")
+    page_token = fetch_page_token()
+    print("  ✓ Got page token\n")
+
     print("  Publishing to Facebook…")
-    result = post_to_facebook(post_text)
+    result = post_to_facebook(post_text, page_token)
     fb_post_id = result.get("id", "unknown")
     print(f"  Published ✓  Post ID: {fb_post_id}")
 
