@@ -11,13 +11,13 @@ on:
     - cron: "0 7 * * 5"   # Friday    09:00 Malta — early before weekend drift
     - cron: "0 10 * * 6"  # Saturday  12:00 Malta — leisure-scroll afternoon
     - cron: "0 9 * * 0"   # Sunday    11:00 Malta — relaxed scroll
-  workflow_dispatch: # manual trigger from Actions tab
+  workflow_dispatch:
 
 jobs:
   post-to-facebook:
     name: Generate & Post to Facebook
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
 
     steps:
       - name: Checkout repository
@@ -36,6 +36,7 @@ jobs:
       - name: Run Facebook automation
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
           FB_PAGE_ID:        ${{ secrets.FB_PAGE_ID }}
           FB_ACCESS_TOKEN:   ${{ secrets.FB_ACCESS_TOKEN }}
         run: python scripts/facebook_automation.py
