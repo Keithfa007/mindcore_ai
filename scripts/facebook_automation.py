@@ -142,7 +142,21 @@ def post_to_facebook(message: str) -> dict:
     url = f"https://graph.facebook.com/v21.0/{FB_PAGE_ID}/feed"
     payload = {"message": message, "access_token": FB_ACCESS_TOKEN}
     r = requests.post(url, data=payload, timeout=30)
-    r.raise_for_status()
+
+    # Surface Facebook's actual error message if the request fails
+    if not r.ok:
+        try:
+            err = r.json().get("error", {})
+            print(f"  ✗ Facebook API error:")
+            print(f"      message : {err.get('message')}")
+            print(f"      type    : {err.get('type')}")
+            print(f"      code    : {err.get('code')}")
+            print(f"      subcode : {err.get('error_subcode')}")
+            print(f"      trace   : {err.get('fbtrace_id')}")
+        except Exception:
+            print(f"  ✗ Facebook API error (non-JSON): {r.text[:500]}")
+        r.raise_for_status()
+
     return r.json()
 
 
