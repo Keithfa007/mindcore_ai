@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import re
+import time
 import requests
 from anthropic import Anthropic
 from openai import OpenAI
@@ -15,8 +16,7 @@ WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 
-HISTORY_FILE = "scripts/blog_history.json"
-
+HISTORY_FILE   = "scripts/blog_history.json"
 MIN_WORD_COUNT = 1200
 
 # ── Categories ─────────────────────────────────────────────────────────────────
@@ -38,7 +38,6 @@ def get_wp_auth():
 
 
 def keyword_to_slug(keyword):
-    """Convert focus keyword to a clean URL slug."""
     slug = keyword.lower().strip()
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
     slug = re.sub(r"[\s]+", "-", slug)
@@ -47,35 +46,27 @@ def keyword_to_slug(keyword):
 
 
 def count_words_in_html(html):
-    """Strip HTML tags and count words."""
     clean = re.sub(r"<[^>]+>", " ", html)
-    words = clean.split()
-    return len(words)
+    return len(clean.split())
 
 
 def validate_seo(content, title, meta, primary_keyword, slug):
-    """Validate all Yoast SEO requirements and print a report."""
     print("\n📊  SEO Validation Report:")
-    kw = primary_keyword.lower()
-    text = re.sub(r"<[^>]+>", " ", content).lower()
+    kw    = primary_keyword.lower()
+    text  = re.sub(r"<[^>]+>", " ", content).lower()
     words = text.split()
-    word_count = len(words)
-
-    # First 10% check
-    first_10_pct = " ".join(words[:max(1, word_count // 10)])
-    in_first_10  = kw in first_10_pct
-
-    # Keyword density
-    kw_count  = text.count(kw)
-    density   = (kw_count / word_count * 100) if word_count > 0 else 0
+    word_count  = len(words)
+    first_10pct = " ".join(words[:max(1, word_count // 10)])
+    kw_count    = text.count(kw)
+    density     = (kw_count / word_count * 100) if word_count > 0 else 0
 
     checks = {
         "Focus keyword in SEO title":         kw in title.lower(),
         "Focus keyword in meta description":  kw in meta.lower(),
-        "Focus keyword in URL slug":          kw.replace(" ", "-") in slug or kw.replace(" ", "-").startswith(slug[:10]),
-        "Focus keyword in first 10% of text": in_first_10,
+        "Focus keyword in URL slug":          kw.replace(" ", "-") in slug,
+        "Focus keyword in first 10% of text": kw in first_10pct,
         "Focus keyword found in content":     kw in text,
-        f"Word count ≥ {MIN_WORD_COUNT}": word_count >= MIN_WORD_COUNT,
+        f"Word count >= {MIN_WORD_COUNT}":     word_count >= MIN_WORD_COUNT,
     }
 
     all_pass = True
@@ -85,15 +76,13 @@ def validate_seo(content, title, meta, primary_keyword, slug):
         if not passed:
             all_pass = False
 
-    print(f"   📝  Word count   : {word_count}")
-    print(f"   🔑  KW density   : {density:.2f}% ({kw_count} occurrences)")
-    print(f"   🔗  Slug         : {slug}")
-
-    if not all_pass:
-        print("   ⚠️   Some SEO checks failed — post still saved as draft for review.")
-    else:
+    print(f"   📝  Word count : {word_count}")
+    print(f"   🔑  KW density : {density:.2f}% ({kw_count} occurrences)")
+    print(f"   🔗  Slug       : {slug}")
+    if all_pass:
         print("   🎉  All SEO checks passed!")
-
+    else:
+        print("   ⚠️   Some checks failed — post saved as draft for review.")
     return word_count
 
 
@@ -108,10 +97,10 @@ def load_history():
 def format_history_for_prompt(history):
     if not history:
         return "None yet — this is the first post."
-    lines = []
-    for i, entry in enumerate(history, 1):
-        lines.append(f"  {i}. [{entry['date']}] \"{entry['title']}\" — keyword: \"{entry['primary_keyword']}\"")
-    return "\n".join(lines)
+    return "\n".join(
+        f"  {i}. [{e['date']}] \"{e['title']}\" — keyword: \"{e['primary_keyword']}\""
+        for i, e in enumerate(history, 1)
+    )
 
 
 # ── Step 1 · SEO Research & Topic Selection ────────────────────────────────────
@@ -136,28 +125,24 @@ Selection criteria:
   • High Google search demand, VERY low keyword competition
   • Mirrors real "People Also Ask" or "Related Searches" questions on Google
   • Evergreen — ranks over months, not just days
-  • Fits one of the three niches above
-  • Primary keyword must be 2-5 words — specific enough to rank, short enough for a clean URL slug
+  • Primary keyword must be 2-5 words, specific enough to rank
 
-CRITICAL — ALREADY PUBLISHED POSTS (DO NOT REPEAT ANY OF THESE):
+CRITICAL — ALREADY PUBLISHED (DO NOT REPEAT):
 {history_text}
 
-You MUST NOT choose any topic, title, or primary keyword that is the same as or similar to the above.
-Every post must be on a completely fresh angle.
-
-Available blog categories (pick the most relevant one):
+Available categories (pick the most relevant):
 {chr(10).join(f'  - {c}' for c in CATEGORIES)}
 
 Respond ONLY in this exact JSON format — no markdown, no preamble:
 {{
-  "topic": "Full blog post title (compelling, keyword-rich — must contain the primary keyword)",
+  "topic": "Full blog post title containing the primary keyword",
   "primary_keyword": "exact low-competition keyword (2-5 words)",
   "secondary_keywords": ["kw2", "kw3", "kw4", "kw5"],
-  "search_intent": "what the reader is actually looking for",
-  "meta_description": "150-160 character meta description — must contain the primary keyword naturally",
-  "image_prompt": "Detailed DALL-E prompt: warm, soft, hopeful illustration for a mental wellness blog — human, approachable, NOT dark or neon. Describe scene, colours, mood.",
-  "rationale": "Why this topic has high demand and low competition right now",
-  "category": "exact category name from the list above"
+  "search_intent": "what the reader is looking for",
+  "meta_description": "150-160 char meta description containing the primary keyword",
+  "image_prompt": "DALL-E prompt: warm, soft, hopeful mental wellness illustration, human, approachable, no text",
+  "rationale": "Why high demand and low competition",
+  "category": "exact category name from list above"
 }}"""
         }]
     )
@@ -182,38 +167,35 @@ def write_blog_post(topic_data):
             "role": "user",
             "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
 
-Write a full, publish-ready blog post using these details:
+Write a full, publish-ready blog post:
 
-  Title            : {topic_data['topic']}
-  Primary Keyword  : {topic_data['primary_keyword']}
-  Secondary KWs    : {', '.join(topic_data['secondary_keywords'])}
-  Search Intent    : {topic_data['search_intent']}
-  Category         : {topic_data.get('category', '')}
+  Title           : {topic_data['topic']}
+  Primary Keyword : {topic_data['primary_keyword']}
+  Secondary KWs   : {', '.join(topic_data['secondary_keywords'])}
+  Search Intent   : {topic_data['search_intent']}
+  Category        : {topic_data.get('category', '')}
 
 YOAST SEO REQUIREMENTS (all must be met):
-  1. Primary keyword MUST appear in the H1 title
-  2. Primary keyword MUST appear in the very first sentence of the first paragraph
-  3. Primary keyword MUST appear in at least 3 H2 subheadings
-  4. Primary keyword density: between 0.8% and 2% of total words
-  5. Secondary keywords woven in naturally throughout
-  6. Minimum 1,200 words of actual readable content (not counting HTML tags)
-  7. Strong intro that hooks the reader within the first 2 sentences
+  1. Primary keyword in the H1 title
+  2. Primary keyword in the very first sentence
+  3. Primary keyword in at least 3 H2 subheadings
+  4. Keyword density between 0.8% and 2%
+  5. Minimum 1,200 words of readable content (not counting HTML tags)
 
 WRITING REQUIREMENTS:
   • Tone: warm, honest, human — like advice from a friend who has been there
   • Audience: men 35+, people in recovery, adults open to AI wellness tools
-  • Structure: H1 → intro (2-3 para) → 5-7 H2 sections (each 150-200 words) → conclusion + CTA
-  • Each H2 section must have at least 2-3 solid paragraphs
-  • Include at least one <ul> list somewhere in the post
-  • Real, actionable advice — zero fluff, zero generic platitudes
+  • Structure: H1 → intro (2-3 para) → 5-7 H2 sections (150-200 words each) → conclusion + CTA
+  • Include at least one <ul> list
+  • Real, actionable advice — zero fluff
   • Final section: natural CTA to download MindCore AI
 
 FORMAT:
-  • Return clean WordPress-ready HTML only
-  • Use <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em> tags
-  • Do NOT include <html>, <head>, <body>, <style>, or <script> tags
-  • After ALL the HTML content, on its own line, write exactly:
-    EXCERPT: [2-3 sentence hook that includes the primary keyword]"""
+  • Clean WordPress-ready HTML only
+  • Tags: <h1> <h2> <h3> <p> <ul> <li> <strong> <em>
+  • No <html> <head> <body> <style> <script> tags
+  • After all HTML, on its own line:
+    EXCERPT: [2-3 sentence hook containing the primary keyword]"""
         }]
     )
 
@@ -229,19 +211,17 @@ FORMAT:
 
 
 def expand_blog_post(content, topic_data, current_words):
-    """Request additional content if the post is too short."""
-    needed = MIN_WORD_COUNT - current_words
+    needed   = MIN_WORD_COUNT - current_words
     response = anthropic_client.messages.create(
         model="claude-opus-4-5",
         max_tokens=3000,
         messages=[{
             "role": "user",
-            "content": f"""The following blog post is {current_words} words, but needs at least {MIN_WORD_COUNT}.
-Add approximately {needed} more words by expanding existing sections or adding 2 new H2 sections.
-Keep the same tone, HTML format, and naturally include the keyword: "{topic_data['primary_keyword']}".
-Return the COMPLETE updated post including the EXCERPT at the end.
+            "content": f"""This blog post is {current_words} words but needs at least {MIN_WORD_COUNT}.
+Add ~{needed} words by expanding sections or adding 2 new H2 sections.
+Keep same tone, HTML format, include keyword: "{topic_data['primary_keyword']}".
+Return the COMPLETE updated post including EXCERPT at the end.
 
-Original post:
 {content}"""
         }]
     )
@@ -284,36 +264,59 @@ def upload_image_to_wordpress(image_data, title):
         media_id = response.json()["id"]
         print(f"   ✅  Image uploaded (ID: {media_id})")
         return media_id
-    else:
-        print(f"   ⚠️   Image upload failed ({response.status_code}): {response.text}")
-        return None
+    print(f"   ⚠️   Image upload failed ({response.status_code}): {response.text}")
+    return None
 
 
 # ── Step 5 · Category Management ──────────────────────────────────────────────
 def get_or_create_categories():
+    """Fetch existing WP categories and create any missing ones.
+    If a category already exists (term_exists error), extract its ID from the error response."""
     print("📂  Setting up categories...")
-    headers  = get_wp_auth()
+    headers = get_wp_auth()
+
+    # Fetch all existing categories first
     response = requests.get(
         f"{WP_URL}/wp-json/wp/v2/categories?per_page=100",
         headers=headers, timeout=15,
     )
-    existing = {c["name"]: c["id"] for c in response.json()} if response.status_code == 200 else {}
+    existing = {}
+    if response.status_code == 200:
+        for c in response.json():
+            existing[c["name"]] = c["id"]
 
     category_map = {}
     for name in CATEGORIES:
         if name in existing:
+            # Already exists — use the existing ID
             category_map[name] = existing[name]
+            print(f"   ✅  Found category: {name} (ID: {existing[name]})")
         else:
+            # Try to create it
             create = requests.post(
                 f"{WP_URL}/wp-json/wp/v2/categories",
                 headers={**headers, "Content-Type": "application/json"},
                 json={"name": name}, timeout=15,
             )
             if create.status_code == 201:
-                category_map[name] = create.json()["id"]
-                print(f"   ✅  Created category: {name}")
+                cat_id = create.json()["id"]
+                category_map[name] = cat_id
+                print(f"   ✅  Created category: {name} (ID: {cat_id})")
+            elif create.status_code == 400:
+                # term_exists — extract the ID from the error data
+                err = create.json()
+                term_id = None
+                if "data" in err and "term_id" in err["data"]:
+                    term_id = err["data"]["term_id"]
+                elif "additional_data" in err and len(err["additional_data"]) > 0:
+                    term_id = err["additional_data"][0]
+                if term_id:
+                    category_map[name] = term_id
+                    print(f"   ✅  Category exists: {name} (ID: {term_id})")
+                else:
+                    print(f"   ⚠️   Could not resolve category '{name}': {create.text}")
             else:
-                print(f"   ⚠️   Could not create '{name}': {create.text}")
+                print(f"   ⚠️   Could not create '{name}' ({create.status_code}): {create.text}")
 
     print(f"   ✅  {len(category_map)} categories ready")
     return category_map
@@ -329,7 +332,6 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         content = parts[0].strip()
         excerpt = parts[1].strip()
 
-    # Build SEO-friendly slug from focus keyword
     slug = keyword_to_slug(topic_data["primary_keyword"])
 
     category_ids = []
@@ -338,8 +340,9 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         if chosen in category_map:
             category_ids = [category_map[chosen]]
             print(f"   📂  Category  : {chosen}")
+        else:
+            print(f"   ⚠️   Category '{chosen}' not in map — posting uncategorised")
 
-    # Run SEO validation before publishing
     validate_seo(
         content,
         topic_data["topic"],
@@ -355,7 +358,7 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         "title":      topic_data["topic"],
         "content":    content,
         "excerpt":    excerpt,
-        "slug":       slug,          # ← focus keyword in URL
+        "slug":       slug,
         "status":     "draft",
         "categories": category_ids,
         "meta": {
@@ -365,11 +368,24 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
         },
     }
 
-    # Create post WITHOUT featured image first (Hostinger AI theme bug workaround)
+    # Small delay before publishing to avoid 429 rate limit
+    print("   ⏳  Waiting 3s before publish to avoid rate limit...")
+    time.sleep(3)
+
     response = requests.post(
         f"{WP_URL}/wp-json/wp/v2/posts",
         headers=headers, json=post_payload, timeout=30,
     )
+
+    if response.status_code == 429:
+        # Rate limited — wait and retry once
+        retry_after = int(response.headers.get("Retry-After", 10))
+        print(f"   ⏳  Rate limited — retrying after {retry_after}s...")
+        time.sleep(retry_after)
+        response = requests.post(
+            f"{WP_URL}/wp-json/wp/v2/posts",
+            headers=headers, json=post_payload, timeout=30,
+        )
 
     if response.status_code != 201:
         raise RuntimeError(
@@ -380,8 +396,9 @@ def publish_to_wordpress(topic_data, content, image_id=None, category_map=None):
     post_id = post["id"]
     print(f"   ✅  Draft saved  →  {post.get('link', 'N/A')}")
 
-    # Attach featured image separately
+    # Attach featured image separately (Hostinger theme bug workaround)
     if image_id:
+        time.sleep(2)
         upd = requests.post(
             f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
             headers=headers,
@@ -402,15 +419,12 @@ def update_history_on_github(history, new_entry):
     token = os.environ.get("GITHUB_TOKEN", "")
     repo  = os.environ.get("GITHUB_REPOSITORY", "")
     if not token or not repo:
-        print("   ⚠️   GITHUB_TOKEN or GITHUB_REPOSITORY not set — skipping history save")
+        print("   ⚠️   GITHUB_TOKEN or GITHUB_REPOSITORY not set — skipping")
         return
 
-    api_url = f"https://api.github.com/repos/{repo}/contents/{HISTORY_FILE}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-    }
-    get_resp = requests.get(api_url, headers=headers, timeout=15)
+    api_url  = f"https://api.github.com/repos/{repo}/contents/{HISTORY_FILE}"
+    gh_hdrs  = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    get_resp = requests.get(api_url, headers=gh_hdrs, timeout=15)
     sha      = get_resp.json().get("sha") if get_resp.status_code == 200 else None
 
     history.append(new_entry)
@@ -419,7 +433,7 @@ def update_history_on_github(history, new_entry):
     if sha:
         payload["sha"] = sha
 
-    put = requests.put(api_url, headers=headers, json=payload, timeout=15)
+    put = requests.put(api_url, headers=gh_hdrs, json=payload, timeout=15)
     if put.status_code in (200, 201):
         print(f"   ✅  History committed ({len(history)} posts total)")
     else:
