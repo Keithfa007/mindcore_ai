@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v3.5
+MindCore AI Video Pipeline -- HeyGen Edition v3.6
 ===================================================
+
+CHANGES (v3.6):
+  Fix: use_avatar_iv_model now always enabled so Avatar V uses its
+  full body animation engine. Previously this flag was only set when
+  using a custom motion prompt -- meaning natural gesture mode was
+  running on the basic renderer with no body movement.
 
 CHANGES (v3.5):
   Auto-upload to TikTok + Facebook Reels via Upload-Post API.
-  Claude generates platform-specific metadata (titles, captions,
-  hashtags) as structured JSON before uploading. Results saved
-  as upload_result.json artifact.
 
 CHANGES (v3.4):
-  Short-tail + long-tail keyword research. Google Autocomplete
-  for short-tail, PAA + Related Searches for long-tail.
+  Short-tail + long-tail keyword research via SERP + Autocomplete.
 
 CHANGES (v3.3):
   SERP-first keyword research before every content video.
@@ -61,7 +63,7 @@ VIDEO_TIMEOUT = 1200  # 20 minutes
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
-SERP_SEEDS_PER_RUN        = 3
+SERP_SEEDS_PER_RUN         = 3
 AUTOCOMPLETE_SEEDS_PER_RUN = 2
 
 WORD_LIMITS_AD = {
@@ -234,7 +236,6 @@ def research_keyword_candidates_from_serp(seeds: list) -> list:
     candidates = []
     seen       = set()
 
-    # Path A: Regular Google search
     regular_seeds = random.sample(seeds, min(SERP_SEEDS_PER_RUN, len(seeds)))
     for seed in regular_seeds:
         try:
@@ -276,7 +277,6 @@ def research_keyword_candidates_from_serp(seeds: list) -> list:
         except Exception as e:
             print(f"  Google search failed for '{seed}': {e}")
 
-    # Path B: Google Autocomplete for short-tail
     autocomplete_bases = []
     for seed in seeds:
         words = seed.split()
@@ -370,7 +370,6 @@ def fetch_trending_topic_claude_fallback(seeds: list, client: anthropic.Anthropi
 Generate ONE keyword/topic for a TikTok/Reels video. Related to: "{seed}"
 
 Consider BOTH short-tail (1-3 words, niche emotional) AND long-tail (4+ words, specific).
-Examples: "sobriety anger", "men crying alone", "why do I feel worse after stopping drinking"
 
 Return ONLY valid JSON:
 {{
@@ -427,9 +426,9 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
     lo_cta,   hi_cta   = WORD_TARGETS_CONTENT["solution_cta"]
 
     if tail_type == "short_tail":
-        kw_guidance = f"SHORT-TAIL keyword '{keyword}'. Explore the full emotional depth behind this phrase. LIVE it from the inside."
+        kw_guidance = f"SHORT-TAIL keyword '{keyword}'. Explore the full emotional depth. LIVE it from the inside."
     else:
-        kw_guidance = f"SPECIFIC keyword '{keyword}'. Answer the exact question or struggle implied. Be precise and emotionally honest."
+        kw_guidance = f"SPECIFIC keyword '{keyword}'. Answer the exact question implied. Be precise and emotionally honest."
 
     prompt = f"""Top-performing TikTok/Reels creator, men's mental health + recovery space.
 Content gets millions of views -- RAW TRUTH, REAL STORIES men 35+ recognise.
@@ -487,13 +486,9 @@ TONE: Raw, honest, brotherly. Not salesy.
 TARGET: ~20 seconds. Every word earns its place.
 
 BANNED: "try it for free" -> "try it", "free trial" -> "trial", "download now" -> "find us on Google Play"
-
 ABOUT MINDCORE AI: AI mental wellness companion for men, Google Play, free trial, no credit card.
-
 SOLUTION_CTA MUST END WITH: "{cta}"
-
 SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
-
 STRICT WORD COUNT: hook<=8, problem<=12, story<=14, solution_cta<=14
 
 Return ONLY valid JSON:
@@ -569,21 +564,27 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
         "dimension":    {"width": 1080, "height": 1920},
         "aspect_ratio": "9:16",
         "test": False,
+        # Always enable the advanced Avatar V animation engine.
+        # Without this flag HeyGen uses the basic renderer which
+        # produces no body movement regardless of gesture settings.
+        "use_avatar_iv_model": True,
     }
 
     if not natural_gestures:
+        # Custom motion prompt: constrained delivery style
         MOTION_PROMPT = (
             "Grounded, emotionally present mental health speaker. "
             "Hands mostly still. Slow deliberate gestures -- open palms or hand on chest. "
             "Nod gently on empathetic statements. Soft warm eye contact. "
             "Completely still at profound statements. Trusted older brother tone."
         )
-        payload["use_avatar_iv_model"]          = True
         payload["custom_motion_prompt"]         = MOTION_PROMPT
         payload["enhance_custom_motion_prompt"] = True
-        print("  Motion: CUSTOM PROMPT")
+        print("  Motion: CUSTOM PROMPT (constrained, grounded)")
     else:
-        print("  Motion: NATURAL (avatar's own trained gestures)")
+        # Natural gestures: advanced engine on, no prompt constraint --
+        # Avatar V uses its full trained body movement freely
+        print("  Motion: NATURAL (Avatar V full body movement)")
 
     resp = requests.post(HEYGEN_SUBMIT_URL, headers=headers, json=payload, timeout=30)
     if not resp.ok:
@@ -657,7 +658,6 @@ def detect_content_crop(video_path: str) -> tuple:
 
 
 def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
-    """Cover mode: zoom to fill 1080x1920, center crop, no black bars."""
     return (
         f"crop={cw}:{ch}:{cx}:{cy},"
         f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
@@ -746,18 +746,13 @@ Plain text only. Clear labels. Copy-paste ready."""
 
 
 def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropic) -> dict:
-    """
-    Generate structured platform-specific metadata for the Upload-Post API.
-    Returns a dict with tiktok_title, tiktok_hashtags, facebook_title,
-    facebook_description -- all optimised and within platform limits.
-    """
     print("  Generating platform metadata for upload...")
     full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode).upper()
 
-    prompt = f"""You are a social media expert for men's mental health content on TikTok and Facebook Reels.
+    prompt = f"""Social media expert for men's mental health content on TikTok and Facebook Reels.
 
 Generate optimised upload metadata for this video.
 
@@ -768,11 +763,9 @@ FULL VOICEOVER: {full_vo}
 
 RULES:
 - TikTok title: max 100 chars, front-load keyword, no hashtags in title
-- TikTok hashtags: 8-10 tags, mix of niche (#mentalhealthformen #sobriety) and broad (#mentalhealth #anxiety)
-  Format as a single string: "#tag1 #tag2 #tag3"
-- Facebook title: max 255 chars, keyword-first, slightly longer
-- Facebook description: 2-3 sentences, emotionally engaging, end with a question
-  Include 5-6 hashtags at the end
+- TikTok hashtags: 8-10 tags as a single string: "#tag1 #tag2 #tag3"
+- Facebook title: max 255 chars, keyword-first
+- Facebook description: 2-3 sentences, emotionally engaging, end with a question + 5-6 hashtags
 
 Return ONLY valid JSON, no markdown:
 {{
@@ -806,15 +799,6 @@ Return ONLY valid JSON, no markdown:
 # -- Step 7 -- Auto-upload to TikTok + Facebook via Upload-Post ---------------
 
 def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
-    """
-    Upload the final video to TikTok and Facebook Reels simultaneously
-    using the Upload-Post API.
-
-    TikTok:  uses tiktok_title as the title, tiktok_hashtags as description
-             (TikTok ignores the global description field)
-    Facebook: uses facebook_title and facebook_description
-              auto-detects the connected Page if only one exists
-    """
     if not UPLOAD_POST_API_KEY:
         print("  UPLOAD_POST_API_KEY not set -- skipping upload")
         return {"skipped": True, "reason": "no API key"}
@@ -825,20 +809,15 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
         return {"skipped": True, "reason": "no user configured"}
 
     print(f"  Uploading to TikTok + Facebook as '{user}'...")
-
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
 
-    # Build multipart form data as list of tuples (supports repeated field names)
     data = [
         ("user",                 user),
         ("platform[]",           "tiktok"),
         ("platform[]",           "facebook"),
-        # Global title (TikTok uses this)
         ("title",                metadata.get("tiktok_title", "")[:100]),
-        # TikTok-specific
         ("tiktok_title",         metadata.get("tiktok_title", "")[:100]),
         ("description",          metadata.get("tiktok_hashtags", "")),
-        # Facebook-specific
         ("facebook_title",       metadata.get("facebook_title", "")[:255]),
         ("facebook_description", metadata.get("facebook_description", "")),
     ]
@@ -851,7 +830,7 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
                 headers=headers,
                 files=files,
                 data=data,
-                timeout=180,  # large file upload
+                timeout=180,
             )
 
         result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
@@ -859,7 +838,6 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
 
         if resp.ok:
             print(f"  Upload successful! Status: {resp.status_code}")
-            print(f"  Response: {json.dumps(result)[:200]}")
         else:
             print(f"  Upload WARNING -- status {resp.status_code}: {resp.text[:300]}")
 
@@ -887,7 +865,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 30fps | Zoom-to-fill | Auto-uploaded
+  Format      : 1080x1920 9:16 30fps | Zoom-to-fill | Avatar V full body
 ================================================================================
 
 FULL SCRIPT
@@ -920,13 +898,13 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.5")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
-    print(f"  Motion: {'NATURAL' if natural_gestures else 'CUSTOM PROMPT'}")
+    print(f"  Motion: Avatar V full body ({'natural' if natural_gestures else 'custom prompt'})")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
-    print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED -- add UPLOAD_POST_API_KEY secret'}")
+    print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED'}")
     if mode == "content":
         print("  Content: educational + storytelling only -- zero promotion")
     else:
@@ -935,7 +913,6 @@ def main():
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # Generate script
     print("\n  Generating script...")
     if mode == "ad":
         app_facts = load_app_facts()
@@ -960,14 +937,12 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    # Submit to HeyGen
     print("\n  Submitting to HeyGen...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color, natural_gestures)
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
     video_url = poll_heygen_video(video_id)
 
-    # Download + process
     print("\n  Downloading raw video from HeyGen...")
     raw_path   = str(OUTPUT_DIR / "mindcore_ai_raw.mp4")
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
@@ -976,7 +951,6 @@ def main():
     print("\n  Converting to 9:16 portrait (zoom-to-fill)...")
     crop_to_portrait(raw_path, final_path)
 
-    # Generate upload guide + platform metadata
     print("\n  Generating upload guide...")
     guide_text = generate_upload_guide(script, mode, client)
     save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, avatar_id)
@@ -984,13 +958,12 @@ def main():
     upload_metadata = generate_upload_metadata(script, mode, client)
     (OUTPUT_DIR / "upload_metadata.json").write_text(json.dumps(upload_metadata, indent=2))
 
-    # Auto-upload to TikTok + Facebook
     if upload_enabled:
         print("\n  Uploading to TikTok + Facebook...")
         upload_result = upload_to_platforms(final_path, upload_metadata, cfg)
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps(upload_result, indent=2))
     else:
-        print("\n  Auto-upload disabled -- video saved for manual upload")
+        print("\n  Auto-upload disabled -- video saved for manual review")
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps({"skipped": True}, indent=2))
 
     print(f"\n  DONE")
