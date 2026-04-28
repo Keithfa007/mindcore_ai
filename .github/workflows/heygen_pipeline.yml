@@ -19,9 +19,9 @@ on:
 
 jobs:
   generate-video:
-    name: Generate Avatar Video (KF | 9:16)
+    name: Generate + Upload Avatar Video (KF | 9:16)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
 
     steps:
       - name: Checkout repo
@@ -52,13 +52,15 @@ jobs:
           else
             echo "Mode: CONTENT (run #$RUN_NUM) -- $((10 - MOD)) until next ad"
           fi
+          echo "Auto-upload: TikTok + Facebook via Upload-Post"
 
       - name: Run HeyGen Pipeline
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          HEYGEN_API_KEY:    ${{ secrets.HEYGEN_API_KEY }}
-          SERP_API_KEY:      ${{ secrets.SERP_API_KEY }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          HEYGEN_API_KEY:       ${{ secrets.HEYGEN_API_KEY }}
+          SERP_API_KEY:         ${{ secrets.SERP_API_KEY }}
+          UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
+          GITHUB_RUN_NUMBER:    ${{ github.run_number }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
           if [ "$FORCE" = "ad" ]; then
@@ -77,6 +79,9 @@ jobs:
             video_pipeline/output/mindcore_ai_video.mp4
             video_pipeline/output/upload_guide.txt
             video_pipeline/output/script.json
+            video_pipeline/output/upload_metadata.json
+            video_pipeline/output/upload_result.json
+            video_pipeline/output/keyword_research.json
           retention-days: 30
 
       - name: Upload debug on failure
@@ -90,30 +95,27 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## MindCore AI -- HeyGen Avatar Pipeline" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Avatar:** KF" >> $GITHUB_STEP_SUMMARY
-          echo "**Format:** 9:16 vertical -- TikTok + Facebook Reels" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI -- HeyGen Avatar Pipeline v3.5" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | **Avatar:** KF | **Auto-upload:** TikTok + Facebook" >> $GITHUB_STEP_SUMMARY
+          echo "**Format:** 9:16 vertical | **Keywords:** SERP short+long tail" >> $GITHUB_STEP_SUMMARY
           echo "**Schedule:** Mon/Wed/Fri 09:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
-            echo "**Type:** $TYPE" >> $GITHUB_STEP_SUMMARY
+            KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
+            echo "**Type:** $TYPE | **Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
             echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat video_pipeline/output/script.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
           fi
-          if [ -f "video_pipeline/output/upload_guide.txt" ]; then
+          if [ -f "video_pipeline/output/upload_result.json" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Upload Guide" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat video_pipeline/output/upload_guide.txt >> $GITHUB_STEP_SUMMARY
+            echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat video_pipeline/output/upload_result.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output/mindcore_ai_video.mp4" ]; then
             SIZE=$(du -sh video_pipeline/output/mindcore_ai_video.mp4 | cut -f1)
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Video ready: $SIZE -- download from Artifacts above" >> $GITHUB_STEP_SUMMARY
+            echo "### Video: $SIZE" >> $GITHUB_STEP_SUMMARY
           fi

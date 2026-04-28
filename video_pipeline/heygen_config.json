@@ -15,5 +15,7 @@
   ],
   "voice_id": "23bee2c833a64437985bd1901713d0f0",
   "background_color": "#07071a",
-  "use_natural_gestures": true
+  "use_natural_gestures": true,
+  "upload_enabled": true,
+  "upload_post_user": "mindcoreai"
 }
