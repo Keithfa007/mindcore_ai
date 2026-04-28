@@ -1,6 +1,8 @@
 name: MindCore AI -- HeyGen Avatar Pipeline
 
-# Automated schedule: Mon/Wed/Fri 09:00 UTC
+# Schedule: Tue/Wed/Thu 17:00 UTC
+# Data: best days for mental health/wellness content (Sprout Social 2026, 2B+ engagements)
+# 17:00 UTC = 12:00 EST / 18:00 CET -- peak scroll window for men 35+
 # Ratio: 9 content videos : 1 ad (every 10th run is an ad)
 on:
   workflow_dispatch:
@@ -15,7 +17,7 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 9 * * 1,3,5"
+    - cron: "0 17 * * 2,3,4"
 
 jobs:
   generate-video:
@@ -53,6 +55,7 @@ jobs:
             echo "Mode: CONTENT (run #$RUN_NUM) -- $((10 - MOD)) until next ad"
           fi
           echo "Auto-upload: TikTok + Facebook via Upload-Post"
+          echo "Schedule: Tue/Wed/Thu 17:00 UTC"
 
       - name: Run HeyGen Pipeline
         env:
@@ -95,10 +98,10 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## MindCore AI -- HeyGen Avatar Pipeline v3.5" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI -- HeyGen Avatar Pipeline v4.3" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }} | **Avatar:** KF | **Auto-upload:** TikTok + Facebook" >> $GITHUB_STEP_SUMMARY
           echo "**Format:** 9:16 vertical | **Keywords:** SERP short+long tail" >> $GITHUB_STEP_SUMMARY
-          echo "**Schedule:** Mon/Wed/Fri 09:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
+          echo "**Schedule:** Tue/Wed/Thu 17:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
