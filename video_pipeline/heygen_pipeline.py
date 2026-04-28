@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v3.9
+MindCore AI Video Pipeline -- HeyGen Edition v4.0
 ===================================================
 
-CHANGES (v3.9):
-  Revert to /v2/video/generate endpoint with use_avatar_iv_model=True.
-  The av4/generate endpoint requires uploaded image keys, not existing
-  avatar look IDs. Full body motion via API is a HeyGen limitation for
-  Talking Photo avatars -- contact HeyGen support to confirm the correct
-  endpoint for body movement with existing avatar looks.
-  Pipeline is functional and produces videos while this is resolved.
+CHANGES (v4.0):
+  Full body movement for Photo Avatar (Talking Photo) avatars.
+  Parameters confirmed by HeyGen support:
+  - pose: "full_body" in character object
+  - motion_prompt: natural language body motion control
+  - expressiveness: "high" for full animation intensity
+  Avatar V is not yet available via API (coming with API V3).
 
 CHANGES (v3.5):
   Auto-upload to TikTok + Facebook via Upload-Post API.
@@ -550,10 +550,11 @@ def build_full_script(script: dict) -> str:
 
 # -- Step 3 -- Submit to HeyGen -----------------------------------------------
 #
-# Uses /v2/video/generate with use_avatar_iv_model=True.
-# This gives enhanced head/face motion for Talking Photo avatars.
-# Full body movement requires HeyGen to confirm the correct API approach
-# for existing avatar looks -- contact HeyGen support.
+# Parameters confirmed by HeyGen support for full body movement:
+#   character.pose = "full_body"  -- enables full body rendering
+#   motion_prompt                 -- natural language body/gesture control
+#   expressiveness = "high"       -- maximum animation intensity
+#   use_avatar_iv_model = True    -- Avatar IV motion engine
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
                         background_color: str, natural_gestures: bool) -> str:
@@ -563,30 +564,33 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
     if voice_id:
         voice_config["voice_id"] = voice_id
 
+    # Motion prompt: natural language gesture control (per HeyGen support docs)
+    MOTION_PROMPT = (
+        "Gesturing naturally with hands while presenting. "
+        "Warm eye contact. Nodding gently on emotional points. "
+        "Open palm gestures when sharing insights. "
+        "Grounded upper body movement throughout."
+    )
+
     payload = {
         "video_inputs": [{
-            "character": {"type": "avatar", "avatar_id": avatar_id},
-            "voice":     voice_config,
+            "character": {
+                "type":      "avatar",
+                "avatar_id": avatar_id,
+                "pose":      "full_body",   # enables full body rendering (HeyGen support)
+            },
+            "voice":      voice_config,
             "background": {"type": "color", "value": background_color},
         }],
-        "dimension":          {"width": 1080, "height": 1920},
-        "aspect_ratio":       "9:16",
-        "test":               False,
+        "dimension":           {"width": 1080, "height": 1920},
+        "aspect_ratio":        "9:16",
+        "test":                False,
         "use_avatar_iv_model": True,
+        "motion_prompt":       MOTION_PROMPT,  # body motion control (HeyGen support)
+        "expressiveness":      "high",         # animation intensity (HeyGen support)
     }
 
-    if not natural_gestures:
-        MOTION_PROMPT = (
-            "Grounded, emotionally present mental health speaker. "
-            "Hands mostly still. Slow deliberate gestures -- open palms or hand on chest. "
-            "Nod gently on empathetic statements. Soft warm eye contact. "
-            "Trusted older brother tone."
-        )
-        payload["custom_motion_prompt"]         = MOTION_PROMPT
-        payload["enhance_custom_motion_prompt"] = True
-        print("  Motion: CUSTOM PROMPT")
-    else:
-        print("  Motion: NATURAL")
+    print(f"  Pose: full_body | Expressiveness: high | Motion prompt: active")
 
     resp = requests.post(HEYGEN_SUBMIT_URL, headers=headers, json=payload, timeout=30)
     if not resp.ok:
@@ -869,7 +873,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 30fps | Zoom-to-fill
+  Format      : 1080x1920 9:16 30fps | Zoom-to-fill | Full body motion
 ================================================================================
 
 FULL SCRIPT
@@ -902,10 +906,10 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.9")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.0")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
-    print(f"  Endpoint: v2/video/generate | use_avatar_iv_model=True")
+    print(f"  Motion: pose=full_body | expressiveness=high | motion_prompt active")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
     print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED'}")
