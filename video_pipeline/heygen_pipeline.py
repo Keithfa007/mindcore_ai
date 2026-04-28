@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v4.1
+MindCore AI Video Pipeline -- HeyGen Edition v4.2
 ===================================================
 
+CHANGES (v4.2):
+  Test POST /v3/videos endpoint as suggested by HeyGen support.
+  Flat payload structure. Full raw response logged regardless of
+  success or failure so we can see exactly what the endpoint expects.
+
 CHANGES (v4.1):
-  Added super_resolution: true and talking_style: "expressive" per
-  HeyGen support. These two parameters improve image quality and
-  natural movement for Photo Avatar (Talking Photo) avatars.
+  Added super_resolution: true and talking_style: "expressive".
 
 CHANGES (v4.0):
-  Full body motion parameters confirmed by HeyGen support:
-  pose: full_body, motion_prompt, expressiveness: high
+  Full body motion parameters: pose=full_body, motion_prompt,
+  expressiveness=high.
 
 CHANGES (v3.5):
   Auto-upload to TikTok + Facebook via Upload-Post API.
@@ -51,8 +54,8 @@ UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
 
 GITHUB_RUN_NUMBER = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
-HEYGEN_SUBMIT_URL   = "https://api.heygen.com/v2/video/generate"
-HEYGEN_STATUS_URL   = "https://api.heygen.com/v1/video_status.get"
+HEYGEN_V3_URL     = "https://api.heygen.com/v3/videos"
+HEYGEN_STATUS_URL = "https://api.heygen.com/v1/video_status.get"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
@@ -549,23 +552,15 @@ def build_full_script(script: dict) -> str:
     return "  ".join(parts)
 
 
-# -- Step 3 -- Submit to HeyGen -----------------------------------------------
+# -- Step 3 -- Submit to HeyGen via /v3/videos --------------------------------
 #
-# All parameters per HeyGen support:
-#   use_avatar_iv_model: true   -- Avatar IV motion engine
-#   super_resolution: true      -- better image quality (v4.1)
-#   talking_style: "expressive" -- more natural movement (v4.1)
-#   character.pose: "full_body" -- full body rendering
-#   motion_prompt               -- natural language gesture control
-#   expressiveness: "high"      -- maximum animation intensity
+# Testing POST /v3/videos as recommended by HeyGen support.
+# Flat payload — no nested video_inputs structure.
+# Full raw response logged regardless of success/failure.
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
                         background_color: str, natural_gestures: bool) -> str:
     headers = {"X-Api-Key": HEYGEN_API_KEY, "Content-Type": "application/json"}
-
-    voice_config = {"type": "text", "input_text": script_text}
-    if voice_id:
-        voice_config["voice_id"] = voice_id
 
     MOTION_PROMPT = (
         "Gesturing naturally with hands while presenting. "
@@ -574,36 +569,41 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
         "Grounded upper body movement throughout."
     )
 
+    # Flat v3-style payload as suggested by HeyGen support
     payload = {
-        "video_inputs": [{
-            "character": {
-                "type":      "avatar",
-                "avatar_id": avatar_id,
-                "pose":      "full_body",
-            },
-            "voice":      voice_config,
-            "background": {"type": "color", "value": background_color},
-        }],
-        "dimension":           {"width": 1080, "height": 1920},
-        "aspect_ratio":        "9:16",
-        "test":                False,
-        "use_avatar_iv_model": True,
-        "super_resolution":    True,           # better image quality (HeyGen support)
-        "talking_style":       "expressive",   # more natural movement (HeyGen support)
+        "avatar_id":           avatar_id,
+        "voice_id":            voice_id,
+        "script":              script_text,
         "motion_prompt":       MOTION_PROMPT,
         "expressiveness":      "high",
+        "dimension":           {"width": 1080, "height": 1920},
+        "aspect_ratio":        "9:16",
+        "use_avatar_iv_model": True,
+        "super_resolution":    True,
+        "talking_style":       "expressive",
     }
 
-    print(f"  Motion: full_body | expressive | super_resolution | expressiveness=high")
+    print(f"  Endpoint: POST /v3/videos")
+    print(f"  Avatar ID: {avatar_id[:8]}... | expressiveness=high | motion_prompt active")
+    print(f"  Payload: {json.dumps({k: v for k, v in payload.items() if k != 'script'})}")
 
-    resp = requests.post(HEYGEN_SUBMIT_URL, headers=headers, json=payload, timeout=30)
+    resp = requests.post(HEYGEN_V3_URL, headers=headers, json=payload, timeout=30)
+
+    # Always print the full raw response so we can see what v3/videos expects
+    print(f"  v3/videos response [{resp.status_code}]: {resp.text[:500]}")
+
     if not resp.ok:
-        raise RuntimeError(f"HeyGen submit failed {resp.status_code}: {resp.text}")
+        raise RuntimeError(f"HeyGen v3/videos failed {resp.status_code}: {resp.text}")
 
     data     = resp.json()
-    video_id = data.get("data", {}).get("video_id") or data.get("video_id")
+    video_id = (
+        data.get("data", {}).get("video_id")
+        or data.get("video_id")
+        or data.get("data", {}).get("id")
+        or data.get("id")
+    )
     if not video_id:
-        raise RuntimeError(f"No video_id in HeyGen response: {data}")
+        raise RuntimeError(f"No video_id in v3/videos response: {data}")
 
     print(f"  Submitted -- video_id: {video_id}")
     return video_id
@@ -910,10 +910,10 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.1")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
-    print(f"  Motion: full_body | expressive | super_resolution | expressiveness=high")
+    print(f"  Endpoint: POST /v3/videos (testing per HeyGen support)")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
     print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED'}")
@@ -949,7 +949,7 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    print("\n  Submitting to HeyGen...")
+    print("\n  Submitting to HeyGen v3/videos...")
     video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color, natural_gestures)
 
     print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
