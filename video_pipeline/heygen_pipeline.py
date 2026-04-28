@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v3.2
+MindCore AI Video Pipeline -- HeyGen Edition v3.3
 ===================================================
 
+CHANGES (v3.3):
+  SERP-first keyword research before every content video.
+  Queries 3 seed topics against Google via SerpAPI, collects real
+  People Also Ask questions and Related Searches, then Claude ranks
+  all candidates by emotional resonance + specificity (competition proxy).
+  Result: every video targets a real high-demand, low-competition keyword.
+
 CHANGES (v3.2):
-  FFmpeg post-processing now uses zoom-to-fill (cover mode).
-  No black bars ever -- if the avatar frame doesn't perfectly fill
-  1080x1920, it zooms in and center-crops to fill the full screen.
+  FFmpeg zoom-to-fill (cover mode) -- no black bars ever.
 
 CHANGES (v3.1):
-  Content scripts are now purely educational and story-driven.
-  Zero MindCore AI mentions -- content builds trust and audience.
-  The 1-in-10 ad handles all promotion. Content just gives real value.
+  Content scripts purely educational. Zero MindCore AI mentions.
+  1-in-10 ad ratio handles all promotion.
 """
 
 import json
@@ -49,6 +53,9 @@ VIDEO_TIMEOUT = 1200  # 20 minutes
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
+# Number of seed queries to hit in SERP per run (3 = ~3 API credits)
+SERP_SEEDS_PER_RUN = 3
+
 WORD_LIMITS_AD = {
     "hook":         8,
     "problem":      12,
@@ -69,7 +76,6 @@ SEO_KEYWORDS = [
     "sobriety mental wellness app",
 ]
 
-# Rotating CTA pool -- one picked randomly per ad run
 AD_CTA_POOL = [
     "Try it. Find MindCore AI on Google Play.",
     "Start your trial. Find us on Google Play.",
@@ -81,7 +87,6 @@ AD_CTA_POOL = [
     "Start when you're ready. MindCore AI on Google Play.",
 ]
 
-# Banned phrases -- hard-replaced by sanitize_script() after generation
 BANNED_PHRASE_REPLACEMENTS = [
     (r"try\s+it\s+for\s+free",  "try it"),
     (r"download\s+now",         "find us on Google Play"),
@@ -172,82 +177,224 @@ def generate_ad_with_validation(generate_fn, generate_args, max_attempts=3):
     raise RuntimeError("Unexpected exit from validation loop")
 
 
-# -- Step 1a -- Fetch Trending Topic ------------------------------------------
+# -- Step 1a -- SERP Keyword Research -----------------------------------------
+#
+# NEW IN v3.3: Before writing any script, we hit SerpAPI across multiple
+# seed queries and collect real search data. People Also Ask questions
+# and Related Searches are gold -- they represent actual things people
+# type into Google, and specific/long-tail queries have lower competition.
+# Claude then ranks all candidates to pick the best one for this run.
 
-def fetch_trending_topic_serpapi(seed_query: str) -> dict:
+def _serp_query(seed: str) -> dict:
+    """Single SerpAPI call. Returns raw JSON response."""
     params = {
-        "engine": "google",
-        "q": seed_query,
+        "engine":  "google",
+        "q":       seed,
         "api_key": SERP_API_KEY,
-        "num": 10,
-        "hl": "en",
-        "gl": "us",
+        "num":     10,
+        "hl":      "en",
+        "gl":      "us",
     }
     resp = requests.get(SERP_API_URL, params=params, timeout=30)
     resp.raise_for_status()
-    data = resp.json()
-
-    related_questions = data.get("related_questions", [])
-    if related_questions:
-        picked   = random.choice(related_questions[:6])
-        question = picked.get("question", seed_query)
-        return {"topic": question, "question": question, "keyword": seed_query, "source": "serpapi_people_also_ask"}
-
-    organic = data.get("organic_results", [])
-    if organic:
-        title = organic[0].get("title", seed_query)
-        return {"topic": title, "question": title, "keyword": seed_query, "source": "serpapi_organic"}
-
-    return {"topic": seed_query, "question": seed_query, "keyword": seed_query, "source": "seed_fallback"}
+    return resp.json()
 
 
-def fetch_trending_topic_claude(seed_queries: list, client: anthropic.Anthropic) -> dict:
-    seed   = random.choice(seed_queries)
-    prompt = f"""You are an SEO and content strategy expert specialising in men's mental health,
-recovery, anxiety, depression, and AI wellness.
+def research_keyword_candidates_from_serp(seeds: list) -> list:
+    """
+    Query SerpAPI for SERP_SEEDS_PER_RUN random seeds.
+    Collect:
+      - People Also Ask (real questions people search -- highest quality)
+      - Related Searches (long-tail, typically lower competition)
+      - Top 3 organic titles (shows what's already ranking)
+    Returns a deduplicated flat list of candidate dicts.
+    """
+    sampled   = random.sample(seeds, min(SERP_SEEDS_PER_RUN, len(seeds)))
+    candidates = []
+    seen       = set()
+
+    for seed in sampled:
+        try:
+            data         = _serp_query(seed)
+            total_results = int(
+                data.get("search_information", {})
+                    .get("total_results", "0")
+                    .replace(",", "")
+                    .replace(".", "")
+                or 0
+            )
+
+            # People Also Ask -- highest priority, shows direct search intent
+            paa_count = 0
+            for q in data.get("related_questions", []):
+                text = q.get("question", "").strip()
+                if text and text.lower() not in seen:
+                    seen.add(text.lower())
+                    candidates.append({
+                        "text":          text,
+                        "source":        "people_also_ask",
+                        "seed":          seed,
+                        "total_results": total_results,
+                    })
+                    paa_count += 1
+
+            # Related Searches -- long-tail, lower competition
+            rs_count = 0
+            for r in data.get("related_searches", []):
+                text = r.get("query", "").strip()
+                if text and text.lower() not in seen:
+                    seen.add(text.lower())
+                    candidates.append({
+                        "text":          text,
+                        "source":        "related_search",
+                        "seed":          seed,
+                        "total_results": 0,  # separate lookup needed
+                    })
+                    rs_count += 1
+
+            # Top 3 organic titles -- what currently ranks (shows competition)
+            for org in data.get("organic_results", [])[:3]:
+                title = org.get("title", "").strip()
+                if title and title.lower() not in seen and len(title) < 120:
+                    seen.add(title.lower())
+                    candidates.append({
+                        "text":          title,
+                        "source":        "organic_title",
+                        "seed":          seed,
+                        "total_results": total_results,
+                    })
+
+            print(f"  SERP '{seed[:45]}': {paa_count} PAA | {rs_count} related | {total_results:,} results")
+            time.sleep(0.5)  # rate-limit courtesy
+
+        except Exception as e:
+            print(f"  SERP failed for '{seed}': {e}")
+
+    return candidates
+
+
+def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic) -> dict:
+    """
+    Send all SERP candidates to Claude.
+    Claude scores each by emotional resonance, niche fit, and specificity
+    (longer/more specific = lower competition proxy).
+    Returns the single best candidate as a topic dict.
+    """
+    if not candidates:
+        raise ValueError("No SERP candidates to rank")
+
+    # Prioritise PAA questions, then related searches, then organic
+    priority_order = {"people_also_ask": 0, "related_search": 1, "organic_title": 2}
+    sorted_candidates = sorted(candidates, key=lambda c: priority_order.get(c["source"], 3))
+
+    # Build numbered list for Claude (cap at 40 to keep prompt tight)
+    candidate_list = "\n".join([
+        f"{i+1}. [{c['source'].upper()}] {c['text']}"
+        for i, c in enumerate(sorted_candidates[:40])
+    ])
+
+    prompt = f"""You are an expert in SEO and content strategy for men's mental health, recovery, sobriety, and anxiety on TikTok and Facebook Reels.
+
+Below are REAL search queries and topics pulled from Google (People Also Ask, Related Searches, and organic results) in the men's mental health niche.
+
+YOUR TASK: Choose the SINGLE BEST topic to make a short video about today.
+
+SCORING CRITERIA (in order of importance):
+1. EMOTIONAL RESONANCE -- Would a man aged 35-55 struggling silently with anxiety, depression, isolation, or sobriety STOP scrolling for this? Does it name something he feels but never says out loud?
+2. SEARCH SPECIFICITY -- More specific, longer-tail phrases tend to have lower competition. Prefer "why do I feel numb after stopping drinking" over "depression tips".
+3. NICHE FIT -- Must directly relate to: men's mental health, emotional struggles, recovery/sobriety, anxiety, depression, loneliness, asking for help, emotional numbness, burnout.
+4. VIDEO POTENTIAL -- Can this be explored emotionally and powerfully in 30-45 seconds of spoken word?
+
+AVOID picking: Generic broad topics, anything requiring clinical credentials, topics already oversaturated by big brands.
+
+COMPETITION NOTE: "People Also Ask" questions are typically lower competition than seed keywords. Prefer them. Related searches with 4+ words are usually long-tail and lower competition.
+
+CANDIDATES (from real Google data):
+{candidate_list}
+
+Return ONLY valid JSON, no markdown fences:
+{{
+  "topic": "the exact text of the chosen candidate",
+  "question": "how a man would type this into Google naturally",
+  "keyword": "the primary 2-5 word SEO keyword to weave into the script",
+  "competition_signal": "low|medium|high -- your estimate based on specificity",
+  "why": "one sentence: why this beats the others for our specific audience",
+  "source": "people_also_ask|related_search|organic_title"
+}}"""
+
+    result = _call_claude_raw(prompt, client, max_tokens=500)
+    print(f"  Winner: '{result.get('keyword')}' [{result.get('competition_signal','?')} competition]")
+    print(f"  Reason: {result.get('why', '')}")
+    return result
+
+
+def fetch_trending_topic_claude_fallback(seeds: list, client: anthropic.Anthropic) -> dict:
+    """Fallback when SERP is unavailable -- Claude generates a topic from seeds."""
+    seed   = random.choice(seeds)
+    prompt = f"""You are an SEO and content strategy expert for men's mental health, recovery, anxiety, depression.
 
 Generate ONE high-demand, low-competition video topic for TikTok and Facebook Reels.
-The topic must be related to this seed: "{seed}"
+Related to this seed: "{seed}"
 
 Criteria:
-- Phrased as a real question or struggle that men search for
+- Phrased as a real question or struggle men actually search for
 - High emotional resonance for men 35+ in recovery or struggling
-- Not too broad ("mental health tips") and not too niche
-- Something with genuine search volume but not dominated by big brands
+- Specific enough to suggest low competition (avoid broad topics)
+- Men's mental health / sobriety / emotional struggles niche only
 
 Return ONLY valid JSON, no markdown:
 {{
   "topic": "the specific topic or question",
-  "question": "how it might be phrased as a Google search",
-  "keyword": "primary SEO keyword for this topic",
+  "question": "how it would be typed into Google",
+  "keyword": "primary 2-5 word SEO keyword",
+  "competition_signal": "low|medium|high",
+  "why": "one sentence rationale",
   "source": "claude_generated"
 }}"""
     return _call_claude_raw(prompt, client, max_tokens=300)
 
 
 def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
+    """
+    Main topic research function.
+    If SERP_API_KEY is set: query Google across 3 seeds, collect PAA +
+    related searches, rank with Claude, return the best keyword.
+    Fallback: Claude generates a topic directly from seed list.
+    """
     keywords = load_niche_keywords()
-    seed     = random.choice(keywords["seed_queries"])
+    seeds    = keywords["seed_queries"]
 
     if SERP_API_KEY:
-        print(f"  Fetching trending topic via SerpAPI: '{seed}'")
+        print(f"  Researching keywords via SerpAPI ({SERP_SEEDS_PER_RUN} seeds)...")
         try:
-            topic = fetch_trending_topic_serpapi(seed)
-            print(f"  Topic found ({topic['source']}): {topic['topic']}")
-            return topic
+            candidates = research_keyword_candidates_from_serp(seeds)
+            print(f"  Collected {len(candidates)} keyword candidates from SERP")
+            if candidates:
+                topic = rank_and_select_keyword_claude(candidates, client)
+                topic["source"] = f"serp_{topic.get('source', 'research')}"
+                # Save research log for reference
+                log_path = OUTPUT_DIR / "keyword_research.json"
+                log_path.write_text(json.dumps({
+                    "run":        GITHUB_RUN_NUMBER,
+                    "candidates": candidates,
+                    "winner":     topic,
+                }, indent=2))
+                return topic
+            else:
+                print("  No SERP candidates found -- falling back to Claude")
         except Exception as e:
-            print(f"  SerpAPI failed ({e}) -- falling back to Claude")
+            print(f"  SERP research failed ({e}) -- falling back to Claude")
 
-    print("  Generating topic with Claude...")
-    topic = fetch_trending_topic_claude(keywords["seed_queries"], client)
-    print(f"  Topic ({topic['source']}): {topic['topic']}")
+    print("  Generating topic with Claude (no SERP)...")
+    topic = fetch_trending_topic_claude_fallback(seeds, client)
+    print(f"  Topic: {topic.get('topic')} [{topic.get('competition_signal', '?')}]")
     return topic
 
 
 # -- Step 1b -- Script Generation ---------------------------------------------
 
 def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
-    print(f"  Generating CONTENT script: {topic['topic']}")
+    print(f"  Generating CONTENT script for: {topic['topic']}")
     keyword  = topic.get("keyword", topic["topic"])
     question = topic.get("question", topic["topic"])
     angles   = load_niche_keywords().get("content_angles", [])
@@ -265,8 +412,9 @@ RAW TRUTH and shares REAL STORIES that men 35+ actually recognise from their own
 Create a 4-scene short video script on this topic:
 TOPIC: {topic['topic']}
 SEARCH QUESTION: {question}
-SEO KEYWORD: {keyword}
+PRIMARY SEO KEYWORD: {keyword}
 CONTENT ANGLE: {angle}
+COMPETITION LEVEL: {topic.get('competition_signal', 'unknown')} -- lean into specificity
 
 FORMAT: Hook -> Problem/Truth -> Real Story or Insight -> Genuine Takeaway
 
@@ -276,19 +424,13 @@ They feel alone. They don't ask for help. Speak like someone who has genuinely b
 THIS IS PURE VALUE CONTENT -- NOT AN AD:
 - Do NOT mention MindCore AI, any app, any product, or any service. Not even subtly.
 - Do NOT end with a download CTA or any promotional message whatsoever.
-- This video exists purely to educate, connect, and give real value.
-- Think: what would a trusted friend who has been through this tell you?
-- The last scene (solution_cta field) is a GENUINE HUMAN TAKEAWAY -- a real insight,
-  a mindset shift, or an honest truth that leaves the viewer feeling seen and hopeful.
-  It is NOT a call to action. It is NOT a plug. It is the emotional landing point.
+- The last scene is a GENUINE HUMAN TAKEAWAY -- a real insight or honest truth.
 
 WRITE FOR THE EAR, NOT THE EYE:
 - Natural spoken language -- contractions, pauses, conversational connectors
-- Sentences must FLOW. No choppy fragments.
 - Use connectors: "And the thing is...", "Because here's what nobody tells you...",
   "The truth is...", "What actually helped was...", "And if that's you right now..."
 - Each scene = one continuous thought, not bullet points.
-- Read it aloud. If it sounds robotic or stiff, rewrite it.
 
 TARGET word counts per scene:
 - hook:         {lo_hook}-{hi_hook} words  -- One striking line that stops the scroll
@@ -512,9 +654,8 @@ def download_video(url: str, output_path: str):
 
 # -- Step 5b -- Force 9:16 portrait with zoom-to-fill ------------------------
 #
-# Strategy: COVER mode -- always zoom in so the content fills the full
-# 1080x1920 frame. Never pad with black bars. Center-crop any overflow.
-# Works correctly whether HeyGen returns landscape, portrait, or square.
+# COVER mode: always zoom in to fill the full 1080x1920 frame.
+# No black bars. Center-crop any overflow.
 
 def get_video_dimensions(path: str) -> tuple:
     cmd = [
@@ -530,7 +671,6 @@ def get_video_dimensions(path: str) -> tuple:
 
 
 def detect_content_crop(video_path: str) -> tuple:
-    """Use FFmpeg cropdetect to find the actual content area (strips black bars)."""
     cmd = [
         "ffmpeg", "-i", video_path,
         "-vf", "cropdetect=limit=30:round=2:reset=0",
@@ -548,14 +688,11 @@ def detect_content_crop(video_path: str) -> tuple:
 
 def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
     """
-    Build an FFmpeg filter that:
-      1. Crops to the detected content area (removes any black bars HeyGen added)
-      2. Scales using COVER mode -- zoom in until BOTH width>=1080 AND height>=1920
-      3. Center-crops to exactly 1080x1920
-      4. Sets output to 30fps
-
-    Result: always a full-bleed 9:16 frame with no black bars, regardless of
-    the input aspect ratio. The avatar is zoomed and centered.
+    1. Crop to detected content area (remove black bars HeyGen added)
+    2. Scale COVER mode -- zoom until BOTH width>=1080 AND height>=1920
+    3. Center-crop to exactly 1080x1920
+    4. 30fps
+    No black bars, ever.
     """
     return (
         f"crop={cw}:{ch}:{cx}:{cy},"
@@ -707,11 +844,12 @@ def main():
     background_color = cfg.get("background_color", "#07071a")
     natural_gestures = cfg.get("use_natural_gestures", True)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.2")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
     print(f"  Motion: {'NATURAL (avatar gestures)' if natural_gestures else 'CUSTOM PROMPT'}")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill (no black bars)")
+    print(f"  Keywords: SERP-first research ({SERP_SEEDS_PER_RUN} seeds) {'active' if SERP_API_KEY else 'DISABLED -- add SERP_API_KEY secret'}")
     if mode == "content":
         print(f"  Content: educational + storytelling only -- zero promotion")
     else:
