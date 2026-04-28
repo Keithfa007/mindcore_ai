@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v3.1
+MindCore AI Video Pipeline -- HeyGen Edition v3.2
 ===================================================
+
+CHANGES (v3.2):
+  FFmpeg post-processing now uses zoom-to-fill (cover mode).
+  No black bars ever -- if the avatar frame doesn't perfectly fill
+  1080x1920, it zooms in and center-crops to fill the full screen.
 
 CHANGES (v3.1):
   Content scripts are now purely educational and story-driven.
@@ -128,7 +133,7 @@ def sanitize_script(script: dict) -> dict:
         for pattern, replacement in BANNED_PHRASE_REPLACEMENTS:
             cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
         if cleaned != original:
-            print(f"  SANITIZED [{scene}]: '{original}' → '{cleaned}'")
+            print(f"  SANITIZED [{scene}]: '{original}' -> '{cleaned}'")
             script[scene]["voiceover"] = cleaned
     return script
 
@@ -505,7 +510,11 @@ def download_video(url: str, output_path: str):
     print(f"  Downloaded: {output_path} ({size_mb:.1f} MB)")
 
 
-# -- Step 5b -- Crop to proper 9:16 portrait ----------------------------------
+# -- Step 5b -- Force 9:16 portrait with zoom-to-fill ------------------------
+#
+# Strategy: COVER mode -- always zoom in so the content fills the full
+# 1080x1920 frame. Never pad with black bars. Center-crop any overflow.
+# Works correctly whether HeyGen returns landscape, portrait, or square.
 
 def get_video_dimensions(path: str) -> tuple:
     cmd = [
@@ -521,6 +530,7 @@ def get_video_dimensions(path: str) -> tuple:
 
 
 def detect_content_crop(video_path: str) -> tuple:
+    """Use FFmpeg cropdetect to find the actual content area (strips black bars)."""
     cmd = [
         "ffmpeg", "-i", video_path,
         "-vf", "cropdetect=limit=30:round=2:reset=0",
@@ -532,30 +542,27 @@ def detect_content_crop(video_path: str) -> tuple:
     if not matches:
         return None
     cw, ch, cx, cy = map(int, matches[-1])
-    print(f"  cropdetect found content: {cw}x{ch} at x={cx}, y={cy}")
+    print(f"  cropdetect: content area {cw}x{ch} at x={cx}, y={cy}")
     return cw, ch, cx, cy
 
 
 def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
-    scale_h = 1920
-    scale_w = round(cw * scale_h / ch)
-    if scale_w % 2 != 0:
-        scale_w += 1
-    if scale_w >= 1080:
-        x_offset = (scale_w - 1080) // 2
-        return (
-            f"crop={cw}:{ch}:{cx}:{cy},"
-            f"scale={scale_w}:{scale_h}:flags=lanczos,"
-            f"crop=1080:1920:{x_offset}:0,"
-            f"fps=30"
-        )
-    else:
-        return (
-            f"crop={cw}:{ch}:{cx}:{cy},"
-            f"scale=1080:-2:flags=lanczos,"
-            f"pad=1080:1920:0:(1920-ih)/2:color=0x07071a,"
-            f"fps=30"
-        )
+    """
+    Build an FFmpeg filter that:
+      1. Crops to the detected content area (removes any black bars HeyGen added)
+      2. Scales using COVER mode -- zoom in until BOTH width>=1080 AND height>=1920
+      3. Center-crops to exactly 1080x1920
+      4. Sets output to 30fps
+
+    Result: always a full-bleed 9:16 frame with no black bars, regardless of
+    the input aspect ratio. The avatar is zoomed and centered.
+    """
+    return (
+        f"crop={cw}:{ch}:{cx}:{cy},"
+        f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop=1080:1920:(iw-1080)/2:(ih-1920)/2,"
+        f"fps=30"
+    )
 
 
 def crop_to_portrait(raw_path: str, final_path: str):
@@ -566,10 +573,11 @@ def crop_to_portrait(raw_path: str, final_path: str):
     if crop_result:
         cw, ch, cx, cy = crop_result
         filter_str = make_portrait_filter(cw, ch, cx, cy)
-        print(f"  Filter: {filter_str}")
     else:
-        print(f"  cropdetect found no bars -- treating full frame as content")
+        print(f"  cropdetect found no bars -- using full frame")
         filter_str = make_portrait_filter(w, h, 0, 0)
+
+    print(f"  FFmpeg filter: {filter_str}")
 
     cmd = [
         "ffmpeg", "-i", raw_path,
@@ -590,7 +598,7 @@ def crop_to_portrait(raw_path: str, final_path: str):
 
     size_mb = Path(final_path).stat().st_size / (1024 * 1024)
     w2, h2  = get_video_dimensions(final_path)
-    print(f"  Final portrait: {final_path} ({w2}x{h2} | {size_mb:.1f} MB)")
+    print(f"  Final: {final_path} ({w2}x{h2} | {size_mb:.1f} MB)")
 
 
 # -- Step 6 -- Upload Guide ---------------------------------------------------
@@ -667,7 +675,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword : {seo_kw}
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Format      : 1080x1920 9:16 30fps | Natural gestures | TikTok + Facebook
+  Format      : 1080x1920 9:16 30fps | Zoom-to-fill | TikTok + Facebook
 ================================================================================
 
 FULL SCRIPT
@@ -699,11 +707,11 @@ def main():
     background_color = cfg.get("background_color", "#07071a")
     natural_gestures = cfg.get("use_natural_gestures", True)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.1")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
     print(f"  Motion: {'NATURAL (avatar gestures)' if natural_gestures else 'CUSTOM PROMPT'}")
-    print(f"  Format: 1080x1920 9:16 30fps | cropdetect crop | sanitizer active")
+    print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill (no black bars)")
     if mode == "content":
         print(f"  Content: educational + storytelling only -- zero promotion")
     else:
@@ -749,7 +757,7 @@ def main():
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
 
-    print("\n  Converting to 9:16 portrait...")
+    print("\n  Converting to 9:16 portrait (zoom-to-fill)...")
     crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
