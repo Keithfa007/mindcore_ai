@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v4.3
+MindCore AI Video Pipeline -- HeyGen Edition v4.4
 ===================================================
+
+CHANGES (v4.4):
+  Fix Upload-Post field mapping.
+  TikTok: caption = title + hashtags merged (description field is ignored
+  by Upload-Post for TikTok — hashtags must be inline in the title/caption).
+  Facebook: full description + hashtags sent as facebook_description.
+  Schedule updated to Tue/Wed/Thu 17:00 UTC in workflow.
 
 CHANGES (v4.3):
   Add type: "avatar" discriminator field to /v3/videos payload.
-  Error was: "Unable to extract tag using discriminator 'type'"
-  Sam confirmed: use type: "avatar" with existing parameters.
 
 CHANGES (v4.2):
   Switch to POST /v3/videos per HeyGen support.
@@ -15,8 +20,7 @@ CHANGES (v4.1):
   Added super_resolution: true and talking_style: "expressive".
 
 CHANGES (v4.0):
-  Full body motion parameters: pose=full_body, motion_prompt,
-  expressiveness=high.
+  Full body motion: pose=full_body, motion_prompt, expressiveness=high.
 
 CHANGES (v3.5):
   Auto-upload to TikTok + Facebook via Upload-Post API.
@@ -74,6 +78,8 @@ CLAUDE_RETRY_BASE  = 30
 
 SERP_SEEDS_PER_RUN         = 3
 AUTOCOMPLETE_SEEDS_PER_RUN = 2
+
+TIKTOK_CAPTION_LIMIT = 2200  # TikTok caption max chars
 
 WORD_LIMITS_AD = {
     "hook":         8,
@@ -556,10 +562,6 @@ def build_full_script(script: dict) -> str:
 
 
 # -- Step 3 -- Submit to HeyGen via /v3/videos --------------------------------
-#
-# v3 payload requires type: "avatar" as the discriminator field.
-# Error without it: "Unable to extract tag using discriminator 'type'"
-# Sam confirmed: use type: "avatar" with existing motion parameters.
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
                         background_color: str, natural_gestures: bool) -> str:
@@ -573,7 +575,7 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
     )
 
     payload = {
-        "type":                "avatar",    # discriminator required by v3 schema
+        "type":                "avatar",
         "avatar_id":           avatar_id,
         "voice_id":            voice_id,
         "script":              script_text,
@@ -590,9 +592,7 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
     print(f"  Avatar: {avatar_id[:8]}... | voice: {voice_id[:8]}...")
 
     resp = requests.post(HEYGEN_V3_URL, headers=headers, json=payload, timeout=30)
-
-    # Log full raw response always
-    print(f"  v3/videos response [{resp.status_code}]: {resp.text[:500]}")
+    print(f"  v3/videos response [{resp.status_code}]: {resp.text[:300]}")
 
     if not resp.ok:
         raise RuntimeError(f"HeyGen v3/videos failed {resp.status_code}: {resp.text}")
@@ -724,17 +724,12 @@ SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
 
 TIKTOK:
-- Title: max 100 characters, front-load the keyword
-- Description: max 150 characters
-- Hashtags: 8-12
-- Best posting times: top 3 (day + UTC time)
+- Caption (title + hashtags combined, max 2200 chars): keyword-first, then 8-12 hashtags inline
 - On-screen text overlay suggestion: 1 punchy line
 
 FACEBOOK REELS:
-- Title: max 255 characters
-- Description: 2-3 sentences, ends with CTA or question
-- Hashtags: 5-7
-- Best posting times: top 3 (day + UTC time)
+- Title: max 255 characters, keyword-first
+- Description: 2-3 sentences, emotionally engaging, ends with a question + 5-7 hashtags
 
 ALSO INCLUDE:
 - Thumbnail suggestion
@@ -776,15 +771,15 @@ SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: {full_vo}
 
 RULES:
-- TikTok title: max 100 chars, front-load keyword, no hashtags in title
-- TikTok hashtags: 8-10 tags as a single string: "#tag1 #tag2 #tag3"
-- Facebook title: max 255 chars, keyword-first
-- Facebook description: 2-3 sentences, emotionally engaging, end with a question + 5-6 hashtags
+- tiktok_caption: keyword-first sentence (max 100 chars) + space + 8-10 hashtags inline.
+  Example: "Male loneliness is an epidemic. #menloneliness #mentalhealth #mensmentalhealth ..."
+  This becomes the full TikTok caption. Max 2200 chars total.
+- facebook_title: max 255 chars, keyword-first
+- facebook_description: 2-3 emotionally engaging sentences + question at end + 5-6 hashtags
 
 Return ONLY valid JSON, no markdown:
 {{
-  "tiktok_title": "...",
-  "tiktok_hashtags": "#tag1 #tag2 #tag3 ...",
+  "tiktok_caption": "keyword-first hook sentence #hashtag1 #hashtag2 #hashtag3 ...",
   "facebook_title": "...",
   "facebook_description": "... #tag1 #tag2 ..."
 }}"""
@@ -800,7 +795,7 @@ Return ONLY valid JSON, no markdown:
                 parts = raw.split("```")
                 raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
             metadata = json.loads(raw)
-            print(f"  TikTok title: {metadata.get('tiktok_title', '')[:60]}...")
+            print(f"  TikTok caption: {metadata.get('tiktok_caption', '')[:80]}...")
             print(f"  Facebook title: {metadata.get('facebook_title', '')[:60]}...")
             return metadata
         except (anthropic.APIStatusError, json.JSONDecodeError) as e:
@@ -811,6 +806,12 @@ Return ONLY valid JSON, no markdown:
 
 
 # -- Step 7 -- Auto-upload to TikTok + Facebook via Upload-Post ---------------
+#
+# Upload-Post field mapping (confirmed from docs):
+#   TikTok: "title" = the caption field (includes hashtags inline).
+#           The global "description" field is IGNORED for TikTok.
+#           Hashtags must be inline in the title/caption string.
+#   Facebook: "facebook_title" + "facebook_description" (separate fields).
 
 def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
     if not UPLOAD_POST_API_KEY:
@@ -822,18 +823,28 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
         print("  upload_post_user not set in config -- skipping upload")
         return {"skipped": True, "reason": "no user configured"}
 
+    # TikTok caption = title + hashtags merged into one string (max 2200 chars)
+    tiktok_caption = metadata.get("tiktok_caption", "")[:TIKTOK_CAPTION_LIMIT]
+
+    # Facebook gets separate title and description
+    facebook_title       = metadata.get("facebook_title", "")[:255]
+    facebook_description = metadata.get("facebook_description", "")
+
     print(f"  Uploading to TikTok + Facebook as '{user}'...")
+    print(f"  TikTok caption ({len(tiktok_caption)} chars): {tiktok_caption[:80]}...")
+    print(f"  Facebook title: {facebook_title[:60]}...")
+
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
 
     data = [
         ("user",                 user),
         ("platform[]",           "tiktok"),
         ("platform[]",           "facebook"),
-        ("title",                metadata.get("tiktok_title", "")[:100]),
-        ("tiktok_title",         metadata.get("tiktok_title", "")[:100]),
-        ("description",          metadata.get("tiktok_hashtags", "")),
-        ("facebook_title",       metadata.get("facebook_title", "")[:255]),
-        ("facebook_description", metadata.get("facebook_description", "")),
+        # TikTok: title IS the caption (hashtags inline, description ignored)
+        ("title",                tiktok_caption),
+        # Facebook: separate title and description
+        ("facebook_title",       facebook_title),
+        ("facebook_description", facebook_description),
     ]
 
     try:
@@ -880,6 +891,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
   Format      : 1080x1920 9:16 30fps | Zoom-to-fill | Full body motion
+  Schedule    : Tue/Wed/Thu 17:00 UTC
 ================================================================================
 
 FULL SCRIPT
@@ -912,11 +924,12 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.3")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
     print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high | motion_prompt active")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
+    print(f"  Schedule: Tue/Wed/Thu 17:00 UTC")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
     print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED'}")
     if mode == "content":
