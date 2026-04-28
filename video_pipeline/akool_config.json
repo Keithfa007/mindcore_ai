@@ -1,0 +1,15 @@
+{
+  "character_name": "Marcus",
+  "character_description": "A middle-aged man in his late 30s to early 40s, strong jaw, slight grey at temples, dark navy crew-neck shirt, warm brown eyes, calm and trustworthy expression",
+  "character_image_url": "https://raw.githubusercontent.com/Keithfa007/mindcore_ai/main/video_pipeline/assets/character_reference.jpg",
+  "voice_id": "6889b626662160e2caad5db6",
+  "voice_model_name": "Akool Multilingual 3",
+  "model_name": "seedance-1-5-pro-i2v",
+  "resolution": "1080p",
+  "aspect_ratio": "9:16",
+  "scene_duration_seconds": 5,
+  "num_scenes": 6,
+  "negative_prompt": "blurry, distorted, low quality, watermark, text overlay, cartoon, animation, face change, different person, multiple people, crowd",
+  "camera_style": "subtle slow push-in, close-up portrait, cinematic depth of field",
+  "lighting_style": "cinematic moody lighting, soft shadows, warm highlights"
+}
