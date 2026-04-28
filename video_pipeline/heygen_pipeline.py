@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v4.4
+MindCore AI Video Pipeline -- HeyGen Edition v4.5
 ===================================================
 
+CHANGES (v4.5):
+  Add Instagram Reels to auto-upload platforms.
+  Now posts to TikTok + Facebook + Instagram on every run.
+
 CHANGES (v4.4):
-  Fix Upload-Post field mapping.
-  TikTok: caption = title + hashtags merged (description field is ignored
-  by Upload-Post for TikTok — hashtags must be inline in the title/caption).
-  Facebook: full description + hashtags sent as facebook_description.
-  Schedule updated to Tue/Wed/Thu 17:00 UTC in workflow.
+  Fix Upload-Post field mapping. TikTok caption = title + hashtags merged.
+  Facebook gets full description. Schedule: Tue/Wed/Thu 17:00 UTC.
 
 CHANGES (v4.3):
   Add type: "avatar" discriminator field to /v3/videos payload.
@@ -713,18 +714,18 @@ def generate_upload_guide(script: dict, mode: str, client: anthropic.Anthropic) 
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode)
 
-    prompt = f"""Social media growth expert for TikTok and Facebook Reels,
+    prompt = f"""Social media growth expert for TikTok, Instagram Reels and Facebook Reels,
 men's mental health and recovery niche.
 
-Generate a complete upload guide for TikTok AND Facebook.
+Generate a complete upload guide for TikTok, Instagram AND Facebook.
 
 VIDEO TYPE: {video_type.upper()}
 TOPIC: {topic}
 SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
 
-TIKTOK:
-- Caption (title + hashtags combined, max 2200 chars): keyword-first, then 8-12 hashtags inline
+TIKTOK / INSTAGRAM REELS:
+- Caption (keyword-first hook + 8-12 hashtags inline, max 2200 chars)
 - On-screen text overlay suggestion: 1 punchy line
 
 FACEBOOK REELS:
@@ -761,7 +762,7 @@ def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropi
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode).upper()
 
-    prompt = f"""Social media expert for men's mental health content on TikTok and Facebook Reels.
+    prompt = f"""Social media expert for men's mental health content on TikTok, Instagram Reels and Facebook Reels.
 
 Generate optimised upload metadata for this video.
 
@@ -772,8 +773,9 @@ FULL VOICEOVER: {full_vo}
 
 RULES:
 - tiktok_caption: keyword-first sentence (max 100 chars) + space + 8-10 hashtags inline.
+  Used for BOTH TikTok and Instagram Reels captions.
   Example: "Male loneliness is an epidemic. #menloneliness #mentalhealth #mensmentalhealth ..."
-  This becomes the full TikTok caption. Max 2200 chars total.
+  Max 2200 chars total.
 - facebook_title: max 255 chars, keyword-first
 - facebook_description: 2-3 emotionally engaging sentences + question at end + 5-6 hashtags
 
@@ -795,7 +797,7 @@ Return ONLY valid JSON, no markdown:
                 parts = raw.split("```")
                 raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
             metadata = json.loads(raw)
-            print(f"  TikTok caption: {metadata.get('tiktok_caption', '')[:80]}...")
+            print(f"  Caption (TikTok+IG): {metadata.get('tiktok_caption', '')[:80]}...")
             print(f"  Facebook title: {metadata.get('facebook_title', '')[:60]}...")
             return metadata
         except (anthropic.APIStatusError, json.JSONDecodeError) as e:
@@ -805,13 +807,12 @@ Return ONLY valid JSON, no markdown:
     raise RuntimeError("Unexpected exit from metadata generation")
 
 
-# -- Step 7 -- Auto-upload to TikTok + Facebook via Upload-Post ---------------
+# -- Step 7 -- Auto-upload to TikTok + Facebook + Instagram via Upload-Post ---
 #
-# Upload-Post field mapping (confirmed from docs):
-#   TikTok: "title" = the caption field (includes hashtags inline).
-#           The global "description" field is IGNORED for TikTok.
-#           Hashtags must be inline in the title/caption string.
-#   Facebook: "facebook_title" + "facebook_description" (separate fields).
+# Platform field mapping:
+#   TikTok:    "title" = caption (hashtags inline). description ignored.
+#   Instagram: "title" = caption (hashtags inline). description ignored.
+#   Facebook:  "facebook_title" + "facebook_description" (separate fields).
 
 def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
     if not UPLOAD_POST_API_KEY:
@@ -823,15 +824,15 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
         print("  upload_post_user not set in config -- skipping upload")
         return {"skipped": True, "reason": "no user configured"}
 
-    # TikTok caption = title + hashtags merged into one string (max 2200 chars)
-    tiktok_caption = metadata.get("tiktok_caption", "")[:TIKTOK_CAPTION_LIMIT]
+    # Shared caption for TikTok + Instagram (hashtags inline)
+    caption = metadata.get("tiktok_caption", "")[:TIKTOK_CAPTION_LIMIT]
 
-    # Facebook gets separate title and description
+    # Facebook separate fields
     facebook_title       = metadata.get("facebook_title", "")[:255]
     facebook_description = metadata.get("facebook_description", "")
 
-    print(f"  Uploading to TikTok + Facebook as '{user}'...")
-    print(f"  TikTok caption ({len(tiktok_caption)} chars): {tiktok_caption[:80]}...")
+    print(f"  Uploading to TikTok + Facebook + Instagram as '{user}'...")
+    print(f"  Caption ({len(caption)} chars): {caption[:80]}...")
     print(f"  Facebook title: {facebook_title[:60]}...")
 
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
@@ -840,9 +841,10 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
         ("user",                 user),
         ("platform[]",           "tiktok"),
         ("platform[]",           "facebook"),
-        # TikTok: title IS the caption (hashtags inline, description ignored)
-        ("title",                tiktok_caption),
-        # Facebook: separate title and description
+        ("platform[]",           "instagram"),
+        # Caption for TikTok + Instagram (hashtags inline)
+        ("title",                caption),
+        # Facebook separate fields
         ("facebook_title",       facebook_title),
         ("facebook_description", facebook_description),
     ]
@@ -891,6 +893,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
   Format      : 1080x1920 9:16 30fps | Zoom-to-fill | Full body motion
+  Platforms   : TikTok + Facebook + Instagram Reels
   Schedule    : Tue/Wed/Thu 17:00 UTC
 ================================================================================
 
@@ -924,14 +927,15 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.4")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
     print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high | motion_prompt active")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
+    print(f"  Platforms: TikTok + Facebook + Instagram Reels")
     print(f"  Schedule: Tue/Wed/Thu 17:00 UTC")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
-    print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED'}")
+    print(f"  Auto-upload: {'TikTok + Facebook + Instagram' if upload_enabled else 'DISABLED'}")
     if mode == "content":
         print("  Content: educational + storytelling only -- zero promotion")
     else:
@@ -986,7 +990,7 @@ def main():
     (OUTPUT_DIR / "upload_metadata.json").write_text(json.dumps(upload_metadata, indent=2))
 
     if upload_enabled:
-        print("\n  Uploading to TikTok + Facebook...")
+        print("\n  Uploading to TikTok + Facebook + Instagram...")
         upload_result = upload_to_platforms(final_path, upload_metadata, cfg)
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps(upload_result, indent=2))
     else:
@@ -998,7 +1002,7 @@ def main():
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
     print(f"  Mode:   {mode.upper()} | ~{est_duration}s | Look: {avatar_id[:8]}...")
     if upload_enabled:
-        print("  Posted: TikTok + Facebook Reels")
+        print("  Posted: TikTok + Facebook + Instagram Reels")
     print("\n  Pipeline complete!")
 
 
