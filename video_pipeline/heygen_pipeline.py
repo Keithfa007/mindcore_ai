@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v3.7
+MindCore AI Video Pipeline -- HeyGen Edition v3.8
 ===================================================
 
+CHANGES (v3.8):
+  Fix av4/generate payload: script and voice_id are top-level fields,
+  not nested inside a script object. Error was: "You must provide either
+  (script and voice_id), audio_url, or audio_asset_id."
+
 CHANGES (v3.7):
-  Switch to /v2/video/av4/generate endpoint for Talking Photo avatars.
-  This is the dedicated Avatar IV endpoint that gives full body movement
-  including authentic hand gestures. The previous /v2/video/generate
-  endpoint only supports head/face motion for Talking Photos even with
-  use_avatar_iv_model=True.
+  Switch to /v2/video/av4/generate endpoint for full body motion.
 
 CHANGES (v3.6):
-  Always enable use_avatar_iv_model for Avatar V full body movement.
+  Always enable use_avatar_iv_model.
 
 CHANGES (v3.5):
-  Auto-upload to TikTok + Facebook Reels via Upload-Post API.
+  Auto-upload to TikTok + Facebook via Upload-Post API.
 
 CHANGES (v3.4):
   Short-tail + long-tail keyword research via SERP + Autocomplete.
@@ -52,7 +53,6 @@ UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
 
 GITHUB_RUN_NUMBER = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
-# Dedicated Avatar IV endpoint for Talking Photos -- gives full body movement
 HEYGEN_AV4_URL      = "https://api.heygen.com/v2/video/av4/generate"
 HEYGEN_STATUS_URL   = "https://api.heygen.com/v1/video_status.get"
 SERP_API_URL        = "https://serpapi.com/search"
@@ -553,22 +553,21 @@ def build_full_script(script: dict) -> str:
 
 # -- Step 3 -- Submit to HeyGen via av4/generate ------------------------------
 #
-# Uses the dedicated Avatar IV endpoint for Talking Photo avatars.
-# This endpoint gives full body motion (hand gestures, upper body) unlike
-# the standard /v2/video/generate which only enhances head/face for photos.
+# Dedicated Avatar IV endpoint for Talking Photos.
+# Gives full body movement including hand gestures.
 #
-# Payload format:
-#   image_key    -- the talking photo look ID (your avatar look)
-#   video_title  -- display title (not shown in output video)
-#   script       -- { type, input, voice_id }
-#   dimension    -- width/height
-#   custom_motion_prompt -- optional gesture guidance
+# Correct payload format (v3.8 fix):
+#   image_key   -- the talking photo look ID
+#   script      -- the voiceover text string (top-level, NOT nested)
+#   voice_id    -- top-level field (NOT inside script object)
+#   video_title -- display title
+#   dimension   -- width/height
+#   custom_motion_prompt / enhance_custom_motion_prompt -- optional
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
                         background_color: str, natural_gestures: bool) -> str:
     headers = {"X-Api-Key": HEYGEN_API_KEY, "Content-Type": "application/json"}
 
-    # Motion prompt for grounded, emotionally present delivery
     MOTION_PROMPT = (
         "Emotionally present mental health speaker talking directly to camera. "
         "Natural upper body movement and hand gestures that match the emotion. "
@@ -576,21 +575,19 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
         "Expressive but not overdone. Authentic and human."
     )
 
+    # IMPORTANT: script and voice_id are separate top-level fields.
+    # The av4 endpoint does NOT accept a nested script object.
     payload = {
-        "image_key":   avatar_id,   # talking photo look ID
-        "video_title": "MindCore AI Video",
-        "script": {
-            "type":     "text",
-            "input":    script_text,
-            "voice_id": voice_id,
-        },
-        "dimension": {"width": 1080, "height": 1920},
+        "image_key":                    avatar_id,
+        "video_title":                  "MindCore AI Video",
+        "script":                       script_text,
+        "voice_id":                     voice_id,
+        "dimension":                    {"width": 1080, "height": 1920},
         "custom_motion_prompt":         MOTION_PROMPT,
         "enhance_custom_motion_prompt": True,
     }
 
-    print(f"  Endpoint: av4/generate (Talking Photo -- full body motion)")
-    print(f"  Image key: {avatar_id[:8]}...")
+    print(f"  Endpoint: av4/generate | image_key: {avatar_id[:8]}...")
 
     resp = requests.post(HEYGEN_AV4_URL, headers=headers, json=payload, timeout=30)
     if not resp.ok:
@@ -910,10 +907,10 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.7")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v3.8")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
-    print(f"  Endpoint: av4/generate (Talking Photo -- full body motion)")
+    print(f"  Endpoint: av4/generate | full body motion")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
     print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED'}")
