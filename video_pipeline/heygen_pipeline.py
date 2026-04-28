@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v4.2
+MindCore AI Video Pipeline -- HeyGen Edition v4.3
 ===================================================
 
+CHANGES (v4.3):
+  Add type: "avatar" discriminator field to /v3/videos payload.
+  Error was: "Unable to extract tag using discriminator 'type'"
+  Sam confirmed: use type: "avatar" with existing parameters.
+
 CHANGES (v4.2):
-  Test POST /v3/videos endpoint as suggested by HeyGen support.
-  Flat payload structure. Full raw response logged regardless of
-  success or failure so we can see exactly what the endpoint expects.
+  Switch to POST /v3/videos per HeyGen support.
 
 CHANGES (v4.1):
   Added super_resolution: true and talking_style: "expressive".
@@ -54,8 +57,8 @@ UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
 
 GITHUB_RUN_NUMBER = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
-HEYGEN_V3_URL     = "https://api.heygen.com/v3/videos"
-HEYGEN_STATUS_URL = "https://api.heygen.com/v1/video_status.get"
+HEYGEN_V3_URL       = "https://api.heygen.com/v3/videos"
+HEYGEN_STATUS_URL   = "https://api.heygen.com/v1/video_status.get"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
@@ -554,9 +557,9 @@ def build_full_script(script: dict) -> str:
 
 # -- Step 3 -- Submit to HeyGen via /v3/videos --------------------------------
 #
-# Testing POST /v3/videos as recommended by HeyGen support.
-# Flat payload — no nested video_inputs structure.
-# Full raw response logged regardless of success/failure.
+# v3 payload requires type: "avatar" as the discriminator field.
+# Error without it: "Unable to extract tag using discriminator 'type'"
+# Sam confirmed: use type: "avatar" with existing motion parameters.
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
                         background_color: str, natural_gestures: bool) -> str:
@@ -569,8 +572,8 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
         "Grounded upper body movement throughout."
     )
 
-    # Flat v3-style payload as suggested by HeyGen support
     payload = {
+        "type":                "avatar",    # discriminator required by v3 schema
         "avatar_id":           avatar_id,
         "voice_id":            voice_id,
         "script":              script_text,
@@ -583,13 +586,12 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
         "talking_style":       "expressive",
     }
 
-    print(f"  Endpoint: POST /v3/videos")
-    print(f"  Avatar ID: {avatar_id[:8]}... | expressiveness=high | motion_prompt active")
-    print(f"  Payload: {json.dumps({k: v for k, v in payload.items() if k != 'script'})}")
+    print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high")
+    print(f"  Avatar: {avatar_id[:8]}... | voice: {voice_id[:8]}...")
 
     resp = requests.post(HEYGEN_V3_URL, headers=headers, json=payload, timeout=30)
 
-    # Always print the full raw response so we can see what v3/videos expects
+    # Log full raw response always
     print(f"  v3/videos response [{resp.status_code}]: {resp.text[:500]}")
 
     if not resp.ok:
@@ -910,10 +912,10 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.2")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
-    print(f"  Endpoint: POST /v3/videos (testing per HeyGen support)")
+    print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high | motion_prompt active")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
     print(f"  Auto-upload: {'TikTok + Facebook' if upload_enabled else 'DISABLED'}")
