@@ -20,10 +20,10 @@ a softer prompt if the first attempt is filtered, and (c) falls back to a solid
 warm-toned background if both attempts fail. The carousel always publishes.
 
 Required env vars:
-  ANTHROPIC_API_KEY     - content & format selection
-  OPENAI_API_KEY        - DALL-E 3 backgrounds
-  UPLOADPOST_API_KEY    - Upload-Post account API key
-  UPLOADPOST_USER       - the IG profile name configured in Upload-Post
+  ANTHROPIC_API_KEY      - content & format selection
+  OPENAI_API_KEY         - DALL-E 3 backgrounds
+  UPLOAD_POST_API_KEY    - Upload-Post account API key (shared with video pipeline)
+  UPLOADPOST_USER        - the IG profile name configured in Upload-Post
 """
 
 import os
@@ -43,8 +43,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 # ── Config ──────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
-UPLOADPOST_API_KEY = os.environ["UPLOADPOST_API_KEY"].strip()
-UPLOADPOST_USER    = os.environ.get("UPLOADPOST_USER", "mindcoreai").strip()
+UPLOADPOST_API_KEY = os.environ["UPLOAD_POST_API_KEY"].strip()
+UPLOADPOST_USER    = os.environ.get("UPLOADPOST_USER", "MindCoreAI").strip()
 
 KEYWORDS_FILE = Path("scripts/fb_keywords.json")
 FORMATS_FILE  = Path("scripts/ig_formats.json")
