@@ -1,0 +1,52 @@
+name: Instagram Daily Carousel
+
+on:
+  # Daily IG carousels at the optimal IG time per day in Malta (CEST = UTC+2 summer).
+  # IG peaks earlier than FB (commute scroll) — set 1 hour before FB on most days
+  # so the same person doesn't see both posts back-to-back.
+  schedule:
+    - cron: "0 6 * * 1"   # Monday    08:00 Malta
+    - cron: "0 6 * * 2"   # Tuesday   08:00 Malta
+    - cron: "0 6 * * 3"   # Wednesday 08:00 Malta
+    - cron: "0 6 * * 4"   # Thursday  08:00 Malta
+    - cron: "0 6 * * 5"   # Friday    08:00 Malta
+    - cron: "0 9 * * 6"   # Saturday  11:00 Malta (weekend leisure scroll)
+    - cron: "0 9 * * 0"   # Sunday    11:00 Malta (weekend leisure scroll, before FB at 11)
+  workflow_dispatch:
+
+jobs:
+  post-to-instagram:
+    name: Generate carousel & publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install anthropic requests Pillow
+
+      - name: Run Instagram automation
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          UPLOADPOST_API_KEY:  ${{ secrets.UPLOADPOST_API_KEY }}
+          UPLOADPOST_USER:     ${{ secrets.UPLOADPOST_USER }}
+        run: python scripts/instagram_automation.py
+
+      - name: Commit post history
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name  "GitHub Action"
+          git add scripts/ig_post_history.json
+          git diff --staged --quiet || git commit -m "chore: update IG post history [skip ci]"
+          git push
+        continue-on-error: true

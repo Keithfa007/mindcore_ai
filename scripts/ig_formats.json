@@ -1,0 +1,77 @@
+{
+  "last_updated": "2026-04-29",
+  "formats": [
+    {
+      "id": "signs_of",
+      "name": "Signs of...",
+      "hook_template": "7 Signs You're [STATE], Not [WRONG_ASSUMPTION]",
+      "description": "List-based format identifying overlooked signs of a mental state. Highly relatable; readers self-diagnose silently while swiping.",
+      "slide_pattern": "Each middle slide = one sign + a 1-sentence elaboration showing how it actually feels in daily life.",
+      "examples": [
+        "7 Signs You're Burnt Out, Not Lazy",
+        "6 Signs You're Carrying More Than You Realize",
+        "5 Signs of High-Functioning Anxiety in Men"
+      ]
+    },
+    {
+      "id": "reframe",
+      "name": "Reframe",
+      "hook_template": "Stop Saying [X]. Try [Y] Instead.",
+      "description": "Replaces unhealthy self-talk or beliefs with healthier alternatives. High save rate.",
+      "slide_pattern": "Each middle slide = one old-thought / new-thought pair with a brief why.",
+      "examples": [
+        "Stop Saying 'I'm Fine'. Try These 5 Honest Answers.",
+        "5 Things to Say Instead of 'Man Up'",
+        "Reframe These 6 Thoughts and Sleep Better Tonight"
+      ]
+    },
+    {
+      "id": "myth_bust",
+      "name": "Myth-busting",
+      "hook_template": "[N] Mental Health Myths Holding [AUDIENCE] Back",
+      "description": "Challenges common misconceptions. Drives shares and comments because it provokes disagreement.",
+      "slide_pattern": "Each middle slide = the myth + the truth + 1 sentence of context.",
+      "examples": [
+        "5 Mental Health Myths Holding Men Back",
+        "6 Lies You've Been Told About Asking for Help",
+        "4 Myths About Therapy Men Need to Stop Believing"
+      ]
+    },
+    {
+      "id": "how_to",
+      "name": "How-to / Process",
+      "hook_template": "How to [DO_HARD_THING] in [N] Steps",
+      "description": "Step-by-step guide. Highly saved as reference, strong completion rate.",
+      "slide_pattern": "Each middle slide = one numbered step + practical action a reader can take today.",
+      "examples": [
+        "How to Talk to Your Partner About Your Anxiety in 6 Steps",
+        "How to Break the 3am Anxiety Loop in 5 Steps",
+        "How to Start Therapy When You Hate the Idea: 7 Steps"
+      ]
+    },
+    {
+      "id": "truth_bomb",
+      "name": "Truth-bomb / Vulnerability",
+      "hook_template": "Things Men [AGE+] Won't Say Out Loud",
+      "description": "Direct, vulnerable truths that men recognize but don't articulate. Highest male-vulnerability engagement per CORQ 2026 data.",
+      "slide_pattern": "Each middle slide = one short truth statement + a single sentence of permission/validation.",
+      "examples": [
+        "7 Things Men Over 35 Don't Say Out Loud",
+        "6 Truths About Loneliness Men Are Too Proud to Admit",
+        "5 Things You're Allowed to Feel as a Man"
+      ]
+    },
+    {
+      "id": "comparison",
+      "name": "Comparison / vs.",
+      "hook_template": "[CONCEPT_A] vs. [CONCEPT_B]: [N] Differences",
+      "description": "Side-by-side educational comparison. High save rate as reference content.",
+      "slide_pattern": "Each middle slide = one criterion with how A vs. B differ on it.",
+      "examples": [
+        "Burnout vs. Depression: 5 Differences That Matter",
+        "Stress vs. Anxiety: How to Tell Them Apart",
+        "Loneliness vs. Solitude: 5 Honest Differences"
+      ]
+    }
+  ]
+}
