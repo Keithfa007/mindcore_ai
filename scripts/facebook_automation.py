@@ -132,8 +132,8 @@ REQUIREMENTS:
        with the link {SITE_URL}.
     c) A "share this with someone who needs it tonight" line.
 - Add 5–7 hashtags at the end on a single line. Mix high-volume + niche:
-    Always include: #MensMentalHealth #MentalHealthMatters
-    Plus 3–5 niche tags relevant to "{topic['keyword']}".
+    ALWAYS INCLUDE THESE BRAND HASHTAGS (non-negotiable): #mindcoreai #MensMentalHealth #MentalHealthMatters
+    Plus 2–4 niche tags relevant to "{topic['keyword']}".
 - Use line breaks between paragraphs (Facebook rewards readability).
 - Up to 2 emojis total — used with restraint, not sprinkled.
 - NEVER say "free trial" — the trial is €1.99 for 7 days.
@@ -299,6 +299,31 @@ def post_text_to_facebook(message: str, page_token: str) -> dict:
     return r.json()
 
 
+# ── Brand hashtag enforcement ───────────────────────────────────────────────
+REQUIRED_BRAND_HASHTAG = "#mindcoreai"
+
+def ensure_brand_hashtag(post_text: str) -> str:
+    """
+    Belt-and-braces guarantee that #mindcoreai is in the post.
+    If Claude omits it despite the prompt instruction, append it to the
+    last line containing hashtags.
+    """
+    if REQUIRED_BRAND_HASHTAG.lower() in post_text.lower():
+        return post_text  # already present, nothing to do
+
+    lines = post_text.rstrip().split("\n")
+    # Find the last line containing hashtags and append our brand tag to it
+    for i in range(len(lines) - 1, -1, -1):
+        if "#" in lines[i]:
+            lines[i] = lines[i].rstrip() + f" {REQUIRED_BRAND_HASHTAG}"
+            print(f"  ⚙ Brand hashtag appended to existing hashtag line")
+            return "\n".join(lines)
+
+    # No hashtags at all — append a new line with the brand tag
+    print(f"  ⚙ No hashtags found in post — appending brand line")
+    return post_text.rstrip() + f"\n\n{REQUIRED_BRAND_HASHTAG}"
+
+
 # ── Main ────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
@@ -317,6 +342,7 @@ def main():
 
     print("  Generating post…")
     post_text = generate_post(topic, style)
+    post_text = ensure_brand_hashtag(post_text)
     print("\n" + "-" * 60)
     print(post_text)
     print("-" * 60 + "\n")

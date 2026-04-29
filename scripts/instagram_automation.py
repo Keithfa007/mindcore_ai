@@ -130,6 +130,25 @@ MindCore AI — voice-first AI mental health companion.
 - Website: https://mindcoreai.eu
 """
 
+# ── Brand hashtag enforcement ───────────────────────────────────────────────
+REQUIRED_BRAND_HASHTAG = "#mindcoreai"
+
+def ensure_brand_hashtag(text: str) -> str:
+    """
+    Belt-and-braces: guarantee #mindcoreai is in the caption even if Claude
+    omits it despite the prompt instruction.
+    """
+    if REQUIRED_BRAND_HASHTAG.lower() in text.lower():
+        return text
+    lines = text.rstrip().split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        if "#" in lines[i]:
+            lines[i] = lines[i].rstrip() + f" {REQUIRED_BRAND_HASHTAG}"
+            print(f"  ⚙ Brand hashtag appended to caption")
+            return "\n".join(lines)
+    print(f"  ⚙ No hashtags found — appending brand line")
+    return text.rstrip() + f"\n\n{REQUIRED_BRAND_HASHTAG}"
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def load_json(path: Path):
     if not path.exists():
@@ -195,8 +214,9 @@ ALSO WRITE A CAPTION (separate from slides) for the post:
 - First 125 chars must work as a standalone preview before "... more" truncation.
 - Expand the carousel's theme without just summarising it. Add a single insight or story beat.
 - End with: "→ Link in bio for MindCore AI. 7-day trial €1.99."
-- Then on a NEW LINE, 10 hashtags. Always include #MensMentalHealth #MentalHealthMatters.
-  Plus 8 niche tags relevant to {topic['keyword']}. No spaces between # and word. No commas.
+- Then on a NEW LINE, 10 hashtags.
+  ALWAYS INCLUDE THESE BRAND HASHTAGS (non-negotiable): #mindcoreai #MensMentalHealth #MentalHealthMatters
+  Plus 7 niche tags relevant to {topic['keyword']}. No spaces between # and word. No commas.
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
@@ -239,6 +259,9 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
     if len(data.get("slides", [])) != SLIDE_COUNT - 2:
         raise ValueError(f"Expected {SLIDE_COUNT-2} middle slides, got {len(data.get('slides', []))}")
+
+    # Belt-and-braces: ensure #mindcoreai always appears
+    data["caption"] = ensure_brand_hashtag(data["caption"])
     return data
 
 
@@ -465,7 +488,7 @@ def compose_slide(bg_bytes: bytes, title: str, body: str = "",
     return out.getvalue()
 
 
-# ── Step 5: Upload-Post (corrected per official docs) ───────────────────────
+# ── Step 5: Upload-Post ─────────────────────────────────────────────────────
 def _mask_key(k: str) -> str:
     if not k:
         return "<empty>"
@@ -475,7 +498,6 @@ def _mask_key(k: str) -> str:
 
 
 def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> requests.Response:
-    """Single Upload-Post POST attempt with the given Authorization header value."""
     url = "https://api.upload-post.com/api/upload_photos"
     headers = {"Authorization": auth_header}
 
@@ -486,8 +508,6 @@ def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> re
         open_files.append(fh)
         files.append(("photos[]", (f"slide_{i+1}.jpg", fh, "image/jpeg")))
 
-    # NOTE: Upload-Post calls the post text 'title', NOT 'caption'.
-    # See: https://www.upload-post.com/how-to/automate-instagram-posts/
     data = [
         ("title",      caption),
         ("user",       UPLOADPOST_USER),
@@ -505,10 +525,6 @@ def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> re
 
 
 def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
-    """
-    Upload-Post auth is 'Apikey <key>' per their docs.
-    Try Apikey first; fall back to Bearer if a future change ever swaps the format.
-    """
     print(f"  Auth key  : {_mask_key(UPLOADPOST_API_KEY)}")
     print(f"  Profile   : {UPLOADPOST_USER!r}")
 
@@ -540,12 +556,6 @@ def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
             continue
         else:
             print(f"  ✗ Upload-Post error ({r.status_code}): {err_body}")
-            if r.status_code == 401:
-                print(f"     → 401 = key invalid. Regenerate in Upload-Post dashboard")
-                print(f"       (Settings → API) and update the GitHub secret. Copy ONLY the key value.")
-            elif r.status_code == 400:
-                print(f"     → 400 = bad request. Check the 'user' value matches your profile slug.")
-                print(f"       Currently sending user={UPLOADPOST_USER!r}")
             r.raise_for_status()
 
     raise RuntimeError(f"Upload-Post auth failed with all formats. Last: {last_error}")
