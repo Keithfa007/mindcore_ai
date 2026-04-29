@@ -22,7 +22,7 @@ warm-toned background if both attempts fail. The carousel always publishes.
 Required env vars:
   ANTHROPIC_API_KEY     - content & format selection
   OPENAI_API_KEY        - DALL-E 3 backgrounds
-  UPLOADPOST_API_KEY    - Upload-Post account API key (JWT, sent as Bearer)
+  UPLOADPOST_API_KEY    - Upload-Post account API key
   UPLOADPOST_USER       - the IG profile name configured in Upload-Post
 """
 
@@ -43,7 +43,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 # ── Config ──────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
-UPLOADPOST_API_KEY = os.environ["UPLOADPOST_API_KEY"].strip()  # strip any whitespace
+UPLOADPOST_API_KEY = os.environ["UPLOADPOST_API_KEY"].strip()
 UPLOADPOST_USER    = os.environ.get("UPLOADPOST_USER", "mindcoreai").strip()
 
 KEYWORDS_FILE = Path("scripts/fb_keywords.json")
@@ -58,7 +58,6 @@ FORMAT_HISTORY_LIMIT = 4
 
 SITE_URL = "https://mindcoreai.eu"
 
-# ── Brand visual style anchor ───────────────────────────────────────────
 STYLE_ANCHOR = (
     "Calm, minimal editorial illustration in a warm muted palette: soft beige, "
     "dusty rose, sage green, terracotta, cream. Soft natural morning light. "
@@ -78,11 +77,11 @@ DALLE_TRIGGER_REPLACEMENTS = {
     r"\bsuicidal\b": "in crisis",
     r"\bself-harm\b": "self-injury (do not depict)",
     r"\baddiction\b": "habit",
-    r"\baddict\b": "person in recovery",
+    r"\baddict\b": "person in renewal",
     r"\baddicted\b": "habitual",
     r"\bmental health\b": "emotional wellbeing",
     r"\bmental illness\b": "emotional struggle",
-    r"\bptsd\b": "trauma response",
+    r"\bptsd\b": "stress response",
     r"\btrauma\b": "past difficulty",
     r"\bbipolar\b": "mood shift",
     r"\bpanic attack\b": "wave of overwhelm",
@@ -339,13 +338,11 @@ def generate_dalle_image_resilient(prompt: str) -> tuple:
         return _dalle_request(prompt), "dalle"
     except Exception:
         pass
-
     soft_prompt = f"{SAFE_FALLBACK_SCENE}\n\nStyle: {STYLE_ANCHOR}"
     try:
         return _dalle_request(soft_prompt), "dalle_softened"
     except Exception:
         pass
-
     return None, "fallback_solid"
 
 
@@ -411,7 +408,6 @@ def compose_slide(bg_bytes: bytes, title: str, body: str = "",
 
     text_color = (60, 47, 37)
     accent_color = (180, 100, 70)
-
     margin = 90
     max_w = SLIDE_SIZE - 2 * margin
 
@@ -469,7 +465,15 @@ def compose_slide(bg_bytes: bytes, title: str, body: str = "",
     return out.getvalue()
 
 
-# ── Step 5: Upload-Post (with auth-format auto-fallback) ────────────────────
+# ── Step 5: Upload-Post (corrected per official docs) ───────────────────────
+def _mask_key(k: str) -> str:
+    if not k:
+        return "<empty>"
+    if len(k) <= 8:
+        return f"<{len(k)} chars>"
+    return f"{k[:4]}...{k[-4:]} (len={len(k)})"
+
+
 def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> requests.Response:
     """Single Upload-Post POST attempt with the given Authorization header value."""
     url = "https://api.upload-post.com/api/upload_photos"
@@ -482,11 +486,13 @@ def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> re
         open_files.append(fh)
         files.append(("photos[]", (f"slide_{i+1}.jpg", fh, "image/jpeg")))
 
-    data = {
-        "caption":    caption,
-        "user":       UPLOADPOST_USER,
-        "platform[]": "instagram",
-    }
+    # NOTE: Upload-Post calls the post text 'title', NOT 'caption'.
+    # See: https://www.upload-post.com/how-to/automate-instagram-posts/
+    data = [
+        ("title",      caption),
+        ("user",       UPLOADPOST_USER),
+        ("platform[]", "instagram"),
+    ]
 
     try:
         return requests.post(url, headers=headers, data=data, files=files, timeout=180)
@@ -500,12 +506,15 @@ def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> re
 
 def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
     """
-    Try Bearer first (correct for JWT keys, which start with 'eyJ').
-    If that fails, try Apikey as a fallback in case the format ever changes.
+    Upload-Post auth is 'Apikey <key>' per their docs.
+    Try Apikey first; fall back to Bearer if a future change ever swaps the format.
     """
+    print(f"  Auth key  : {_mask_key(UPLOADPOST_API_KEY)}")
+    print(f"  Profile   : {UPLOADPOST_USER!r}")
+
     auth_formats = [
-        f"Bearer {UPLOADPOST_API_KEY}",
         f"Apikey {UPLOADPOST_API_KEY}",
+        f"Bearer {UPLOADPOST_API_KEY}",
     ]
 
     last_error = None
@@ -518,25 +527,28 @@ def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
             print(f"  ✓ Authenticated with {format_name}")
             return r.json()
 
-        # Auth failure → try the next format
         try:
             err_body = r.json()
         except Exception:
             err_body = {"raw": r.text[:300]}
 
-        is_auth_error = r.status_code in (401, 403) or "key" in str(err_body).lower()
         last_error = (r.status_code, err_body)
+        is_auth_error = r.status_code in (401, 403) or "key" in str(err_body).lower()
 
         if is_auth_error and auth_header is not auth_formats[-1]:
             print(f"  ✗ {format_name} rejected ({r.status_code}): {err_body}")
             continue
         else:
-            # Non-auth error → don't keep retrying with different auth headers
             print(f"  ✗ Upload-Post error ({r.status_code}): {err_body}")
+            if r.status_code == 401:
+                print(f"     → 401 = key invalid. Regenerate in Upload-Post dashboard")
+                print(f"       (Settings → API) and update the GitHub secret. Copy ONLY the key value.")
+            elif r.status_code == 400:
+                print(f"     → 400 = bad request. Check the 'user' value matches your profile slug.")
+                print(f"       Currently sending user={UPLOADPOST_USER!r}")
             r.raise_for_status()
 
-    # Both auth formats failed
-    raise RuntimeError(f"Upload-Post auth failed with all formats. Last error: {last_error}")
+    raise RuntimeError(f"Upload-Post auth failed with all formats. Last: {last_error}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
