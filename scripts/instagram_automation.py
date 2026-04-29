@@ -22,7 +22,7 @@ warm-toned background if both attempts fail. The carousel always publishes.
 Required env vars:
   ANTHROPIC_API_KEY     - content & format selection
   OPENAI_API_KEY        - DALL-E 3 backgrounds
-  UPLOADPOST_API_KEY    - Upload-Post account API key
+  UPLOADPOST_API_KEY    - Upload-Post account API key (JWT, sent as Bearer)
   UPLOADPOST_USER       - the IG profile name configured in Upload-Post
 """
 
@@ -43,8 +43,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 # ── Config ──────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
-UPLOADPOST_API_KEY = os.environ["UPLOADPOST_API_KEY"]
-UPLOADPOST_USER    = os.environ.get("UPLOADPOST_USER", "mindcoreai")
+UPLOADPOST_API_KEY = os.environ["UPLOADPOST_API_KEY"].strip()  # strip any whitespace
+UPLOADPOST_USER    = os.environ.get("UPLOADPOST_USER", "mindcoreai").strip()
 
 KEYWORDS_FILE = Path("scripts/fb_keywords.json")
 FORMATS_FILE  = Path("scripts/ig_formats.json")
@@ -59,8 +59,6 @@ FORMAT_HISTORY_LIMIT = 4
 SITE_URL = "https://mindcoreai.eu"
 
 # ── Brand visual style anchor ───────────────────────────────────────────
-# Note: deliberately worded to avoid DALL-E's mental-health content filter.
-# We describe mood through colour, light, and posture — never clinical terms.
 STYLE_ANCHOR = (
     "Calm, minimal editorial illustration in a warm muted palette: soft beige, "
     "dusty rose, sage green, terracotta, cream. Soft natural morning light. "
@@ -71,10 +69,6 @@ STYLE_ANCHOR = (
     "never a close-up face. Square 1:1 composition, gentle and reflective."
 )
 
-# Words DALL-E's safety filter is known to flag in our niche.
-# We replace each with a neutral synonym before sending to DALL-E.
-# The text overlay (Pillow) still uses the real wording — only the background
-# scene prompt gets sanitized.
 DALLE_TRIGGER_REPLACEMENTS = {
     r"\banxiety\b": "tension",
     r"\banxious\b": "tense",
@@ -116,14 +110,12 @@ DALLE_TRIGGER_REPLACEMENTS = {
 
 
 def sanitize_for_dalle(text: str) -> str:
-    """Replace trigger words case-insensitively, preserving sentence flow."""
     out = text
     for pattern, replacement in DALLE_TRIGGER_REPLACEMENTS.items():
         out = re.sub(pattern, replacement, out, flags=re.IGNORECASE)
     return out
 
 
-# Safe fallback prompt — used if a sanitized scene still gets blocked.
 SAFE_FALLBACK_SCENE = (
     "A still life of a warm ceramic mug on a wooden table by a window with "
     "soft morning light. A folded grey sweater and an open notebook nearby. "
@@ -168,7 +160,7 @@ def pick_format(formats: list, history: list) -> dict:
     return random.choice(available or formats)
 
 
-# ── Step 1: carousel content with Claude ────────────────────────────────────
+# ── Step 1: carousel content ─────────────────────────────────────────────────
 def generate_carousel_content(topic: dict, fmt: dict) -> dict:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -253,10 +245,6 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
 # ── Step 2: scene prompts ────────────────────────────────────────────────────
 def generate_scene_prompts(content: dict, topic: dict) -> list:
-    """
-    Ask Claude for SCENE-ONLY descriptions (no emotional / clinical language).
-    The actual emotional content lives in the text overlay, not the image.
-    """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     slide_briefs = [
@@ -317,7 +305,6 @@ Return ONLY the JSON array, no preamble, no markdown:
     if len(scenes) != SLIDE_COUNT:
         raise ValueError(f"Expected {SLIDE_COUNT} scenes, got {len(scenes)}")
 
-    # Belt-and-braces sanitization in case Claude slips a trigger word through
     sanitized = [sanitize_for_dalle(s) for s in scenes]
     return [f"{s}\n\nStyle: {STYLE_ANCHOR}" for s in sanitized]
 
@@ -339,7 +326,6 @@ def _dalle_request(prompt: str) -> bytes:
         try:
             err = r.json().get("error", {})
             msg = err.get("message", "")
-            r.raise_for_status_message = msg
             print(f"    ✗ DALL-E: {msg[:200]}")
         except Exception:
             print(f"    ✗ DALL-E: {r.text[:200]}")
@@ -349,35 +335,23 @@ def _dalle_request(prompt: str) -> bytes:
 
 
 def generate_dalle_image_resilient(prompt: str) -> tuple:
-    """
-    Returns (bytes_or_None, source_label).
-    source_label is one of: 'dalle', 'dalle_softened', 'fallback_solid'.
-    Never raises — always returns something composable.
-    """
-    # Attempt 1: original (sanitized) prompt
     try:
         return _dalle_request(prompt), "dalle"
     except Exception:
         pass
 
-    # Attempt 2: aggressively soft prompt
-    soft_prompt = (
-        f"{SAFE_FALLBACK_SCENE}\n\nStyle: {STYLE_ANCHOR}"
-    )
+    soft_prompt = f"{SAFE_FALLBACK_SCENE}\n\nStyle: {STYLE_ANCHOR}"
     try:
         return _dalle_request(soft_prompt), "dalle_softened"
     except Exception:
         pass
 
-    # Attempt 3: solid warm-toned fallback (never fails)
     return None, "fallback_solid"
 
 
 def make_solid_background() -> bytes:
-    """Warm cream solid with a faint vertical gradient."""
     img = Image.new("RGB", (SLIDE_SIZE, SLIDE_SIZE), (250, 244, 230))
     draw = ImageDraw.Draw(img)
-    # subtle dusty-rose hint at the bottom
     for y in range(SLIDE_SIZE // 2, SLIDE_SIZE):
         t = (y - SLIDE_SIZE // 2) / (SLIDE_SIZE // 2)
         r = int(250 - 12 * t)
@@ -389,7 +363,7 @@ def make_solid_background() -> bytes:
     return out.getvalue()
 
 
-# ── Step 4: text overlay with Pillow ─────────────────────────────────────────
+# ── Step 4: text overlay ─────────────────────────────────────────────────────
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     candidates_bold = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -495,10 +469,11 @@ def compose_slide(bg_bytes: bytes, title: str, body: str = "",
     return out.getvalue()
 
 
-# ── Step 5: Upload-Post ──────────────────────────────────────────────────────
-def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
+# ── Step 5: Upload-Post (with auth-format auto-fallback) ────────────────────
+def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> requests.Response:
+    """Single Upload-Post POST attempt with the given Authorization header value."""
     url = "https://api.upload-post.com/api/upload_photos"
-    headers = {"Authorization": f"Apikey {UPLOADPOST_API_KEY}"}
+    headers = {"Authorization": auth_header}
 
     files = []
     open_files = []
@@ -514,7 +489,7 @@ def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
     }
 
     try:
-        r = requests.post(url, headers=headers, data=data, files=files, timeout=180)
+        return requests.post(url, headers=headers, data=data, files=files, timeout=180)
     finally:
         for fh in open_files:
             try:
@@ -522,14 +497,46 @@ def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
             except Exception:
                 pass
 
-    if not r.ok:
-        try:
-            print(f"  ✗ Upload-Post error: {r.json()}")
-        except Exception:
-            print(f"  ✗ Upload-Post error (non-JSON): {r.text[:500]}")
-        r.raise_for_status()
 
-    return r.json()
+def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
+    """
+    Try Bearer first (correct for JWT keys, which start with 'eyJ').
+    If that fails, try Apikey as a fallback in case the format ever changes.
+    """
+    auth_formats = [
+        f"Bearer {UPLOADPOST_API_KEY}",
+        f"Apikey {UPLOADPOST_API_KEY}",
+    ]
+
+    last_error = None
+    for auth_header in auth_formats:
+        format_name = auth_header.split()[0]
+        print(f"  Trying Authorization: {format_name}…")
+        r = _attempt_uploadpost(image_paths, caption, auth_header)
+
+        if r.ok:
+            print(f"  ✓ Authenticated with {format_name}")
+            return r.json()
+
+        # Auth failure → try the next format
+        try:
+            err_body = r.json()
+        except Exception:
+            err_body = {"raw": r.text[:300]}
+
+        is_auth_error = r.status_code in (401, 403) or "key" in str(err_body).lower()
+        last_error = (r.status_code, err_body)
+
+        if is_auth_error and auth_header is not auth_formats[-1]:
+            print(f"  ✗ {format_name} rejected ({r.status_code}): {err_body}")
+            continue
+        else:
+            # Non-auth error → don't keep retrying with different auth headers
+            print(f"  ✗ Upload-Post error ({r.status_code}): {err_body}")
+            r.raise_for_status()
+
+    # Both auth formats failed
+    raise RuntimeError(f"Upload-Post auth failed with all formats. Last error: {last_error}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
