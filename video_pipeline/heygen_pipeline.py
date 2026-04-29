@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v4.5
+MindCore AI Video Pipeline -- HeyGen Edition v4.6
 ===================================================
+
+CHANGES (v4.6):
+  Enforce #mindcoreai brand hashtag in all captions (TikTok, IG, Facebook).
+  Belt-and-braces post-check guarantees inclusion even if Claude omits it.
 
 CHANGES (v4.5):
   Add Instagram Reels to auto-upload platforms.
@@ -82,6 +86,9 @@ AUTOCOMPLETE_SEEDS_PER_RUN = 2
 
 TIKTOK_CAPTION_LIMIT = 2200  # TikTok caption max chars
 
+# Brand hashtag enforced across all captions and descriptions
+REQUIRED_BRAND_HASHTAG = "#mindcoreai"
+
 WORD_LIMITS_AD = {
     "hook":         8,
     "problem":      12,
@@ -151,6 +158,28 @@ def load_niche_keywords() -> dict:
         return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"]}
     with open(path) as f:
         return json.load(f)
+
+
+# -- Brand hashtag enforcement ------------------------------------------------
+
+def ensure_brand_hashtag(text: str) -> str:
+    """
+    Belt-and-braces: guarantee #mindcoreai is in the text. If Claude omits it,
+    append to the last hashtag-bearing line, or add a new line if none exist.
+    """
+    if not text:
+        return f"{REQUIRED_BRAND_HASHTAG}"
+    if REQUIRED_BRAND_HASHTAG.lower() in text.lower():
+        return text
+    # Find the last line containing a hashtag and append the brand tag
+    lines = text.rstrip().split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        if "#" in lines[i]:
+            # Append to the last hashtag in that line, respecting the existing format
+            lines[i] = lines[i].rstrip() + f" {REQUIRED_BRAND_HASHTAG}"
+            return "\n".join(lines)
+    # No hashtags at all -- append on a new line
+    return text.rstrip() + f"\n{REQUIRED_BRAND_HASHTAG}"
 
 
 # -- Script sanitizer ---------------------------------------------------------
@@ -726,11 +755,13 @@ FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
 
 TIKTOK / INSTAGRAM REELS:
 - Caption (keyword-first hook + 8-12 hashtags inline, max 2200 chars)
+- ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the hashtag set (non-negotiable)
 - On-screen text overlay suggestion: 1 punchy line
 
 FACEBOOK REELS:
 - Title: max 255 characters, keyword-first
 - Description: 2-3 sentences, emotionally engaging, ends with a question + 5-7 hashtags
+- ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the Facebook hashtag set (non-negotiable)
 
 ALSO INCLUDE:
 - Thumbnail suggestion
@@ -774,16 +805,18 @@ FULL VOICEOVER: {full_vo}
 RULES:
 - tiktok_caption: keyword-first sentence (max 100 chars) + space + 8-10 hashtags inline.
   Used for BOTH TikTok and Instagram Reels captions.
-  Example: "Male loneliness is an epidemic. #menloneliness #mentalhealth #mensmentalhealth ..."
+  ALWAYS INCLUDE these brand hashtags (non-negotiable): {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
+  Example: "Male loneliness is an epidemic. {REQUIRED_BRAND_HASHTAG} #menloneliness #mensmentalhealth #mentalhealth ..."
   Max 2200 chars total.
 - facebook_title: max 255 chars, keyword-first
 - facebook_description: 2-3 emotionally engaging sentences + question at end + 5-6 hashtags
+  ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the Facebook hashtag set (non-negotiable)
 
 Return ONLY valid JSON, no markdown:
 {{
-  "tiktok_caption": "keyword-first hook sentence #hashtag1 #hashtag2 #hashtag3 ...",
+  "tiktok_caption": "keyword-first hook sentence {REQUIRED_BRAND_HASHTAG} #hashtag2 #hashtag3 ...",
   "facebook_title": "...",
-  "facebook_description": "... #tag1 #tag2 ..."
+  "facebook_description": "... {REQUIRED_BRAND_HASHTAG} #tag2 ..."
 }}"""
 
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
@@ -797,6 +830,11 @@ Return ONLY valid JSON, no markdown:
                 parts = raw.split("```")
                 raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
             metadata = json.loads(raw)
+
+            # Belt-and-braces: ensure brand hashtag in all caption/description fields
+            metadata["tiktok_caption"]       = ensure_brand_hashtag(metadata.get("tiktok_caption", ""))
+            metadata["facebook_description"] = ensure_brand_hashtag(metadata.get("facebook_description", ""))
+
             print(f"  Caption (TikTok+IG): {metadata.get('tiktok_caption', '')[:80]}...")
             print(f"  Facebook title: {metadata.get('facebook_title', '')[:60]}...")
             return metadata
@@ -927,7 +965,7 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.5")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
     print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high | motion_prompt active")
