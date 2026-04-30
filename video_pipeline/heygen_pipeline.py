@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- HeyGen Edition v4.6
+MindCore AI Video Pipeline -- HeyGen Edition v4.7
 ===================================================
+
+CHANGES (v4.7):
+  Add YouTube Shorts as a 4th auto-upload platform.
+  YouTube-specific metadata: youtube_title, youtube_description, youtube_tags.
+  YouTube auto-detects 9:16 videos under 60s as Shorts (no special flag needed).
+  Brand hashtag enforced in YouTube description too.
 
 CHANGES (v4.6):
   Enforce #mindcoreai brand hashtag in all captions (TikTok, IG, Facebook).
@@ -9,7 +15,6 @@ CHANGES (v4.6):
 
 CHANGES (v4.5):
   Add Instagram Reels to auto-upload platforms.
-  Now posts to TikTok + Facebook + Instagram on every run.
 
 CHANGES (v4.4):
   Fix Upload-Post field mapping. TikTok caption = title + hashtags merged.
@@ -84,7 +89,9 @@ CLAUDE_RETRY_BASE  = 30
 SERP_SEEDS_PER_RUN         = 3
 AUTOCOMPLETE_SEEDS_PER_RUN = 2
 
-TIKTOK_CAPTION_LIMIT = 2200  # TikTok caption max chars
+TIKTOK_CAPTION_LIMIT      = 2200  # TikTok caption max chars
+YOUTUBE_TITLE_LIMIT       = 100   # YouTube title max chars
+YOUTUBE_DESCRIPTION_LIMIT = 5000  # YouTube description max chars (we'll keep ours much shorter)
 
 # Brand hashtag enforced across all captions and descriptions
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
@@ -743,10 +750,10 @@ def generate_upload_guide(script: dict, mode: str, client: anthropic.Anthropic) 
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode)
 
-    prompt = f"""Social media growth expert for TikTok, Instagram Reels and Facebook Reels,
+    prompt = f"""Social media growth expert for TikTok, Instagram Reels, Facebook Reels and YouTube Shorts,
 men's mental health and recovery niche.
 
-Generate a complete upload guide for TikTok, Instagram AND Facebook.
+Generate a complete upload guide for TikTok, Instagram, Facebook AND YouTube Shorts.
 
 VIDEO TYPE: {video_type.upper()}
 TOPIC: {topic}
@@ -763,6 +770,13 @@ FACEBOOK REELS:
 - Description: 2-3 sentences, emotionally engaging, ends with a question + 5-7 hashtags
 - ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the Facebook hashtag set (non-negotiable)
 
+YOUTUBE SHORTS:
+- Title: max 100 chars, keyword-first, scroll-stopping
+- Description: 2-4 sentences (longer than IG caption since YouTube viewers read more) +
+  link to mindcoreai.eu + 5-8 hashtags ending with #Shorts to ensure Shorts placement
+- ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the YouTube hashtag set (non-negotiable)
+- Tags (comma-separated keywords for YouTube SEO, separate from hashtags): 8-12 keywords
+
 ALSO INCLUDE:
 - Thumbnail suggestion
 - A/B test hook idea
@@ -772,7 +786,7 @@ Plain text only. Clear labels. Copy-paste ready."""
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(
-                model="claude-sonnet-4-6", max_tokens=1200,
+                model="claude-sonnet-4-6", max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )
             return msg.content[0].text.strip()
@@ -793,9 +807,9 @@ def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropi
     seo_kw     = script.get("seo_keyword", "")
     video_type = script.get("video_type", mode).upper()
 
-    prompt = f"""Social media expert for men's mental health content on TikTok, Instagram Reels and Facebook Reels.
+    prompt = f"""Social media expert for men's mental health content on TikTok, Instagram Reels, Facebook Reels and YouTube Shorts.
 
-Generate optimised upload metadata for this video.
+Generate optimised upload metadata for this video. Each platform needs DIFFERENT optimisation.
 
 VIDEO TYPE: {video_type}
 TOPIC: {topic}
@@ -803,26 +817,46 @@ SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: {full_vo}
 
 RULES:
+
+TIKTOK + INSTAGRAM (shared caption, hashtags inline):
 - tiktok_caption: keyword-first sentence (max 100 chars) + space + 8-10 hashtags inline.
   Used for BOTH TikTok and Instagram Reels captions.
   ALWAYS INCLUDE these brand hashtags (non-negotiable): {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
-  Example: "Male loneliness is an epidemic. {REQUIRED_BRAND_HASHTAG} #menloneliness #mensmentalhealth #mentalhealth ..."
+  Example: "Male loneliness is an epidemic. {REQUIRED_BRAND_HASHTAG} #menloneliness #mensmentalhealth ..."
   Max 2200 chars total.
+
+FACEBOOK (separate title and description):
 - facebook_title: max 255 chars, keyword-first
 - facebook_description: 2-3 emotionally engaging sentences + question at end + 5-6 hashtags
   ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the Facebook hashtag set (non-negotiable)
+
+YOUTUBE SHORTS (separate title, description, and tags):
+- youtube_title: max 100 chars, keyword-first, scroll-stopping question or statement.
+  YouTube titles are punchier than Facebook titles. Make it search-friendly.
+  Example: "Why You Wake Up at 3am With Anxiety" (good — searchable, emotional)
+- youtube_description: 2-4 sentences expanding the topic + a line break + the link
+  "Try MindCore AI: https://mindcoreai.eu" + a line break + 6-8 hashtags ending with #Shorts.
+  ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the YouTube hashtag set (non-negotiable).
+  ALWAYS END the hashtag line with #Shorts to ensure YouTube treats this as a Short.
+- youtube_tags: comma-separated string of 8-12 keywords (NO hashtags here, just keywords).
+  These are YouTube's metadata tags for SEO (different from hashtags in the description).
+  Include the SEO keyword + variations + niche terms.
+  Example: "men mental health, anxiety men 35, sober anxiety, AI mental health coach, recovery support"
 
 Return ONLY valid JSON, no markdown:
 {{
   "tiktok_caption": "keyword-first hook sentence {REQUIRED_BRAND_HASHTAG} #hashtag2 #hashtag3 ...",
   "facebook_title": "...",
-  "facebook_description": "... {REQUIRED_BRAND_HASHTAG} #tag2 ..."
+  "facebook_description": "... {REQUIRED_BRAND_HASHTAG} #tag2 ...",
+  "youtube_title": "scroll-stopping title with keyword",
+  "youtube_description": "2-4 sentences\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #mentalhealth #mensmentalhealth #Shorts",
+  "youtube_tags": "keyword1, keyword2, keyword3, keyword4, keyword5, keyword6, keyword7, keyword8"
 }}"""
 
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(
-                model="claude-sonnet-4-6", max_tokens=600,
+                model="claude-sonnet-4-6", max_tokens=900,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = msg.content[0].text.strip()
@@ -834,9 +868,15 @@ Return ONLY valid JSON, no markdown:
             # Belt-and-braces: ensure brand hashtag in all caption/description fields
             metadata["tiktok_caption"]       = ensure_brand_hashtag(metadata.get("tiktok_caption", ""))
             metadata["facebook_description"] = ensure_brand_hashtag(metadata.get("facebook_description", ""))
+            metadata["youtube_description"]  = ensure_brand_hashtag(metadata.get("youtube_description", ""))
 
-            print(f"  Caption (TikTok+IG): {metadata.get('tiktok_caption', '')[:80]}...")
-            print(f"  Facebook title: {metadata.get('facebook_title', '')[:60]}...")
+            # Enforce field length limits
+            metadata["youtube_title"] = metadata.get("youtube_title", "")[:YOUTUBE_TITLE_LIMIT]
+
+            print(f"  Caption (TikTok+IG)  : {metadata.get('tiktok_caption', '')[:80]}...")
+            print(f"  Facebook title       : {metadata.get('facebook_title', '')[:60]}...")
+            print(f"  YouTube title        : {metadata.get('youtube_title', '')[:60]}...")
+            print(f"  YouTube tags         : {metadata.get('youtube_tags', '')[:80]}...")
             return metadata
         except (anthropic.APIStatusError, json.JSONDecodeError) as e:
             if attempt == CLAUDE_MAX_RETRIES:
@@ -845,12 +885,14 @@ Return ONLY valid JSON, no markdown:
     raise RuntimeError("Unexpected exit from metadata generation")
 
 
-# -- Step 7 -- Auto-upload to TikTok + Facebook + Instagram via Upload-Post ---
+# -- Step 7 -- Auto-upload to TikTok + Facebook + Instagram + YouTube --------
 #
 # Platform field mapping:
 #   TikTok:    "title" = caption (hashtags inline). description ignored.
 #   Instagram: "title" = caption (hashtags inline). description ignored.
 #   Facebook:  "facebook_title" + "facebook_description" (separate fields).
+#   YouTube:   "youtube_title" + "youtube_description" + "youtube_tags" (separate fields).
+#              YouTube auto-detects 9:16 videos under 60s as Shorts.
 
 def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
     if not UPLOAD_POST_API_KEY:
@@ -869,22 +911,34 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
     facebook_title       = metadata.get("facebook_title", "")[:255]
     facebook_description = metadata.get("facebook_description", "")
 
-    print(f"  Uploading to TikTok + Facebook + Instagram as '{user}'...")
-    print(f"  Caption ({len(caption)} chars): {caption[:80]}...")
-    print(f"  Facebook title: {facebook_title[:60]}...")
+    # YouTube separate fields
+    youtube_title       = metadata.get("youtube_title", "")[:YOUTUBE_TITLE_LIMIT]
+    youtube_description = metadata.get("youtube_description", "")[:YOUTUBE_DESCRIPTION_LIMIT]
+    youtube_tags        = metadata.get("youtube_tags", "")
+
+    print(f"  Uploading to TikTok + Facebook + Instagram + YouTube as '{user}'...")
+    print(f"  Caption ({len(caption)} chars)        : {caption[:80]}...")
+    print(f"  Facebook title                  : {facebook_title[:60]}...")
+    print(f"  YouTube title                   : {youtube_title[:60]}...")
 
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
 
     data = [
         ("user",                 user),
+        # All four platforms
         ("platform[]",           "tiktok"),
         ("platform[]",           "facebook"),
         ("platform[]",           "instagram"),
+        ("platform[]",           "youtube"),
         # Caption for TikTok + Instagram (hashtags inline)
         ("title",                caption),
         # Facebook separate fields
         ("facebook_title",       facebook_title),
         ("facebook_description", facebook_description),
+        # YouTube separate fields
+        ("youtube_title",        youtube_title),
+        ("youtube_description",  youtube_description),
+        ("youtube_tags",         youtube_tags),
     ]
 
     try:
@@ -931,7 +985,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Avatar look : {avatar_id}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
   Format      : 1080x1920 9:16 30fps | Zoom-to-fill | Full body motion
-  Platforms   : TikTok + Facebook + Instagram Reels
+  Platforms   : TikTok + Facebook + Instagram Reels + YouTube Shorts
   Schedule    : Tue/Wed/Thu 17:00 UTC
 ================================================================================
 
@@ -965,15 +1019,15 @@ def main():
     natural_gestures = cfg.get("use_natural_gestures", True)
     upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.6")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
     print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high | motion_prompt active")
     print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
-    print(f"  Platforms: TikTok + Facebook + Instagram Reels")
+    print(f"  Platforms: TikTok + Facebook + Instagram Reels + YouTube Shorts")
     print(f"  Schedule: Tue/Wed/Thu 17:00 UTC")
     print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
-    print(f"  Auto-upload: {'TikTok + Facebook + Instagram' if upload_enabled else 'DISABLED'}")
+    print(f"  Auto-upload: {'TikTok + Facebook + Instagram + YouTube' if upload_enabled else 'DISABLED'}")
     if mode == "content":
         print("  Content: educational + storytelling only -- zero promotion")
     else:
@@ -998,6 +1052,9 @@ def main():
     print(f"  Topic:      {script.get('topic', 'N/A')}")
     print(f"  SEO kw:     {script.get('seo_keyword', 'N/A')}")
     print(f"  Est. length: ~{est_duration}s ({total_words} words)")
+    if est_duration > 60:
+        print(f"  WARNING: Video is {est_duration}s -- YouTube treats >60s as regular video, not Shorts.")
+        print(f"           TikTok/IG/FB unaffected. Consider tightening word counts if you want all-Shorts placement.")
     print()
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
@@ -1028,7 +1085,7 @@ def main():
     (OUTPUT_DIR / "upload_metadata.json").write_text(json.dumps(upload_metadata, indent=2))
 
     if upload_enabled:
-        print("\n  Uploading to TikTok + Facebook + Instagram...")
+        print("\n  Uploading to TikTok + Facebook + Instagram + YouTube...")
         upload_result = upload_to_platforms(final_path, upload_metadata, cfg)
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps(upload_result, indent=2))
     else:
@@ -1040,7 +1097,7 @@ def main():
     print(f"  Guide:  video_pipeline/output/upload_guide.txt")
     print(f"  Mode:   {mode.upper()} | ~{est_duration}s | Look: {avatar_id[:8]}...")
     if upload_enabled:
-        print("  Posted: TikTok + Facebook + Instagram Reels")
+        print("  Posted: TikTok + Facebook + Instagram Reels + YouTube Shorts")
     print("\n  Pipeline complete!")
 
 
