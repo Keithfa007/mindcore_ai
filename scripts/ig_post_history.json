@@ -8,5 +8,16 @@
     "image_sources": {
       "dalle": 7
     }
+  },
+  {
+    "timestamp": "2026-04-30T08:00:16.336271+00:00",
+    "keyword": "how to calm anxiety without medication",
+    "format": "truth_bomb",
+    "hook": "3 Ways to Kill Anxiety in 60 Seconds",
+    "job_id": "b2e9f1e5525647ebb60a22d18bd89a65",
+    "image_sources": {
+      "dalle": 6,
+      "dalle_softened": 1
+    }
   }
 ]
