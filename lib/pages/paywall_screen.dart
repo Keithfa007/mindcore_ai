@@ -4,7 +4,6 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:mindcore_ai/models/tier_config.dart';
 import 'package:mindcore_ai/services/subscription_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
-import 'package:mindcore_ai/services/usage_service.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
@@ -21,13 +20,30 @@ class _PaywallScreenState extends State<PaywallScreen> {
   bool _loading = false;
   bool _selectedYearly = false;
 
+  // Store ready flag — prevents rendering before IAP initialises
+  bool _storeReady = false;
+  String? _storeError;
+
   @override
   void initState() {
     super.initState();
-    _sub.init().catchError((e) {
-      debugPrint('PaywallScreen: IAP init failed — $e');
-    });
     PremiumService.isPremium.addListener(_onPremiumChanged);
+    _initStore();
+  }
+
+  Future<void> _initStore() async {
+    try {
+      await _sub.init();
+      if (!mounted) return;
+      setState(() => _storeReady = true);
+    } catch (e) {
+      debugPrint('PaywallScreen: IAP init failed — $e');
+      if (!mounted) return;
+      setState(() {
+        _storeReady = true; // still show UI, products will be null
+        _storeError = 'Store unavailable. Check your connection and try again.';
+      });
+    }
   }
 
   @override
@@ -107,124 +123,183 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 ),
               ),
 
-              Expanded(
-                child: SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              // Show loading spinner while store initialises
+              if (!_storeReady)
+                Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.workspace_premium_rounded,
-                          size: 40, color: AppColors.primary),
-                      const SizedBox(height: 10),
-                      Text('Choose your plan',
-                          textAlign: TextAlign.center,
-                          style: tt.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.6,
-                              color: isDark
-                                  ? Colors.white
-                                  : const Color(0xFF0E1320))),
-                      const SizedBox(height: 6),
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 20),
                       Text(
-                        'AI chat, voice, guided sessions and more.\nCancel anytime.',
-                        textAlign: TextAlign.center,
+                        'Loading plans…',
                         style: tt.bodyMedium?.copyWith(
                             color: isDark
-                                ? Colors.white.withValues(alpha: 0.50)
-                                : const Color(0xFF475467),
-                            height: 1.5),
+                                ? Colors.white.withValues(alpha: 0.55)
+                                : Colors.black.withValues(alpha: 0.45)),
                       ),
-                      const SizedBox(height: 20),
-
-                      // Billing toggle
-                      Row(
-                        children: [
-                          _Toggle(
-                              label: 'Monthly',
-                              selected: !_selectedYearly,
-                              onTap: () =>
-                                  setState(() => _selectedYearly = false)),
-                          const SizedBox(width: 10),
-                          _Toggle(
-                              label: 'Yearly',
-                              badge: 'Save ~44%',
-                              selected: _selectedYearly,
-                              onTap: () =>
-                                  setState(() => _selectedYearly = true)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Trial card — shown to all non-paying users
-                      if (showTrial) ...[
-                        _TrialCard(
-                            loading: _loading,
-                            product: _sub.trialProduct,
-                            onBuy: _buy,
-                            isDark: isDark,
-                            tt: tt),
-                        const SizedBox(height: 10),
-                      ],
-
-                      // Premium card
-                      _PlanCard(
-                        config: TierConfig.premium,
-                        yearly: _selectedYearly,
-                        product: _selectedYearly
-                            ? _sub.premiumYearly
-                            : _sub.premiumMonthly,
-                        loading: _loading,
-                        onBuy: _buy,
-                        isCurrent: currentTier.tier == AppTier.premium,
-                        accentColor: AppColors.primary,
-                        glowColor: AppColors.glowBlue,
-                        isDark: isDark,
-                        tt: tt,
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Pro card
-                      _PlanCard(
-                        config: TierConfig.pro,
-                        yearly: _selectedYearly,
-                        product: _selectedYearly
-                            ? _sub.proYearly
-                            : _sub.proMonthly,
-                        loading: _loading,
-                        onBuy: _buy,
-                        featured: true,
-                        isCurrent: currentTier.tier == AppTier.pro,
-                        accentColor: AppColors.violet,
-                        glowColor: AppColors.glowViolet,
-                        isDark: isDark,
-                        tt: tt,
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Voice add-on packs
-                      _VoiceAddOnSection(
-                          loading: _loading,
-                          onBuy: _buy,
-                          sub: _sub,
-                          isDark: isDark,
-                          tt: tt),
-                      const SizedBox(height: 20),
-
-                      Text(
-                        'Subscriptions renew automatically. Cancel anytime\nin Google Play settings.',
-                        style: tt.bodySmall?.copyWith(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.30)
-                                : Colors.black.withValues(alpha: 0.30),
-                            height: 1.5),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
                     ],
                   ),
+                )
+              else ...[
+                // Store error banner if init failed
+                if (_storeError != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.30)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.wifi_off_rounded,
+                              color: Colors.orange.shade300, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(_storeError!,
+                                style: tt.bodySmall?.copyWith(
+                                    color: Colors.orange.shade300)),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _storeReady = false;
+                                _storeError = null;
+                              });
+                              _initStore();
+                            },
+                            child: const Text('Retry',
+                                style: TextStyle(color: Colors.orange)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Icon(Icons.workspace_premium_rounded,
+                            size: 40, color: AppColors.primary),
+                        const SizedBox(height: 10),
+                        Text('Choose your plan',
+                            textAlign: TextAlign.center,
+                            style: tt.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.6,
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0E1320))),
+                        const SizedBox(height: 6),
+                        Text(
+                          'AI chat, voice, guided sessions and more.\nCancel anytime.',
+                          textAlign: TextAlign.center,
+                          style: tt.bodyMedium?.copyWith(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.50)
+                                  : const Color(0xFF475467),
+                              height: 1.5),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Billing toggle
+                        Row(
+                          children: [
+                            _Toggle(
+                                label: 'Monthly',
+                                selected: !_selectedYearly,
+                                onTap: () =>
+                                    setState(() => _selectedYearly = false)),
+                            const SizedBox(width: 10),
+                            _Toggle(
+                                label: 'Yearly',
+                                badge: 'Save ~44%',
+                                selected: _selectedYearly,
+                                onTap: () =>
+                                    setState(() => _selectedYearly = true)),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Trial card
+                        if (showTrial) ...[
+                          _TrialCard(
+                              loading: _loading,
+                              product: _sub.trialProduct,
+                              onBuy: _buy,
+                              isDark: isDark,
+                              tt: tt),
+                          const SizedBox(height: 10),
+                        ],
+
+                        // Premium card
+                        _PlanCard(
+                          config: TierConfig.premium,
+                          yearly: _selectedYearly,
+                          product: _selectedYearly
+                              ? _sub.premiumYearly
+                              : _sub.premiumMonthly,
+                          loading: _loading,
+                          onBuy: _buy,
+                          isCurrent: currentTier.tier == AppTier.premium,
+                          accentColor: AppColors.primary,
+                          glowColor: AppColors.glowBlue,
+                          isDark: isDark,
+                          tt: tt,
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Pro card
+                        _PlanCard(
+                          config: TierConfig.pro,
+                          yearly: _selectedYearly,
+                          product: _selectedYearly
+                              ? _sub.proYearly
+                              : _sub.proMonthly,
+                          loading: _loading,
+                          onBuy: _buy,
+                          featured: true,
+                          isCurrent: currentTier.tier == AppTier.pro,
+                          accentColor: AppColors.violet,
+                          glowColor: AppColors.glowViolet,
+                          isDark: isDark,
+                          tt: tt,
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Voice add-on packs
+                        _VoiceAddOnSection(
+                            loading: _loading,
+                            onBuy: _buy,
+                            sub: _sub,
+                            isDark: isDark,
+                            tt: tt),
+                        const SizedBox(height: 20),
+
+                        Text(
+                          'Subscriptions renew automatically. Cancel anytime\nin Google Play settings.',
+                          style: tt.bodySmall?.copyWith(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.30)
+                                  : Colors.black.withValues(alpha: 0.30),
+                              height: 1.5),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -233,7 +308,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 }
 
-// ── Billing toggle ─────────────────────────────────────────────────────────
+// ── Billing toggle ───────────────────────────────────────────────────
 
 class _Toggle extends StatelessWidget {
   final String label;
@@ -295,7 +370,7 @@ class _Toggle extends StatelessWidget {
   }
 }
 
-// ── Trial card ──────────────────────────────────────────────────────────────
+// ── Trial card ────────────────────────────────────────────────────────
 
 class _TrialCard extends StatelessWidget {
   final bool loading;
@@ -337,14 +412,14 @@ class _TrialCard extends StatelessWidget {
                           fontSize: 10)),
                 ),
                 const SizedBox(height: 8),
-                Text('Try 7 days for \u20ac1.99',
+                Text('Try 7 days for €1.99',
                     style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: isDark
                             ? Colors.white
                             : const Color(0xFF0E1320))),
                 const SizedBox(height: 4),
-                Text('50 messages \u2022 5 min voice \u2022 All features',
+                Text('50 messages • 5 min voice • All features',
                     style: tt.bodySmall?.copyWith(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.55)
@@ -355,7 +430,7 @@ class _TrialCard extends StatelessWidget {
           const SizedBox(width: 12),
           Column(
             children: [
-              Text('\u20ac1.99',
+              Text('€1.99',
                   style: tt.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900, color: accent)),
               Text('one-time',
@@ -413,7 +488,7 @@ class _PlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final price    = yearly ? config.yearlyPrice : config.monthlyPrice;
     final interval = yearly ? '/year' : '/mo';
-    final display  = product?.price ?? '\u20ac${price.toStringAsFixed(2)}';
+    final display  = product?.price ?? '€${price.toStringAsFixed(2)}';
 
     return GlassCard(
       glowColor: glowColor,
@@ -557,7 +632,7 @@ class _PlanCard extends StatelessWidget {
   }
 }
 
-// ── Voice add-on section ────────────────────────────────────────────────────
+// ── Voice add-on section ───────────────────────────────────────────────────────────
 
 class _VoiceAddOnSection extends StatelessWidget {
   final bool loading;
@@ -649,7 +724,7 @@ class _VoicePackCard extends StatelessWidget {
                 Text(pack.displayName,
                     style:
                         tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                Text('${pack.minutesLabel} voice \u2022 ${pack.tagline}',
+                Text('${pack.minutesLabel} voice • ${pack.tagline}',
                     style: tt.bodySmall?.copyWith(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.50)
@@ -693,7 +768,7 @@ class _VoicePackCard extends StatelessWidget {
   }
 }
 
-// ── Feature row ─────────────────────────────────────────────────────────────
+// ── Feature row ───────────────────────────────────────────────────────────────
 
 class _FeatureRow extends StatelessWidget {
   final IconData icon;
