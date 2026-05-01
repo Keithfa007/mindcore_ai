@@ -1,31 +1,102 @@
 {
-  "last_updated": "2026-04-25",
-  "research_method": "manual_seed",
+  "last_updated": "2026-05-01",
+  "research_method": "claude_web_search",
   "topics": [
-    {"keyword": "emotional numbness in men",          "angle": "Why men go numb — and the first sign you're starting to feel again."},
-    {"keyword": "high functioning anxiety men",       "angle": "You look fine on the outside. Inside, you're barely holding it together."},
-    {"keyword": "how to stop feeling empty inside",   "angle": "That hollow feeling that won't go away — what it really means."},
-    {"keyword": "men and mental health stigma",       "angle": "Real strength isn't suffering in silence. It's choosing to ask for help."},
-    {"keyword": "anxiety at 3am",                     "angle": "Why your brain wakes you at 3am — and how to talk it down."},
-    {"keyword": "burnout recovery for men",           "angle": "You're not lazy. You're burnt out. There's a difference."},
-    {"keyword": "how to calm anxiety without medication", "angle": "Three things that work in under 60 seconds when anxiety hits hard."},
-    {"keyword": "sobriety and mental health",         "angle": "Quitting drinking was step one. Healing what you were drinking to silence is step two."},
-    {"keyword": "men who feel alone",                 "angle": "If you feel alone in a room full of people — you're not the only one."},
-    {"keyword": "anxiety after quitting alcohol",     "angle": "Why anxiety often gets worse before it gets better when you quit drinking."},
-    {"keyword": "emotional health for men over 35",   "angle": "Nobody warned you about the wall you'd hit at 35. Here's what's actually happening."},
-    {"keyword": "feeling lost in life men",           "angle": "Lost isn't a destination. It's a phase. And it doesn't last forever."},
-    {"keyword": "mental health for dads",             "angle": "Your kids don't need a perfect dad. They need a present one."},
-    {"keyword": "how to open up emotionally",         "angle": "Why opening up feels impossible — and the smallest step that actually works."},
-    {"keyword": "mindfulness for men who hate meditation", "angle": "You don't have to sit cross-legged. Here's mindfulness that actually fits a real life."},
-    {"keyword": "signs of depression in men",         "angle": "Depression in men doesn't always look like sadness. Sometimes it looks like rage."},
-    {"keyword": "coping with anxiety naturally",      "angle": "The body keeps the score. Here's how to give it a way out."},
-    {"keyword": "how to feel better about yourself",  "angle": "Self-worth isn't built in a day. It's built in tiny, boring choices nobody sees."},
-    {"keyword": "how to deal with stress at work men", "angle": "Work stress isn't a personality flaw. It's a signal. Listen to it."},
-    {"keyword": "men's mental health tips",           "angle": "Five things that genuinely help — not the recycled bullet points."},
-    {"keyword": "feeling worthless and tired",        "angle": "When you feel worthless and exhausted at the same time — read this first."},
-    {"keyword": "panic attacks at night",             "angle": "Why panic attacks ambush you at night — and the technique that breaks the loop."},
-    {"keyword": "how to stop overthinking everything", "angle": "Overthinking is grief in disguise. Here's how to set it down."},
-    {"keyword": "what to do when nothing feels right", "angle": "When nothing feels right and you can't explain why — start here."},
-    {"keyword": "mental exhaustion in men",           "angle": "Mental exhaustion isn't fixed by sleep. It's fixed by feeling heard."}
+    {
+      "keyword": "why do i feel nothing after working so hard",
+      "angle": "Success without satisfaction isn't success—it's a warning sign your nervous system is tapped out."
+    },
+    {
+      "keyword": "how to tell if burnout is actually depression",
+      "angle": "When rest stops working and nothing brings you back, it's time to stop guessing and get real help."
+    },
+    {
+      "keyword": "why does my anxiety come out as anger",
+      "angle": "Rage is often anxiety in a suit—men weren't taught to name fear, so it shows up sideways."
+    },
+    {
+      "keyword": "what is high functioning anxiety in men",
+      "angle": "You're crushing it at work but dying inside—that's not balance, that's borrowed time."
+    },
+    {
+      "keyword": "panic attack symptoms that feel like heart attack",
+      "angle": "Your chest is tight, heart racing—but the ER says you're fine. Now what do you do."
+    },
+    {
+      "keyword": "why do men struggle with emotional numbness",
+      "angle": "Feeling nothing isn't strength—it's what happens when your brain hits the mute button to survive."
+    },
+    {
+      "keyword": "how to recover from emotional burnout as a dad",
+      "angle": "You love your kids but you're running on fumes—here's how to refill without feeling selfish."
+    },
+    {
+      "keyword": "loneliness in sobriety after quitting drinking",
+      "angle": "Sobriety gave you your life back, but now you're sitting with feelings you used to drown."
+    },
+    {
+      "keyword": "depleted dad syndrome symptoms and solutions",
+      "angle": "Being an involved father shouldn't mean losing yourself—but for too many men, it does."
+    },
+    {
+      "keyword": "why does everyone think im fine when im not",
+      "angle": "High-functioning doesn't mean healthy—it just means nobody can see you falling apart yet."
+    },
+    {
+      "keyword": "how to stop feeling like a robot going through motions",
+      "angle": "Autopilot keeps you moving but it's stealing your ability to feel alive in your own life."
+    },
+    {
+      "keyword": "male anxiety symptoms that don't look like worry",
+      "angle": "If you're irritable, restless, or always on edge but never 'anxious,' you might be missing the real issue."
+    },
+    {
+      "keyword": "why do i feel more alone after becoming a father",
+      "angle": "Fatherhood is supposed to bring connection—so why do so many dads feel more isolated than ever."
+    },
+    {
+      "keyword": "why successful men feel empty and unfulfilled",
+      "angle": "You hit the goals, got the money, earned respect—so why does none of it actually matter anymore."
+    },
+    {
+      "keyword": "emotional shutdown in relationships after stress",
+      "angle": "You're not trying to pull away from your partner—your brain just can't hold one more thing right now."
+    },
+    {
+      "keyword": "how to make friends as a man over 35",
+      "angle": "Your college buddies moved away, work friends aren't real friends—and now you're starting from scratch."
+    },
+    {
+      "keyword": "signs you need therapy not just a vacation",
+      "angle": "A weekend off won't fix what months of grinding broke—some problems need more than rest."
+    },
+    {
+      "keyword": "why does sobriety feel harder than addiction sometimes",
+      "angle": "You did the hardest part and got clean—now the loneliness and boredom are testing you differently."
+    },
+    {
+      "keyword": "how to stop overthinking every conversation you had",
+      "angle": "Replaying what you said on a loop isn't reflection—it's anxiety dressed up as self-improvement."
+    },
+    {
+      "keyword": "physical symptoms of chronic stress in men",
+      "angle": "Headaches, tight chest, bad sleep—your body's been screaming for months but you kept pushing through."
+    },
+    {
+      "keyword": "what does quiet burnout look like in fathers",
+      "angle": "Not every breakdown is loud—some dads just stop feeling joy and nobody even notices."
+    },
+    {
+      "keyword": "why do i feel guilty for taking time for myself",
+      "angle": "Rest isn't selfish, but if you were raised to always provide, it sure feels that way."
+    },
+    {
+      "keyword": "how to rebuild confidence after mental health breakdown",
+      "angle": "Hitting rock bottom doesn't erase who you are—it just means you're rebuilding on honest ground now."
+    },
+    {
+      "keyword": "male loneliness epidemic why men feel isolated",
+      "angle": "You're surrounded by people but still feel alone—turns out that's not weakness, it's epidemic-level common."
+    }
   ]
 }
