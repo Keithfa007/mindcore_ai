@@ -19,5 +19,15 @@
       "dalle": 6,
       "dalle_softened": 1
     }
+  },
+  {
+    "timestamp": "2026-05-01T08:05:38.038660+00:00",
+    "keyword": "mental exhaustion in men",
+    "format": "comparison",
+    "hook": "Tired vs. Mentally Exhausted: 5 Brutal Differences",
+    "job_id": "f874d079711e4f8489f57f202b16f5b2",
+    "image_sources": {
+      "dalle": 7
+    }
   }
 ]
