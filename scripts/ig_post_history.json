@@ -29,5 +29,15 @@
     "image_sources": {
       "dalle": 7
     }
+  },
+  {
+    "timestamp": "2026-05-02T09:55:21.275045+00:00",
+    "keyword": "why does everyone think im fine when im not",
+    "format": "myth_bust",
+    "hook": "5 Myths About High-Functioning Depression",
+    "job_id": "2f4a7e0f86684bab89c1741a55181e28",
+    "image_sources": {
+      "dalle": 7
+    }
   }
 ]
