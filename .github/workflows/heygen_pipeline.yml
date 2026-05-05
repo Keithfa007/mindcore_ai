@@ -1,9 +1,10 @@
 name: MindCore AI -- Video Pipeline
 
-# Schedule: Tue/Wed/Thu 17:00 UTC | Mon/Fri/Sun cinematic
-# Format: avatar (HeyGen) OR cinematic (Fish Audio TTS + Pexels B-roll)
-# Claude decides format per topic automatically
-# Ratio: 9 content videos : 1 ad (every 10th run is an ad)
+# Schedule: 6 days/week at 17:00 UTC (19:00 Malta)
+# Mon/Fri/Sun = Cinematic (Fish Audio + Pexels B-roll)
+# Tue/Wed/Thu = Avatar (HeyGen full body motion)
+# Ad rule: every OTHER Sunday is an ad video (even ISO week number)
+# All other runs = content
 on:
   workflow_dispatch:
     inputs:
@@ -16,13 +17,13 @@ on:
         required: false
         default: ""
       force_format:
-        description: "Force format: 'avatar' or 'cinematic' (blank = Claude decides)"
+        description: "Force format: 'avatar' or 'cinematic' (blank = automatic)"
         required: false
         default: ""
 
   schedule:
-    - cron: "0 17 * * 2,3,4"   # Tue/Wed/Thu 17:00 UTC -- avatar (Claude may pick cinematic)
-    - cron: "0 17 * * 1,5,0"   # Mon/Fri/Sun 17:00 UTC -- cinematic preferred
+    - cron: "0 17 * * 2,3,4"   # Tue/Wed/Thu -- avatar
+    - cron: "0 17 * * 1,5,0"   # Mon/Fri/Sun -- cinematic
 
 jobs:
   generate-video:
@@ -49,27 +50,29 @@ jobs:
 
       - name: Show run info
         run: |
-          RUN_NUM=${{ github.run_number }}
-          MOD=$((RUN_NUM % 10))
+          DAY=$(date +%u)   # 1=Mon 2=Tue ... 7=Sun
+          WEEK=$(date +%V)  # ISO week number
           FORCE="${{ github.event.inputs.force_mode }}"
           FORMAT="${{ github.event.inputs.force_format }}"
-          DAY=$(date +%u)  # 1=Mon 7=Sun
+
           if [ -n "$FORCE" ]; then
             echo "Mode: FORCED to $FORCE"
-          elif [ "$MOD" -eq 0 ]; then
-            echo "Mode: AD (run #$RUN_NUM) -- 1 in 10"
+          elif [ "$DAY" = "7" ] && [ $((WEEK % 2)) -eq 0 ]; then
+            echo "Mode: AD (even-week Sunday -- week $WEEK)"
           else
-            echo "Mode: CONTENT (run #$RUN_NUM) -- $((10 - MOD)) until next ad"
+            echo "Mode: CONTENT"
           fi
+
           if [ -n "$FORMAT" ]; then
             echo "Format: FORCED to $FORMAT"
           elif [ "$DAY" = "1" ] || [ "$DAY" = "5" ] || [ "$DAY" = "7" ]; then
-            echo "Format: CINEMATIC preferred (Mon/Fri/Sun scheduled run)"
+            echo "Format: CINEMATIC (Mon/Fri/Sun)"
           else
-            echo "Format: Claude decides (avatar or cinematic)"
+            echo "Format: AVATAR (Tue/Wed/Thu)"
           fi
+
           echo "Platforms: TikTok + Facebook + Instagram + YouTube"
-          echo "Schedule: Tue/Wed/Thu 17:00 UTC (avatar) | Mon/Fri/Sun 17:00 UTC (cinematic)"
+          echo "Schedule: 6 days/week | 17:00 UTC"
 
       - name: Run Video Pipeline
         env:
@@ -84,22 +87,38 @@ jobs:
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
           FORMAT="${{ github.event.inputs.force_format }}"
-          DAY=$(date +%u)  # 1=Mon 5=Fri 7=Sun
+          DAY=$(date +%u)
+          WEEK=$(date +%V)
 
-          # force_format=cinematic always implies content mode
-          # (cinematic videos are never ads)
+          # --- Mode (content vs ad) ---
+          # Manual override takes priority
           if [ "$FORCE" = "ad" ]; then
+            export GITHUB_RUN_NUMBER=10   # triggers ad mode in pipeline
+          elif [ "$FORCE" = "content" ]; then
+            export GITHUB_RUN_NUMBER=1
+          elif [ "$DAY" = "7" ] && [ $((WEEK % 2)) -eq 0 ]; then
+            # Even-week Sunday = ad
             export GITHUB_RUN_NUMBER=10
-          elif [ "$FORCE" = "content" ] || [ "$FORMAT" = "cinematic" ]; then
+            echo "  Auto-set: AD (even-week Sunday, week $WEEK)"
+          else
+            # Every other run = content
             export GITHUB_RUN_NUMBER=1
           fi
 
-          # Mon/Fri/Sun scheduled runs: set FORCE_FORMAT=cinematic
-          # unless already overridden by workflow input
-          if [ -z "$FORMAT" ] && { [ "$DAY" = "1" ] || [ "$DAY" = "5" ] || [ "$DAY" = "7" ]; }; then
+          # --- Format (cinematic vs avatar) ---
+          # force_format=cinematic always implies content
+          if [ "$FORMAT" = "cinematic" ]; then
             export FORCE_FORMAT=cinematic
-            export GITHUB_RUN_NUMBER=1  # cinematic days are always content
-            echo "  Auto-set: FORCE_FORMAT=cinematic (Mon/Fri/Sun run)"
+            export GITHUB_RUN_NUMBER=1
+          elif [ -z "$FORMAT" ]; then
+            # Auto: Mon/Fri/Sun = cinematic (unless it's an ad Sunday)
+            if { [ "$DAY" = "1" ] || [ "$DAY" = "5" ]; } || \
+               { [ "$DAY" = "7" ] && [ $((WEEK % 2)) -ne 0 ]; }; then
+              export FORCE_FORMAT=cinematic
+              export GITHUB_RUN_NUMBER=1
+              echo "  Auto-set: FORCE_FORMAT=cinematic (Mon/Fri or content Sunday)"
+            fi
+            # Ad Sunday keeps avatar (ads are always avatar)
           fi
 
           python video_pipeline/heygen_pipeline.py
@@ -129,10 +148,12 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## MindCore AI Video Pipeline v5.0" >> $GITHUB_STEP_SUMMARY
+          DAY=$(date +%u)
+          WEEK=$(date +%V)
+          echo "## MindCore AI Video Pipeline v5.4" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }} | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
-          echo "**Formats:** Avatar (Tue/Wed/Thu) | Cinematic (Mon/Fri/Sun)" >> $GITHUB_STEP_SUMMARY
-          echo "**Schedule:** 6 days/week at 17:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
+          echo "**Formats:** Avatar (Tue/Wed/Thu + ad Sundays) | Cinematic (Mon/Fri + content Sundays)" >> $GITHUB_STEP_SUMMARY
+          echo "**Ads:** Every other Sunday (even ISO week) | All other runs = content" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
