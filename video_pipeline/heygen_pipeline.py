@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.3
+MindCore AI Video Pipeline v5.4
 =================================
+
+CHANGES (v5.4):
+  Script variety: 6 rotating structures, 20 content angles, banned opening
+  phrases, last-5-topic history passed to Claude to force fresh content.
+  Visual variety: 5 visual style categories with specific Pexels query
+  templates. Claude picks a style per topic for cinematic videos, ensuring
+  each video looks visually distinct.
 
 CHANGES (v5.3):
   Update Fish Audio voice ID to 4ea1bbc944004fa89ea67021d86129ef.
@@ -14,7 +21,6 @@ CHANGES (v5.1):
 
 CHANGES (v5.0):
   Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
-  Claude decides avatar vs cinematic per topic automatically.
 
 CHANGES (v4.7):
   YouTube Shorts as 4th platform. Brand hashtag enforcement.
@@ -56,9 +62,10 @@ UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
 FISH_AUDIO_VOICE_ID = "4ea1bbc944004fa89ea67021d86129ef"
 
-OUTPUT_DIR   = Path("video_pipeline/output")
-PIPELINE_DIR = Path("video_pipeline")
-SCENE_ORDER  = ["hook", "problem", "story", "solution_cta"]
+OUTPUT_DIR        = Path("video_pipeline/output")
+PIPELINE_DIR      = Path("video_pipeline")
+TOPIC_HISTORY_PATH = PIPELINE_DIR / "topic_history.json"
+SCENE_ORDER       = ["hook", "problem", "story", "solution_cta"]
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -74,8 +81,49 @@ YOUTUBE_TITLE_LIMIT       = 100
 YOUTUBE_DESCRIPTION_LIMIT = 5000
 
 PEXELS_CLIPS_PER_VIDEO = 5
+TOPIC_HISTORY_SIZE     = 5   # pass last N topics to Claude to avoid repetition
 
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
+
+# Script structures that rotate each run
+SCRIPT_STRUCTURES = {
+    "hook_contradiction": (
+        "HOOK: Start with a statement that contradicts common belief about this topic. "
+        "One punchy sentence that makes men stop scrolling."
+    ),
+    "hook_statistic": (
+        "HOOK: Lead with a surprising or little-known statistic or research fact "
+        "directly related to the topic. Make it land hard."
+    ),
+    "hook_question": (
+        "HOOK: Open with a direct, uncomfortable question that the target man is "
+        "already asking himself silently. No fluff."
+    ),
+    "hook_confession": (
+        "HOOK: Begin as if confessing something most men are ashamed to admit. "
+        "First person, raw, immediate. Do NOT start with 'I remember sitting...' "
+        "or any birthday party / barbecue memory."
+    ),
+    "hook_observation": (
+        "HOOK: Open with a sharp observation about male behaviour that feels "
+        "uncomfortably accurate. Like something a close friend would say."
+    ),
+    "hook_provocation": (
+        "HOOK: Start with a mildly provocative or counterintuitive claim that "
+        "challenges what men think they know about themselves."
+    ),
+}
+
+# Opening phrases that are banned — too repetitive across runs
+BANNED_OPENINGS = [
+    "I remember sitting at my kid",
+    "I remember sitting at a",
+    "I was sitting at",
+    "There I was, sitting",
+    "Picture this",
+    "Let me tell you something",
+    "Here's the thing",
+]
 
 WORD_LIMITS_AD = {"hook": 8, "problem": 12, "story": 14, "solution_cta": 14}
 WORD_TARGETS_CONTENT = {
@@ -110,6 +158,25 @@ BANNED_PHRASE_REPLACEMENTS = [
 
 
 # ---------------------------------------------------------------------------
+# Topic history -- tracks last N topics to force script variety
+# ---------------------------------------------------------------------------
+
+def load_topic_history() -> list:
+    if TOPIC_HISTORY_PATH.exists():
+        try:
+            return json.loads(TOPIC_HISTORY_PATH.read_text())
+        except Exception:
+            return []
+    return []
+
+
+def save_topic_history(history: list, new_topic: str):
+    history.append(new_topic)
+    history = history[-TOPIC_HISTORY_SIZE:]   # keep only last N
+    TOPIC_HISTORY_PATH.write_text(json.dumps(history, indent=2))
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -139,9 +206,19 @@ def load_app_facts() -> dict:
 def load_niche_keywords() -> dict:
     path = PIPELINE_DIR / "niche_keywords.json"
     if not path.exists():
-        return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"]}
+        return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"],
+                "visual_styles": []}
     with open(path) as f:
         return json.load(f)
+
+
+def pick_visual_style(keywords: dict) -> dict:
+    """Pick a random visual style from niche_keywords.json visual_styles."""
+    styles = keywords.get("visual_styles", [])
+    if not styles:
+        return {"name": "atmospheric_solitude",
+                "query_templates": ["lonely man window", "empty room", "man thinking alone"]}
+    return random.choice(styles)
 
 
 def ensure_brand_hashtag(text: str) -> str:
@@ -333,7 +410,8 @@ def research_keyword_candidates_from_serp(seeds: list) -> list:
     return candidates
 
 
-def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic) -> dict:
+def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic,
+                                   topic_history: list, visual_style: dict) -> dict:
     if not candidates:
         raise ValueError("No SERP candidates to rank")
 
@@ -345,10 +423,21 @@ def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic
         for i, c in enumerate(sorted_cands[:50])
     ])
 
+    history_note = ""
+    if topic_history:
+        history_note = f"\nRECENT TOPICS (DO NOT REPEAT these or anything closely related):\n"
+        history_note += "\n".join(f"  - {t}" for t in topic_history)
+        history_note += "\nPick something DIFFERENT in theme, emotion, and angle.\n"
+
+    # Visual style query templates for Pexels
+    style_templates = visual_style.get("query_templates", ["lonely man window", "empty road", "man thinking"])
+    style_name      = visual_style.get("name", "atmospheric_solitude")
+    style_desc      = visual_style.get("description", "moody atmospheric")
+
     prompt = f"""Expert in SEO for men's mental health, recovery, sobriety on TikTok/Reels/YouTube Shorts.
 
 Below are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.
-
+{history_note}
 FAVOUR SHORT-TAIL emotional phrases (sobriety anger, men crying, emotional numbness).
 Big health brands ignore raw emotional short phrases -- individual creators own this space.
 
@@ -359,14 +448,15 @@ SCORING:
 4. Video potential: powerful in 30-45 seconds?
 
 FORMAT DECISION:
-Also decide the best VIDEO FORMAT for this topic:
-- "cinematic": abstract emotional states, reflective/introspective, atmospheric topics
-  (e.g. loneliness, grief, numbness, 3am anxiety, emptiness, silent depression)
-- "avatar": direct advice, personal testimony, how-to, practical tips
+- "cinematic": abstract emotional states, reflective/introspective, atmospheric
+  (loneliness, grief, numbness, 3am anxiety, emptiness, silent depression)
+- "avatar": direct advice, testimony, how-to, practical tips
 
-For cinematic, also provide 3-4 Pexels search queries for relevant B-roll.
-Think atmospheric, emotional: "lonely man window rain", "empty road fog",
-"man sitting alone cafe", "sunrise empty street".
+VISUAL STYLE FOR THIS RUN: {style_name} ({style_desc})
+If you choose cinematic, generate Pexels queries in THIS visual style.
+Style query examples: {style_templates}
+Generate 4 specific, varied Pexels search queries that match this style AND the chosen topic.
+Make each query distinct — different shots, not just the same scene rephrased.
 
 CANDIDATES (short-tail first):
 {candidate_list}
@@ -381,10 +471,11 @@ Return ONLY valid JSON, no markdown:
   "why": "one sentence: why this beats the others",
   "source": "autocomplete|people_also_ask|related_search|organic_title",
   "format": "avatar|cinematic",
-  "pexels_queries": ["query 1", "query 2", "query 3"]
+  "visual_style": "{style_name}",
+  "pexels_queries": ["specific query 1", "specific query 2", "specific query 3", "specific query 4"]
 }}"""
 
-    result = _call_claude_raw(prompt, client, max_tokens=600)
+    result = _call_claude_raw(prompt, client, max_tokens=700)
 
     if FORCE_FORMAT in ("avatar", "cinematic"):
         result["format"] = FORCE_FORMAT
@@ -393,15 +484,21 @@ Return ONLY valid JSON, no markdown:
         print(f"  Format: {result.get('format', 'avatar').upper()} (Claude's choice)")
 
     print(f"  Winner: '{result.get('keyword')}' [{result.get('tail_type','?')} | {result.get('competition_signal','?')} competition]")
+    print(f"  Visual style: {result.get('visual_style', style_name)}")
     print(f"  Reason: {result.get('why', '')}")
     return result
 
 
-def fetch_trending_topic_claude_fallback(seeds: list, client: anthropic.Anthropic) -> dict:
+def fetch_trending_topic_claude_fallback(seeds: list, topic_history: list,
+                                          visual_style: dict, client: anthropic.Anthropic) -> dict:
     seed = random.choice(seeds)
+    history_note = ""
+    if topic_history:
+        history_note = f"AVOID these recent topics: {', '.join(topic_history)}. Pick something different.\n"
+    style_name = visual_style.get("name", "atmospheric_solitude")
     prompt = f"""SEO expert for men's mental health, recovery, anxiety, sobriety.
 Generate ONE keyword/topic for a short video. Related to: "{seed}"
-Return ONLY valid JSON:
+{history_note}Return ONLY valid JSON:
 {{
   "topic": "the keyword or question",
   "question": "how a man types this into Google",
@@ -411,7 +508,8 @@ Return ONLY valid JSON:
   "why": "one sentence rationale",
   "source": "claude_generated",
   "format": "avatar",
-  "pexels_queries": ["lonely man", "man thinking", "empty room"]
+  "visual_style": "{style_name}",
+  "pexels_queries": ["lonely man window", "man thinking dark room", "empty street night", "person silhouette fog"]
 }}"""
     result = _call_claude_raw(prompt, client, max_tokens=400)
     if FORCE_FORMAT in ("avatar", "cinematic"):
@@ -420,14 +518,21 @@ Return ONLY valid JSON:
 
 
 def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
-    keywords = load_niche_keywords()
-    seeds    = keywords["seed_queries"]
+    keywords     = load_niche_keywords()
+    seeds        = keywords["seed_queries"]
+    topic_history = load_topic_history()
+    visual_style  = pick_visual_style(keywords)
+
+    print(f"  Visual style this run: {visual_style.get('name')} ({visual_style.get('description')})")
+    if topic_history:
+        print(f"  Avoiding recent topics: {topic_history}")
+
     if SERP_API_KEY:
         print(f"  Keyword research: {SERP_SEEDS_PER_RUN} Google + {AUTOCOMPLETE_SEEDS_PER_RUN} autocomplete...")
         try:
             candidates = research_keyword_candidates_from_serp(seeds)
             if candidates:
-                topic = rank_and_select_keyword_claude(candidates, client)
+                topic = rank_and_select_keyword_claude(candidates, client, topic_history, visual_style)
                 topic["source"] = f"serp_{topic.get('source', 'research')}"
                 (OUTPUT_DIR / "keyword_research.json").write_text(json.dumps(
                     {"run": GITHUB_RUN_NUMBER, "candidates": candidates, "winner": topic}, indent=2
@@ -436,8 +541,9 @@ def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
             print("  No candidates -- falling back to Claude")
         except Exception as e:
             print(f"  SERP research failed ({e}) -- falling back to Claude")
+
     print("  Generating topic with Claude (no SERP)...")
-    topic = fetch_trending_topic_claude_fallback(seeds, client)
+    topic = fetch_trending_topic_claude_fallback(seeds, topic_history, visual_style, client)
     print(f"  Topic: {topic.get('topic')} [{topic.get('tail_type','?')} | {topic.get('competition_signal','?')}]")
     return topic
 
@@ -454,6 +560,10 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
     angles    = load_niche_keywords().get("content_angles", [])
     angle     = random.choice(angles) if angles else "real talk"
     fmt       = topic.get("format", "avatar")
+
+    # Pick a random script structure this run
+    structure_key  = random.choice(list(SCRIPT_STRUCTURES.keys()))
+    structure_note = SCRIPT_STRUCTURES[structure_key]
 
     lo_hook,  hi_hook  = WORD_TARGETS_CONTENT["hook"]
     lo_prob,  hi_prob  = WORD_TARGETS_CONTENT["problem"]
@@ -472,6 +582,8 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
         if fmt == "cinematic" else ""
     )
 
+    banned_openings_str = "\n".join(f"  - \"{p}...\"" for p in BANNED_OPENINGS)
+
     prompt = f"""Top-performing TikTok/Reels creator, men's mental health + recovery space.
 Content gets millions of views -- RAW TRUTH, REAL STORIES men 35+ recognise.{cinematic_note}
 
@@ -483,7 +595,10 @@ KEYWORD GUIDANCE: {kw_guidance}
 CONTENT ANGLE: {angle}
 COMPETITION: {topic.get('competition_signal', 'unknown')}
 
-FORMAT: Hook -> Problem/Truth -> Real Story or Insight -> Genuine Takeaway
+SCRIPT STRUCTURE FOR THIS VIDEO:
+{structure_note}
+The remaining 3 scenes follow: Problem/Truth -> Real Story or Insight -> Genuine Takeaway.
+
 AUDIENCE: Men 35+, struggling silently with anxiety, depression, isolation, recovery.
 
 PURE VALUE -- NOT AN AD:
@@ -493,6 +608,10 @@ PURE VALUE -- NOT AN AD:
 WRITE FOR THE EAR:
 - Natural spoken language, contractions, conversational connectors
 - "And the thing is...", "Because here's what nobody tells you...", "The truth is..."
+- Each scene flows naturally into the next.
+
+BANNED OPENING PHRASES (do not start the hook with any of these):
+{banned_openings_str}
 
 WORD COUNTS:
 - hook: {lo_hook}-{hi_hook} words
@@ -509,6 +628,7 @@ Return ONLY valid JSON, no markdown:
   "topic": "{topic['topic']}",
   "seo_keyword": "{keyword}",
   "render_format": "{fmt}",
+  "script_structure": "{structure_key}",
   "hook": {{"voiceover": "..."}},
   "problem": {{"voiceover": "..."}},
   "story": {{"voiceover": "..."}},
@@ -535,6 +655,7 @@ Return ONLY valid JSON:
   "topic": "MindCore AI -- your AI mental wellness companion",
   "seo_keyword": "AI mental health coach for men",
   "render_format": "avatar",
+  "script_structure": "hook_provocation",
   "hook": {{"voiceover": "..."}},
   "problem": {{"voiceover": "..."}},
   "story": {{"voiceover": "..."}},
@@ -1059,20 +1180,22 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
     topic        = script.get("topic", "N/A")
     seo_kw       = script.get("seo_keyword", "N/A")
     video_type   = script.get("video_type", mode).upper()
+    structure    = script.get("script_structure", "unknown")
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
   Run #{run_number} | {generated_at}
 ================================================================================
-  Video type  : {video_type}
-  Format      : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
-  Topic       : {topic}
-  SEO keyword : {seo_kw}
-  Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Output      : 1080x1920 9:16 30fps
-  Platforms   : TikTok + Facebook + Instagram Reels + YouTube Shorts
-  Schedule    : Avatar: Tue/Wed/Thu | Cinematic: Mon/Fri/Sun | 17:00 UTC
+  Video type      : {video_type}
+  Format          : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
+  Script structure: {structure}
+  Topic           : {topic}
+  SEO keyword     : {seo_kw}
+  Est. length     : ~{est_duration}s ({total_words} words @ ~130 wpm)
+  Output          : 1080x1920 9:16 30fps
+  Platforms       : TikTok + Facebook + Instagram Reels + YouTube Shorts
+  Schedule        : Avatar: Tue/Wed/Thu | Cinematic: Mon/Fri/Sun | 17:00 UTC
 ================================================================================
 
 FULL SCRIPT
@@ -1100,9 +1223,10 @@ def main():
     mode   = determine_mode()
     cfg    = load_config()
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
+    upload_enabled  = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
+    topic_history   = load_topic_history()
 
-    print(f"\n  MindCore AI Video Pipeline v5.3")
+    print(f"\n  MindCore AI Video Pipeline v5.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels B-roll)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
@@ -1124,6 +1248,8 @@ def main():
         script         = sanitize_script(script)
         render_fmt     = topic.get("format", "avatar")
         pexels_queries = topic.get("pexels_queries", ["man thinking", "empty road", "lonely man"])
+        # Save topic to history after successful script generation
+        save_topic_history(topic_history, topic.get("keyword", topic.get("topic", "")))
 
     script["render_format"] = render_fmt
     (OUTPUT_DIR / "script.json").write_text(json.dumps(script, indent=2))
@@ -1131,11 +1257,12 @@ def main():
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
 
-    print(f"\n  Video type:    {script.get('video_type', mode)}")
-    print(f"  Topic:         {script.get('topic', 'N/A')}")
-    print(f"  SEO kw:        {script.get('seo_keyword', 'N/A')}")
-    print(f"  Render format: {render_fmt.upper()}")
-    print(f"  Est. length:   ~{est_duration}s ({total_words} words)")
+    print(f"\n  Video type:     {script.get('video_type', mode)}")
+    print(f"  Topic:          {script.get('topic', 'N/A')}")
+    print(f"  SEO kw:         {script.get('seo_keyword', 'N/A')}")
+    print(f"  Script structure: {script.get('script_structure', 'N/A')}")
+    print(f"  Render format:  {render_fmt.upper()}")
+    print(f"  Est. length:    ~{est_duration}s ({total_words} words)")
     if render_fmt == "cinematic":
         print(f"  Pexels queries: {pexels_queries}")
     if est_duration > 60:
@@ -1179,7 +1306,7 @@ def main():
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps({"skipped": True}, indent=2))
 
     print(f"\n  DONE")
-    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s")
+    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s | Structure: {script.get('script_structure','?')}")
     print(f"  Video:  {final_path}")
     if upload_enabled:
         print("  Posted: TikTok + Facebook + Instagram + YouTube")
