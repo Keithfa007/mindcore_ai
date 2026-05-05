@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.5
+MindCore AI Video Pipeline v5.6
 =================================
 
+CHANGES (v5.6):
+  Background music for cinematic videos. MP3 tracks stored in
+  video_pipeline/music/ are picked randomly each cinematic run and
+  mixed at 15% volume under the voiceover using FFmpeg amix filter.
+  Short tracks loop seamlessly. Avatar videos unaffected.
+  If no tracks found, pipeline continues without music.
+
 CHANGES (v5.5):
-  Ad script completely rewritten. Content-first approach: hook and problem
-  are pure education (no selling), story introduces MindCore AI naturally
-  as the solution with specific features, CTA is a soft genuine recommendation.
-  8 rotating ad pain points so each ad covers a different aspect of the app.
-  Word limits relaxed to match content video targets — ads are now full-length
-  videos, not 20-second hard sells.
+  Informational ad scripts with 8 rotating pain points.
+  Ads are now full-length content-first videos, not 20-second hard sells.
 
 CHANGES (v5.4):
   Script variety: 6 rotating structures, 20 content angles, topic history.
@@ -69,8 +72,13 @@ FISH_AUDIO_VOICE_ID = "4ea1bbc944004fa89ea67021d86129ef"
 
 OUTPUT_DIR         = Path("video_pipeline/output")
 PIPELINE_DIR       = Path("video_pipeline")
+MUSIC_DIR          = PIPELINE_DIR / "music"
 TOPIC_HISTORY_PATH = PIPELINE_DIR / "topic_history.json"
 SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
+
+# Background music volume relative to voiceover (0.15 = 15%)
+# Sits behind the voice without competing — audible but not distracting
+MUSIC_VOLUME = 0.15
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -133,7 +141,7 @@ BANNED_OPENINGS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Ad topics -- rotate so each ad covers a different pain point / use case
+# Ad topics
 # ---------------------------------------------------------------------------
 
 AD_TOPICS = [
@@ -179,7 +187,6 @@ AD_TOPICS = [
     },
 ]
 
-# Word targets — ads now match content video length, not a 20-second hard sell
 WORD_TARGETS_AD = {
     "hook":         (10, 15),
     "problem":      (30, 40),
@@ -223,6 +230,24 @@ def load_topic_history() -> list:
 def save_topic_history(history: list, new_topic: str):
     history.append(new_topic)
     TOPIC_HISTORY_PATH.write_text(json.dumps(history[-TOPIC_HISTORY_SIZE:], indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Music track selection
+# ---------------------------------------------------------------------------
+
+def pick_music_track() -> str | None:
+    """Pick a random MP3 from video_pipeline/music/. Returns None if folder empty."""
+    if not MUSIC_DIR.exists():
+        print("  Music folder not found -- no background music")
+        return None
+    tracks = [t for t in MUSIC_DIR.glob("*.mp3") if t.stem != ".gitkeep"]
+    if not tracks:
+        print("  No music tracks in video_pipeline/music/ -- no background music")
+        return None
+    chosen = random.choice(tracks)
+    print(f"  Background music: {chosen.name}")
+    return str(chosen)
 
 
 # ---------------------------------------------------------------------------
@@ -655,12 +680,6 @@ Return ONLY valid JSON, no markdown:
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    """
-    Informational, content-first ad script.
-    Hook and Problem are pure education -- no selling.
-    Story introduces MindCore AI naturally as the solution with specific detail.
-    CTA is a soft, genuine recommendation -- not a hard sell.
-    """
     ad_topic      = random.choice(AD_TOPICS)
     structure_key = random.choice(list(SCRIPT_STRUCTURES.keys()))
 
@@ -821,7 +840,7 @@ def render_avatar_video(script_text: str, cfg: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# CINEMATIC PATH -- Fish Audio TTS + Pexels B-roll + FFmpeg
+# CINEMATIC PATH -- Fish Audio TTS + Pexels B-roll + FFmpeg + Background Music
 # ---------------------------------------------------------------------------
 
 def generate_fish_audio_tts(script_text: str, output_path: str) -> str:
@@ -937,11 +956,21 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
     return output_path
 
 
-def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str):
+def assemble_cinematic_video(clip_paths: list, audio_path: str,
+                              output_path: str, music_path: str = None):
+    """
+    Concat processed clips, mix voiceover, optionally mix background music.
+
+    music_path: path to an MP3 file to mix at MUSIC_VOLUME level.
+    If None, video is assembled without background music.
+    Music loops automatically if shorter than the video.
+    """
     audio_duration = get_audio_duration(audio_path)
     n              = len(clip_paths)
     clip_duration  = audio_duration / n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s total")
+    if music_path:
+        print(f"  Background music: {Path(music_path).name} @ {int(MUSIC_VOLUME * 100)}% volume")
 
     processed = []
     for i, raw_path in enumerate(clip_paths):
@@ -969,6 +998,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
                 pass
         processed = reprocessed
 
+    # Concat silent video
     concat_file = OUTPUT_DIR / "concat.txt"
     with open(concat_file, "w") as f:
         for p in processed:
@@ -987,24 +1017,51 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
         raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
     print(f"  Concat complete: {audio_duration:.1f}s")
 
-    cmd = [
-        "ffmpeg",
-        "-i", concat_video,
-        "-i", audio_path,
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        "-c:v", "copy",
-        "-c:a", "aac", "-b:a", "192k",
-        "-t", str(audio_duration),
-        "-y", output_path
-    ]
+    # Mix audio: voiceover only, or voiceover + background music
+    if music_path:
+        # -stream_loop -1 on music so it loops if shorter than voiceover
+        # amix blends voiceover (full volume) + music (MUSIC_VOLUME)
+        # duration=first stops when voiceover ends
+        cmd = [
+            "ffmpeg",
+            "-i", concat_video,
+            "-i", audio_path,
+            "-stream_loop", "-1", "-i", music_path,
+            "-filter_complex",
+            f"[2:a]volume={MUSIC_VOLUME}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[aout]",
+            "-map", "0:v",
+            "-map", "[aout]",
+            "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", str(audio_duration),
+            "-y", output_path
+        ]
+    else:
+        cmd = [
+            "ffmpeg",
+            "-i", concat_video,
+            "-i", audio_path,
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", str(audio_duration),
+            "-y", output_path
+        ]
+
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
+        # If music mixing fails, fall back to voiceover only
+        if music_path:
+            print(f"  WARNING: music mix failed ({result.stderr[-200:]}) -- retrying without music")
+            assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None)
+            return
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
 
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
-    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB)")
+    music_note = f" + music" if music_path else ""
+    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{music_note})")
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
@@ -1032,9 +1089,12 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
     if not raw_clip_paths:
         raise RuntimeError("All clip downloads failed")
 
+    # Pick a random background music track (None if no tracks available)
+    music_path = pick_music_track()
+
     print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
-    assemble_cinematic_video(raw_clip_paths, audio_path, final_path)
+    assemble_cinematic_video(raw_clip_paths, audio_path, final_path, music_path)
     return final_path
 
 
@@ -1252,6 +1312,8 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
     structure    = script.get("script_structure", "unknown")
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
+    music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
+    music_note   = f"{len(music_tracks)} tracks" if music_tracks else "none (add MP3s to video_pipeline/music/)"
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
   Run #{run_number} | {generated_at}
@@ -1263,6 +1325,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   SEO keyword     : {seo_kw}
   Est. length     : ~{est_duration}s ({total_words} words @ ~130 wpm)
   Output          : 1080x1920 9:16 30fps
+  Music library   : {music_note}
   Platforms       : TikTok + Facebook + Instagram Reels + YouTube Shorts
   Schedule        : Avatar: Tue/Wed/Thu + ad Sundays | Cinematic: Mon/Fri + content Sundays
 ================================================================================
@@ -1295,12 +1358,15 @@ def main():
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
     topic_history  = load_topic_history()
 
-    print(f"\n  MindCore AI Video Pipeline v5.5")
+    music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
+
+    print(f"\n  MindCore AI Video Pipeline v5.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels B-roll)")
+    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
+    print(f"  Music library: {len(music_tracks)} track(s) in video_pipeline/music/")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT:
         print(f"  Format override: {FORCE_FORMAT.upper()}")
@@ -1308,7 +1374,6 @@ def main():
 
     print("\n  Generating script...")
     if mode == "ad":
-        # Ad: informational content-first, soft CTA at the end
         script         = generate_ad_script(load_app_facts(), client)
         script         = sanitize_script(script)
         render_fmt     = "avatar"
