@@ -1,8 +1,8 @@
-name: MindCore AI -- HeyGen Avatar Pipeline
+name: MindCore AI -- Video Pipeline
 
 # Schedule: Tue/Wed/Thu 17:00 UTC
-# Data: best days for mental health/wellness content (Sprout Social 2026, 2B+ engagements)
-# 17:00 UTC = 12:00 EST / 18:00 CET -- peak scroll window for men 35+
+# Format: avatar (HeyGen) OR cinematic (Fish Audio TTS + Pexels B-roll)
+# Claude decides format per topic automatically
 # Ratio: 9 content videos : 1 ad (every 10th run is an ad)
 on:
   workflow_dispatch:
@@ -15,15 +15,19 @@ on:
         description: "Force mode: 'content' or 'ad' (blank = automatic)"
         required: false
         default: ""
+      force_format:
+        description: "Force format: 'avatar' or 'cinematic' (blank = Claude decides)"
+        required: false
+        default: ""
 
   schedule:
     - cron: "0 17 * * 2,3,4"
 
 jobs:
   generate-video:
-    name: Generate + Upload Avatar Video (KF | 9:16)
+    name: Generate + Upload Video (Avatar or Cinematic | 9:16)
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repo
@@ -47,6 +51,7 @@ jobs:
           RUN_NUM=${{ github.run_number }}
           MOD=$((RUN_NUM % 10))
           FORCE="${{ github.event.inputs.force_mode }}"
+          FORMAT="${{ github.event.inputs.force_format }}"
           if [ -n "$FORCE" ]; then
             echo "Mode: FORCED to $FORCE"
           elif [ "$MOD" -eq 0 ]; then
@@ -54,16 +59,24 @@ jobs:
           else
             echo "Mode: CONTENT (run #$RUN_NUM) -- $((10 - MOD)) until next ad"
           fi
-          echo "Auto-upload: TikTok + Facebook via Upload-Post"
+          if [ -n "$FORMAT" ]; then
+            echo "Format: FORCED to $FORMAT"
+          else
+            echo "Format: Claude decides (avatar or cinematic)"
+          fi
+          echo "Platforms: TikTok + Facebook + Instagram + YouTube"
           echo "Schedule: Tue/Wed/Thu 17:00 UTC"
 
-      - name: Run HeyGen Pipeline
+      - name: Run Video Pipeline
         env:
           ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
           HEYGEN_API_KEY:       ${{ secrets.HEYGEN_API_KEY }}
+          FISH_AUDIO_API_KEY:   ${{ secrets.FISH_AUDIO_API_KEY }}
+          PEXELS_API_KEY:       ${{ secrets.PEXELS_API_KEY }}
           SERP_API_KEY:         ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
+          FORCE_FORMAT:         ${{ github.event.inputs.force_format }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
           if [ "$FORCE" = "ad" ]; then
@@ -77,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: mindcore-heygen-run-${{ github.run_number }}
+          name: mindcore-video-run-${{ github.run_number }}
           path: |
             video_pipeline/output/mindcore_ai_video.mp4
             video_pipeline/output/upload_guide.txt
@@ -91,23 +104,24 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: mindcore-heygen-debug-${{ github.run_number }}
+          name: mindcore-debug-run-${{ github.run_number }}
           path: video_pipeline/output/
           retention-days: 7
 
       - name: Write job summary
         if: always()
         run: |
-          echo "## MindCore AI -- HeyGen Avatar Pipeline v4.3" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Avatar:** KF | **Auto-upload:** TikTok + Facebook" >> $GITHUB_STEP_SUMMARY
-          echo "**Format:** 9:16 vertical | **Keywords:** SERP short+long tail" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI Video Pipeline v5.0" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
+          echo "**Format:** Avatar (HeyGen) or Cinematic (Fish Audio + Pexels) -- Claude decides" >> $GITHUB_STEP_SUMMARY
           echo "**Schedule:** Tue/Wed/Thu 17:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
+            FMT=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('render_format','avatar').upper())" 2>/dev/null || echo "AVATAR")
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
-            echo "**Type:** $TYPE | **Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
+            echo "**Type:** $TYPE | **Format:** $FMT | **Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
             echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output/upload_result.json" ]; then
