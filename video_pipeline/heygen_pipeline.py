@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.7
+MindCore AI Video Pipeline v5.8
 =================================
 
+CHANGES (v5.8):
+  Shuffled look queue: all 25 avatar looks are used in random order before
+  any look repeats. Works like a shuffled deck of cards — when the deck
+  runs out it reshuffles and starts again. Stored in look_queue.json.
+  Replaces the simple last_look.json no-repeat approach.
+
 CHANGES (v5.7):
-  25 avatar looks (14 new added). No-repeat look selection: pipeline
-  tracks last used look in last_look.json and always picks a different
-  one next run, guaranteeing visual variety across every avatar video.
+  25 avatar looks (14 new added). No-repeat look selection.
 
 CHANGES (v5.6):
   Background music for cinematic videos at 15% volume via FFmpeg amix.
-  15 royalty-free tracks in video_pipeline/music/.
 
 CHANGES (v5.5):
   Informational ad scripts with 8 rotating pain points.
@@ -21,12 +24,6 @@ CHANGES (v5.4):
 
 CHANGES (v5.3):
   Update Fish Audio voice ID to 4ea1bbc944004fa89ea67021d86129ef.
-
-CHANGES (v5.2):
-  Remove burned-in subtitles from cinematic videos.
-
-CHANGES (v5.1):
-  Fix cinematic video length: clips loop to fill full duration.
 
 CHANGES (v5.0):
   Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
@@ -71,12 +68,12 @@ UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
 FISH_AUDIO_VOICE_ID = "4ea1bbc944004fa89ea67021d86129ef"
 
-OUTPUT_DIR         = Path("video_pipeline/output")
-PIPELINE_DIR       = Path("video_pipeline")
-MUSIC_DIR          = PIPELINE_DIR / "music"
-TOPIC_HISTORY_PATH = PIPELINE_DIR / "topic_history.json"
-LAST_LOOK_PATH     = PIPELINE_DIR / "last_look.json"   # tracks last avatar look used
-SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
+OUTPUT_DIR          = Path("video_pipeline/output")
+PIPELINE_DIR        = Path("video_pipeline")
+MUSIC_DIR           = PIPELINE_DIR / "music"
+TOPIC_HISTORY_PATH  = PIPELINE_DIR / "topic_history.json"
+LOOK_QUEUE_PATH     = PIPELINE_DIR / "look_queue.json"   # shuffled deck of looks
+SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
 
 MUSIC_VOLUME = 0.15
 
@@ -233,22 +230,34 @@ def save_topic_history(history: list, new_topic: str):
 
 
 # ---------------------------------------------------------------------------
-# Avatar look tracking -- no-repeat selection
+# Avatar look queue -- shuffled deck rotation
 # ---------------------------------------------------------------------------
 
-def load_last_look() -> str | None:
-    """Return the look ID used in the previous avatar run, or None."""
-    if LAST_LOOK_PATH.exists():
+def load_look_queue(all_looks: list) -> list:
+    """
+    Load the remaining look queue from disk.
+    If empty, exhausted, or missing: build a fresh shuffled deck of all looks.
+    Also filters out any looks that are no longer in the config.
+    """
+    if LOOK_QUEUE_PATH.exists():
         try:
-            return json.loads(LAST_LOOK_PATH.read_text()).get("look_id")
+            queue = json.loads(LOOK_QUEUE_PATH.read_text())
+            # Keep only looks still in the config
+            queue = [l for l in queue if l in all_looks]
+            if queue:
+                return queue
         except Exception:
-            return None
-    return None
+            pass
+
+    # Build a fresh shuffled deck
+    deck = all_looks[:]
+    random.shuffle(deck)
+    print(f"  Look queue: new shuffled deck of {len(deck)} looks")
+    return deck
 
 
-def save_last_look(look_id: str):
-    """Persist the chosen look ID so the next run can avoid it."""
-    LAST_LOOK_PATH.write_text(json.dumps({"look_id": look_id}, indent=2))
+def save_look_queue(queue: list):
+    LOOK_QUEUE_PATH.write_text(json.dumps(queue, indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -283,26 +292,25 @@ def load_config() -> dict:
 
 def pick_avatar_look(cfg: dict) -> str:
     """
-    Pick a random avatar look, guaranteed to be different from the last run.
-    Tracks last used look in video_pipeline/last_look.json.
-    With 25 looks, the same look will never appear twice in a row.
+    Pick the next avatar look from the shuffled queue.
+    Works like a deck of cards:
+    - Take the next look from the front of the queue
+    - When the queue empties, reshuffle all 25 looks and start again
+    - Guarantees all 25 looks are used before any repeats
     """
-    looks = cfg.get("avatar_look_ids", [])
-    if not looks:
+    all_looks = cfg.get("avatar_look_ids", [])
+    if not all_looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
 
-    last_look = load_last_look()
+    queue  = load_look_queue(all_looks)
+    chosen = queue.pop(0)           # take from front
+    save_look_queue(queue)          # save remaining queue
 
-    # Exclude the last used look to guarantee variety
-    available = [l for l in looks if l != last_look]
-    if not available:
-        available = looks  # safety fallback if only one look configured
-
-    chosen = random.choice(available)
-    save_last_look(chosen)
-
-    last_note = f"last: {last_look[:8]}..." if last_look else "first run"
-    print(f"  Avatar look: {chosen[:8]}... ({last_note} | {len(looks)} looks total)")
+    remaining = len(queue)
+    if remaining == 0:
+        print(f"  Avatar look: {chosen[:8]}... (deck exhausted — will reshuffle next run | {len(all_looks)} looks total)")
+    else:
+        print(f"  Avatar look: {chosen[:8]}... ({remaining} remaining in deck | {len(all_looks)} looks total)")
     return chosen
 
 
@@ -1376,10 +1384,11 @@ def main():
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
     topic_history  = load_topic_history()
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
+    all_looks      = cfg.get("avatar_look_ids", [])
 
-    print(f"\n  MindCore AI Video Pipeline v5.7")
+    print(f"\n  MindCore AI Video Pipeline v5.8")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar looks: {len(cfg.get('avatar_look_ids', []))} | no-repeat selection active")
+    print(f"  Avatar looks: {len(all_looks)} | shuffled deck rotation (25 unique before any repeat)")
     print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
