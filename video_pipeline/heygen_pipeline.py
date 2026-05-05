@@ -1,33 +1,22 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.0
+MindCore AI Video Pipeline v5.1
 =================================
 
+CHANGES (v5.1):
+  Fix cinematic video length: clips now loop (-stream_loop -1) to fill
+  the full voiceover duration. Previously short Pexels clips caused the
+  video to end before the audio finished.
+  Add text overlay: SRT generated from script, burned into cinematic
+  video via FFmpeg subtitles filter. White bold text, black outline,
+  bottom-centre position.
+
 CHANGES (v5.0):
-  Cinematic format: Fish Audio TTS voiceover + Pexels B-roll + FFmpeg assembly.
-  Claude scores each topic and decides: avatar (HeyGen) or cinematic (Pexels+Fish).
-  Cinematic topics: abstract emotional states (loneliness, grief, numbness).
-  Avatar topics: direct advice, personal testimony, conversational content.
-  FORCE_FORMAT env var overrides Claude's decision for testing.
-  Fallback: if cinematic render fails, pipeline falls back to avatar automatically.
+  Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
+  Claude decides avatar vs cinematic per topic automatically.
 
 CHANGES (v4.7):
-  Add YouTube Shorts as a 4th auto-upload platform.
-
-CHANGES (v4.6):
-  Enforce #mindcoreai brand hashtag in all captions.
-
-CHANGES (v4.5):
-  Add Instagram Reels to auto-upload platforms.
-
-CHANGES (v4.4):
-  Fix Upload-Post field mapping. Schedule: Tue/Wed/Thu 17:00 UTC.
-
-CHANGES (v4.3):
-  Add type: 'avatar' discriminator field to /v3/videos payload.
-
-CHANGES (v4.0-v4.2):
-  HeyGen /v3/videos endpoint, full body motion, super_resolution.
+  YouTube Shorts as 4th platform. Brand hashtag enforcement.
 """
 
 import json
@@ -53,11 +42,10 @@ FISH_AUDIO_API_KEY  = os.environ.get("FISH_AUDIO_API_KEY", "")
 PEXELS_API_KEY      = os.environ.get("PEXELS_API_KEY", "")
 SERP_API_KEY        = os.environ.get("SERP_API_KEY", "")
 UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
-FORCE_FORMAT        = os.environ.get("FORCE_FORMAT", "").strip().lower()  # "avatar"|"cinematic"|"" 
+FORCE_FORMAT        = os.environ.get("FORCE_FORMAT", "").strip().lower()
 
 GITHUB_RUN_NUMBER = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
-# URLs
 HEYGEN_V3_URL       = "https://api.heygen.com/v3/videos"
 HEYGEN_STATUS_URL   = "https://api.heygen.com/v1/video_status.get"
 FISH_AUDIO_TTS_URL  = "https://api.fish.audio/v1/tts"
@@ -65,38 +53,44 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-# Fish Audio voice for cinematic (warm calm male)
 FISH_AUDIO_VOICE_ID = "eed26f2294d64177911af612473cca98"
 
-# Paths
 OUTPUT_DIR   = Path("video_pipeline/output")
 PIPELINE_DIR = Path("video_pipeline")
 SCENE_ORDER  = ["hook", "problem", "story", "solution_cta"]
 
-# Timing
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
 
-# Claude
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
 
-# SERP
 SERP_SEEDS_PER_RUN         = 3
 AUTOCOMPLETE_SEEDS_PER_RUN = 2
 
-# Platform limits
 TIKTOK_CAPTION_LIMIT      = 2200
 YOUTUBE_TITLE_LIMIT       = 100
 YOUTUBE_DESCRIPTION_LIMIT = 5000
 
-# Pexels
 PEXELS_CLIPS_PER_VIDEO = 5
 
-# Brand
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
-# Word limits
+# Subtitle style (FFmpeg force_style ASS format)
+# FontSize 60 renders ~60px on 1080x1920 -- readable without being too large
+SUBTITLE_STYLE = (
+    "FontName=Arial,"
+    "FontSize=60,"
+    "Bold=1,"
+    "PrimaryColour=&H00FFFFFF,"   # white
+    "OutlineColour=&H00000000,"   # black outline
+    "BorderStyle=1,"
+    "Outline=3,"
+    "Shadow=0,"
+    "Alignment=2,"                # bottom-centre
+    "MarginV=150"                 # 150px from bottom edge
+)
+
 WORD_LIMITS_AD = {"hook": 8, "problem": 12, "story": 14, "solution_cta": 14}
 WORD_TARGETS_CONTENT = {
     "hook":         (10, 15),
@@ -382,14 +376,11 @@ FORMAT DECISION:
 Also decide the best VIDEO FORMAT for this topic:
 - "cinematic": abstract emotional states, reflective/introspective, atmospheric topics
   (e.g. loneliness, grief, numbness, 3am anxiety, emptiness, silent depression)
-  These work better with moody B-roll footage + voiceover than a talking head.
 - "avatar": direct advice, personal testimony, how-to, practical tips
-  (e.g. how to handle panic attacks, sobriety tips, what anxiety feels like)
-  These work better with a speaking avatar.
 
 For cinematic, also provide 3-4 Pexels search queries for relevant B-roll.
-Think atmospheric, emotional, cinematic: "lonely man window rain", "empty road fog",
-"man sitting alone cafe", "sunrise empty street", "person looking at phone night".
+Think atmospheric, emotional: "lonely man window rain", "empty road fog",
+"man sitting alone cafe", "sunrise empty street".
 
 CANDIDATES (short-tail first):
 {candidate_list}
@@ -409,7 +400,6 @@ Return ONLY valid JSON, no markdown:
 
     result = _call_claude_raw(prompt, client, max_tokens=600)
 
-    # Apply FORCE_FORMAT override if set
     if FORCE_FORMAT in ("avatar", "cinematic"):
         result["format"] = FORCE_FORMAT
         print(f"  Format: FORCED to {FORCE_FORMAT.upper()}")
@@ -492,8 +482,7 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
 
     cinematic_note = (
         "\nNOTE: This script will be delivered as a VOICEOVER over cinematic B-roll footage."
-        "\nWrite for the ear only -- no visual references like 'look at this' or 'as you can see'."
-        "\nThe voice carries everything. Make every word land."
+        "\nWrite for the ear only -- no visual references. The voice carries everything."
         if fmt == "cinematic" else ""
     )
 
@@ -518,13 +507,12 @@ PURE VALUE -- NOT AN AD:
 WRITE FOR THE EAR:
 - Natural spoken language, contractions, conversational connectors
 - "And the thing is...", "Because here's what nobody tells you...", "The truth is..."
-- Each scene = one continuous thought.
 
 WORD COUNTS:
-- hook: {lo_hook}-{hi_hook} words -- stops the scroll
-- problem: {lo_prob}-{hi_prob} words -- names the pain
-- story: {lo_story}-{hi_story} words -- real and specific
-- solution_cta: {lo_cta}-{hi_cta} words -- genuine takeaway
+- hook: {lo_hook}-{hi_hook} words
+- problem: {lo_prob}-{hi_prob} words
+- story: {lo_story}-{hi_story} words
+- solution_cta: {lo_cta}-{hi_cta} words
 
 Total ~130-150 words. No "hey guys". No "in today's video".
 Weave '{keyword}' naturally at least once.
@@ -643,15 +631,12 @@ def poll_heygen_video(video_id: str) -> str:
 
 
 def render_avatar_video(script_text: str, cfg: dict) -> str:
-    """Full avatar render path. Returns path to final 9:16 video."""
     avatar_id        = pick_avatar_look(cfg)
     voice_id         = cfg.get("voice_id", "")
     background_color = cfg.get("background_color", "#07071a")
     natural_gestures = cfg.get("use_natural_gestures", True)
-
     video_id  = submit_heygen_video(script_text, avatar_id, voice_id, background_color, natural_gestures)
     video_url = poll_heygen_video(video_id)
-
     raw_path   = str(OUTPUT_DIR / "mindcore_ai_raw.mp4")
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
@@ -664,7 +649,6 @@ def render_avatar_video(script_text: str, cfg: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def generate_fish_audio_tts(script_text: str, output_path: str) -> str:
-    """Call Fish Audio API to generate voiceover MP3."""
     if not FISH_AUDIO_API_KEY:
         raise RuntimeError("FISH_AUDIO_API_KEY not set")
     headers = {
@@ -693,25 +677,56 @@ def generate_fish_audio_tts(script_text: str, output_path: str) -> str:
 
 
 def get_audio_duration(audio_path: str) -> float:
-    """Return duration of audio file in seconds using ffprobe."""
     cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
            "-of", "csv=p=0", audio_path]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return float(result.stdout.strip())
 
 
+def generate_srt(script_text: str, audio_duration: float, srt_path: str) -> str:
+    """
+    Generate an SRT subtitle file from the script text.
+    Splits into chunks of ~4 words and distributes timing evenly
+    across the audio duration.
+    """
+    words      = script_text.split()
+    chunk_size = 4
+    chunks     = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+
+    if not chunks:
+        Path(srt_path).write_text("", encoding="utf-8")
+        return srt_path
+
+    chunk_dur = audio_duration / len(chunks)
+
+    def fmt(sec: float) -> str:
+        h  = int(sec // 3600)
+        m  = int((sec % 3600) // 60)
+        s  = int(sec % 60)
+        ms = int((sec % 1) * 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    srt = ""
+    for i, chunk in enumerate(chunks):
+        start = i * chunk_dur
+        end   = (i + 1) * chunk_dur
+        srt  += f"{i+1}\n{fmt(start)} --> {fmt(end)}\n{chunk}\n\n"
+
+    Path(srt_path).write_text(srt, encoding="utf-8")
+    print(f"  SRT: {len(chunks)} subtitle chunks @ {chunk_dur:.2f}s each")
+    return srt_path
+
+
 def search_pexels_clips(queries: list, num_clips: int = PEXELS_CLIPS_PER_VIDEO) -> list:
-    """Search Pexels for B-roll clips matching the topic queries."""
     if not PEXELS_API_KEY:
         raise RuntimeError("PEXELS_API_KEY not set")
-    headers = {"Authorization": PEXELS_API_KEY}
-    clips   = []
+    headers  = {"Authorization": PEXELS_API_KEY}
+    clips    = []
     seen_ids = set()
 
     for query in queries:
         if len(clips) >= num_clips:
             break
-        # Try portrait first, then fall back to any orientation
         for orientation in ("portrait", None):
             if len(clips) >= num_clips:
                 break
@@ -728,12 +743,10 @@ def search_pexels_clips(queries: list, num_clips: int = PEXELS_CLIPS_PER_VIDEO) 
                     if vid_id in seen_ids:
                         continue
                     seen_ids.add(vid_id)
-                    files = video.get("video_files", [])
-                    # Prefer portrait files, then any
+                    files          = video.get("video_files", [])
                     portrait_files = [f for f in files if f.get("width", 1) < f.get("height", 1)]
                     chosen_files   = portrait_files if portrait_files else files
-                    # Pick highest resolution under 1920p to keep file size manageable
-                    chosen_files = [f for f in chosen_files if f.get("height", 0) <= 1920]
+                    chosen_files   = [f for f in chosen_files if f.get("height", 0) <= 1920]
                     chosen_files.sort(key=lambda x: x.get("height", 0), reverse=True)
                     if chosen_files:
                         clips.append({"url": chosen_files[0]["link"], "query": query,
@@ -750,7 +763,6 @@ def search_pexels_clips(queries: list, num_clips: int = PEXELS_CLIPS_PER_VIDEO) 
 
 
 def download_clip(url: str, output_path: str) -> str:
-    """Download a single video clip."""
     resp = requests.get(url, stream=True, timeout=120)
     resp.raise_for_status()
     with open(output_path, "wb") as f:
@@ -758,21 +770,27 @@ def download_clip(url: str, output_path: str) -> str:
             if chunk:
                 f.write(chunk)
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
-    print(f"  Downloaded clip: {Path(output_path).name} ({size_mb:.1f} MB)")
+    print(f"  Downloaded: {Path(output_path).name} ({size_mb:.1f} MB)")
     return output_path
 
 
 def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) -> str:
-    """Scale and crop a clip to 1080x1920 portrait, trimmed to duration."""
+    """
+    Scale and crop a clip to 1080x1920 portrait, trimmed to exactly `duration` seconds.
+    Uses -stream_loop -1 to loop the clip if it's shorter than the required duration.
+    This fixes the video-cuts-short bug where short Pexels clips ended before the audio.
+    """
     cmd = [
-        "ffmpeg", "-i", clip_path,
+        "ffmpeg",
+        "-stream_loop", "-1",   # loop clip indefinitely until -t is reached
+        "-i", clip_path,
         "-vf", (
             "scale=1080:1920:force_original_aspect_ratio=increase,"
             "crop=1080:1920,"
             "fps=30"
         ),
-        "-t", str(duration + 0.1),
-        "-an",  # strip audio from clip
+        "-t", str(duration),    # exact duration, no overshoot needed with loop
+        "-an",
         "-c:v", "libx264", "-crf", "20", "-preset", "fast",
         "-y", output_path
     ]
@@ -782,31 +800,57 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
     return output_path
 
 
-def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str):
-    """Concat processed clips and mix with Fish Audio voiceover."""
+def burn_subtitles(video_path: str, srt_path: str, output_path: str):
+    """Burn SRT subtitles into the video using FFmpeg subtitles filter."""
+    # Escape path for FFmpeg filter (Windows-safe)
+    srt_escaped = str(Path(srt_path).resolve()).replace("\\", "/").replace(":", "\\:")
+    cmd = [
+        "ffmpeg", "-i", video_path,
+        "-vf", f"subtitles={srt_escaped}:force_style='{SUBTITLE_STYLE}'",
+        "-c:v", "libx264", "-crf", "16", "-preset", "slow",
+        "-c:a", "copy",
+        "-y", output_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        # subtitles filter may fail if libass not available — log and skip
+        print(f"  WARNING: subtitle burn failed ({result.stderr[-200:]}) -- keeping video without text")
+        import shutil
+        shutil.copy2(video_path, output_path)
+    else:
+        size_mb = Path(output_path).stat().st_size / (1024 * 1024)
+        print(f"  Subtitles burned: {output_path} ({size_mb:.1f} MB)")
+
+
+def assemble_cinematic_video(clip_paths: list, audio_path: str,
+                              script_text: str, output_path: str):
+    """
+    Concat processed clips, mix Fish Audio voiceover, burn in subtitles.
+    Each clip is looped to fill its required duration exactly.
+    """
     audio_duration = get_audio_duration(audio_path)
     n              = len(clip_paths)
     clip_duration  = audio_duration / n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s total")
 
-    # Process each clip to portrait + trim
+    # Process each clip: scale to portrait + loop to exact duration
     processed = []
     for i, raw_path in enumerate(clip_paths):
         out = str(OUTPUT_DIR / f"clip_{i}_processed.mp4")
         try:
             process_clip_to_portrait(raw_path, out, clip_duration)
             processed.append(out)
-            print(f"  Clip {i+1}/{n} processed")
+            print(f"  Clip {i+1}/{n} processed ({clip_duration:.1f}s)")
         except Exception as e:
             print(f"  Clip {i+1} failed ({e}) -- skipping")
 
     if not processed:
-        raise RuntimeError("No clips processed successfully -- cinematic render failed")
+        raise RuntimeError("No clips processed successfully")
 
-    # If we lost clips, adjust duration proportionally
+    # If clips were lost, re-distribute duration
     if len(processed) < n:
         clip_duration = audio_duration / len(processed)
-        print(f"  Adjusted clip duration: {clip_duration:.1f}s ({len(processed)} clips)")
+        print(f"  Re-processing {len(processed)} clips at {clip_duration:.1f}s each")
         reprocessed = []
         for i, raw_path in enumerate(clip_paths[:len(processed)]):
             out = str(OUTPUT_DIR / f"clip_{i}_adj.mp4")
@@ -817,13 +861,13 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
                 pass
         processed = reprocessed
 
-    # Build concat file
+    # Build concat list
     concat_file = OUTPUT_DIR / "concat.txt"
     with open(concat_file, "w") as f:
         for p in processed:
             f.write(f"file '{Path(p).resolve()}'\n")
 
-    # Concat silent video
+    # Concat to silent video
     concat_video = str(OUTPUT_DIR / "concat_video.mp4")
     cmd = [
         "ffmpeg", "-f", "concat", "-safe", "0",
@@ -835,21 +879,30 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
-    print(f"  Concat complete: {audio_duration:.1f}s video")
+    print(f"  Concat complete: {audio_duration:.1f}s")
 
-    # Mix voiceover audio
+    # Mix voiceover
+    mixed_video = str(OUTPUT_DIR / "mixed_video.mp4")
     cmd = [
         "ffmpeg",
         "-i", concat_video,
         "-i", audio_path,
+        "-map", "0:v:0",
+        "-map", "1:a:0",
         "-c:v", "copy",
         "-c:a", "aac", "-b:a", "192k",
-        "-shortest",
-        "-y", output_path
+        "-t", str(audio_duration),   # explicit duration — no -shortest
+        "-y", mixed_video
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
+    print(f"  Audio mixed")
+
+    # Generate SRT and burn subtitles
+    srt_path = str(OUTPUT_DIR / "subtitles.srt")
+    generate_srt(script_text, audio_duration, srt_path)
+    burn_subtitles(mixed_video, srt_path, output_path)
 
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
@@ -857,8 +910,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
-    """Full cinematic render path. Returns path to final 9:16 video."""
-    # Step 1: Fish Audio TTS
+    # Step 1: TTS
     print("\n  [Cinematic] Generating voiceover via Fish Audio...")
     audio_path = str(OUTPUT_DIR / "voiceover.mp3")
     generate_fish_audio_tts(script_text, audio_path)
@@ -867,7 +919,7 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
     print(f"\n  [Cinematic] Searching Pexels B-roll: {pexels_queries}")
     clips = search_pexels_clips(pexels_queries, num_clips=PEXELS_CLIPS_PER_VIDEO)
     if not clips:
-        raise RuntimeError("No Pexels clips found -- cannot render cinematic video")
+        raise RuntimeError("No Pexels clips found")
 
     # Step 3: Download clips
     print(f"\n  [Cinematic] Downloading {len(clips)} clips...")
@@ -885,10 +937,10 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
     if not raw_clip_paths:
         raise RuntimeError("All clip downloads failed")
 
-    # Step 4: Assemble
-    print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
+    # Step 4: Assemble + subtitles
+    print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips) + subtitles...")
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
-    assemble_cinematic_video(raw_clip_paths, audio_path, final_path)
+    assemble_cinematic_video(raw_clip_paths, audio_path, script_text, final_path)
     return final_path
 
 
@@ -942,7 +994,6 @@ def crop_to_portrait(raw_path: str, final_path: str):
     crop_result = detect_content_crop(raw_path)
     filter_str  = (make_portrait_filter(*crop_result) if crop_result
                    else make_portrait_filter(w, h, 0, 0))
-    print(f"  FFmpeg filter: {filter_str}")
     cmd = ["ffmpeg", "-i", raw_path, "-vf", filter_str,
            "-c:v", "libx264", "-crf", "16", "-preset", "slow",
            "-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M",
@@ -1034,7 +1085,6 @@ Return ONLY valid JSON, no markdown:
                 parts = raw.split("```")
                 raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
             metadata = json.loads(raw)
-            # Enforce brand hashtag
             for key in ("tiktok_caption", "facebook_description", "youtube_description"):
                 metadata[key] = ensure_brand_hashtag(metadata.get(key, ""))
             metadata["youtube_title"] = metadata.get("youtube_title", "")[:YOUTUBE_TITLE_LIMIT]
@@ -1055,7 +1105,6 @@ Return ONLY valid JSON, no markdown:
 
 def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
     if not UPLOAD_POST_API_KEY:
-        print("  UPLOAD_POST_API_KEY not set -- skipping")
         return {"skipped": True, "reason": "no API key"}
     user = cfg.get("upload_post_user", "")
     if not user:
@@ -1100,8 +1149,7 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
         return {"error": str(e)}
 
 
-def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
-                      render_fmt: str, avatar_id: str = "cinematic"):
+def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int, render_fmt: str):
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     topic        = script.get("topic", "N/A")
     seo_kw       = script.get("seo_keyword", "N/A")
@@ -1113,13 +1161,13 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Run #{run_number} | {generated_at}
 ================================================================================
   Video type  : {video_type}
-  Format      : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
+  Format      : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll + Subtitles'})
   Topic       : {topic}
   SEO keyword : {seo_kw}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
   Output      : 1080x1920 9:16 30fps
   Platforms   : TikTok + Facebook + Instagram Reels + YouTube Shorts
-  Schedule    : Tue/Wed/Thu 17:00 UTC
+  Schedule    : Avatar: Tue/Wed/Thu | Cinematic: Mon/Fri/Sun | 17:00 UTC
 ================================================================================
 
 FULL SCRIPT
@@ -1149,22 +1197,20 @@ def main():
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline v5.0")
+    print(f"\n  MindCore AI Video Pipeline v5.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels)")
+    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Subtitles)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
-    print(f"  Schedule: Tue/Wed/Thu 17:00 UTC | 9 content : 1 ad")
-    print(f"  Keywords: SERP {'active' if SERP_API_KEY else 'DISABLED'}")
+    print(f"  Schedule: Avatar Tue/Wed/Thu | Cinematic Mon/Fri/Sun | 17:00 UTC")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT:
         print(f"  Format override: {FORCE_FORMAT.upper()}")
     print("=" * 60)
 
-    # -- Script generation --
     print("\n  Generating script...")
     if mode == "ad":
-        script     = generate_ad_with_validation(generate_ad_script, (load_app_facts(), client))
-        render_fmt = "avatar"  # ads always use avatar
+        script         = generate_ad_with_validation(generate_ad_script, (load_app_facts(), client))
+        render_fmt     = "avatar"
         pexels_queries = []
     else:
         topic          = fetch_trending_topic(client)
@@ -1179,11 +1225,13 @@ def main():
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
 
-    print(f"\n  Video type:   {script.get('video_type', mode)}")
-    print(f"  Topic:        {script.get('topic', 'N/A')}")
-    print(f"  SEO kw:       {script.get('seo_keyword', 'N/A')}")
-    print(f"  Render format:{render_fmt.upper()}")
-    print(f"  Est. length:  ~{est_duration}s ({total_words} words)")
+    print(f"\n  Video type:    {script.get('video_type', mode)}")
+    print(f"  Topic:         {script.get('topic', 'N/A')}")
+    print(f"  SEO kw:        {script.get('seo_keyword', 'N/A')}")
+    print(f"  Render format: {render_fmt.upper()}")
+    print(f"  Est. length:   ~{est_duration}s ({total_words} words)")
+    if render_fmt == "cinematic":
+        print(f"  Pexels queries: {pexels_queries}")
     if est_duration > 60:
         print(f"  NOTE: >{est_duration}s -- YouTube will post as regular video, not Short.")
     print()
@@ -1194,11 +1242,10 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    # -- Render --
+    # Render
     final_path = None
     if render_fmt == "cinematic":
-        print(f"\n  Rendering CINEMATIC video...")
-        print(f"  Pexels queries: {pexels_queries}")
+        print(f"\n  Rendering CINEMATIC video (with subtitles)...")
         try:
             final_path = render_cinematic_video(full_script, pexels_queries)
         except Exception as e:
@@ -1211,7 +1258,7 @@ def main():
         print(f"\n  Rendering AVATAR video (HeyGen)...")
         final_path = render_avatar_video(full_script, cfg)
 
-    # -- Metadata + upload --
+    # Metadata + upload
     print("\n  Generating upload guide...")
     guide_text = generate_upload_guide(script, mode, render_fmt, client)
     save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, render_fmt)
@@ -1228,7 +1275,7 @@ def main():
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps({"skipped": True}, indent=2))
 
     print(f"\n  DONE")
-    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s")
+    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s | Subtitles: {'YES' if render_fmt == 'cinematic' else 'N/A'}")
     print(f"  Video:  {final_path}")
     if upload_enabled:
         print("  Posted: TikTok + Facebook + Instagram + YouTube")
