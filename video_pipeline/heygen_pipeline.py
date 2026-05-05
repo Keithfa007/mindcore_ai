@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.6
+MindCore AI Video Pipeline v5.7
 =================================
 
+CHANGES (v5.7):
+  25 avatar looks (14 new added). No-repeat look selection: pipeline
+  tracks last used look in last_look.json and always picks a different
+  one next run, guaranteeing visual variety across every avatar video.
+
 CHANGES (v5.6):
-  Background music for cinematic videos. MP3 tracks stored in
-  video_pipeline/music/ are picked randomly each cinematic run and
-  mixed at 15% volume under the voiceover using FFmpeg amix filter.
-  Short tracks loop seamlessly. Avatar videos unaffected.
-  If no tracks found, pipeline continues without music.
+  Background music for cinematic videos at 15% volume via FFmpeg amix.
+  15 royalty-free tracks in video_pipeline/music/.
 
 CHANGES (v5.5):
   Informational ad scripts with 8 rotating pain points.
-  Ads are now full-length content-first videos, not 20-second hard sells.
 
 CHANGES (v5.4):
   Script variety: 6 rotating structures, 20 content angles, topic history.
@@ -74,10 +75,9 @@ OUTPUT_DIR         = Path("video_pipeline/output")
 PIPELINE_DIR       = Path("video_pipeline")
 MUSIC_DIR          = PIPELINE_DIR / "music"
 TOPIC_HISTORY_PATH = PIPELINE_DIR / "topic_history.json"
+LAST_LOOK_PATH     = PIPELINE_DIR / "last_look.json"   # tracks last avatar look used
 SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
 
-# Background music volume relative to voiceover (0.15 = 15%)
-# Sits behind the voice without competing — audible but not distracting
 MUSIC_VOLUME = 0.15
 
 POLL_INTERVAL = 15
@@ -99,7 +99,7 @@ TOPIC_HISTORY_SIZE     = 5
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
 # ---------------------------------------------------------------------------
-# Script structures (content videos)
+# Script structures
 # ---------------------------------------------------------------------------
 
 SCRIPT_STRUCTURES = {
@@ -233,11 +233,29 @@ def save_topic_history(history: list, new_topic: str):
 
 
 # ---------------------------------------------------------------------------
+# Avatar look tracking -- no-repeat selection
+# ---------------------------------------------------------------------------
+
+def load_last_look() -> str | None:
+    """Return the look ID used in the previous avatar run, or None."""
+    if LAST_LOOK_PATH.exists():
+        try:
+            return json.loads(LAST_LOOK_PATH.read_text()).get("look_id")
+        except Exception:
+            return None
+    return None
+
+
+def save_last_look(look_id: str):
+    """Persist the chosen look ID so the next run can avoid it."""
+    LAST_LOOK_PATH.write_text(json.dumps({"look_id": look_id}, indent=2))
+
+
+# ---------------------------------------------------------------------------
 # Music track selection
 # ---------------------------------------------------------------------------
 
 def pick_music_track() -> str | None:
-    """Pick a random MP3 from video_pipeline/music/. Returns None if folder empty."""
     if not MUSIC_DIR.exists():
         print("  Music folder not found -- no background music")
         return None
@@ -264,11 +282,27 @@ def load_config() -> dict:
 
 
 def pick_avatar_look(cfg: dict) -> str:
+    """
+    Pick a random avatar look, guaranteed to be different from the last run.
+    Tracks last used look in video_pipeline/last_look.json.
+    With 25 looks, the same look will never appear twice in a row.
+    """
     looks = cfg.get("avatar_look_ids", [])
     if not looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
-    chosen = random.choice(looks)
-    print(f"  Avatar look: {chosen} (1 of {len(looks)} looks)")
+
+    last_look = load_last_look()
+
+    # Exclude the last used look to guarantee variety
+    available = [l for l in looks if l != last_look]
+    if not available:
+        available = looks  # safety fallback if only one look configured
+
+    chosen = random.choice(available)
+    save_last_look(chosen)
+
+    last_note = f"last: {last_look[:8]}..." if last_look else "first run"
+    print(f"  Avatar look: {chosen[:8]}... ({last_note} | {len(looks)} looks total)")
     return chosen
 
 
@@ -958,13 +992,6 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
 
 def assemble_cinematic_video(clip_paths: list, audio_path: str,
                               output_path: str, music_path: str = None):
-    """
-    Concat processed clips, mix voiceover, optionally mix background music.
-
-    music_path: path to an MP3 file to mix at MUSIC_VOLUME level.
-    If None, video is assembled without background music.
-    Music loops automatically if shorter than the video.
-    """
     audio_duration = get_audio_duration(audio_path)
     n              = len(clip_paths)
     clip_duration  = audio_duration / n
@@ -987,7 +1014,6 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
     if len(processed) < n:
         clip_duration = audio_duration / len(processed)
-        print(f"  Re-processing {len(processed)} clips at {clip_duration:.1f}s each")
         reprocessed = []
         for i, raw_path in enumerate(clip_paths[:len(processed)]):
             out = str(OUTPUT_DIR / f"clip_{i}_adj.mp4")
@@ -998,7 +1024,6 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
                 pass
         processed = reprocessed
 
-    # Concat silent video
     concat_file = OUTPUT_DIR / "concat.txt"
     with open(concat_file, "w") as f:
         for p in processed:
@@ -1017,11 +1042,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
         raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
     print(f"  Concat complete: {audio_duration:.1f}s")
 
-    # Mix audio: voiceover only, or voiceover + background music
     if music_path:
-        # -stream_loop -1 on music so it loops if shorter than voiceover
-        # amix blends voiceover (full volume) + music (MUSIC_VOLUME)
-        # duration=first stops when voiceover ends
         cmd = [
             "ffmpeg",
             "-i", concat_video,
@@ -1051,17 +1072,15 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        # If music mixing fails, fall back to voiceover only
         if music_path:
-            print(f"  WARNING: music mix failed ({result.stderr[-200:]}) -- retrying without music")
+            print(f"  WARNING: music mix failed -- retrying without music")
             assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None)
             return
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
 
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
-    music_note = f" + music" if music_path else ""
-    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{music_note})")
+    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{' + music' if music_path else ''})")
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
@@ -1089,7 +1108,6 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
     if not raw_clip_paths:
         raise RuntimeError("All clip downloads failed")
 
-    # Pick a random background music track (None if no tracks available)
     music_path = pick_music_track()
 
     print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
@@ -1313,7 +1331,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
     music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-    music_note   = f"{len(music_tracks)} tracks" if music_tracks else "none (add MP3s to video_pipeline/music/)"
+    music_note   = f"{len(music_tracks)} tracks" if music_tracks else "none"
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
   Run #{run_number} | {generated_at}
@@ -1357,16 +1375,16 @@ def main():
     client        = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
     topic_history  = load_topic_history()
+    music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
 
-    music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-
-    print(f"\n  MindCore AI Video Pipeline v5.6")
+    print(f"\n  MindCore AI Video Pipeline v5.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
+    print(f"  Avatar looks: {len(cfg.get('avatar_look_ids', []))} | no-repeat selection active")
     print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
-    print(f"  Music library: {len(music_tracks)} track(s) in video_pipeline/music/")
+    print(f"  Music library: {len(music_tracks)} track(s)")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT:
         print(f"  Format override: {FORCE_FORMAT.upper()}")
