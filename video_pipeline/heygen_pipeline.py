@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.4
+MindCore AI Video Pipeline v5.5
 =================================
 
+CHANGES (v5.5):
+  Ad script completely rewritten. Content-first approach: hook and problem
+  are pure education (no selling), story introduces MindCore AI naturally
+  as the solution with specific features, CTA is a soft genuine recommendation.
+  8 rotating ad pain points so each ad covers a different aspect of the app.
+  Word limits relaxed to match content video targets — ads are now full-length
+  videos, not 20-second hard sells.
+
 CHANGES (v5.4):
-  Script variety: 6 rotating structures, 20 content angles, banned opening
-  phrases, last-5-topic history passed to Claude to force fresh content.
-  Visual variety: 5 visual style categories with specific Pexels query
-  templates. Claude picks a style per topic for cinematic videos, ensuring
-  each video looks visually distinct.
+  Script variety: 6 rotating structures, 20 content angles, topic history.
+  Visual variety: 5 visual style categories for cinematic B-roll.
 
 CHANGES (v5.3):
   Update Fish Audio voice ID to 4ea1bbc944004fa89ea67021d86129ef.
@@ -62,10 +67,10 @@ UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
 FISH_AUDIO_VOICE_ID = "4ea1bbc944004fa89ea67021d86129ef"
 
-OUTPUT_DIR        = Path("video_pipeline/output")
-PIPELINE_DIR      = Path("video_pipeline")
+OUTPUT_DIR         = Path("video_pipeline/output")
+PIPELINE_DIR       = Path("video_pipeline")
 TOPIC_HISTORY_PATH = PIPELINE_DIR / "topic_history.json"
-SCENE_ORDER       = ["hook", "problem", "story", "solution_cta"]
+SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -81,11 +86,14 @@ YOUTUBE_TITLE_LIMIT       = 100
 YOUTUBE_DESCRIPTION_LIMIT = 5000
 
 PEXELS_CLIPS_PER_VIDEO = 5
-TOPIC_HISTORY_SIZE     = 5   # pass last N topics to Claude to avoid repetition
+TOPIC_HISTORY_SIZE     = 5
 
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
-# Script structures that rotate each run
+# ---------------------------------------------------------------------------
+# Script structures (content videos)
+# ---------------------------------------------------------------------------
+
 SCRIPT_STRUCTURES = {
     "hook_contradiction": (
         "HOOK: Start with a statement that contradicts common belief about this topic. "
@@ -114,7 +122,6 @@ SCRIPT_STRUCTURES = {
     ),
 }
 
-# Opening phrases that are banned — too repetitive across runs
 BANNED_OPENINGS = [
     "I remember sitting at my kid",
     "I remember sitting at a",
@@ -125,7 +132,61 @@ BANNED_OPENINGS = [
     "Here's the thing",
 ]
 
-WORD_LIMITS_AD = {"hook": 8, "problem": 12, "story": 14, "solution_cta": 14}
+# ---------------------------------------------------------------------------
+# Ad topics -- rotate so each ad covers a different pain point / use case
+# ---------------------------------------------------------------------------
+
+AD_TOPICS = [
+    {
+        "pain_point": "talking to yourself at 3am trying to figure out why you can't sleep",
+        "insight":    "Most men don't have a safe space to process what's going on in their head — without judgment, without advice they didn't ask for.",
+        "feature":    "MindCore AI gives you a private, calm space to talk through whatever's keeping you up. It's built for men, available 24/7, and it actually listens.",
+    },
+    {
+        "pain_point": "the anger that comes out of nowhere in recovery",
+        "insight":    "Sobriety doesn't remove your emotions. It removes the thing you were using to numb them. And suddenly all that feeling has nowhere to go.",
+        "feature":    "MindCore AI helps men in recovery understand and process what's underneath the anger — without judgment, without a waiting list.",
+    },
+    {
+        "pain_point": "feeling like no one around you actually gets what you're going through",
+        "insight":    "Men are wired to solve problems, not talk about them. Which means the pain just builds. And eventually it comes out sideways.",
+        "feature":    "MindCore AI is built specifically for men's mental health. No small talk. No generic advice. Just honest, private conversations whenever you need them.",
+    },
+    {
+        "pain_point": "the emotional numbness that creeps in after years of staying strong",
+        "insight":    "Emotional shutdown isn't weakness. It's your brain protecting you from overwhelm. But over time, it cuts you off from everything — the good stuff too.",
+        "feature":    "MindCore AI helps men reconnect with what they're actually feeling, one conversation at a time. It's on Google Play and your first week is free.",
+    },
+    {
+        "pain_point": "anxiety that shows up as irritability and short fuses, not panic attacks",
+        "insight":    "Most men with anxiety don't recognise it as anxiety. It looks like anger, withdrawal, or just constantly feeling on edge for no obvious reason.",
+        "feature":    "MindCore AI understands how anxiety actually shows up in men — and helps you work through it in a way that actually fits how you think.",
+    },
+    {
+        "pain_point": "lying awake wondering if what you're feeling is normal",
+        "insight":    "The number of men silently asking that question every night is staggering. And most of them never ask anyone out loud.",
+        "feature":    "MindCore AI exists for exactly that moment. A private AI mental health companion for men — honest, non-judgmental, available any time.",
+    },
+    {
+        "pain_point": "going through the motions every day but feeling completely disconnected from your own life",
+        "insight":    "That disconnect has a name. And it's more common in men over 35 than almost any other mental health experience. But nobody talks about it.",
+        "feature":    "MindCore AI was built to help men name what they're feeling and start actually dealing with it — privately, on their own terms.",
+    },
+    {
+        "pain_point": "not wanting to burden your family with what's going on in your head",
+        "insight":    "That instinct to protect the people you love can become its own trap. You end up carrying everything alone, and they can tell something's off anyway.",
+        "feature":    "MindCore AI gives you somewhere to put it that isn't your partner, your kids, or your mates. Just you, and a tool that was built for this.",
+    },
+]
+
+# Word targets — ads now match content video length, not a 20-second hard sell
+WORD_TARGETS_AD = {
+    "hook":         (10, 15),
+    "problem":      (30, 40),
+    "story":        (40, 55),
+    "solution_cta": (20, 30),
+}
+
 WORD_TARGETS_CONTENT = {
     "hook":         (10, 15),
     "problem":      (30, 40),
@@ -139,26 +200,15 @@ SEO_KEYWORDS = [
     "sobriety mental wellness app",
 ]
 
-AD_CTA_POOL = [
-    "Try it. Find MindCore AI on Google Play.",
-    "Start your trial. Find us on Google Play.",
-    "Give it a go. Search MindCore AI on Google Play.",
-    "Try it today. MindCore AI on Google Play.",
-    "It's waiting for you. Find MindCore AI on Google Play.",
-    "Take the first step. MindCore AI on Google Play.",
-    "You don't have to do this alone. Try MindCore AI on Google Play.",
-    "Start when you're ready. MindCore AI on Google Play.",
-]
-
 BANNED_PHRASE_REPLACEMENTS = [
     (r"try\s+it\s+for\s+free", "try it"),
-    (r"download\s+now",        "find us on Google Play"),
-    (r"free\s+trial",          "trial"),
+    (r"download\s+now",        "find MindCore AI on Google Play"),
+    (r"free\s+trial",          "free first week"),
 ]
 
 
 # ---------------------------------------------------------------------------
-# Topic history -- tracks last N topics to force script variety
+# Topic history
 # ---------------------------------------------------------------------------
 
 def load_topic_history() -> list:
@@ -172,8 +222,7 @@ def load_topic_history() -> list:
 
 def save_topic_history(history: list, new_topic: str):
     history.append(new_topic)
-    history = history[-TOPIC_HISTORY_SIZE:]   # keep only last N
-    TOPIC_HISTORY_PATH.write_text(json.dumps(history, indent=2))
+    TOPIC_HISTORY_PATH.write_text(json.dumps(history[-TOPIC_HISTORY_SIZE:], indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +262,6 @@ def load_niche_keywords() -> dict:
 
 
 def pick_visual_style(keywords: dict) -> dict:
-    """Pick a random visual style from niche_keywords.json visual_styles."""
     styles = keywords.get("visual_styles", [])
     if not styles:
         return {"name": "atmospheric_solitude",
@@ -246,35 +294,6 @@ def sanitize_script(script: dict) -> dict:
             print(f"  SANITIZED [{scene}]: '{original}' -> '{cleaned}'")
             script[scene]["voiceover"] = cleaned
     return script
-
-
-def validate_ad_word_counts(script: dict) -> tuple:
-    errors = []
-    for scene in SCENE_ORDER:
-        vo = script[scene]["voiceover"]
-        wc = len(vo.split())
-        hi = WORD_LIMITS_AD[scene]
-        if wc > hi:
-            errors.append(f"  [{scene}] {wc} words -- TOO LONG (max {hi}): '{vo}'")
-    return (len(errors) == 0), errors
-
-
-def generate_ad_with_validation(generate_fn, generate_args, max_attempts=3):
-    for attempt in range(1, max_attempts + 1):
-        script = generate_fn(*generate_args)
-        script = sanitize_script(script)
-        passed, errors = validate_ad_word_counts(script)
-        if passed:
-            print(f"  CHECKPOINT PASSED -- all word counts within limits")
-            return script
-        print(f"  CHECKPOINT FAILED (attempt {attempt}/{max_attempts}):")
-        for e in errors:
-            print(e)
-        if attempt < max_attempts:
-            print(f"  Regenerating script...")
-        else:
-            raise RuntimeError(f"Ad exceeded word limits after {max_attempts} attempts.\n" + "\n".join(errors))
-    raise RuntimeError("Unexpected exit from validation loop")
 
 
 def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int = 1000) -> dict:
@@ -429,7 +448,6 @@ def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic
         history_note += "\n".join(f"  - {t}" for t in topic_history)
         history_note += "\nPick something DIFFERENT in theme, emotion, and angle.\n"
 
-    # Visual style query templates for Pexels
     style_templates = visual_style.get("query_templates", ["lonely man window", "empty road", "man thinking"])
     style_name      = visual_style.get("name", "atmospheric_solitude")
     style_desc      = visual_style.get("description", "moody atmospheric")
@@ -456,7 +474,7 @@ VISUAL STYLE FOR THIS RUN: {style_name} ({style_desc})
 If you choose cinematic, generate Pexels queries in THIS visual style.
 Style query examples: {style_templates}
 Generate 4 specific, varied Pexels search queries that match this style AND the chosen topic.
-Make each query distinct — different shots, not just the same scene rephrased.
+Make each query distinct -- different shots, not just the same scene rephrased.
 
 CANDIDATES (short-tail first):
 {candidate_list}
@@ -518,8 +536,8 @@ Generate ONE keyword/topic for a short video. Related to: "{seed}"
 
 
 def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
-    keywords     = load_niche_keywords()
-    seeds        = keywords["seed_queries"]
+    keywords      = load_niche_keywords()
+    seeds         = keywords["seed_queries"]
     topic_history = load_topic_history()
     visual_style  = pick_visual_style(keywords)
 
@@ -561,7 +579,6 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
     angle     = random.choice(angles) if angles else "real talk"
     fmt       = topic.get("format", "avatar")
 
-    # Pick a random script structure this run
     structure_key  = random.choice(list(SCRIPT_STRUCTURES.keys()))
     structure_note = SCRIPT_STRUCTURES[structure_key]
 
@@ -582,7 +599,7 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
         if fmt == "cinematic" else ""
     )
 
-    banned_openings_str = "\n".join(f"  - \"{p}...\"" for p in BANNED_OPENINGS)
+    banned_openings_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
 
     prompt = f"""Top-performing TikTok/Reels creator, men's mental health + recovery space.
 Content gets millions of views -- RAW TRUTH, REAL STORIES men 35+ recognise.{cinematic_note}
@@ -638,30 +655,82 @@ Return ONLY valid JSON, no markdown:
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    cta = random.choice(AD_CTA_POOL)
-    print(f"  Generating APP AD script... CTA: \"{cta}\"")
-    prompt = f"""Performance marketing copywriter for MindCore AI.
-4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
-AUDIENCE: Men 35+, recovery/anxiety/depression/isolation.
-TONE: Raw, honest, brotherly. Not salesy. TARGET: ~20 seconds.
-BANNED: "try it for free" -> "try it", "free trial" -> "trial", "download now" -> "find us on Google Play"
-ABOUT MINDCORE AI: AI mental wellness companion for men, Google Play, free trial, no credit card.
-SOLUTION_CTA MUST END WITH: "{cta}"
-SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
-STRICT WORD COUNT: hook<=8, problem<=12, story<=14, solution_cta<=14
-Return ONLY valid JSON:
+    """
+    Informational, content-first ad script.
+    Hook and Problem are pure education -- no selling.
+    Story introduces MindCore AI naturally as the solution with specific detail.
+    CTA is a soft, genuine recommendation -- not a hard sell.
+    """
+    ad_topic      = random.choice(AD_TOPICS)
+    structure_key = random.choice(list(SCRIPT_STRUCTURES.keys()))
+
+    print(f"  Generating INFORMATIONAL AD script...")
+    print(f"  Pain point: {ad_topic['pain_point'][:65]}...")
+
+    lo_hook,  hi_hook  = WORD_TARGETS_AD["hook"]
+    lo_prob,  hi_prob  = WORD_TARGETS_AD["problem"]
+    lo_story, hi_story = WORD_TARGETS_AD["story"]
+    lo_cta,   hi_cta   = WORD_TARGETS_AD["solution_cta"]
+
+    banned_openings_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
+
+    prompt = f"""Expert men's mental health content creator and performance marketer.
+
+Write an informational, engaging video script for MindCore AI.
+This is an AD but it MUST feel like content for the first two scenes.
+The audience should feel understood and nodding before they realise it's an ad.
+
+STRUCTURE: Hook -> Insight/Truth -> How MindCore AI Helps -> Soft Recommendation
+AUDIENCE: Men 35+, struggling with mental health, anxiety, recovery or emotional numbness.
+TONE: Knowledgeable, warm, honest. Like a trusted friend who found something that actually works.
+LENGTH: ~120-140 words total. A proper, full-length video — not a 20-second pitch.
+
+PAIN POINT FOR THIS AD:
+{ad_topic['pain_point']}
+
+CORE INSIGHT (what the problem/truth scene should convey):
+{ad_topic['insight']}
+
+HOW MINDCORE AI HELPS (what the story scene should convey — be specific):
+{ad_topic['feature']}
+Also mention: private, available 24/7, built for men, on Google Play, free first week.
+
+SCENE RULES:
+- hook: Stops the scroll. No MindCore AI. Pure emotional truth.
+- problem: Expands the insight. No MindCore AI. Just honest, informed content.
+- story: Introduce MindCore AI naturally as the solution.
+  Start with something like "There's a tool built specifically for men called MindCore AI..."
+  Be specific — what does it actually do? How does it help with THIS pain point?
+- solution_cta: One sentence of genuine encouragement + one soft recommendation.
+  Must end with: "Find MindCore AI on Google Play."
+  Make it feel like advice, not an advert.
+
+BANNED: "download now", "try it for free", "free trial"
+BANNED OPENING PHRASES for hook:
+{banned_openings_str}
+
+SCRIPT STRUCTURE FOR HOOK:
+{SCRIPT_STRUCTURES[structure_key]}
+
+WORD COUNTS:
+- hook: {lo_hook}-{hi_hook} words
+- problem: {lo_prob}-{hi_prob} words
+- story: {lo_story}-{hi_story} words
+- solution_cta: {lo_cta}-{hi_cta} words
+
+Return ONLY valid JSON, no markdown:
 {{
   "video_type": "ad",
-  "topic": "MindCore AI -- your AI mental wellness companion",
+  "topic": "{ad_topic['pain_point'][:55]}",
   "seo_keyword": "AI mental health coach for men",
   "render_format": "avatar",
-  "script_structure": "hook_provocation",
+  "script_structure": "{structure_key}",
   "hook": {{"voiceover": "..."}},
   "problem": {{"voiceover": "..."}},
   "story": {{"voiceover": "..."}},
   "solution_cta": {{"voiceover": "..."}}
 }}"""
-    return _call_claude_raw(prompt, client, max_tokens=800)
+    return _call_claude_raw(prompt, client, max_tokens=1200)
 
 
 def build_full_script(script: dict) -> str:
@@ -1195,7 +1264,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Est. length     : ~{est_duration}s ({total_words} words @ ~130 wpm)
   Output          : 1080x1920 9:16 30fps
   Platforms       : TikTok + Facebook + Instagram Reels + YouTube Shorts
-  Schedule        : Avatar: Tue/Wed/Thu | Cinematic: Mon/Fri/Sun | 17:00 UTC
+  Schedule        : Avatar: Tue/Wed/Thu + ad Sundays | Cinematic: Mon/Fri + content Sundays
 ================================================================================
 
 FULL SCRIPT
@@ -1220,17 +1289,17 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "clips").mkdir(exist_ok=True)
 
-    mode   = determine_mode()
-    cfg    = load_config()
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    upload_enabled  = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
-    topic_history   = load_topic_history()
+    mode          = determine_mode()
+    cfg           = load_config()
+    client        = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
+    topic_history  = load_topic_history()
 
-    print(f"\n  MindCore AI Video Pipeline v5.4")
+    print(f"\n  MindCore AI Video Pipeline v5.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels B-roll)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
-    print(f"  Schedule: Avatar Tue/Wed/Thu | Cinematic Mon/Fri/Sun | 17:00 UTC")
+    print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT:
@@ -1239,7 +1308,9 @@ def main():
 
     print("\n  Generating script...")
     if mode == "ad":
-        script         = generate_ad_with_validation(generate_ad_script, (load_app_facts(), client))
+        # Ad: informational content-first, soft CTA at the end
+        script         = generate_ad_script(load_app_facts(), client)
+        script         = sanitize_script(script)
         render_fmt     = "avatar"
         pexels_queries = []
     else:
@@ -1248,7 +1319,6 @@ def main():
         script         = sanitize_script(script)
         render_fmt     = topic.get("format", "avatar")
         pexels_queries = topic.get("pexels_queries", ["man thinking", "empty road", "lonely man"])
-        # Save topic to history after successful script generation
         save_topic_history(topic_history, topic.get("keyword", topic.get("topic", "")))
 
     script["render_format"] = render_fmt
@@ -1257,12 +1327,12 @@ def main():
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
 
-    print(f"\n  Video type:     {script.get('video_type', mode)}")
-    print(f"  Topic:          {script.get('topic', 'N/A')}")
-    print(f"  SEO kw:         {script.get('seo_keyword', 'N/A')}")
+    print(f"\n  Video type:       {script.get('video_type', mode)}")
+    print(f"  Topic:            {script.get('topic', 'N/A')}")
+    print(f"  SEO kw:           {script.get('seo_keyword', 'N/A')}")
     print(f"  Script structure: {script.get('script_structure', 'N/A')}")
-    print(f"  Render format:  {render_fmt.upper()}")
-    print(f"  Est. length:    ~{est_duration}s ({total_words} words)")
+    print(f"  Render format:    {render_fmt.upper()}")
+    print(f"  Est. length:      ~{est_duration}s ({total_words} words)")
     if render_fmt == "cinematic":
         print(f"  Pexels queries: {pexels_queries}")
     if est_duration > 60:
