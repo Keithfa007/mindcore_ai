@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.1
+MindCore AI Video Pipeline v5.2
 =================================
 
+CHANGES (v5.2):
+  Remove burned-in subtitles from cinematic videos.
+  Text overlay suggestions remain in the upload guide as manual instructions.
+
 CHANGES (v5.1):
-  Fix cinematic video length: clips now loop (-stream_loop -1) to fill
-  the full voiceover duration. Previously short Pexels clips caused the
-  video to end before the audio finished.
-  Add text overlay: SRT generated from script, burned into cinematic
-  video via FFmpeg subtitles filter. White bold text, black outline,
-  bottom-centre position.
+  Fix cinematic video length: clips loop (-stream_loop -1) to fill full duration.
 
 CHANGES (v5.0):
   Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
@@ -75,21 +74,6 @@ YOUTUBE_DESCRIPTION_LIMIT = 5000
 PEXELS_CLIPS_PER_VIDEO = 5
 
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
-
-# Subtitle style (FFmpeg force_style ASS format)
-# FontSize 60 renders ~60px on 1080x1920 -- readable without being too large
-SUBTITLE_STYLE = (
-    "FontName=Arial,"
-    "FontSize=60,"
-    "Bold=1,"
-    "PrimaryColour=&H00FFFFFF,"   # white
-    "OutlineColour=&H00000000,"   # black outline
-    "BorderStyle=1,"
-    "Outline=3,"
-    "Shadow=0,"
-    "Alignment=2,"                # bottom-centre
-    "MarginV=150"                 # 150px from bottom edge
-)
 
 WORD_LIMITS_AD = {"hook": 8, "problem": 12, "story": 14, "solution_cta": 14}
 WORD_TARGETS_CONTENT = {
@@ -683,40 +667,6 @@ def get_audio_duration(audio_path: str) -> float:
     return float(result.stdout.strip())
 
 
-def generate_srt(script_text: str, audio_duration: float, srt_path: str) -> str:
-    """
-    Generate an SRT subtitle file from the script text.
-    Splits into chunks of ~4 words and distributes timing evenly
-    across the audio duration.
-    """
-    words      = script_text.split()
-    chunk_size = 4
-    chunks     = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
-
-    if not chunks:
-        Path(srt_path).write_text("", encoding="utf-8")
-        return srt_path
-
-    chunk_dur = audio_duration / len(chunks)
-
-    def fmt(sec: float) -> str:
-        h  = int(sec // 3600)
-        m  = int((sec % 3600) // 60)
-        s  = int(sec % 60)
-        ms = int((sec % 1) * 1000)
-        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-    srt = ""
-    for i, chunk in enumerate(chunks):
-        start = i * chunk_dur
-        end   = (i + 1) * chunk_dur
-        srt  += f"{i+1}\n{fmt(start)} --> {fmt(end)}\n{chunk}\n\n"
-
-    Path(srt_path).write_text(srt, encoding="utf-8")
-    print(f"  SRT: {len(chunks)} subtitle chunks @ {chunk_dur:.2f}s each")
-    return srt_path
-
-
 def search_pexels_clips(queries: list, num_clips: int = PEXELS_CLIPS_PER_VIDEO) -> list:
     if not PEXELS_API_KEY:
         raise RuntimeError("PEXELS_API_KEY not set")
@@ -777,19 +727,18 @@ def download_clip(url: str, output_path: str) -> str:
 def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) -> str:
     """
     Scale and crop a clip to 1080x1920 portrait, trimmed to exactly `duration` seconds.
-    Uses -stream_loop -1 to loop the clip if it's shorter than the required duration.
-    This fixes the video-cuts-short bug where short Pexels clips ended before the audio.
+    Uses -stream_loop -1 to loop clips shorter than the required duration.
     """
     cmd = [
         "ffmpeg",
-        "-stream_loop", "-1",   # loop clip indefinitely until -t is reached
+        "-stream_loop", "-1",
         "-i", clip_path,
         "-vf", (
             "scale=1080:1920:force_original_aspect_ratio=increase,"
             "crop=1080:1920,"
             "fps=30"
         ),
-        "-t", str(duration),    # exact duration, no overshoot needed with loop
+        "-t", str(duration),
         "-an",
         "-c:v", "libx264", "-crf", "20", "-preset", "fast",
         "-y", output_path
@@ -800,40 +749,17 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
     return output_path
 
 
-def burn_subtitles(video_path: str, srt_path: str, output_path: str):
-    """Burn SRT subtitles into the video using FFmpeg subtitles filter."""
-    # Escape path for FFmpeg filter (Windows-safe)
-    srt_escaped = str(Path(srt_path).resolve()).replace("\\", "/").replace(":", "\\:")
-    cmd = [
-        "ffmpeg", "-i", video_path,
-        "-vf", f"subtitles={srt_escaped}:force_style='{SUBTITLE_STYLE}'",
-        "-c:v", "libx264", "-crf", "16", "-preset", "slow",
-        "-c:a", "copy",
-        "-y", output_path
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        # subtitles filter may fail if libass not available — log and skip
-        print(f"  WARNING: subtitle burn failed ({result.stderr[-200:]}) -- keeping video without text")
-        import shutil
-        shutil.copy2(video_path, output_path)
-    else:
-        size_mb = Path(output_path).stat().st_size / (1024 * 1024)
-        print(f"  Subtitles burned: {output_path} ({size_mb:.1f} MB)")
-
-
-def assemble_cinematic_video(clip_paths: list, audio_path: str,
-                              script_text: str, output_path: str):
+def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str):
     """
-    Concat processed clips, mix Fish Audio voiceover, burn in subtitles.
-    Each clip is looped to fill its required duration exactly.
+    Concat processed clips and mix Fish Audio voiceover.
+    Each clip loops to fill its required duration exactly.
+    No burned-in subtitles — text overlay suggestions are in the upload guide.
     """
     audio_duration = get_audio_duration(audio_path)
     n              = len(clip_paths)
     clip_duration  = audio_duration / n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s total")
 
-    # Process each clip: scale to portrait + loop to exact duration
     processed = []
     for i, raw_path in enumerate(clip_paths):
         out = str(OUTPUT_DIR / f"clip_{i}_processed.mp4")
@@ -847,7 +773,6 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
     if not processed:
         raise RuntimeError("No clips processed successfully")
 
-    # If clips were lost, re-distribute duration
     if len(processed) < n:
         clip_duration = audio_duration / len(processed)
         print(f"  Re-processing {len(processed)} clips at {clip_duration:.1f}s each")
@@ -861,13 +786,11 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
                 pass
         processed = reprocessed
 
-    # Build concat list
     concat_file = OUTPUT_DIR / "concat.txt"
     with open(concat_file, "w") as f:
         for p in processed:
             f.write(f"file '{Path(p).resolve()}'\n")
 
-    # Concat to silent video
     concat_video = str(OUTPUT_DIR / "concat_video.mp4")
     cmd = [
         "ffmpeg", "-f", "concat", "-safe", "0",
@@ -881,8 +804,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
         raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
     print(f"  Concat complete: {audio_duration:.1f}s")
 
-    # Mix voiceover
-    mixed_video = str(OUTPUT_DIR / "mixed_video.mp4")
+    # Mix voiceover — output directly to final path
     cmd = [
         "ffmpeg",
         "-i", concat_video,
@@ -891,18 +813,12 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
         "-map", "1:a:0",
         "-c:v", "copy",
         "-c:a", "aac", "-b:a", "192k",
-        "-t", str(audio_duration),   # explicit duration — no -shortest
-        "-y", mixed_video
+        "-t", str(audio_duration),
+        "-y", output_path
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
-    print(f"  Audio mixed")
-
-    # Generate SRT and burn subtitles
-    srt_path = str(OUTPUT_DIR / "subtitles.srt")
-    generate_srt(script_text, audio_duration, srt_path)
-    burn_subtitles(mixed_video, srt_path, output_path)
 
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
@@ -910,18 +826,15 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
-    # Step 1: TTS
     print("\n  [Cinematic] Generating voiceover via Fish Audio...")
     audio_path = str(OUTPUT_DIR / "voiceover.mp3")
     generate_fish_audio_tts(script_text, audio_path)
 
-    # Step 2: Search Pexels
     print(f"\n  [Cinematic] Searching Pexels B-roll: {pexels_queries}")
     clips = search_pexels_clips(pexels_queries, num_clips=PEXELS_CLIPS_PER_VIDEO)
     if not clips:
         raise RuntimeError("No Pexels clips found")
 
-    # Step 3: Download clips
     print(f"\n  [Cinematic] Downloading {len(clips)} clips...")
     clips_dir = OUTPUT_DIR / "clips"
     clips_dir.mkdir(exist_ok=True)
@@ -937,10 +850,9 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
     if not raw_clip_paths:
         raise RuntimeError("All clip downloads failed")
 
-    # Step 4: Assemble + subtitles
-    print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips) + subtitles...")
+    print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
-    assemble_cinematic_video(raw_clip_paths, audio_path, script_text, final_path)
+    assemble_cinematic_video(raw_clip_paths, audio_path, final_path)
     return final_path
 
 
@@ -1027,6 +939,7 @@ FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
 TIKTOK / INSTAGRAM: Caption (keyword-first hook + 8-12 hashtags, max 2200 chars). Include {REQUIRED_BRAND_HASHTAG}.
 FACEBOOK: Title (max 255 chars) + Description (2-3 sentences + question + hashtags). Include {REQUIRED_BRAND_HASHTAG}.
 YOUTUBE SHORTS: Title (max 100 chars) + Description (sentences + mindcoreai.eu link + hashtags + #Shorts) + Tags.
+ON-SCREEN TEXT OVERLAY: 1 punchy line to add manually when posting (e.g. the hook in bold text).
 ALSO: Thumbnail suggestion + A/B hook idea.
 Plain text, clear labels, copy-paste ready."""
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
@@ -1161,7 +1074,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Run #{run_number} | {generated_at}
 ================================================================================
   Video type  : {video_type}
-  Format      : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll + Subtitles'})
+  Format      : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
   Topic       : {topic}
   SEO keyword : {seo_kw}
   Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
@@ -1197,9 +1110,9 @@ def main():
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline v5.1")
+    print(f"\n  MindCore AI Video Pipeline v5.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Subtitles)")
+    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels B-roll)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu | Cinematic Mon/Fri/Sun | 17:00 UTC")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
@@ -1242,10 +1155,9 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    # Render
     final_path = None
     if render_fmt == "cinematic":
-        print(f"\n  Rendering CINEMATIC video (with subtitles)...")
+        print(f"\n  Rendering CINEMATIC video...")
         try:
             final_path = render_cinematic_video(full_script, pexels_queries)
         except Exception as e:
@@ -1258,7 +1170,6 @@ def main():
         print(f"\n  Rendering AVATAR video (HeyGen)...")
         final_path = render_avatar_video(full_script, cfg)
 
-    # Metadata + upload
     print("\n  Generating upload guide...")
     guide_text = generate_upload_guide(script, mode, render_fmt, client)
     save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, render_fmt)
@@ -1275,7 +1186,7 @@ def main():
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps({"skipped": True}, indent=2))
 
     print(f"\n  DONE")
-    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s | Subtitles: {'YES' if render_fmt == 'cinematic' else 'N/A'}")
+    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s")
     print(f"  Video:  {final_path}")
     if upload_enabled:
         print("  Posted: TikTok + Facebook + Instagram + YouTube")
