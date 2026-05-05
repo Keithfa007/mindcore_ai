@@ -14,7 +14,12 @@
     "how to ask for help as a man",
     "men and depression statistics",
     "sobriety mental wellness tips",
-    "AI mental health coach benefits"
+    "AI mental health coach benefits",
+    "anger and anxiety in men",
+    "men isolating themselves",
+    "sober anxiety what to do",
+    "why do i feel empty inside man",
+    "men who bottle up emotions"
   ],
   "content_angles": [
     "little known facts",
@@ -23,6 +28,54 @@
     "what actually works vs what doesnt",
     "the real reason behind",
     "what men need to hear",
-    "science backed truth about"
+    "science backed truth about",
+    "what therapists see every day",
+    "the thing that changed everything",
+    "what nobody tells you when you start recovering",
+    "the silent pattern most men share",
+    "what it actually feels like from the inside",
+    "the moment everything shifted",
+    "what I wish someone had told me",
+    "the question men are afraid to ask",
+    "what the data actually shows",
+    "the hidden cost of staying silent",
+    "what strong men actually do",
+    "the myth most men believe",
+    "what happens when you finally admit it"
+  ],
+  "script_structures": [
+    "hook_contradiction",
+    "hook_statistic",
+    "hook_question",
+    "hook_confession",
+    "hook_observation",
+    "hook_provocation"
+  ],
+  "visual_styles": [
+    {
+      "name": "atmospheric_solitude",
+      "description": "Moody, quiet, introspective",
+      "query_templates": ["man alone window rain", "empty room morning light", "person sitting dark room", "man staring into distance", "solitary figure fog"]
+    },
+    {
+      "name": "nature_metaphor",
+      "description": "Nature as emotional mirror",
+      "query_templates": ["storm clouds timelapse", "ocean waves crashing rocks", "empty road sunrise", "forest fog morning", "rain falling window close up"]
+    },
+    {
+      "name": "urban_solitude",
+      "description": "City loneliness, late night",
+      "query_templates": ["empty street night lights", "man walking alone city", "late night cafe window", "subway train alone", "city rain night bokeh"]
+    },
+    {
+      "name": "abstract_motion",
+      "description": "Abstract, cinematic textures",
+      "query_templates": ["light shadow abstract slow motion", "hands close up thoughtful", "clock ticking close up", "candle flame slow motion", "smoke abstract dark background"]
+    },
+    {
+      "name": "physical_weight",
+      "description": "Body language, heaviness, tension",
+      "query_templates": ["man head in hands stressed", "tired man couch night", "person lying awake night", "man rubbing face exhausted", "slouched figure silhouette"]
+    }
   ]
 }
