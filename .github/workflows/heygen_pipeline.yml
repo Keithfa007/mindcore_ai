@@ -1,6 +1,6 @@
 name: MindCore AI -- Video Pipeline
 
-# Schedule: Tue/Wed/Thu 17:00 UTC
+# Schedule: Tue/Wed/Thu 17:00 UTC | Mon/Fri/Sun cinematic
 # Format: avatar (HeyGen) OR cinematic (Fish Audio TTS + Pexels B-roll)
 # Claude decides format per topic automatically
 # Ratio: 9 content videos : 1 ad (every 10th run is an ad)
@@ -21,7 +21,8 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 17 * * 2,3,4"
+    - cron: "0 17 * * 2,3,4"   # Tue/Wed/Thu 17:00 UTC -- avatar (Claude may pick cinematic)
+    - cron: "0 17 * * 1,5,0"   # Mon/Fri/Sun 17:00 UTC -- cinematic preferred
 
 jobs:
   generate-video:
@@ -52,6 +53,7 @@ jobs:
           MOD=$((RUN_NUM % 10))
           FORCE="${{ github.event.inputs.force_mode }}"
           FORMAT="${{ github.event.inputs.force_format }}"
+          DAY=$(date +%u)  # 1=Mon 7=Sun
           if [ -n "$FORCE" ]; then
             echo "Mode: FORCED to $FORCE"
           elif [ "$MOD" -eq 0 ]; then
@@ -61,11 +63,13 @@ jobs:
           fi
           if [ -n "$FORMAT" ]; then
             echo "Format: FORCED to $FORMAT"
+          elif [ "$DAY" = "1" ] || [ "$DAY" = "5" ] || [ "$DAY" = "7" ]; then
+            echo "Format: CINEMATIC preferred (Mon/Fri/Sun scheduled run)"
           else
             echo "Format: Claude decides (avatar or cinematic)"
           fi
           echo "Platforms: TikTok + Facebook + Instagram + YouTube"
-          echo "Schedule: Tue/Wed/Thu 17:00 UTC"
+          echo "Schedule: Tue/Wed/Thu 17:00 UTC (avatar) | Mon/Fri/Sun 17:00 UTC (cinematic)"
 
       - name: Run Video Pipeline
         env:
@@ -79,11 +83,25 @@ jobs:
           FORCE_FORMAT:         ${{ github.event.inputs.force_format }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
+          FORMAT="${{ github.event.inputs.force_format }}"
+          DAY=$(date +%u)  # 1=Mon 5=Fri 7=Sun
+
+          # force_format=cinematic always implies content mode
+          # (cinematic videos are never ads)
           if [ "$FORCE" = "ad" ]; then
             export GITHUB_RUN_NUMBER=10
-          elif [ "$FORCE" = "content" ]; then
+          elif [ "$FORCE" = "content" ] || [ "$FORMAT" = "cinematic" ]; then
             export GITHUB_RUN_NUMBER=1
           fi
+
+          # Mon/Fri/Sun scheduled runs: set FORCE_FORMAT=cinematic
+          # unless already overridden by workflow input
+          if [ -z "$FORMAT" ] && { [ "$DAY" = "1" ] || [ "$DAY" = "5" ] || [ "$DAY" = "7" ]; }; then
+            export FORCE_FORMAT=cinematic
+            export GITHUB_RUN_NUMBER=1  # cinematic days are always content
+            echo "  Auto-set: FORCE_FORMAT=cinematic (Mon/Fri/Sun run)"
+          fi
+
           python video_pipeline/heygen_pipeline.py
 
       - name: Upload post bundle
@@ -113,8 +131,8 @@ jobs:
         run: |
           echo "## MindCore AI Video Pipeline v5.0" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }} | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
-          echo "**Format:** Avatar (HeyGen) or Cinematic (Fish Audio + Pexels) -- Claude decides" >> $GITHUB_STEP_SUMMARY
-          echo "**Schedule:** Tue/Wed/Thu 17:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
+          echo "**Formats:** Avatar (Tue/Wed/Thu) | Cinematic (Mon/Fri/Sun)" >> $GITHUB_STEP_SUMMARY
+          echo "**Schedule:** 6 days/week at 17:00 UTC | 9 content : 1 ad" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
