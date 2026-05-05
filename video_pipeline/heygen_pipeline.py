@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.2
+MindCore AI Video Pipeline v5.3
 =================================
+
+CHANGES (v5.3):
+  Update Fish Audio voice ID to 4ea1bbc944004fa89ea67021d86129ef.
 
 CHANGES (v5.2):
   Remove burned-in subtitles from cinematic videos.
-  Text overlay suggestions remain in the upload guide as manual instructions.
 
 CHANGES (v5.1):
-  Fix cinematic video length: clips loop (-stream_loop -1) to fill full duration.
+  Fix cinematic video length: clips loop to fill full duration.
 
 CHANGES (v5.0):
   Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
@@ -52,7 +54,7 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-FISH_AUDIO_VOICE_ID = "eed26f2294d64177911af612473cca98"
+FISH_AUDIO_VOICE_ID = "4ea1bbc944004fa89ea67021d86129ef"
 
 OUTPUT_DIR   = Path("video_pipeline/output")
 PIPELINE_DIR = Path("video_pipeline")
@@ -725,10 +727,6 @@ def download_clip(url: str, output_path: str) -> str:
 
 
 def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) -> str:
-    """
-    Scale and crop a clip to 1080x1920 portrait, trimmed to exactly `duration` seconds.
-    Uses -stream_loop -1 to loop clips shorter than the required duration.
-    """
     cmd = [
         "ffmpeg",
         "-stream_loop", "-1",
@@ -750,11 +748,6 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
 
 
 def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str):
-    """
-    Concat processed clips and mix Fish Audio voiceover.
-    Each clip loops to fill its required duration exactly.
-    No burned-in subtitles — text overlay suggestions are in the upload guide.
-    """
     audio_duration = get_audio_duration(audio_path)
     n              = len(clip_paths)
     clip_duration  = audio_duration / n
@@ -804,7 +797,6 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
         raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
     print(f"  Concat complete: {audio_duration:.1f}s")
 
-    # Mix voiceover — output directly to final path
     cmd = [
         "ffmpeg",
         "-i", concat_video,
@@ -1110,11 +1102,12 @@ def main():
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline v5.2")
+    print(f"\n  MindCore AI Video Pipeline v5.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels B-roll)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu | Cinematic Mon/Fri/Sun | 17:00 UTC")
+    print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT:
         print(f"  Format override: {FORCE_FORMAT.upper()}")
