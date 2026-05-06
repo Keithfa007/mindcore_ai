@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.6
+MindCore AI Video Pipeline v5.10
 =================================
 
+CHANGES (v5.10):
+  Lower background music volume further from 8% to 5% (0.05).
+  Music is now very subtle -- atmosphere only, voice dominates fully.
+
+CHANGES (v5.9):
+  Lower background music volume from 15% to 8% (0.08).
+
+CHANGES (v5.8):
+  Shuffled look queue: all 25 avatar looks used in random order before
+  any repeats. Stored in look_queue.json.
+
+CHANGES (v5.7):
+  25 avatar looks (14 new added).
+
 CHANGES (v5.6):
-  Background music for cinematic videos. MP3 tracks stored in
-  video_pipeline/music/ are picked randomly each cinematic run and
-  mixed at 15% volume under the voiceover using FFmpeg amix filter.
-  Short tracks loop seamlessly. Avatar videos unaffected.
-  If no tracks found, pipeline continues without music.
+  Background music for cinematic videos via FFmpeg amix.
 
 CHANGES (v5.5):
   Informational ad scripts with 8 rotating pain points.
-  Ads are now full-length content-first videos, not 20-second hard sells.
 
 CHANGES (v5.4):
   Script variety: 6 rotating structures, 20 content angles, topic history.
@@ -20,12 +29,6 @@ CHANGES (v5.4):
 
 CHANGES (v5.3):
   Update Fish Audio voice ID to 4ea1bbc944004fa89ea67021d86129ef.
-
-CHANGES (v5.2):
-  Remove burned-in subtitles from cinematic videos.
-
-CHANGES (v5.1):
-  Fix cinematic video length: clips loop to fill full duration.
 
 CHANGES (v5.0):
   Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
@@ -70,15 +73,15 @@ UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
 FISH_AUDIO_VOICE_ID = "4ea1bbc944004fa89ea67021d86129ef"
 
-OUTPUT_DIR         = Path("video_pipeline/output")
-PIPELINE_DIR       = Path("video_pipeline")
-MUSIC_DIR          = PIPELINE_DIR / "music"
-TOPIC_HISTORY_PATH = PIPELINE_DIR / "topic_history.json"
-SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
+OUTPUT_DIR          = Path("video_pipeline/output")
+PIPELINE_DIR        = Path("video_pipeline")
+MUSIC_DIR           = PIPELINE_DIR / "music"
+TOPIC_HISTORY_PATH  = PIPELINE_DIR / "topic_history.json"
+LOOK_QUEUE_PATH     = PIPELINE_DIR / "look_queue.json"
+SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
 
-# Background music volume relative to voiceover (0.15 = 15%)
-# Sits behind the voice without competing — audible but not distracting
-MUSIC_VOLUME = 0.15
+# Background music volume -- 5% is very subtle, atmosphere only
+MUSIC_VOLUME = 0.05
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -99,7 +102,7 @@ TOPIC_HISTORY_SIZE     = 5
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
 # ---------------------------------------------------------------------------
-# Script structures (content videos)
+# Script structures
 # ---------------------------------------------------------------------------
 
 SCRIPT_STRUCTURES = {
@@ -147,13 +150,13 @@ BANNED_OPENINGS = [
 AD_TOPICS = [
     {
         "pain_point": "talking to yourself at 3am trying to figure out why you can't sleep",
-        "insight":    "Most men don't have a safe space to process what's going on in their head — without judgment, without advice they didn't ask for.",
+        "insight":    "Most men don't have a safe space to process what's going on in their head -- without judgment, without advice they didn't ask for.",
         "feature":    "MindCore AI gives you a private, calm space to talk through whatever's keeping you up. It's built for men, available 24/7, and it actually listens.",
     },
     {
         "pain_point": "the anger that comes out of nowhere in recovery",
         "insight":    "Sobriety doesn't remove your emotions. It removes the thing you were using to numb them. And suddenly all that feeling has nowhere to go.",
-        "feature":    "MindCore AI helps men in recovery understand and process what's underneath the anger — without judgment, without a waiting list.",
+        "feature":    "MindCore AI helps men in recovery understand and process what's underneath the anger -- without judgment, without a waiting list.",
     },
     {
         "pain_point": "feeling like no one around you actually gets what you're going through",
@@ -162,23 +165,23 @@ AD_TOPICS = [
     },
     {
         "pain_point": "the emotional numbness that creeps in after years of staying strong",
-        "insight":    "Emotional shutdown isn't weakness. It's your brain protecting you from overwhelm. But over time, it cuts you off from everything — the good stuff too.",
+        "insight":    "Emotional shutdown isn't weakness. It's your brain protecting you from overwhelm. But over time, it cuts you off from everything -- the good stuff too.",
         "feature":    "MindCore AI helps men reconnect with what they're actually feeling, one conversation at a time. It's on Google Play and your first week is free.",
     },
     {
         "pain_point": "anxiety that shows up as irritability and short fuses, not panic attacks",
         "insight":    "Most men with anxiety don't recognise it as anxiety. It looks like anger, withdrawal, or just constantly feeling on edge for no obvious reason.",
-        "feature":    "MindCore AI understands how anxiety actually shows up in men — and helps you work through it in a way that actually fits how you think.",
+        "feature":    "MindCore AI understands how anxiety actually shows up in men -- and helps you work through it in a way that actually fits how you think.",
     },
     {
         "pain_point": "lying awake wondering if what you're feeling is normal",
         "insight":    "The number of men silently asking that question every night is staggering. And most of them never ask anyone out loud.",
-        "feature":    "MindCore AI exists for exactly that moment. A private AI mental health companion for men — honest, non-judgmental, available any time.",
+        "feature":    "MindCore AI exists for exactly that moment. A private AI mental health companion for men -- honest, non-judgmental, available any time.",
     },
     {
         "pain_point": "going through the motions every day but feeling completely disconnected from your own life",
         "insight":    "That disconnect has a name. And it's more common in men over 35 than almost any other mental health experience. But nobody talks about it.",
-        "feature":    "MindCore AI was built to help men name what they're feeling and start actually dealing with it — privately, on their own terms.",
+        "feature":    "MindCore AI was built to help men name what they're feeling and start actually dealing with it -- privately, on their own terms.",
     },
     {
         "pain_point": "not wanting to burden your family with what's going on in your head",
@@ -233,11 +236,33 @@ def save_topic_history(history: list, new_topic: str):
 
 
 # ---------------------------------------------------------------------------
+# Avatar look queue -- shuffled deck rotation
+# ---------------------------------------------------------------------------
+
+def load_look_queue(all_looks: list) -> list:
+    if LOOK_QUEUE_PATH.exists():
+        try:
+            queue = json.loads(LOOK_QUEUE_PATH.read_text())
+            queue = [l for l in queue if l in all_looks]
+            if queue:
+                return queue
+        except Exception:
+            pass
+    deck = all_looks[:]
+    random.shuffle(deck)
+    print(f"  Look queue: new shuffled deck of {len(deck)} looks")
+    return deck
+
+
+def save_look_queue(queue: list):
+    LOOK_QUEUE_PATH.write_text(json.dumps(queue, indent=2))
+
+
+# ---------------------------------------------------------------------------
 # Music track selection
 # ---------------------------------------------------------------------------
 
 def pick_music_track() -> str | None:
-    """Pick a random MP3 from video_pipeline/music/. Returns None if folder empty."""
     if not MUSIC_DIR.exists():
         print("  Music folder not found -- no background music")
         return None
@@ -246,7 +271,7 @@ def pick_music_track() -> str | None:
         print("  No music tracks in video_pipeline/music/ -- no background music")
         return None
     chosen = random.choice(tracks)
-    print(f"  Background music: {chosen.name}")
+    print(f"  Background music: {chosen.name} @ {int(MUSIC_VOLUME * 100)}% volume")
     return str(chosen)
 
 
@@ -264,11 +289,21 @@ def load_config() -> dict:
 
 
 def pick_avatar_look(cfg: dict) -> str:
-    looks = cfg.get("avatar_look_ids", [])
-    if not looks:
+    """
+    Pick the next avatar look from the shuffled queue.
+    Works like a deck of cards -- all 25 used before any repeats.
+    """
+    all_looks = cfg.get("avatar_look_ids", [])
+    if not all_looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
-    chosen = random.choice(looks)
-    print(f"  Avatar look: {chosen} (1 of {len(looks)} looks)")
+    queue  = load_look_queue(all_looks)
+    chosen = queue.pop(0)
+    save_look_queue(queue)
+    remaining = len(queue)
+    if remaining == 0:
+        print(f"  Avatar look: {chosen[:8]}... (deck exhausted -- reshuffles next run | {len(all_looks)} total)")
+    else:
+        print(f"  Avatar look: {chosen[:8]}... ({remaining} remaining in deck | {len(all_looks)} total)")
     return chosen
 
 
@@ -702,7 +737,7 @@ The audience should feel understood and nodding before they realise it's an ad.
 STRUCTURE: Hook -> Insight/Truth -> How MindCore AI Helps -> Soft Recommendation
 AUDIENCE: Men 35+, struggling with mental health, anxiety, recovery or emotional numbness.
 TONE: Knowledgeable, warm, honest. Like a trusted friend who found something that actually works.
-LENGTH: ~120-140 words total. A proper, full-length video — not a 20-second pitch.
+LENGTH: ~120-140 words total. A proper, full-length video -- not a 20-second pitch.
 
 PAIN POINT FOR THIS AD:
 {ad_topic['pain_point']}
@@ -710,7 +745,7 @@ PAIN POINT FOR THIS AD:
 CORE INSIGHT (what the problem/truth scene should convey):
 {ad_topic['insight']}
 
-HOW MINDCORE AI HELPS (what the story scene should convey — be specific):
+HOW MINDCORE AI HELPS (what the story scene should convey -- be specific):
 {ad_topic['feature']}
 Also mention: private, available 24/7, built for men, on Google Play, free first week.
 
@@ -719,7 +754,7 @@ SCENE RULES:
 - problem: Expands the insight. No MindCore AI. Just honest, informed content.
 - story: Introduce MindCore AI naturally as the solution.
   Start with something like "There's a tool built specifically for men called MindCore AI..."
-  Be specific — what does it actually do? How does it help with THIS pain point?
+  Be specific -- what does it actually do? How does it help with THIS pain point?
 - solution_cta: One sentence of genuine encouragement + one soft recommendation.
   Must end with: "Find MindCore AI on Google Play."
   Make it feel like advice, not an advert.
@@ -958,13 +993,6 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
 
 def assemble_cinematic_video(clip_paths: list, audio_path: str,
                               output_path: str, music_path: str = None):
-    """
-    Concat processed clips, mix voiceover, optionally mix background music.
-
-    music_path: path to an MP3 file to mix at MUSIC_VOLUME level.
-    If None, video is assembled without background music.
-    Music loops automatically if shorter than the video.
-    """
     audio_duration = get_audio_duration(audio_path)
     n              = len(clip_paths)
     clip_duration  = audio_duration / n
@@ -987,7 +1015,6 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
     if len(processed) < n:
         clip_duration = audio_duration / len(processed)
-        print(f"  Re-processing {len(processed)} clips at {clip_duration:.1f}s each")
         reprocessed = []
         for i, raw_path in enumerate(clip_paths[:len(processed)]):
             out = str(OUTPUT_DIR / f"clip_{i}_adj.mp4")
@@ -998,7 +1025,6 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
                 pass
         processed = reprocessed
 
-    # Concat silent video
     concat_file = OUTPUT_DIR / "concat.txt"
     with open(concat_file, "w") as f:
         for p in processed:
@@ -1017,11 +1043,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
         raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
     print(f"  Concat complete: {audio_duration:.1f}s")
 
-    # Mix audio: voiceover only, or voiceover + background music
     if music_path:
-        # -stream_loop -1 on music so it loops if shorter than voiceover
-        # amix blends voiceover (full volume) + music (MUSIC_VOLUME)
-        # duration=first stops when voiceover ends
         cmd = [
             "ffmpeg",
             "-i", concat_video,
@@ -1051,17 +1073,16 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        # If music mixing fails, fall back to voiceover only
         if music_path:
-            print(f"  WARNING: music mix failed ({result.stderr[-200:]}) -- retrying without music")
+            print(f"  WARNING: music mix failed -- retrying without music")
             assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None)
             return
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
 
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
-    music_note = f" + music" if music_path else ""
-    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{music_note})")
+    music_tag = f" + music @ {int(MUSIC_VOLUME * 100)}%" if music_path else ""
+    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{music_tag})")
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
@@ -1089,7 +1110,6 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
     if not raw_clip_paths:
         raise RuntimeError("All clip downloads failed")
 
-    # Pick a random background music track (None if no tracks available)
     music_path = pick_music_track()
 
     print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
@@ -1313,7 +1333,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
     music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-    music_note   = f"{len(music_tracks)} tracks" if music_tracks else "none (add MP3s to video_pipeline/music/)"
+    music_note   = f"{len(music_tracks)} tracks @ {int(MUSIC_VOLUME * 100)}% volume" if music_tracks else "none"
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
   Run #{run_number} | {generated_at}
@@ -1357,16 +1377,17 @@ def main():
     client        = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
     topic_history  = load_topic_history()
+    music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
+    all_looks      = cfg.get("avatar_look_ids", [])
 
-    music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-
-    print(f"\n  MindCore AI Video Pipeline v5.6")
+    print(f"\n  MindCore AI Video Pipeline v5.10")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music)")
+    print(f"  Avatar looks: {len(all_looks)} | shuffled deck (25 unique before any repeat)")
+    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
-    print(f"  Music library: {len(music_tracks)} track(s) in video_pipeline/music/")
+    print(f"  Music library: {len(music_tracks)} track(s)")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT:
         print(f"  Format override: {FORCE_FORMAT.upper()}")
