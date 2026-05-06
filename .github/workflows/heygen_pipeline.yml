@@ -40,13 +40,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg + fonts
         run: |
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
           ffmpeg -version | head -1
 
       - name: Install Python dependencies
-        run: pip install anthropic requests
+        run: pip install anthropic requests openai-whisper
 
       - name: Show run info
         run: |
@@ -91,34 +91,28 @@ jobs:
           WEEK=$(date +%V)
 
           # --- Mode (content vs ad) ---
-          # Manual override takes priority
           if [ "$FORCE" = "ad" ]; then
-            export GITHUB_RUN_NUMBER=10   # triggers ad mode in pipeline
+            export GITHUB_RUN_NUMBER=10
           elif [ "$FORCE" = "content" ]; then
             export GITHUB_RUN_NUMBER=1
           elif [ "$DAY" = "7" ] && [ $((WEEK % 2)) -eq 0 ]; then
-            # Even-week Sunday = ad
             export GITHUB_RUN_NUMBER=10
             echo "  Auto-set: AD (even-week Sunday, week $WEEK)"
           else
-            # Every other run = content
             export GITHUB_RUN_NUMBER=1
           fi
 
           # --- Format (cinematic vs avatar) ---
-          # force_format=cinematic always implies content
           if [ "$FORMAT" = "cinematic" ]; then
             export FORCE_FORMAT=cinematic
             export GITHUB_RUN_NUMBER=1
           elif [ -z "$FORMAT" ]; then
-            # Auto: Mon/Fri/Sun = cinematic (unless it's an ad Sunday)
             if { [ "$DAY" = "1" ] || [ "$DAY" = "5" ]; } || \
                { [ "$DAY" = "7" ] && [ $((WEEK % 2)) -ne 0 ]; }; then
               export FORCE_FORMAT=cinematic
               export GITHUB_RUN_NUMBER=1
               echo "  Auto-set: FORCE_FORMAT=cinematic (Mon/Fri or content Sunday)"
             fi
-            # Ad Sunday keeps avatar (ads are always avatar)
           fi
 
           python video_pipeline/heygen_pipeline.py
@@ -150,10 +144,10 @@ jobs:
         run: |
           DAY=$(date +%u)
           WEEK=$(date +%V)
-          echo "## MindCore AI Video Pipeline v5.4" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI Video Pipeline v5.12" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }} | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
           echo "**Formats:** Avatar (Tue/Wed/Thu + ad Sundays) | Cinematic (Mon/Fri + content Sundays)" >> $GITHUB_STEP_SUMMARY
-          echo "**Ads:** Every other Sunday (even ISO week) | All other runs = content" >> $GITHUB_STEP_SUMMARY
+          echo "**Subtitles:** Word-by-word captions burned into avatar videos via Whisper + FFmpeg" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
