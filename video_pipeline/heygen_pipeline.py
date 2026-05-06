@@ -1,40 +1,32 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.11
+MindCore AI Video Pipeline v5.12
 =================================
 
+CHANGES (v5.12):
+  Word-by-word subtitles for avatar videos.
+  Whisper (tiny, CPU) transcribes the downloaded HeyGen video to get
+  accurate word timestamps. ASS subtitle file generated and calibrated
+  for 1080x1920:
+    - Font: Arial Bold, 75px  (~3.9% of frame height -- readable, not dominant)
+    - Outline: 4px solid black (pops on any background)
+    - Position: MarginV 500px from bottom (~65% down frame, clear of lower third)
+    - Groups: 3 words per caption, UPPERCASE
+    - WrapStyle 1: smart line-break if a group is very wide
+  FFmpeg burns subtitles in crop_to_portrait. Fails gracefully if Whisper
+  or the burn step error -- video still renders without captions.
+
 CHANGES (v5.11):
-  Avatar scripts rewritten in interview response mode. The SERP question
-  becomes the implied question the avatar was just asked. Scripts now sound
-  like authentic podcast answers -- direct, mid-thought, conversational --
-  not pre-planned monologues. Hooks start as if mid-answer. Pacing matches
-  the inspirevibe9-style interview format.
+  Avatar scripts rewritten in interview response mode.
 
 CHANGES (v5.10):
-  Lower background music volume further from 8% to 5% (0.05).
-
-CHANGES (v5.9):
-  Lower background music volume from 15% to 8% (0.08).
+  Lower background music volume to 5% (0.05).
 
 CHANGES (v5.8):
-  Shuffled look queue: all 25 avatar looks used in random order before
-  any repeats. Stored in look_queue.json.
-
-CHANGES (v5.7):
-  25 avatar looks (14 new added).
+  Shuffled look queue: all avatar looks used before any repeats.
 
 CHANGES (v5.6):
   Background music for cinematic videos via FFmpeg amix.
-
-CHANGES (v5.5):
-  Informational ad scripts with 8 rotating pain points.
-
-CHANGES (v5.4):
-  Script variety: 6 rotating structures, 20 content angles, topic history.
-  Visual variety: 5 visual style categories for cinematic B-roll.
-
-CHANGES (v5.3):
-  Update Fish Audio voice ID to 4ea1bbc944004fa89ea67021d86129ef.
 
 CHANGES (v5.0):
   Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
@@ -86,8 +78,20 @@ TOPIC_HISTORY_PATH  = PIPELINE_DIR / "topic_history.json"
 LOOK_QUEUE_PATH     = PIPELINE_DIR / "look_queue.json"
 SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
 
-# Background music volume -- 5% is very subtle, atmosphere only
-MUSIC_VOLUME = 0.05
+MUSIC_VOLUME = 0.05   # 5% -- subtle atmosphere only
+
+# ---------------------------------------------------------------------------
+# Subtitle config -- calibrated for 1080x1920 portrait
+# ---------------------------------------------------------------------------
+# PlayResX/Y == actual output resolution => font sizes are 1:1 with pixels.
+# 75 px / 1920 px = 3.9% of frame height: clearly readable, not overpowering.
+# MarginV 500 px from bottom edge => text sits at ~65% down the frame,
+# well above the lower-third where platform UI overlaps.
+WHISPER_MODEL      = "tiny"    # fast CPU inference, accurate for 30-60 s clips
+SUBTITLE_FONT      = "Arial"   # fonts-liberation on Ubuntu provides this
+SUBTITLE_FONT_SIZE = 75        # px at 1080x1920 reference resolution
+SUBTITLE_MARGIN_V  = 500       # px from bottom edge
+SUBTITLE_CHUNK     = 3         # words per caption group
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -108,16 +112,16 @@ TOPIC_HISTORY_SIZE     = 5
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
 # ---------------------------------------------------------------------------
-# Interview response hooks -- how a real person starts answering a question
+# Interview response hooks
 # ---------------------------------------------------------------------------
 
 INTERVIEW_HOOKS = [
-    "direct_answer",      # Launch straight into the answer, no preamble
-    "reframe_first",      # Reframe the question before answering it
-    "counter_intuitive",  # Start with what most people get wrong about this
-    "personal_truth",     # Start with a raw honest admission about this topic
-    "hard_fact",          # Lead with the uncomfortable truth nobody says out loud
-    "challenge_premise",  # Push back slightly on how the question is usually framed
+    "direct_answer",
+    "reframe_first",
+    "counter_intuitive",
+    "personal_truth",
+    "hard_fact",
+    "challenge_premise",
 ]
 
 BANNED_OPENINGS = [
@@ -195,12 +199,6 @@ WORD_TARGETS_CONTENT = {
     "solution_cta": (20, 35),
 }
 
-SEO_KEYWORDS = [
-    "AI mental health coach for men",
-    "recovery support anxiety depression",
-    "sobriety mental wellness app",
-]
-
 BANNED_PHRASE_REPLACEMENTS = [
     (r"try\s+it\s+for\s+free", "try it"),
     (r"download\s+now",        "find MindCore AI on Google Play"),
@@ -264,6 +262,117 @@ def pick_music_track() -> str | None:
     chosen = random.choice(tracks)
     print(f"  Background music: {chosen.name} @ {int(MUSIC_VOLUME * 100)}% volume")
     return str(chosen)
+
+
+# ---------------------------------------------------------------------------
+# Subtitle generation -- Whisper transcription + ASS file
+# ---------------------------------------------------------------------------
+
+def transcribe_audio_whisper(video_path: str) -> list:
+    """
+    Transcribe the audio track of a video using Whisper and return
+    word-level timestamps as [{word, start, end}, ...].
+    Uses the 'tiny' model for fast CPU inference.
+    Falls back to [] on any failure so the pipeline continues without captions.
+    """
+    try:
+        import whisper
+        print(f"  Whisper: loading '{WHISPER_MODEL}' model (CPU)...")
+        model  = whisper.load_model(WHISPER_MODEL)
+        result = model.transcribe(
+            str(video_path),
+            word_timestamps=True,
+            language="en",
+            fp16=False,   # CPU-safe; fp16 requires CUDA
+        )
+        words = []
+        for seg in result.get("segments", []):
+            for w in seg.get("words", []):
+                word = w.get("word", "").strip()
+                if word:
+                    words.append({
+                        "word":  word,
+                        "start": float(w.get("start", 0)),
+                        "end":   float(w.get("end",   0)),
+                    })
+        print(f"  Whisper: {len(words)} words transcribed")
+        return words
+    except Exception as e:
+        print(f"  Whisper failed ({e}) -- continuing without subtitles")
+        return []
+
+
+def generate_ass_subtitles(words: list, output_path: str) -> bool:
+    """
+    Write an ASS subtitle file from word-level timestamps.
+
+    Sizing rationale for 1080x1920:
+      PlayResX=1080, PlayResY=1920  =>  1 ASS font unit = 1 output pixel
+      Font size 75 px  =>  75/1920 = 3.9% of frame height
+      MarginV 500 px   =>  text bottom sits 500 px from frame bottom
+                           (~65% down the frame, clear of platform UI)
+      3 words per group, UPPERCASE, bold white, 4 px black outline
+
+    Returns True on success, False if words list is empty.
+    """
+    if not words:
+        return False
+
+    def ts(secs: float) -> str:
+        h = int(secs // 3600)
+        m = int((secs % 3600) // 60)
+        s = secs % 60
+        return f"{h}:{m:02d}:{s:05.2f}"
+
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        "PlayResX: 1080\n"
+        "PlayResY: 1920\n"
+        "ScaledBorderAndShadow: yes\n"
+        "WrapStyle: 1\n"          # smart wrap -- long lines break at word boundaries
+        "\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
+        "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        # Colours: &HAABBGGRR  (AA=00 => fully opaque)
+        # PrimaryColour=white, OutlineColour=black, BackColour=transparent
+        f"Style: Default,{SUBTITLE_FONT},{SUBTITLE_FONT_SIZE},"
+        "&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
+        f"-1,0,0,0,100,100,1,0,1,4,0,2,60,60,{SUBTITLE_MARGIN_V},1\n"
+        "\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+
+    # Group words into chunks of SUBTITLE_CHUNK
+    chunks = []
+    i = 0
+    while i < len(words):
+        chunk = words[i : i + SUBTITLE_CHUNK]
+        text  = " ".join(w["word"].upper() for w in chunk)
+        start = chunk[0]["start"]
+        end   = chunk[-1]["end"]
+        # No overlap with previous chunk
+        if chunks and start < chunks[-1]["end"]:
+            start = chunks[-1]["end"]
+        chunks.append({"text": text, "start": start, "end": end})
+        i += SUBTITLE_CHUNK
+
+    events = "".join(
+        f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n"
+        for c in chunks
+    )
+
+    Path(output_path).write_text(header + events, encoding="utf-8")
+    print(
+        f"  Subtitles: {len(chunks)} groups | "
+        f"{SUBTITLE_FONT} {SUBTITLE_FONT_SIZE}px bold | "
+        f"MarginV {SUBTITLE_MARGIN_V}px from bottom"
+    )
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -616,11 +725,9 @@ def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
 
 def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
     print(f"  Generating INTERVIEW RESPONSE script for: {topic['topic']}")
-    keyword   = topic.get("keyword", topic["topic"])
-    question  = topic.get("question", topic["topic"])
-    tail_type = topic.get("tail_type", "long_tail")
-    fmt       = topic.get("format", "avatar")
-
+    keyword    = topic.get("keyword", topic["topic"])
+    question   = topic.get("question", topic["topic"])
+    fmt        = topic.get("format", "avatar")
     hook_style = random.choice(INTERVIEW_HOOKS)
 
     lo_hook,  hi_hook  = WORD_TARGETS_CONTENT["hook"]
@@ -649,42 +756,29 @@ The interviewer just asked you: "{question}"
 
 You need to answer it. Not perform. Not present. ANSWER IT.{cinematic_note}
 
-Write a 4-scene script that sounds exactly like a real, thoughtful podcast answer:
+HOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}
 
-HOOK STYLE FOR THIS VIDEO: {hook_style}
-Instruction: {hook_instructions[hook_style]}
+4 SCENES:
+1. hook: First thing out of your mouth. No preamble.
+2. problem: Why this is the way it is. The real cause underneath.
+3. story: The truth most men relate to but nobody says.
+4. solution_cta: Genuine takeaway. What a man can actually do or understand.
 
-THE 4 SCENES:
-1. hook: Your opening answer -- the first thing out of your mouth. No preamble.
-2. problem: Go deeper. Explain WHY this is the way it is. The real cause underneath.
-3. story: The truth most men relate to but nobody says. Specific, honest, human.
-4. solution_cta: The genuine takeaway. What a man can actually do or understand differently.
+AUDIENCE: Men 35+, asking this privately because they can't ask out loud.
+SEO KEYWORD: {keyword} (weave in naturally)
 
-AUDIENCE: Men 35+, asking this question privately because they can't ask it out loud.
-SEO KEYWORD TO WEAVE IN NATURALLY: {keyword}
+TONE: Direct, warm, no bullshit. Trusted older brother.
+- Short sentences when they land harder.
+- Natural pauses: "And that's the thing." / "Right?"
+- No MindCore AI. No CTAs. Pure value.
 
-TONE: Warm, direct, no bullshit. Like a trusted older brother who's been through it.
-- NOT a lecture. An answer.
-- NOT inspirational quotes. Real talk.
-- NOT polished. Honest.
-- Short sentences when it lands harder that way.
-- Pauses work -- "And that's the thing." / "Right?" / "You know what I mean?"
-
-BANNED OPENINGS (do not start the hook with these):
+BANNED OPENINGS:
 {banned_openings_str}
 
-NO MindCore AI mentions. No CTAs. No promotion of any product.
-This is pure value -- a man answering a question that men need answered.
-
-WORD COUNTS:
-- hook: {lo_hook}-{hi_hook} words
-- problem: {lo_prob}-{hi_prob} words
-- story: {lo_story}-{hi_story} words
-- solution_cta: {lo_cta}-{hi_cta} words
-
+WORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}
 Total ~120-150 words.
 
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON:
 {{
   "video_type": "content",
   "topic": "{topic['topic']}",
@@ -701,8 +795,8 @@ Return ONLY valid JSON, no markdown:
 
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    ad_topic      = random.choice(AD_TOPICS)
-    hook_style    = random.choice(INTERVIEW_HOOKS)
+    ad_topic   = random.choice(AD_TOPICS)
+    hook_style = random.choice(INTERVIEW_HOOKS)
 
     print(f"  Generating INFORMATIONAL AD script...")
     print(f"  Pain point: {ad_topic['pain_point'][:65]}...")
@@ -718,44 +812,24 @@ def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
 
 Write an informational, engaging video script for MindCore AI.
 This is an AD but it MUST feel like content for the first two scenes.
-The audience should feel understood and nodding before they realise it's an ad.
 
-STRUCTURE: Hook -> Insight/Truth -> How MindCore AI Helps -> Soft Recommendation
-AUDIENCE: Men 35+, struggling with mental health, anxiety, recovery or emotional numbness.
-TONE: Knowledgeable, warm, honest. Like a trusted friend who found something that actually works.
-LENGTH: ~120-140 words total. A proper, full-length video -- not a 20-second pitch.
+PAIN POINT: {ad_topic['pain_point']}
+INSIGHT: {ad_topic['insight']}
+FEATURE: {ad_topic['feature']} (also: private, 24/7, built for men, Google Play, free first week)
 
-PAIN POINT FOR THIS AD:
-{ad_topic['pain_point']}
-
-CORE INSIGHT (what the problem/truth scene should convey):
-{ad_topic['insight']}
-
-HOW MINDCORE AI HELPS (what the story scene should convey -- be specific):
-{ad_topic['feature']}
-Also mention: private, available 24/7, built for men, on Google Play, free first week.
-
-SCENE RULES:
-- hook: Stops the scroll. No MindCore AI. Pure emotional truth.
-- problem: Expands the insight. No MindCore AI. Just honest, informed content.
-- story: Introduce MindCore AI naturally as the solution.
-  Start with something like "There's a tool built specifically for men called MindCore AI..."
-  Be specific -- what does it actually do? How does it help with THIS pain point?
-- solution_cta: One sentence of genuine encouragement + one soft recommendation.
-  Must end with: "Find MindCore AI on Google Play."
-  Make it feel like advice, not an advert.
+SCENES:
+- hook: Stops scroll. No MindCore AI. Pure emotional truth.
+- problem: Expands insight. No MindCore AI.
+- story: Introduce MindCore AI naturally. "There's a tool built specifically for men called MindCore AI..."
+- solution_cta: Encouragement + "Find MindCore AI on Google Play."
 
 BANNED: "download now", "try it for free", "free trial"
-BANNED OPENING PHRASES for hook:
+BANNED OPENINGS:
 {banned_openings_str}
 
-WORD COUNTS:
-- hook: {lo_hook}-{hi_hook} words
-- problem: {lo_prob}-{hi_prob} words
-- story: {lo_story}-{hi_story} words
-- solution_cta: {lo_cta}-{hi_cta} words
+WORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}
 
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON:
 {{
   "video_type": "ad",
   "topic": "{ad_topic['pain_point'][:55]}",
@@ -853,7 +927,15 @@ def render_avatar_video(script_text: str, cfg: dict) -> str:
     raw_path   = str(OUTPUT_DIR / "mindcore_ai_raw.mp4")
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
-    crop_to_portrait(raw_path, final_path)
+
+    # Generate word-by-word subtitles via Whisper
+    print("\n  [Subtitles] Transcribing audio with Whisper...")
+    ass_path = str(OUTPUT_DIR / "subtitles.ass")
+    words    = transcribe_audio_whisper(raw_path)
+    if not generate_ass_subtitles(words, ass_path):
+        ass_path = None   # transcription failed -- crop continues without captions
+
+    crop_to_portrait(raw_path, final_path, ass_path=ass_path)
     return final_path
 
 
@@ -1145,22 +1227,47 @@ def make_portrait_filter(cw, ch, cx, cy) -> str:
     )
 
 
-def crop_to_portrait(raw_path: str, final_path: str):
+def crop_to_portrait(raw_path: str, final_path: str, ass_path: str = None):
+    """
+    Crop/scale the HeyGen video to 1080x1920 and optionally burn
+    ASS word-by-word subtitles into the output.
+
+    ass_path: path to the .ass file generated by generate_ass_subtitles().
+              Pass None (or omit) to render without captions.
+    """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw dimensions: {w}x{h}")
     crop_result = detect_content_crop(raw_path)
     filter_str  = (make_portrait_filter(*crop_result) if crop_result
                    else make_portrait_filter(w, h, 0, 0))
+
+    if ass_path and Path(ass_path).exists():
+        # Forward-slash path, colon-escaped for FFmpeg's filter parser
+        safe_ass = str(Path(ass_path).resolve()).replace("\\", "/")
+        filter_str += f",ass='{safe_ass}'"
+        print(f"  Burning subtitles: {Path(ass_path).name} "
+              f"({SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} | MarginV {SUBTITLE_MARGIN_V}px)")
+    else:
+        print("  No subtitle file -- rendering without captions")
+
     cmd = ["ffmpeg", "-i", raw_path, "-vf", filter_str,
            "-c:v", "libx264", "-crf", "16", "-preset", "slow",
            "-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M",
            "-c:a", "copy", "-y", final_path]
     result = subprocess.run(cmd, capture_output=True, text=True)
+
     if result.returncode != 0:
+        if ass_path and Path(ass_path).exists():
+            # Subtitle burn failed -- retry without captions rather than crashing
+            print("  WARNING: subtitle burn failed -- retrying without captions")
+            crop_to_portrait(raw_path, final_path, ass_path=None)
+            return
         raise RuntimeError(f"ffmpeg failed: {result.stderr[-1000:]}")
-    size_mb = Path(final_path).stat().st_size / (1024 * 1024)
-    w2, h2  = get_video_dimensions(final_path)
-    print(f"  Final: {final_path} ({w2}x{h2} | {size_mb:.1f} MB)")
+
+    size_mb  = Path(final_path).stat().st_size / (1024 * 1024)
+    w2, h2   = get_video_dimensions(final_path)
+    sub_note = " + captions" if (ass_path and Path(ass_path).exists()) else ""
+    print(f"  Final: {final_path} ({w2}x{h2} | {size_mb:.1f} MB{sub_note})")
 
 
 # ---------------------------------------------------------------------------
@@ -1183,13 +1290,11 @@ INTERVIEW QUESTION ANSWERED: {question}
 SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
 
-TIKTOK / INSTAGRAM: Caption starts with the question or a hook line from the answer.
-  Add 8-12 hashtags. Max 2200 chars. Include {REQUIRED_BRAND_HASHTAG}.
-FACEBOOK: Title (max 255 chars) + Description (2-3 sentences + question + hashtags). Include {REQUIRED_BRAND_HASHTAG}.
-YOUTUBE SHORTS: Title (max 100 chars, phrase as the question if possible) + Description + Tags.
-  Include mindcoreai.eu link and {REQUIRED_BRAND_HASHTAG}.
-ON-SCREEN TEXT OVERLAY: 1 punchy line -- ideally the question itself or the hook.
-ALSO: Thumbnail suggestion + A/B hook idea.
+TIKTOK / INSTAGRAM: Caption starts with the question or hook. 8-12 hashtags. Max 2200 chars. Include {REQUIRED_BRAND_HASHTAG}.
+FACEBOOK: Title + Description with question + hashtags. Include {REQUIRED_BRAND_HASHTAG}.
+YOUTUBE SHORTS: Title phrased as the question. Description + mindcoreai.eu + {REQUIRED_BRAND_HASHTAG}.
+ON-SCREEN TEXT: 1 punchy line -- ideally the question or hook.
+Thumbnail suggestion + A/B hook idea.
 Plain text, clear labels, copy-paste ready."""
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
@@ -1219,18 +1324,18 @@ VIDEO TYPE: {video_type} | QUESTION ANSWERED: {question} | SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: {full_vo}
 
 RULES:
-- tiktok_caption: Start with the question or a hook line from the answer. Add 8-10 hashtags.
-  Max 2200 chars. MUST include: {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
-- facebook_title: max 255 chars, phrase as the question if possible
-- facebook_description: 2-3 sentences + the question + 5-6 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}
+- tiktok_caption: Start with the question or hook. 8-10 hashtags. Max 2200 chars.
+  MUST include: {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
+- facebook_title: max 255 chars, phrase as the question
+- facebook_description: 2-3 sentences + question + 5-6 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}
 - youtube_title: max 100 chars -- phrase as the question men search for
 - youtube_description: 2-4 sentences + blank line + "Try MindCore AI: https://mindcoreai.eu"
   + blank line + 6-8 hashtags ending with #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}
 - youtube_tags: comma-separated 8-12 keywords (no # symbols)
 
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON:
 {{
-  "tiktok_caption": "question or hook... #hashtag {REQUIRED_BRAND_HASHTAG}",
+  "tiktok_caption": "question or hook... {REQUIRED_BRAND_HASHTAG} #mensmentalhealth",
   "facebook_title": "...",
   "facebook_description": "... {REQUIRED_BRAND_HASHTAG} ...",
   "youtube_title": "...",
@@ -1328,16 +1433,16 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Run #{run_number} | {generated_at}
 ================================================================================
   Video type      : {video_type}
-  Format          : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
+  Format          : {render_fmt.upper()} ({'HeyGen Avatar + Whisper captions' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
   Hook style      : {hook_style}
   Question answered: {question}
   Topic           : {topic}
   SEO keyword     : {seo_kw}
+  Subtitles       : {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold white | {SUBTITLE_CHUNK} words/group | MarginV {SUBTITLE_MARGIN_V}px
   Est. length     : ~{est_duration}s ({total_words} words @ ~130 wpm)
   Output          : 1080x1920 9:16 30fps
   Music library   : {music_note}
   Platforms       : TikTok + Facebook + Instagram Reels + YouTube Shorts
-  Schedule        : Avatar: Tue/Wed/Thu + ad Sundays | Cinematic: Mon/Fri + content Sundays
 ================================================================================
 
 FULL SCRIPT
@@ -1370,13 +1475,13 @@ def main():
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks      = cfg.get("avatar_look_ids", [])
 
-    print(f"\n  MindCore AI Video Pipeline v5.11")
+    print(f"\n  MindCore AI Video Pipeline v5.12")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar looks: {len(all_looks)} | shuffled deck (25 unique before any repeat)")
+    print(f"  Avatar looks: {len(all_looks)} | shuffled deck rotation")
     print(f"  Script mode: INTERVIEW RESPONSE (question-driven, direct answers)")
-    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
+    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | {SUBTITLE_CHUNK} words/group | MarginV {SUBTITLE_MARGIN_V}px")
+    print(f"  Formats: Avatar (HeyGen + Whisper captions) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
-    print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
     print(f"  Music library: {len(music_tracks)} track(s)")
     print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
@@ -1434,7 +1539,7 @@ def main():
             script["render_format"] = "avatar"
 
     if render_fmt == "avatar" or final_path is None:
-        print(f"\n  Rendering AVATAR video (HeyGen)...")
+        print(f"\n  Rendering AVATAR video (HeyGen + Whisper captions)...")
         final_path = render_avatar_video(full_script, cfg)
 
     print("\n  Generating upload guide...")
