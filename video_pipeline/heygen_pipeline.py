@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.10
+MindCore AI Video Pipeline v5.11
 =================================
+
+CHANGES (v5.11):
+  Avatar scripts rewritten in interview response mode. The SERP question
+  becomes the implied question the avatar was just asked. Scripts now sound
+  like authentic podcast answers -- direct, mid-thought, conversational --
+  not pre-planned monologues. Hooks start as if mid-answer. Pacing matches
+  the inspirevibe9-style interview format.
 
 CHANGES (v5.10):
   Lower background music volume further from 8% to 5% (0.05).
-  Music is now very subtle -- atmosphere only, voice dominates fully.
 
 CHANGES (v5.9):
   Lower background music volume from 15% to 8% (0.08).
@@ -102,36 +108,17 @@ TOPIC_HISTORY_SIZE     = 5
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
 # ---------------------------------------------------------------------------
-# Script structures
+# Interview response hooks -- how a real person starts answering a question
 # ---------------------------------------------------------------------------
 
-SCRIPT_STRUCTURES = {
-    "hook_contradiction": (
-        "HOOK: Start with a statement that contradicts common belief about this topic. "
-        "One punchy sentence that makes men stop scrolling."
-    ),
-    "hook_statistic": (
-        "HOOK: Lead with a surprising or little-known statistic or research fact "
-        "directly related to the topic. Make it land hard."
-    ),
-    "hook_question": (
-        "HOOK: Open with a direct, uncomfortable question that the target man is "
-        "already asking himself silently. No fluff."
-    ),
-    "hook_confession": (
-        "HOOK: Begin as if confessing something most men are ashamed to admit. "
-        "First person, raw, immediate. Do NOT start with 'I remember sitting...' "
-        "or any birthday party / barbecue memory."
-    ),
-    "hook_observation": (
-        "HOOK: Open with a sharp observation about male behaviour that feels "
-        "uncomfortably accurate. Like something a close friend would say."
-    ),
-    "hook_provocation": (
-        "HOOK: Start with a mildly provocative or counterintuitive claim that "
-        "challenges what men think they know about themselves."
-    ),
-}
+INTERVIEW_HOOKS = [
+    "direct_answer",      # Launch straight into the answer, no preamble
+    "reframe_first",      # Reframe the question before answering it
+    "counter_intuitive",  # Start with what most people get wrong about this
+    "personal_truth",     # Start with a raw honest admission about this topic
+    "hard_fact",          # Lead with the uncomfortable truth nobody says out loud
+    "challenge_premise",  # Push back slightly on how the question is usually framed
+]
 
 BANNED_OPENINGS = [
     "I remember sitting at my kid",
@@ -141,6 +128,10 @@ BANNED_OPENINGS = [
     "Picture this",
     "Let me tell you something",
     "Here's the thing",
+    "Great question",
+    "That's a great",
+    "So today we're talking about",
+    "In this video",
 ]
 
 # ---------------------------------------------------------------------------
@@ -198,10 +189,10 @@ WORD_TARGETS_AD = {
 }
 
 WORD_TARGETS_CONTENT = {
-    "hook":         (10, 15),
-    "problem":      (30, 40),
-    "story":        (50, 65),
-    "solution_cta": (25, 35),
+    "hook":         (10, 18),
+    "problem":      (30, 45),
+    "story":        (45, 65),
+    "solution_cta": (20, 35),
 }
 
 SEO_KEYWORDS = [
@@ -289,10 +280,6 @@ def load_config() -> dict:
 
 
 def pick_avatar_look(cfg: dict) -> str:
-    """
-    Pick the next avatar look from the shuffled queue.
-    Works like a deck of cards -- all 25 used before any repeats.
-    """
     all_looks = cfg.get("avatar_look_ids", [])
     if not all_looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
@@ -516,25 +503,22 @@ def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic
 
 Below are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.
 {history_note}
-FAVOUR SHORT-TAIL emotional phrases (sobriety anger, men crying, emotional numbness).
-Big health brands ignore raw emotional short phrases -- individual creators own this space.
+FAVOUR: questions men actually ask ("why do I isolate", "how to stop feeling numb")
+and short emotional phrases ("sobriety anger", "emotional numbness men").
+These make the best interview-style answer videos.
 
 SCORING:
-1. Emotional resonance for men 35-55 struggling silently
-2. Low competition: under big-brand radar?
-3. Niche fit: men's mental health, sobriety, recovery
-4. Video potential: powerful in 30-45 seconds?
+1. Would a man ask this out loud to someone he trusted?
+2. Emotional resonance for men 35-55 struggling silently
+3. Low competition: under big-brand radar?
+4. Niche fit: men's mental health, sobriety, recovery
 
 FORMAT DECISION:
-- "cinematic": abstract emotional states, reflective/introspective, atmospheric
-  (loneliness, grief, numbness, 3am anxiety, emptiness, silent depression)
-- "avatar": direct advice, testimony, how-to, practical tips
+- "avatar": questions, advice, testimony, how-to, direct answers -- PREFERRED for interview style
+- "cinematic": abstract emotional states, atmospheric, no clear question implied
 
 VISUAL STYLE FOR THIS RUN: {style_name} ({style_desc})
-If you choose cinematic, generate Pexels queries in THIS visual style.
-Style query examples: {style_templates}
-Generate 4 specific, varied Pexels search queries that match this style AND the chosen topic.
-Make each query distinct -- different shots, not just the same scene rephrased.
+If you choose cinematic, generate 4 Pexels queries in this style: {style_templates}
 
 CANDIDATES (short-tail first):
 {candidate_list}
@@ -542,7 +526,7 @@ CANDIDATES (short-tail first):
 Return ONLY valid JSON, no markdown:
 {{
   "topic": "exact text of chosen candidate",
-  "question": "how a man types this into Google",
+  "question": "the exact question a man would ask -- rephrase as a question if needed",
   "keyword": "primary 1-5 word SEO keyword",
   "tail_type": "short_tail|mid_tail|long_tail",
   "competition_signal": "low|medium|high",
@@ -562,7 +546,7 @@ Return ONLY valid JSON, no markdown:
         print(f"  Format: {result.get('format', 'avatar').upper()} (Claude's choice)")
 
     print(f"  Winner: '{result.get('keyword')}' [{result.get('tail_type','?')} | {result.get('competition_signal','?')} competition]")
-    print(f"  Visual style: {result.get('visual_style', style_name)}")
+    print(f"  Question: {result.get('question','')}")
     print(f"  Reason: {result.get('why', '')}")
     return result
 
@@ -575,11 +559,11 @@ def fetch_trending_topic_claude_fallback(seeds: list, topic_history: list,
         history_note = f"AVOID these recent topics: {', '.join(topic_history)}. Pick something different.\n"
     style_name = visual_style.get("name", "atmospheric_solitude")
     prompt = f"""SEO expert for men's mental health, recovery, anxiety, sobriety.
-Generate ONE keyword/topic for a short video. Related to: "{seed}"
+Generate ONE question/topic for a short interview-style answer video. Related to: "{seed}"
 {history_note}Return ONLY valid JSON:
 {{
-  "topic": "the keyword or question",
-  "question": "how a man types this into Google",
+  "topic": "the question or keyword",
+  "question": "the exact question a man would ask -- must be a question",
   "keyword": "primary 1-5 word SEO keyword",
   "tail_type": "short_tail|mid_tail|long_tail",
   "competition_signal": "low|medium|high",
@@ -631,64 +615,66 @@ def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
 # ---------------------------------------------------------------------------
 
 def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
-    print(f"  Generating CONTENT script for: {topic['topic']}")
+    print(f"  Generating INTERVIEW RESPONSE script for: {topic['topic']}")
     keyword   = topic.get("keyword", topic["topic"])
     question  = topic.get("question", topic["topic"])
     tail_type = topic.get("tail_type", "long_tail")
-    angles    = load_niche_keywords().get("content_angles", [])
-    angle     = random.choice(angles) if angles else "real talk"
     fmt       = topic.get("format", "avatar")
 
-    structure_key  = random.choice(list(SCRIPT_STRUCTURES.keys()))
-    structure_note = SCRIPT_STRUCTURES[structure_key]
+    hook_style = random.choice(INTERVIEW_HOOKS)
 
     lo_hook,  hi_hook  = WORD_TARGETS_CONTENT["hook"]
     lo_prob,  hi_prob  = WORD_TARGETS_CONTENT["problem"]
     lo_story, hi_story = WORD_TARGETS_CONTENT["story"]
     lo_cta,   hi_cta   = WORD_TARGETS_CONTENT["solution_cta"]
 
-    kw_guidance = (
-        f"SHORT-TAIL keyword '{keyword}'. Explore the full emotional depth. LIVE it from the inside."
-        if tail_type == "short_tail" else
-        f"SPECIFIC keyword '{keyword}'. Answer the exact question implied. Be precise and emotionally honest."
-    )
-
     cinematic_note = (
-        "\nNOTE: This script will be delivered as a VOICEOVER over cinematic B-roll footage."
-        "\nWrite for the ear only -- no visual references. The voice carries everything."
+        "\nNOTE: This is a voiceover for cinematic B-roll. Write for the ear only."
         if fmt == "cinematic" else ""
     )
 
     banned_openings_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
 
-    prompt = f"""Top-performing TikTok/Reels creator, men's mental health + recovery space.
-Content gets millions of views -- RAW TRUTH, REAL STORIES men 35+ recognise.{cinematic_note}
+    hook_instructions = {
+        "direct_answer":     "Start mid-answer, as if you just heard the question and launched straight in. No setup. Just the answer.",
+        "reframe_first":     "Start by reframing what the question is really about. 'The real issue isn't X, it's...'",
+        "counter_intuitive": "Start with what most people get wrong about this. Challenge the common assumption.",
+        "personal_truth":    "Start with a raw, honest admission about this topic. First person, unguarded.",
+        "hard_fact":         "Lead with the uncomfortable truth nobody in this space says out loud.",
+        "challenge_premise": "Gently push back on how this is usually framed. 'Everyone talks about X, but...'",
+    }
 
-Create a 4-scene script:
-TOPIC: {topic['topic']}
-SEARCH QUESTION: {question}
-PRIMARY SEO KEYWORD: {keyword}
-KEYWORD GUIDANCE: {kw_guidance}
-CONTENT ANGLE: {angle}
-COMPETITION: {topic.get('competition_signal', 'unknown')}
+    prompt = f"""You are a credible man in his 40s being interviewed on a podcast about men's mental health.
+The interviewer just asked you: "{question}"
 
-SCRIPT STRUCTURE FOR THIS VIDEO:
-{structure_note}
-The remaining 3 scenes follow: Problem/Truth -> Real Story or Insight -> Genuine Takeaway.
+You need to answer it. Not perform. Not present. ANSWER IT.{cinematic_note}
 
-AUDIENCE: Men 35+, struggling silently with anxiety, depression, isolation, recovery.
+Write a 4-scene script that sounds exactly like a real, thoughtful podcast answer:
 
-PURE VALUE -- NOT AN AD:
-- No MindCore AI mentions. No download CTA. No product plugs.
-- Last scene = genuine human takeaway, not promotion.
+HOOK STYLE FOR THIS VIDEO: {hook_style}
+Instruction: {hook_instructions[hook_style]}
 
-WRITE FOR THE EAR:
-- Natural spoken language, contractions, conversational connectors
-- "And the thing is...", "Because here's what nobody tells you...", "The truth is..."
-- Each scene flows naturally into the next.
+THE 4 SCENES:
+1. hook: Your opening answer -- the first thing out of your mouth. No preamble.
+2. problem: Go deeper. Explain WHY this is the way it is. The real cause underneath.
+3. story: The truth most men relate to but nobody says. Specific, honest, human.
+4. solution_cta: The genuine takeaway. What a man can actually do or understand differently.
 
-BANNED OPENING PHRASES (do not start the hook with any of these):
+AUDIENCE: Men 35+, asking this question privately because they can't ask it out loud.
+SEO KEYWORD TO WEAVE IN NATURALLY: {keyword}
+
+TONE: Warm, direct, no bullshit. Like a trusted older brother who's been through it.
+- NOT a lecture. An answer.
+- NOT inspirational quotes. Real talk.
+- NOT polished. Honest.
+- Short sentences when it lands harder that way.
+- Pauses work -- "And that's the thing." / "Right?" / "You know what I mean?"
+
+BANNED OPENINGS (do not start the hook with these):
 {banned_openings_str}
+
+NO MindCore AI mentions. No CTAs. No promotion of any product.
+This is pure value -- a man answering a question that men need answered.
 
 WORD COUNTS:
 - hook: {lo_hook}-{hi_hook} words
@@ -696,8 +682,7 @@ WORD COUNTS:
 - story: {lo_story}-{hi_story} words
 - solution_cta: {lo_cta}-{hi_cta} words
 
-Total ~130-150 words. No "hey guys". No "in today's video".
-Weave '{keyword}' naturally at least once.
+Total ~120-150 words.
 
 Return ONLY valid JSON, no markdown:
 {{
@@ -705,7 +690,8 @@ Return ONLY valid JSON, no markdown:
   "topic": "{topic['topic']}",
   "seo_keyword": "{keyword}",
   "render_format": "{fmt}",
-  "script_structure": "{structure_key}",
+  "interview_question": "{question}",
+  "hook_style": "{hook_style}",
   "hook": {{"voiceover": "..."}},
   "problem": {{"voiceover": "..."}},
   "story": {{"voiceover": "..."}},
@@ -716,7 +702,7 @@ Return ONLY valid JSON, no markdown:
 
 def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
     ad_topic      = random.choice(AD_TOPICS)
-    structure_key = random.choice(list(SCRIPT_STRUCTURES.keys()))
+    hook_style    = random.choice(INTERVIEW_HOOKS)
 
     print(f"  Generating INFORMATIONAL AD script...")
     print(f"  Pain point: {ad_topic['pain_point'][:65]}...")
@@ -763,9 +749,6 @@ BANNED: "download now", "try it for free", "free trial"
 BANNED OPENING PHRASES for hook:
 {banned_openings_str}
 
-SCRIPT STRUCTURE FOR HOOK:
-{SCRIPT_STRUCTURES[structure_key]}
-
 WORD COUNTS:
 - hook: {lo_hook}-{hi_hook} words
 - problem: {lo_prob}-{hi_prob} words
@@ -778,7 +761,7 @@ Return ONLY valid JSON, no markdown:
   "topic": "{ad_topic['pain_point'][:55]}",
   "seo_keyword": "AI mental health coach for men",
   "render_format": "avatar",
-  "script_structure": "{structure_key}",
+  "hook_style": "{hook_style}",
   "hook": {{"voiceover": "..."}},
   "problem": {{"voiceover": "..."}},
   "story": {{"voiceover": "..."}},
@@ -1189,19 +1172,23 @@ def generate_upload_guide(script: dict, mode: str, render_fmt: str, client: anth
     full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
+    question   = script.get("interview_question", topic)
     video_type = script.get("video_type", mode)
     prompt = f"""Social media expert for TikTok, Instagram Reels, Facebook Reels and YouTube Shorts,
 men's mental health niche.
 
 Generate upload guide for all 4 platforms.
 VIDEO TYPE: {video_type.upper()} | FORMAT: {render_fmt.upper()}
-TOPIC: {topic} | SEO KEYWORD: {seo_kw}
+INTERVIEW QUESTION ANSWERED: {question}
+SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
 
-TIKTOK / INSTAGRAM: Caption (keyword-first hook + 8-12 hashtags, max 2200 chars). Include {REQUIRED_BRAND_HASHTAG}.
+TIKTOK / INSTAGRAM: Caption starts with the question or a hook line from the answer.
+  Add 8-12 hashtags. Max 2200 chars. Include {REQUIRED_BRAND_HASHTAG}.
 FACEBOOK: Title (max 255 chars) + Description (2-3 sentences + question + hashtags). Include {REQUIRED_BRAND_HASHTAG}.
-YOUTUBE SHORTS: Title (max 100 chars) + Description (sentences + mindcoreai.eu link + hashtags + #Shorts) + Tags.
-ON-SCREEN TEXT OVERLAY: 1 punchy line to add manually when posting (e.g. the hook in bold text).
+YOUTUBE SHORTS: Title (max 100 chars, phrase as the question if possible) + Description + Tags.
+  Include mindcoreai.eu link and {REQUIRED_BRAND_HASHTAG}.
+ON-SCREEN TEXT OVERLAY: 1 punchy line -- ideally the question itself or the hook.
 ALSO: Thumbnail suggestion + A/B hook idea.
 Plain text, clear labels, copy-paste ready."""
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
@@ -1224,25 +1211,26 @@ def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropi
     full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
+    question   = script.get("interview_question", topic)
     video_type = script.get("video_type", mode).upper()
     prompt = f"""Social media expert for men's mental health on TikTok, Instagram, Facebook and YouTube Shorts.
 
-VIDEO TYPE: {video_type} | TOPIC: {topic} | SEO KEYWORD: {seo_kw}
+VIDEO TYPE: {video_type} | QUESTION ANSWERED: {question} | SEO KEYWORD: {seo_kw}
 FULL VOICEOVER: {full_vo}
 
 RULES:
-- tiktok_caption: keyword-first sentence + 8-10 hashtags inline. Max 2200 chars.
-  MUST include: {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
-- facebook_title: max 255 chars, keyword-first
-- facebook_description: 2-3 sentences + question + 5-6 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}
-- youtube_title: max 100 chars, scroll-stopping, search-friendly
+- tiktok_caption: Start with the question or a hook line from the answer. Add 8-10 hashtags.
+  Max 2200 chars. MUST include: {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
+- facebook_title: max 255 chars, phrase as the question if possible
+- facebook_description: 2-3 sentences + the question + 5-6 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}
+- youtube_title: max 100 chars -- phrase as the question men search for
 - youtube_description: 2-4 sentences + blank line + "Try MindCore AI: https://mindcoreai.eu"
   + blank line + 6-8 hashtags ending with #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}
 - youtube_tags: comma-separated 8-12 keywords (no # symbols)
 
 Return ONLY valid JSON, no markdown:
 {{
-  "tiktok_caption": "{REQUIRED_BRAND_HASHTAG} keyword-first sentence #hashtag2 ...",
+  "tiktok_caption": "question or hook... #hashtag {REQUIRED_BRAND_HASHTAG}",
   "facebook_title": "...",
   "facebook_description": "... {REQUIRED_BRAND_HASHTAG} ...",
   "youtube_title": "...",
@@ -1328,8 +1316,9 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     topic        = script.get("topic", "N/A")
     seo_kw       = script.get("seo_keyword", "N/A")
+    question     = script.get("interview_question", topic)
     video_type   = script.get("video_type", mode).upper()
-    structure    = script.get("script_structure", "unknown")
+    hook_style   = script.get("hook_style", "unknown")
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
     music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
@@ -1340,7 +1329,8 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
 ================================================================================
   Video type      : {video_type}
   Format          : {render_fmt.upper()} ({'HeyGen Avatar' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
-  Script structure: {structure}
+  Hook style      : {hook_style}
+  Question answered: {question}
   Topic           : {topic}
   SEO keyword     : {seo_kw}
   Est. length     : ~{est_duration}s ({total_words} words @ ~130 wpm)
@@ -1380,9 +1370,10 @@ def main():
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks      = cfg.get("avatar_look_ids", [])
 
-    print(f"\n  MindCore AI Video Pipeline v5.10")
+    print(f"\n  MindCore AI Video Pipeline v5.11")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar looks: {len(all_looks)} | shuffled deck (25 unique before any repeat)")
+    print(f"  Script mode: INTERVIEW RESPONSE (question-driven, direct answers)")
     print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
@@ -1413,12 +1404,12 @@ def main():
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
 
-    print(f"\n  Video type:       {script.get('video_type', mode)}")
-    print(f"  Topic:            {script.get('topic', 'N/A')}")
-    print(f"  SEO kw:           {script.get('seo_keyword', 'N/A')}")
-    print(f"  Script structure: {script.get('script_structure', 'N/A')}")
-    print(f"  Render format:    {render_fmt.upper()}")
-    print(f"  Est. length:      ~{est_duration}s ({total_words} words)")
+    print(f"\n  Video type:        {script.get('video_type', mode)}")
+    print(f"  Question answered: {script.get('interview_question', script.get('topic','N/A'))}")
+    print(f"  Hook style:        {script.get('hook_style', 'N/A')}")
+    print(f"  SEO kw:            {script.get('seo_keyword', 'N/A')}")
+    print(f"  Render format:     {render_fmt.upper()}")
+    print(f"  Est. length:       ~{est_duration}s ({total_words} words)")
     if render_fmt == "cinematic":
         print(f"  Pexels queries: {pexels_queries}")
     if est_duration > 60:
@@ -1462,7 +1453,7 @@ def main():
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps({"skipped": True}, indent=2))
 
     print(f"\n  DONE")
-    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s | Structure: {script.get('script_structure','?')}")
+    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s | Hook: {script.get('hook_style','?')}")
     print(f"  Video:  {final_path}")
     if upload_enabled:
         print("  Posted: TikTok + Facebook + Instagram + YouTube")
