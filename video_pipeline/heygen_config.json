@@ -1,8 +1,6 @@
 {
   "avatar_name": "Avatar V — Digital Twin",
   "avatar_look_ids": [
-    "a3e59a36bcf845b99c07844f2e49f8cc",
-    "bc6c92bcc7464ef1aa200761ff2d57b9",
     "f87bcf724efe4314acffd556188fbdf3",
     "4618272fddfc420cab13e7ec609250d5",
     "f5e5acfd6a70461a8f2b3116ebed48e2",
@@ -24,10 +22,9 @@
     "2aa30edf98a1452aa040ffc0a55f4336",
     "70373bc586a64ad8aa6430b69be94d30",
     "7f98b80999e74f2dbd15b7585c972ca1",
-    "eeede353c9f04afa9338c06a4a600e13",
-    "002315f21f1a4e98bcb3f20d9faef5d9"
+    "eeede353c9f04afa9338c06a4a600e13"
   ],
-  "voice_id": "23bee2c833a64437985bd1901713d0f0",
+  "voice_id": "6be73833ef9a4eb0aeee399b8fe9d62b",
   "background_color": "#07071a",
   "use_natural_gestures": true,
   "upload_enabled": true,
