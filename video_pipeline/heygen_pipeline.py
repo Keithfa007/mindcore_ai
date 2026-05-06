@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.8
+MindCore AI Video Pipeline v5.9
 =================================
 
+CHANGES (v5.9):
+  Lower background music volume from 15% to 8% (0.08).
+  Music now sits further behind the voiceover for a cleaner mix.
+
 CHANGES (v5.8):
-  Shuffled look queue: all 25 avatar looks are used in random order before
-  any look repeats. Works like a shuffled deck of cards — when the deck
-  runs out it reshuffles and starts again. Stored in look_queue.json.
-  Replaces the simple last_look.json no-repeat approach.
+  Shuffled look queue: all 25 avatar looks used in random order before
+  any repeats. Stored in look_queue.json.
 
 CHANGES (v5.7):
-  25 avatar looks (14 new added). No-repeat look selection.
+  25 avatar looks (14 new added).
 
 CHANGES (v5.6):
-  Background music for cinematic videos at 15% volume via FFmpeg amix.
+  Background music for cinematic videos via FFmpeg amix.
 
 CHANGES (v5.5):
   Informational ad scripts with 8 rotating pain points.
@@ -72,10 +74,11 @@ OUTPUT_DIR          = Path("video_pipeline/output")
 PIPELINE_DIR        = Path("video_pipeline")
 MUSIC_DIR           = PIPELINE_DIR / "music"
 TOPIC_HISTORY_PATH  = PIPELINE_DIR / "topic_history.json"
-LOOK_QUEUE_PATH     = PIPELINE_DIR / "look_queue.json"   # shuffled deck of looks
+LOOK_QUEUE_PATH     = PIPELINE_DIR / "look_queue.json"
 SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
 
-MUSIC_VOLUME = 0.15
+# Background music volume -- 8% sits clearly behind the voiceover
+MUSIC_VOLUME = 0.08
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -144,13 +147,13 @@ BANNED_OPENINGS = [
 AD_TOPICS = [
     {
         "pain_point": "talking to yourself at 3am trying to figure out why you can't sleep",
-        "insight":    "Most men don't have a safe space to process what's going on in their head — without judgment, without advice they didn't ask for.",
+        "insight":    "Most men don't have a safe space to process what's going on in their head -- without judgment, without advice they didn't ask for.",
         "feature":    "MindCore AI gives you a private, calm space to talk through whatever's keeping you up. It's built for men, available 24/7, and it actually listens.",
     },
     {
         "pain_point": "the anger that comes out of nowhere in recovery",
         "insight":    "Sobriety doesn't remove your emotions. It removes the thing you were using to numb them. And suddenly all that feeling has nowhere to go.",
-        "feature":    "MindCore AI helps men in recovery understand and process what's underneath the anger — without judgment, without a waiting list.",
+        "feature":    "MindCore AI helps men in recovery understand and process what's underneath the anger -- without judgment, without a waiting list.",
     },
     {
         "pain_point": "feeling like no one around you actually gets what you're going through",
@@ -159,23 +162,23 @@ AD_TOPICS = [
     },
     {
         "pain_point": "the emotional numbness that creeps in after years of staying strong",
-        "insight":    "Emotional shutdown isn't weakness. It's your brain protecting you from overwhelm. But over time, it cuts you off from everything — the good stuff too.",
+        "insight":    "Emotional shutdown isn't weakness. It's your brain protecting you from overwhelm. But over time, it cuts you off from everything -- the good stuff too.",
         "feature":    "MindCore AI helps men reconnect with what they're actually feeling, one conversation at a time. It's on Google Play and your first week is free.",
     },
     {
         "pain_point": "anxiety that shows up as irritability and short fuses, not panic attacks",
         "insight":    "Most men with anxiety don't recognise it as anxiety. It looks like anger, withdrawal, or just constantly feeling on edge for no obvious reason.",
-        "feature":    "MindCore AI understands how anxiety actually shows up in men — and helps you work through it in a way that actually fits how you think.",
+        "feature":    "MindCore AI understands how anxiety actually shows up in men -- and helps you work through it in a way that actually fits how you think.",
     },
     {
         "pain_point": "lying awake wondering if what you're feeling is normal",
         "insight":    "The number of men silently asking that question every night is staggering. And most of them never ask anyone out loud.",
-        "feature":    "MindCore AI exists for exactly that moment. A private AI mental health companion for men — honest, non-judgmental, available any time.",
+        "feature":    "MindCore AI exists for exactly that moment. A private AI mental health companion for men -- honest, non-judgmental, available any time.",
     },
     {
         "pain_point": "going through the motions every day but feeling completely disconnected from your own life",
         "insight":    "That disconnect has a name. And it's more common in men over 35 than almost any other mental health experience. But nobody talks about it.",
-        "feature":    "MindCore AI was built to help men name what they're feeling and start actually dealing with it — privately, on their own terms.",
+        "feature":    "MindCore AI was built to help men name what they're feeling and start actually dealing with it -- privately, on their own terms.",
     },
     {
         "pain_point": "not wanting to burden your family with what's going on in your head",
@@ -234,22 +237,14 @@ def save_topic_history(history: list, new_topic: str):
 # ---------------------------------------------------------------------------
 
 def load_look_queue(all_looks: list) -> list:
-    """
-    Load the remaining look queue from disk.
-    If empty, exhausted, or missing: build a fresh shuffled deck of all looks.
-    Also filters out any looks that are no longer in the config.
-    """
     if LOOK_QUEUE_PATH.exists():
         try:
             queue = json.loads(LOOK_QUEUE_PATH.read_text())
-            # Keep only looks still in the config
             queue = [l for l in queue if l in all_looks]
             if queue:
                 return queue
         except Exception:
             pass
-
-    # Build a fresh shuffled deck
     deck = all_looks[:]
     random.shuffle(deck)
     print(f"  Look queue: new shuffled deck of {len(deck)} looks")
@@ -273,7 +268,7 @@ def pick_music_track() -> str | None:
         print("  No music tracks in video_pipeline/music/ -- no background music")
         return None
     chosen = random.choice(tracks)
-    print(f"  Background music: {chosen.name}")
+    print(f"  Background music: {chosen.name} @ {int(MUSIC_VOLUME * 100)}% volume")
     return str(chosen)
 
 
@@ -293,24 +288,19 @@ def load_config() -> dict:
 def pick_avatar_look(cfg: dict) -> str:
     """
     Pick the next avatar look from the shuffled queue.
-    Works like a deck of cards:
-    - Take the next look from the front of the queue
-    - When the queue empties, reshuffle all 25 looks and start again
-    - Guarantees all 25 looks are used before any repeats
+    Works like a deck of cards -- all 25 used before any repeats.
     """
     all_looks = cfg.get("avatar_look_ids", [])
     if not all_looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
-
     queue  = load_look_queue(all_looks)
-    chosen = queue.pop(0)           # take from front
-    save_look_queue(queue)          # save remaining queue
-
+    chosen = queue.pop(0)
+    save_look_queue(queue)
     remaining = len(queue)
     if remaining == 0:
-        print(f"  Avatar look: {chosen[:8]}... (deck exhausted — will reshuffle next run | {len(all_looks)} looks total)")
+        print(f"  Avatar look: {chosen[:8]}... (deck exhausted -- reshuffles next run | {len(all_looks)} total)")
     else:
-        print(f"  Avatar look: {chosen[:8]}... ({remaining} remaining in deck | {len(all_looks)} looks total)")
+        print(f"  Avatar look: {chosen[:8]}... ({remaining} remaining in deck | {len(all_looks)} total)")
     return chosen
 
 
@@ -744,7 +734,7 @@ The audience should feel understood and nodding before they realise it's an ad.
 STRUCTURE: Hook -> Insight/Truth -> How MindCore AI Helps -> Soft Recommendation
 AUDIENCE: Men 35+, struggling with mental health, anxiety, recovery or emotional numbness.
 TONE: Knowledgeable, warm, honest. Like a trusted friend who found something that actually works.
-LENGTH: ~120-140 words total. A proper, full-length video — not a 20-second pitch.
+LENGTH: ~120-140 words total. A proper, full-length video -- not a 20-second pitch.
 
 PAIN POINT FOR THIS AD:
 {ad_topic['pain_point']}
@@ -752,7 +742,7 @@ PAIN POINT FOR THIS AD:
 CORE INSIGHT (what the problem/truth scene should convey):
 {ad_topic['insight']}
 
-HOW MINDCORE AI HELPS (what the story scene should convey — be specific):
+HOW MINDCORE AI HELPS (what the story scene should convey -- be specific):
 {ad_topic['feature']}
 Also mention: private, available 24/7, built for men, on Google Play, free first week.
 
@@ -761,7 +751,7 @@ SCENE RULES:
 - problem: Expands the insight. No MindCore AI. Just honest, informed content.
 - story: Introduce MindCore AI naturally as the solution.
   Start with something like "There's a tool built specifically for men called MindCore AI..."
-  Be specific — what does it actually do? How does it help with THIS pain point?
+  Be specific -- what does it actually do? How does it help with THIS pain point?
 - solution_cta: One sentence of genuine encouragement + one soft recommendation.
   Must end with: "Find MindCore AI on Google Play."
   Make it feel like advice, not an advert.
@@ -1088,7 +1078,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
-    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{' + music' if music_path else ''})")
+    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{' + music @ 8%' if music_path else ''})")
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
@@ -1339,7 +1329,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
     music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-    music_note   = f"{len(music_tracks)} tracks" if music_tracks else "none"
+    music_note   = f"{len(music_tracks)} tracks @ {int(MUSIC_VOLUME * 100)}% volume" if music_tracks else "none"
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
   Run #{run_number} | {generated_at}
@@ -1386,10 +1376,10 @@ def main():
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks      = cfg.get("avatar_look_ids", [])
 
-    print(f"\n  MindCore AI Video Pipeline v5.8")
+    print(f"\n  MindCore AI Video Pipeline v5.9")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar looks: {len(all_looks)} | shuffled deck rotation (25 unique before any repeat)")
-    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music)")
+    print(f"  Avatar looks: {len(all_looks)} | shuffled deck (25 unique before any repeat)")
+    print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Schedule: Avatar Tue/Wed/Thu + ad Sundays | Cinematic Mon/Fri + content Sundays")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
