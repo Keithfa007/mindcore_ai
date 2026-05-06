@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.9
+MindCore AI Video Pipeline v5.10
 =================================
+
+CHANGES (v5.10):
+  Lower background music volume further from 8% to 5% (0.05).
+  Music is now very subtle -- atmosphere only, voice dominates fully.
 
 CHANGES (v5.9):
   Lower background music volume from 15% to 8% (0.08).
-  Music now sits further behind the voiceover for a cleaner mix.
 
 CHANGES (v5.8):
   Shuffled look queue: all 25 avatar looks used in random order before
@@ -77,8 +80,8 @@ TOPIC_HISTORY_PATH  = PIPELINE_DIR / "topic_history.json"
 LOOK_QUEUE_PATH     = PIPELINE_DIR / "look_queue.json"
 SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
 
-# Background music volume -- 8% sits clearly behind the voiceover
-MUSIC_VOLUME = 0.08
+# Background music volume -- 5% is very subtle, atmosphere only
+MUSIC_VOLUME = 0.05
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -1078,7 +1081,8 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
-    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{' + music @ 8%' if music_path else ''})")
+    music_tag = f" + music @ {int(MUSIC_VOLUME * 100)}%" if music_path else ""
+    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{music_tag})")
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
@@ -1376,7 +1380,7 @@ def main():
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks      = cfg.get("avatar_look_ids", [])
 
-    print(f"\n  MindCore AI Video Pipeline v5.9")
+    print(f"\n  MindCore AI Video Pipeline v5.10")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar looks: {len(all_looks)} | shuffled deck (25 unique before any repeat)")
     print(f"  Formats: Avatar (HeyGen) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
