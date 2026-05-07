@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.12
+MindCore AI Video Pipeline v5.13
 =================================
 
+CHANGES (v5.13):
+  Fix YouTube (and all platform) descriptions reproducing the full script.
+  generate_upload_metadata no longer receives the full voiceover -- only the
+  question, keyword, hook scene, and topic. Explicit rule added: descriptions
+  must be original sentences, never a copy or paraphrase of the voiceover.
+  youtube_description now capped at 500 chars before the link + hashtags.
+
 CHANGES (v5.12):
-  Word-by-word subtitles for avatar videos.
-  Whisper (tiny, CPU) transcribes the downloaded HeyGen video to get
-  accurate word timestamps. ASS subtitle file generated and calibrated
-  for 1080x1920:
-    - Font: Arial Bold, 75px  (~3.9% of frame height -- readable, not dominant)
-    - Outline: 4px solid black (pops on any background)
-    - Position: MarginV 500px from bottom (~65% down frame, clear of lower third)
-    - Groups: 3 words per caption, UPPERCASE
-    - WrapStyle 1: smart line-break if a group is very wide
-  FFmpeg burns subtitles in crop_to_portrait. Fails gracefully if Whisper
-  or the burn step error -- video still renders without captions.
+  Word-by-word subtitles for avatar videos (Whisper + ASS, 75px Arial bold).
 
 CHANGES (v5.11):
   Avatar scripts rewritten in interview response mode.
@@ -83,15 +80,11 @@ MUSIC_VOLUME = 0.05   # 5% -- subtle atmosphere only
 # ---------------------------------------------------------------------------
 # Subtitle config -- calibrated for 1080x1920 portrait
 # ---------------------------------------------------------------------------
-# PlayResX/Y == actual output resolution => font sizes are 1:1 with pixels.
-# 75 px / 1920 px = 3.9% of frame height: clearly readable, not overpowering.
-# MarginV 500 px from bottom edge => text sits at ~65% down the frame,
-# well above the lower-third where platform UI overlaps.
-WHISPER_MODEL      = "tiny"    # fast CPU inference, accurate for 30-60 s clips
-SUBTITLE_FONT      = "Arial"   # fonts-liberation on Ubuntu provides this
-SUBTITLE_FONT_SIZE = 75        # px at 1080x1920 reference resolution
-SUBTITLE_MARGIN_V  = 500       # px from bottom edge
-SUBTITLE_CHUNK     = 3         # words per caption group
+WHISPER_MODEL      = "tiny"
+SUBTITLE_FONT      = "Arial"
+SUBTITLE_FONT_SIZE = 75
+SUBTITLE_MARGIN_V  = 500
+SUBTITLE_CHUNK     = 3
 
 POLL_INTERVAL = 15
 VIDEO_TIMEOUT = 1200
@@ -269,32 +262,17 @@ def pick_music_track() -> str | None:
 # ---------------------------------------------------------------------------
 
 def transcribe_audio_whisper(video_path: str) -> list:
-    """
-    Transcribe the audio track of a video using Whisper and return
-    word-level timestamps as [{word, start, end}, ...].
-    Uses the 'tiny' model for fast CPU inference.
-    Falls back to [] on any failure so the pipeline continues without captions.
-    """
     try:
         import whisper
         print(f"  Whisper: loading '{WHISPER_MODEL}' model (CPU)...")
         model  = whisper.load_model(WHISPER_MODEL)
-        result = model.transcribe(
-            str(video_path),
-            word_timestamps=True,
-            language="en",
-            fp16=False,   # CPU-safe; fp16 requires CUDA
-        )
-        words = []
+        result = model.transcribe(str(video_path), word_timestamps=True, language="en", fp16=False)
+        words  = []
         for seg in result.get("segments", []):
             for w in seg.get("words", []):
                 word = w.get("word", "").strip()
                 if word:
-                    words.append({
-                        "word":  word,
-                        "start": float(w.get("start", 0)),
-                        "end":   float(w.get("end",   0)),
-                    })
+                    words.append({"word": word, "start": float(w.get("start", 0)), "end": float(w.get("end", 0))})
         print(f"  Whisper: {len(words)} words transcribed")
         return words
     except Exception as e:
@@ -303,18 +281,6 @@ def transcribe_audio_whisper(video_path: str) -> list:
 
 
 def generate_ass_subtitles(words: list, output_path: str) -> bool:
-    """
-    Write an ASS subtitle file from word-level timestamps.
-
-    Sizing rationale for 1080x1920:
-      PlayResX=1080, PlayResY=1920  =>  1 ASS font unit = 1 output pixel
-      Font size 75 px  =>  75/1920 = 3.9% of frame height
-      MarginV 500 px   =>  text bottom sits 500 px from frame bottom
-                           (~65% down the frame, clear of platform UI)
-      3 words per group, UPPERCASE, bold white, 4 px black outline
-
-    Returns True on success, False if words list is empty.
-    """
     if not words:
         return False
 
@@ -325,29 +291,19 @@ def generate_ass_subtitles(words: list, output_path: str) -> bool:
         return f"{h}:{m:02d}:{s:05.2f}"
 
     header = (
-        "[Script Info]\n"
-        "ScriptType: v4.00+\n"
-        "PlayResX: 1080\n"
-        "PlayResY: 1920\n"
-        "ScaledBorderAndShadow: yes\n"
-        "WrapStyle: 1\n"          # smart wrap -- long lines break at word boundaries
-        "\n"
+        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n"
+        "ScaledBorderAndShadow: yes\nWrapStyle: 1\n\n"
         "[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        # Colours: &HAABBGGRR  (AA=00 => fully opaque)
-        # PrimaryColour=white, OutlineColour=black, BackColour=transparent
         f"Style: Default,{SUBTITLE_FONT},{SUBTITLE_FONT_SIZE},"
         "&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
-        f"-1,0,0,0,100,100,1,0,1,4,0,2,60,60,{SUBTITLE_MARGIN_V},1\n"
-        "\n"
-        "[Events]\n"
-        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+        f"-1,0,0,0,100,100,1,0,1,4,0,2,60,60,{SUBTITLE_MARGIN_V},1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
 
-    # Group words into chunks of SUBTITLE_CHUNK
     chunks = []
     i = 0
     while i < len(words):
@@ -355,7 +311,6 @@ def generate_ass_subtitles(words: list, output_path: str) -> bool:
         text  = " ".join(w["word"].upper() for w in chunk)
         start = chunk[0]["start"]
         end   = chunk[-1]["end"]
-        # No overlap with previous chunk
         if chunks and start < chunks[-1]["end"]:
             start = chunks[-1]["end"]
         chunks.append({"text": text, "start": start, "end": end})
@@ -367,11 +322,7 @@ def generate_ass_subtitles(words: list, output_path: str) -> bool:
     )
 
     Path(output_path).write_text(header + events, encoding="utf-8")
-    print(
-        f"  Subtitles: {len(chunks)} groups | "
-        f"{SUBTITLE_FONT} {SUBTITLE_FONT_SIZE}px bold | "
-        f"MarginV {SUBTITLE_MARGIN_V}px from bottom"
-    )
+    print(f"  Subtitles: {len(chunks)} groups | {SUBTITLE_FONT} {SUBTITLE_FONT_SIZE}px | MarginV {SUBTITLE_MARGIN_V}px")
     return True
 
 
@@ -411,8 +362,7 @@ def load_app_facts() -> dict:
 def load_niche_keywords() -> dict:
     path = PIPELINE_DIR / "niche_keywords.json"
     if not path.exists():
-        return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"],
-                "visual_styles": []}
+        return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"], "visual_styles": []}
     with open(path) as f:
         return json.load(f)
 
@@ -420,8 +370,7 @@ def load_niche_keywords() -> dict:
 def pick_visual_style(keywords: dict) -> dict:
     styles = keywords.get("visual_styles", [])
     if not styles:
-        return {"name": "atmospheric_solitude",
-                "query_templates": ["lonely man window", "empty room", "man thinking alone"]}
+        return {"name": "atmospheric_solitude", "query_templates": ["lonely man window", "empty room", "man thinking alone"]}
     return random.choice(styles)
 
 
@@ -614,7 +563,6 @@ Below are REAL Google search queries. Choose the SINGLE BEST keyword for a short
 {history_note}
 FAVOUR: questions men actually ask ("why do I isolate", "how to stop feeling numb")
 and short emotional phrases ("sobriety anger", "emotional numbness men").
-These make the best interview-style answer videos.
 
 SCORING:
 1. Would a man ask this out loud to someone he trusted?
@@ -623,11 +571,11 @@ SCORING:
 4. Niche fit: men's mental health, sobriety, recovery
 
 FORMAT DECISION:
-- "avatar": questions, advice, testimony, how-to, direct answers -- PREFERRED for interview style
+- "avatar": questions, advice, testimony, how-to, direct answers -- PREFERRED
 - "cinematic": abstract emotional states, atmospheric, no clear question implied
 
 VISUAL STYLE FOR THIS RUN: {style_name} ({style_desc})
-If you choose cinematic, generate 4 Pexels queries in this style: {style_templates}
+If cinematic, generate 4 Pexels queries in this style: {style_templates}
 
 CANDIDATES (short-tail first):
 {candidate_list}
@@ -743,18 +691,18 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
     banned_openings_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
 
     hook_instructions = {
-        "direct_answer":     "Start mid-answer, as if you just heard the question and launched straight in. No setup. Just the answer.",
-        "reframe_first":     "Start by reframing what the question is really about. 'The real issue isn't X, it's...'",
-        "counter_intuitive": "Start with what most people get wrong about this. Challenge the common assumption.",
-        "personal_truth":    "Start with a raw, honest admission about this topic. First person, unguarded.",
-        "hard_fact":         "Lead with the uncomfortable truth nobody in this space says out loud.",
-        "challenge_premise": "Gently push back on how this is usually framed. 'Everyone talks about X, but...'",
+        "direct_answer":     "Start mid-answer, as if you just heard the question and launched straight in. No setup.",
+        "reframe_first":     "Reframe what the question is really about. 'The real issue isn't X, it's...'",
+        "counter_intuitive": "Start with what most people get wrong about this.",
+        "personal_truth":    "Start with a raw, honest admission. First person, unguarded.",
+        "hard_fact":         "Lead with the uncomfortable truth nobody says out loud.",
+        "challenge_premise": "Push back on how this is usually framed. 'Everyone talks about X, but...'",
     }
 
     prompt = f"""You are a credible man in his 40s being interviewed on a podcast about men's mental health.
 The interviewer just asked you: "{question}"
 
-You need to answer it. Not perform. Not present. ANSWER IT.{cinematic_note}
+ANSWER IT. Not perform. Not present. ANSWER IT.{cinematic_note}
 
 HOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}
 
@@ -768,9 +716,7 @@ AUDIENCE: Men 35+, asking this privately because they can't ask out loud.
 SEO KEYWORD: {keyword} (weave in naturally)
 
 TONE: Direct, warm, no bullshit. Trusted older brother.
-- Short sentences when they land harder.
-- Natural pauses: "And that's the thing." / "Right?"
-- No MindCore AI. No CTAs. Pure value.
+No MindCore AI. No CTAs. Pure value.
 
 BANNED OPENINGS:
 {banned_openings_str}
@@ -810,8 +756,7 @@ def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
 
     prompt = f"""Expert men's mental health content creator and performance marketer.
 
-Write an informational, engaging video script for MindCore AI.
-This is an AD but it MUST feel like content for the first two scenes.
+Write an informational video script for MindCore AI that feels like content for the first two scenes.
 
 PAIN POINT: {ad_topic['pain_point']}
 INSIGHT: {ad_topic['insight']}
@@ -928,12 +873,11 @@ def render_avatar_video(script_text: str, cfg: dict) -> str:
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     download_video(video_url, raw_path)
 
-    # Generate word-by-word subtitles via Whisper
     print("\n  [Subtitles] Transcribing audio with Whisper...")
     ass_path = str(OUTPUT_DIR / "subtitles.ass")
     words    = transcribe_audio_whisper(raw_path)
     if not generate_ass_subtitles(words, ass_path):
-        ass_path = None   # transcription failed -- crop continues without captions
+        ass_path = None
 
     crop_to_portrait(raw_path, final_path, ass_path=ass_path)
     return final_path
@@ -946,20 +890,10 @@ def render_avatar_video(script_text: str, cfg: dict) -> str:
 def generate_fish_audio_tts(script_text: str, output_path: str) -> str:
     if not FISH_AUDIO_API_KEY:
         raise RuntimeError("FISH_AUDIO_API_KEY not set")
-    headers = {
-        "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
-        "Content-Type":  "application/json",
-    }
-    payload = {
-        "text":         script_text,
-        "reference_id": FISH_AUDIO_VOICE_ID,
-        "format":       "mp3",
-        "mp3_bitrate":  192,
-        "latency":      "normal",
-    }
+    headers = {"Authorization": f"Bearer {FISH_AUDIO_API_KEY}", "Content-Type": "application/json"}
+    payload = {"text": script_text, "reference_id": FISH_AUDIO_VOICE_ID, "format": "mp3", "mp3_bitrate": 192, "latency": "normal"}
     print(f"  Fish Audio TTS: voice={FISH_AUDIO_VOICE_ID[:8]}... | {len(script_text)} chars")
-    resp = requests.post(FISH_AUDIO_TTS_URL, headers=headers, json=payload,
-                         stream=True, timeout=120)
+    resp = requests.post(FISH_AUDIO_TTS_URL, headers=headers, json=payload, stream=True, timeout=120)
     if not resp.ok:
         raise RuntimeError(f"Fish Audio TTS failed {resp.status_code}: {resp.text[:300]}")
     with open(output_path, "wb") as f:
@@ -972,8 +906,7 @@ def generate_fish_audio_tts(script_text: str, output_path: str) -> str:
 
 
 def get_audio_duration(audio_path: str) -> float:
-    cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-           "-of", "csv=p=0", audio_path]
+    cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", audio_path]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return float(result.stdout.strip())
 
@@ -1037,17 +970,9 @@ def download_clip(url: str, output_path: str) -> str:
 
 def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) -> str:
     cmd = [
-        "ffmpeg",
-        "-stream_loop", "-1",
-        "-i", clip_path,
-        "-vf", (
-            "scale=1080:1920:force_original_aspect_ratio=increase,"
-            "crop=1080:1920,"
-            "fps=30"
-        ),
-        "-t", str(duration),
-        "-an",
-        "-c:v", "libx264", "-crf", "20", "-preset", "fast",
+        "ffmpeg", "-stream_loop", "-1", "-i", clip_path,
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30",
+        "-t", str(duration), "-an", "-c:v", "libx264", "-crf", "20", "-preset", "fast",
         "-y", output_path
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -1056,14 +981,11 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
     return output_path
 
 
-def assemble_cinematic_video(clip_paths: list, audio_path: str,
-                              output_path: str, music_path: str = None):
+def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str, music_path: str = None):
     audio_duration = get_audio_duration(audio_path)
     n              = len(clip_paths)
     clip_duration  = audio_duration / n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s total")
-    if music_path:
-        print(f"  Background music: {Path(music_path).name} @ {int(MUSIC_VOLUME * 100)}% volume")
 
     processed = []
     for i, raw_path in enumerate(clip_paths):
@@ -1071,7 +993,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
         try:
             process_clip_to_portrait(raw_path, out, clip_duration)
             processed.append(out)
-            print(f"  Clip {i+1}/{n} processed ({clip_duration:.1f}s)")
+            print(f"  Clip {i+1}/{n} processed")
         except Exception as e:
             print(f"  Clip {i+1} failed ({e}) -- skipping")
 
@@ -1080,7 +1002,7 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
 
     if len(processed) < n:
         clip_duration = audio_duration / len(processed)
-        reprocessed = []
+        reprocessed   = []
         for i, raw_path in enumerate(clip_paths[:len(processed)]):
             out = str(OUTPUT_DIR / f"clip_{i}_adj.mp4")
             try:
@@ -1096,56 +1018,41 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str,
             f.write(f"file '{Path(p).resolve()}'\n")
 
     concat_video = str(OUTPUT_DIR / "concat_video.mp4")
-    cmd = [
-        "ffmpeg", "-f", "concat", "-safe", "0",
-        "-i", str(concat_file),
-        "-c:v", "libx264", "-crf", "16", "-preset", "slow",
-        "-t", str(audio_duration),
-        "-y", concat_video
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        ["ffmpeg", "-f", "concat", "-safe", "0", "-i", str(concat_file),
+         "-c:v", "libx264", "-crf", "16", "-preset", "slow", "-t", str(audio_duration), "-y", concat_video],
+        capture_output=True, text=True
+    )
     if result.returncode != 0:
         raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
     print(f"  Concat complete: {audio_duration:.1f}s")
 
     if music_path:
         cmd = [
-            "ffmpeg",
-            "-i", concat_video,
-            "-i", audio_path,
+            "ffmpeg", "-i", concat_video, "-i", audio_path,
             "-stream_loop", "-1", "-i", music_path,
             "-filter_complex",
             f"[2:a]volume={MUSIC_VOLUME}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[aout]",
-            "-map", "0:v",
-            "-map", "[aout]",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "192k",
-            "-t", str(audio_duration),
-            "-y", output_path
+            "-map", "0:v", "-map", "[aout]", "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "192k", "-t", str(audio_duration), "-y", output_path
         ]
     else:
         cmd = [
-            "ffmpeg",
-            "-i", concat_video,
-            "-i", audio_path,
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "192k",
-            "-t", str(audio_duration),
-            "-y", output_path
+            "ffmpeg", "-i", concat_video, "-i", audio_path,
+            "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "192k", "-t", str(audio_duration), "-y", output_path
         ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         if music_path:
-            print(f"  WARNING: music mix failed -- retrying without music")
+            print("  WARNING: music mix failed -- retrying without music")
             assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None)
             return
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
 
-    size_mb = Path(output_path).stat().st_size / (1024 * 1024)
-    w, h    = get_video_dimensions(output_path)
+    size_mb   = Path(output_path).stat().st_size / (1024 * 1024)
+    w, h      = get_video_dimensions(output_path)
     music_tag = f" + music @ {int(MUSIC_VOLUME * 100)}%" if music_path else ""
     print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{music_tag})")
 
@@ -1176,7 +1083,6 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
         raise RuntimeError("All clip downloads failed")
 
     music_path = pick_music_track()
-
     print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
     final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
     assemble_cinematic_video(raw_clip_paths, audio_path, final_path, music_path)
@@ -1199,16 +1105,16 @@ def download_video(url: str, output_path: str):
 
 
 def get_video_dimensions(path: str) -> tuple:
-    cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0",
-           "-show_entries", "stream=width,height", "-of", "csv=p=0", path]
+    cmd    = ["ffprobe", "-v", "error", "-select_streams", "v:0",
+              "-show_entries", "stream=width,height", "-of", "csv=p=0", path]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     parts  = result.stdout.strip().split(",")
     return int(parts[0]), int(parts[1])
 
 
 def detect_content_crop(video_path: str) -> tuple:
-    cmd = ["ffmpeg", "-i", video_path, "-vf", "cropdetect=limit=30:round=2:reset=0",
-           "-frames:v", "90", "-f", "null", "-"]
+    cmd     = ["ffmpeg", "-i", video_path, "-vf", "cropdetect=limit=30:round=2:reset=0",
+               "-frames:v", "90", "-f", "null", "-"]
     result  = subprocess.run(cmd, capture_output=True, text=True)
     matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", result.stderr)
     if not matches:
@@ -1228,13 +1134,6 @@ def make_portrait_filter(cw, ch, cx, cy) -> str:
 
 
 def crop_to_portrait(raw_path: str, final_path: str, ass_path: str = None):
-    """
-    Crop/scale the HeyGen video to 1080x1920 and optionally burn
-    ASS word-by-word subtitles into the output.
-
-    ass_path: path to the .ass file generated by generate_ass_subtitles().
-              Pass None (or omit) to render without captions.
-    """
     w, h = get_video_dimensions(raw_path)
     print(f"  Raw dimensions: {w}x{h}")
     crop_result = detect_content_crop(raw_path)
@@ -1242,23 +1141,20 @@ def crop_to_portrait(raw_path: str, final_path: str, ass_path: str = None):
                    else make_portrait_filter(w, h, 0, 0))
 
     if ass_path and Path(ass_path).exists():
-        # Forward-slash path, colon-escaped for FFmpeg's filter parser
-        safe_ass = str(Path(ass_path).resolve()).replace("\\", "/")
+        safe_ass    = str(Path(ass_path).resolve()).replace("\\", "/")
         filter_str += f",ass='{safe_ass}'"
-        print(f"  Burning subtitles: {Path(ass_path).name} "
-              f"({SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} | MarginV {SUBTITLE_MARGIN_V}px)")
+        print(f"  Burning subtitles: {Path(ass_path).name} ({SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} | MarginV {SUBTITLE_MARGIN_V}px)")
     else:
         print("  No subtitle file -- rendering without captions")
 
-    cmd = ["ffmpeg", "-i", raw_path, "-vf", filter_str,
-           "-c:v", "libx264", "-crf", "16", "-preset", "slow",
-           "-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M",
-           "-c:a", "copy", "-y", final_path]
+    cmd    = ["ffmpeg", "-i", raw_path, "-vf", filter_str,
+              "-c:v", "libx264", "-crf", "16", "-preset", "slow",
+              "-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M",
+              "-c:a", "copy", "-y", final_path]
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
         if ass_path and Path(ass_path).exists():
-            # Subtitle burn failed -- retry without captions rather than crashing
             print("  WARNING: subtitle burn failed -- retrying without captions")
             crop_to_portrait(raw_path, final_path, ass_path=None)
             return
@@ -1276,26 +1172,28 @@ def crop_to_portrait(raw_path: str, final_path: str, ass_path: str = None):
 
 def generate_upload_guide(script: dict, mode: str, render_fmt: str, client: anthropic.Anthropic) -> str:
     print("  Generating upload guide...")
-    full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
     question   = script.get("interview_question", topic)
+    hook_vo    = script.get("hook", {}).get("voiceover", "")
     video_type = script.get("video_type", mode)
     prompt = f"""Social media expert for TikTok, Instagram Reels, Facebook Reels and YouTube Shorts,
 men's mental health niche.
 
-Generate upload guide for all 4 platforms.
 VIDEO TYPE: {video_type.upper()} | FORMAT: {render_fmt.upper()}
-INTERVIEW QUESTION ANSWERED: {question}
+QUESTION ANSWERED: {question}
 SEO KEYWORD: {seo_kw}
-FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
+HOOK LINE: {hook_vo}
 
+Generate upload copy for all 4 platforms.
 TIKTOK / INSTAGRAM: Caption starts with the question or hook. 8-12 hashtags. Max 2200 chars. Include {REQUIRED_BRAND_HASHTAG}.
-FACEBOOK: Title + Description with question + hashtags. Include {REQUIRED_BRAND_HASHTAG}.
+FACEBOOK: Title + Description (2-3 original sentences + question + hashtags). Include {REQUIRED_BRAND_HASHTAG}.
 YOUTUBE SHORTS: Title phrased as the question. Description + mindcoreai.eu + {REQUIRED_BRAND_HASHTAG}.
-ON-SCREEN TEXT: 1 punchy line -- ideally the question or hook.
+ON-SCREEN TEXT: 1 punchy line -- the question or hook.
 Thumbnail suggestion + A/B hook idea.
-Plain text, clear labels, copy-paste ready."""
+Plain text, clear labels, copy-paste ready.
+
+CRITICAL: Write ALL descriptions in your own words. Do NOT copy or reproduce the video script."""
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(
@@ -1312,40 +1210,56 @@ Plain text, clear labels, copy-paste ready."""
 
 
 def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropic) -> dict:
+    """
+    Generate platform metadata (titles, captions, descriptions, tags).
+
+    NOTE: We deliberately do NOT pass the full voiceover here to prevent
+    the model from copying the script into descriptions. Descriptions are
+    written from the topic/question/keyword only.
+    """
     print("  Generating platform metadata...")
-    full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
     question   = script.get("interview_question", topic)
+    hook_vo    = script.get("hook", {}).get("voiceover", "")
     video_type = script.get("video_type", mode).upper()
+
     prompt = f"""Social media expert for men's mental health on TikTok, Instagram, Facebook and YouTube Shorts.
 
-VIDEO TYPE: {video_type} | QUESTION ANSWERED: {question} | SEO KEYWORD: {seo_kw}
-FULL VOICEOVER: {full_vo}
+VIDEO TYPE: {video_type}
+QUESTION THIS VIDEO ANSWERS: {question}
+SEO KEYWORD: {seo_kw}
+OPENING LINE OF VIDEO: {hook_vo}
 
-RULES:
-- tiktok_caption: Start with the question or hook. 8-10 hashtags. Max 2200 chars.
-  MUST include: {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
-- facebook_title: max 255 chars, phrase as the question
-- facebook_description: 2-3 sentences + question + 5-6 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}
+Write platform metadata. CRITICAL RULES:
+- ALL descriptions must be original sentences written from scratch.
+- Do NOT copy, quote, or paraphrase the video script. Write new sentences.
+- tiktok_caption: 1-2 punchy sentences related to the question + 8-10 hashtags.
+  Max 2200 chars. MUST include: {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
+- facebook_title: max 255 chars, phrase as the question if possible
+- facebook_description: 2 original sentences about the topic + question + 4-5 hashtags.
+  MUST include {REQUIRED_BRAND_HASHTAG}. Do NOT reproduce the script.
 - youtube_title: max 100 chars -- phrase as the question men search for
-- youtube_description: 2-4 sentences + blank line + "Try MindCore AI: https://mindcoreai.eu"
-  + blank line + 6-8 hashtags ending with #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}
+- youtube_description: exactly 2 short original sentences about the topic (not the script).
+  Then a blank line. Then: "Try MindCore AI: https://mindcoreai.eu"
+  Then a blank line. Then 6-8 hashtags ending with #Shorts.
+  MUST include {REQUIRED_BRAND_HASHTAG}. Max 500 chars before the link.
 - youtube_tags: comma-separated 8-12 keywords (no # symbols)
 
 Return ONLY valid JSON:
 {{
-  "tiktok_caption": "question or hook... {REQUIRED_BRAND_HASHTAG} #mensmentalhealth",
+  "tiktok_caption": "1-2 sentences about the topic... {REQUIRED_BRAND_HASHTAG} #mensmentalhealth #hashtag",
   "facebook_title": "...",
-  "facebook_description": "... {REQUIRED_BRAND_HASHTAG} ...",
+  "facebook_description": "2 original sentences. {REQUIRED_BRAND_HASHTAG} #hashtag",
   "youtube_title": "...",
-  "youtube_description": "sentences\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #mentalhealth #Shorts",
+  "youtube_description": "Sentence 1. Sentence 2.\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #mentalhealth #Shorts",
   "youtube_tags": "keyword1, keyword2, keyword3"
 }}"""
+
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(
-                model="claude-sonnet-4-6", max_tokens=900,
+                model="claude-sonnet-4-6", max_tokens=700,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = msg.content[0].text.strip()
@@ -1475,12 +1389,12 @@ def main():
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks      = cfg.get("avatar_look_ids", [])
 
-    print(f"\n  MindCore AI Video Pipeline v5.12")
+    print(f"\n  MindCore AI Video Pipeline v5.13")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar looks: {len(all_looks)} | shuffled deck rotation")
     print(f"  Script mode: INTERVIEW RESPONSE (question-driven, direct answers)")
-    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | {SUBTITLE_CHUNK} words/group | MarginV {SUBTITLE_MARGIN_V}px")
-    print(f"  Formats: Avatar (HeyGen + Whisper captions) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
+    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | {SUBTITLE_CHUNK} words/group")
+    print(f"  Formats: Avatar (HeyGen + captions) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
     print(f"  Music library: {len(music_tracks)} track(s)")
