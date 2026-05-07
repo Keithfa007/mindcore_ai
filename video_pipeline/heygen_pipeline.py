@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.13
+MindCore AI Video Pipeline v5.14
 =================================
 
+CHANGES (v5.14):
+  Fix avatar letterboxing. Some HeyGen avatar looks render with white space
+  both above and below (letterboxed), while others fill the frame correctly.
+  Root cause: cropdetect=limit=30 only detected near-black borders. White
+  padding (value 255) was invisible to it.
+  Fix: raised cropdetect limit to 200, which detects white/near-white borders.
+  Correctly framed looks are unaffected (no white border = nothing to crop).
+  Letterboxed looks now have white padding stripped and avatar scaled to fill
+  the full 1080x1920 frame.
+
 CHANGES (v5.13):
-  Fix YouTube (and all platform) descriptions reproducing the full script.
-  generate_upload_metadata no longer receives the full voiceover -- only the
-  question, keyword, hook scene, and topic. Explicit rule added: descriptions
-  must be original sentences, never a copy or paraphrase of the voiceover.
-  youtube_description now capped at 500 chars before the link + hashtags.
+  Fix descriptions reproducing the full script. Metadata generator no longer
+  receives the full voiceover. Explicit no-copy rule added.
 
 CHANGES (v5.12):
   Word-by-word subtitles for avatar videos (Whisper + ASS, 75px Arial bold).
@@ -1113,7 +1120,15 @@ def get_video_dimensions(path: str) -> tuple:
 
 
 def detect_content_crop(video_path: str) -> tuple:
-    cmd     = ["ffmpeg", "-i", video_path, "-vf", "cropdetect=limit=30:round=2:reset=0",
+    """
+    Detect borders using cropdetect.
+
+    limit=200 catches white/near-white padding (value 255) that HeyGen adds
+    when letterboxing certain avatar looks. Looks that fill the frame natively
+    have no uniform border so cropdetect returns the full frame unchanged.
+    Previous limit=30 only caught near-black borders and missed white padding.
+    """
+    cmd     = ["ffmpeg", "-i", video_path, "-vf", "cropdetect=limit=200:round=2:reset=0",
                "-frames:v", "90", "-f", "null", "-"]
     result  = subprocess.run(cmd, capture_output=True, text=True)
     matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", result.stderr)
@@ -1210,13 +1225,6 @@ CRITICAL: Write ALL descriptions in your own words. Do NOT copy or reproduce the
 
 
 def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropic) -> dict:
-    """
-    Generate platform metadata (titles, captions, descriptions, tags).
-
-    NOTE: We deliberately do NOT pass the full voiceover here to prevent
-    the model from copying the script into descriptions. Descriptions are
-    written from the topic/question/keyword only.
-    """
     print("  Generating platform metadata...")
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
@@ -1389,11 +1397,12 @@ def main():
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks      = cfg.get("avatar_look_ids", [])
 
-    print(f"\n  MindCore AI Video Pipeline v5.13")
+    print(f"\n  MindCore AI Video Pipeline v5.14")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar looks: {len(all_looks)} | shuffled deck rotation")
     print(f"  Script mode: INTERVIEW RESPONSE (question-driven, direct answers)")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | {SUBTITLE_CHUNK} words/group")
+    print(f"  Crop: cropdetect limit=200 (strips white letterbox padding from affected looks)")
     print(f"  Formats: Avatar (HeyGen + captions) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
     print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
     print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
