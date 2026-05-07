@@ -69,5 +69,15 @@
     "image_sources": {
       "dalle": 7
     }
+  },
+  {
+    "timestamp": "2026-05-07T08:12:22.007398+00:00",
+    "keyword": "why successful men feel empty and unfulfilled",
+    "format": "comparison",
+    "hook": "Success vs. Fulfillment: 5 Brutal Differences",
+    "job_id": "d1bd55fab28c4a3da645897941141b27",
+    "image_sources": {
+      "dalle": 7
+    }
   }
 ]
