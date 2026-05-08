@@ -15,8 +15,9 @@ Script format: INTERVIEW RESPONSE
   Conversational, mid-answer tone. No prepared speech feel.
   No name. No free trial.
 
-Subtitles: Whisper (tiny, CPU) -> ASS word-by-word captions burned in.
-Crop:      cropdetect limit=200 to strip white letterbox padding.
+Subtitles:  Whisper (tiny, CPU) -> ASS word-by-word captions burned in.
+Crop:       cropdetect limit=200 to strip white letterbox padding.
+Upload:     Upload-Post API -> TikTok + Facebook + Instagram + YouTube.
 """
 
 import os
@@ -32,10 +33,12 @@ import requests
 # Config
 # ---------------------------------------------------------------------------
 
-HEYGEN_API_KEY = os.environ["HEYGEN_API_KEY"]
+HEYGEN_API_KEY      = os.environ["HEYGEN_API_KEY"]
+UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
 
-HEYGEN_V3_URL     = "https://api.heygen.com/v3/videos"
-HEYGEN_STATUS_URL = "https://api.heygen.com/v1/video_status.get"
+HEYGEN_V3_URL       = "https://api.heygen.com/v3/videos"
+HEYGEN_STATUS_URL   = "https://api.heygen.com/v1/video_status.get"
+UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
 OUTPUT_DIR    = Path("video_pipeline/output")
 POLL_INTERVAL = 15
@@ -44,6 +47,7 @@ VIDEO_TIMEOUT = 1800   # 30 minutes
 AVATAR_ID        = "c25c06ac64c3480bba0f700c1864b7cb"
 VOICE_ID         = "6be73833ef9a4eb0aeee399b8fe9d62b"
 BACKGROUND_COLOR = "#07071a"
+UPLOAD_POST_USER = "MindCoreAI"
 
 # ---------------------------------------------------------------------------
 # Subtitle config -- calibrated for 1080x1920
@@ -53,6 +57,40 @@ SUBTITLE_FONT      = "Arial"
 SUBTITLE_FONT_SIZE = 75
 SUBTITLE_MARGIN_V  = 500
 SUBTITLE_CHUNK     = 3
+
+# ---------------------------------------------------------------------------
+# Platform metadata -- fixed for this intro video
+# ---------------------------------------------------------------------------
+
+TIKTOK_CAPTION = (
+    "Why did I build MindCore AI? Because I needed it and nothing like it existed. "
+    "A private AI companion built for men -- available any time, for whatever you're carrying. "
+    "#mindcoreai #mensmentalhealth #mentalhealth #mentalhealthformen #anxiety "
+    "#recovery #sobriety #emotionalhealth #AIcompanion #mentalwellness"
+)
+
+FACEBOOK_TITLE = "Why I Built MindCore AI — The App for Men Who Carry It Alone"
+
+FACEBOOK_DESCRIPTION = (
+    "Millions of men go through the same thing every day — quietly, alone, pretending everything's fine. "
+    "MindCore AI is a private AI companion built specifically for men. "
+    "Available 24/7, no judgment, no waiting list. "
+    "Find us on Google Play. #mindcoreai #mensmentalhealth #mentalhealthformen"
+)
+
+YOUTUBE_TITLE = "Why I Built MindCore AI | AI Mental Health Companion for Men"
+
+YOUTUBE_DESCRIPTION = (
+    "A private AI companion built specifically for men — available any time, day or night, "
+    "for anxiety, stress, recovery, or whatever you're carrying alone.\n\n"
+    "Find MindCore AI on Google Play: https://mindcoreai.eu\n\n"
+    "#mindcoreai #mensmentalhealth #mentalhealthformen #AIcompanion #anxiety #recovery #Shorts"
+)
+
+YOUTUBE_TAGS = (
+    "MindCore AI, men mental health, AI mental health coach, mental health for men, "
+    "anxiety, recovery, sobriety, emotional health, AI companion, mens wellness"
+)
 
 # ---------------------------------------------------------------------------
 # Introduction script -- interview format, no name, no free trial
@@ -85,7 +123,7 @@ INTRO_SCRIPT = (
     "You don't have to keep carrying this alone."
 )
 
-# Motion prompt: interview-style -- as if responding to an off-camera question
+# Motion prompt: interview-style delivery
 MOTION_PROMPT = (
     "Relaxed, natural posture as if in a podcast interview. "
     "Warm, direct eye contact with camera -- like answering someone you trust. "
@@ -258,10 +296,7 @@ def get_dimensions(path: str) -> tuple:
 
 
 def detect_crop(path: str) -> tuple:
-    """
-    limit=200 catches white/near-white letterbox padding from HeyGen.
-    Looks that fill the frame natively are unaffected.
-    """
+    """limit=200 catches white/near-white letterbox padding from HeyGen."""
     cmd     = ["ffmpeg", "-i", path, "-vf",
                "cropdetect=limit=200:round=2:reset=0",
                "-frames:v", "90", "-f", "null", "-"]
@@ -316,6 +351,55 @@ def to_portrait(raw: str, final: str, ass_path: str = None):
 
 
 # ---------------------------------------------------------------------------
+# Upload -- Upload-Post API (TikTok + Facebook + Instagram + YouTube)
+# ---------------------------------------------------------------------------
+
+def upload_to_platforms(video_path: str) -> dict:
+    if not UPLOAD_POST_API_KEY:
+        print("  UPLOAD_POST_API_KEY not set -- skipping upload")
+        return {"skipped": True, "reason": "no API key"}
+
+    print(f"  Uploading to TikTok + Facebook + Instagram + YouTube as '{UPLOAD_POST_USER}'...")
+
+    headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
+    data = [
+        ("user",                 UPLOAD_POST_USER),
+        ("platform[]",           "tiktok"),
+        ("platform[]",           "facebook"),
+        ("platform[]",           "instagram"),
+        ("platform[]",           "youtube"),
+        ("title",                TIKTOK_CAPTION[:2200]),
+        ("facebook_title",       FACEBOOK_TITLE[:255]),
+        ("facebook_description", FACEBOOK_DESCRIPTION),
+        ("youtube_title",        YOUTUBE_TITLE[:100]),
+        ("youtube_description",  YOUTUBE_DESCRIPTION[:5000]),
+        ("youtube_tags",         YOUTUBE_TAGS),
+    ]
+
+    try:
+        with open(video_path, "rb") as f:
+            files  = [("video", ("mindcore_intro.mp4", f, "video/mp4"))]
+            resp   = requests.post(UPLOAD_POST_API_URL, headers=headers,
+                                   files=files, data=data, timeout=300)
+
+        result = (resp.json() if resp.headers.get("content-type", "").startswith("application/json")
+                  else {"raw": resp.text})
+        result["status_code"] = resp.status_code
+
+        if resp.ok:
+            print(f"  Upload successful: {resp.status_code}")
+        else:
+            print(f"  Upload WARNING: {resp.status_code}")
+            print(f"  {resp.text[:300]}")
+
+        return result
+
+    except Exception as e:
+        print(f"  Upload failed: {e}")
+        return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -325,8 +409,9 @@ def main():
     final    = str(OUTPUT_DIR / "mindcore_intro.mp4")
     ass_path = str(OUTPUT_DIR / "intro_subtitles.ass")
 
-    word_count = len(INTRO_SCRIPT.split())
-    est_secs   = round(word_count / 130 * 60)
+    word_count   = len(INTRO_SCRIPT.split())
+    est_secs     = round(word_count / 130 * 60)
+    upload_ready = bool(UPLOAD_POST_API_KEY)
 
     print("\n  MindCore AI -- Introduction Video")
     print(f"  Avatar:    {AVATAR_ID[:8]}...")
@@ -335,7 +420,8 @@ def main():
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold")
     print(f"  Crop:      cropdetect limit=200 (strips white letterbox)")
     print(f"  Format:    1080x1920 9:16 portrait")
-    print("=" * 50)
+    print(f"  Upload:    {'ENABLED -> TikTok + Facebook + Instagram + YouTube' if upload_ready else 'DISABLED (no API key)'}")
+    print("=" * 55)
 
     print("\n  [Script preview]")
     print(f"  {INTRO_SCRIPT[:120]}...")
@@ -357,8 +443,18 @@ def main():
     print("\n  Cropping to portrait + burning captions...")
     to_portrait(raw, final, ass_path=ass_path)
 
-    print(f"\n  DONE -- download from Artifacts: mindcore_intro.mp4")
+    if upload_ready:
+        print("\n  Uploading to all platforms...")
+        result = upload_to_platforms(final)
+        import json
+        (OUTPUT_DIR / "intro_upload_result.json").write_text(json.dumps(result, indent=2))
+    else:
+        print("\n  Auto-upload disabled -- video saved for manual download from Artifacts")
+
+    print(f"\n  DONE")
     print(f"  File: {final}")
+    if upload_ready:
+        print("  Posted: TikTok + Facebook + Instagram + YouTube")
 
 
 if __name__ == "__main__":
