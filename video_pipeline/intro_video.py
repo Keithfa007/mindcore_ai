@@ -20,6 +20,7 @@ Crop:       cropdetect limit=200 to strip white letterbox padding.
 Upload:     Upload-Post API -> TikTok + Facebook + Instagram + YouTube.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -59,37 +60,70 @@ SUBTITLE_MARGIN_V  = 500
 SUBTITLE_CHUNK     = 3
 
 # ---------------------------------------------------------------------------
-# Platform metadata -- fixed for this intro video
+# Platform metadata -- fixed for this intro video, fully populated
+#
+# TikTok/Instagram: hook-first caption, 10 hashtags, under 2200 chars
+# Facebook:        title + full multi-sentence description + hashtags
+# YouTube:         keyword-optimised title + rich description + link + tags
 # ---------------------------------------------------------------------------
 
+# TikTok + Instagram (shared field via Upload-Post "title")
 TIKTOK_CAPTION = (
-    "Why did I build MindCore AI? Because I needed it and nothing like it existed. "
-    "A private AI companion built for men -- available any time, for whatever you're carrying. "
-    "#mindcoreai #mensmentalhealth #mentalhealth #mentalhealthformen #anxiety "
-    "#recovery #sobriety #emotionalhealth #AIcompanion #mentalwellness"
+    "Why do millions of men suffer in silence? "
+    "I built MindCore AI because I was one of them. "
+    "A private AI companion built specifically for men — "
+    "available 24/7, no judgment, for anxiety, stress, recovery, "
+    "or whatever you're carrying alone. "
+    "Find us on Google Play. "
+    "#mindcoreai #mensmentalhealth #mentalhealthformen "
+    "#anxiety #depression #recovery #sobriety "
+    "#AImentalhealth #mentalwellness #emotionalhealth"
 )
 
-FACEBOOK_TITLE = "Why I Built MindCore AI — The App for Men Who Carry It Alone"
+# Facebook title
+FACEBOOK_TITLE = (
+    "Why I Built MindCore AI — A Private AI Companion for Men Who Carry It Alone"
+)
 
+# Facebook description
 FACEBOOK_DESCRIPTION = (
-    "Millions of men go through the same thing every day — quietly, alone, pretending everything's fine. "
-    "MindCore AI is a private AI companion built specifically for men. "
-    "Available 24/7, no judgment, no waiting list. "
-    "Find us on Google Play. #mindcoreai #mensmentalhealth #mentalhealthformen"
+    "Most men would rather suffer in silence than admit they're struggling. "
+    "I know, because that was me.\n\n"
+    "MindCore AI is a private AI mental wellness companion built specifically for men — "
+    "available 24/7, no waiting lists, no judgment. "
+    "Whether you're dealing with anxiety, stress, recovery, or just something you can't shake, "
+    "MindCore AI is there for an honest conversation whenever you need one.\n\n"
+    "Find us on Google Play: https://mindcoreai.eu\n\n"
+    "You don't have to keep carrying this alone.\n\n"
+    "#mindcoreai #mensmentalhealth #mentalhealthformen "
+    "#anxiety #recovery #sobriety #AImentalhealth #mentalwellness"
 )
 
+# YouTube title -- keyword-optimised, under 100 chars
 YOUTUBE_TITLE = "Why I Built MindCore AI | AI Mental Health Companion for Men"
 
+# YouTube description -- rich, multi-paragraph, includes link
 YOUTUBE_DESCRIPTION = (
-    "A private AI companion built specifically for men — available any time, day or night, "
-    "for anxiety, stress, recovery, or whatever you're carrying alone.\n\n"
-    "Find MindCore AI on Google Play: https://mindcoreai.eu\n\n"
-    "#mindcoreai #mensmentalhealth #mentalhealthformen #AIcompanion #anxiety #recovery #Shorts"
+    "Most men would rather suffer in silence than admit they're struggling. "
+    "I built MindCore AI because I was one of them — and nothing like it existed.\n\n"
+    "MindCore AI is a private AI mental wellness companion built specifically for men. "
+    "Available any time, day or night — for anxiety, stress, recovery, "
+    "or whatever you're carrying that you can't say out loud. "
+    "No therapy. No hotline. Just an honest conversation, whenever you need one.\n\n"
+    "It's not for everyone. It's for the man at 3am with nobody to call.\n\n"
+    "📱 Find MindCore AI on Google Play:\n"
+    "https://mindcoreai.eu\n\n"
+    "#mindcoreai #mensmentalhealth #mentalhealthformen "
+    "#AImentalhealth #anxiety #depression #recovery #sobriety "
+    "#emotionalhealth #AIcompanion #mentalwellness #Shorts"
 )
 
+# YouTube tags -- no # symbols, comma-separated, 12 tags
 YOUTUBE_TAGS = (
-    "MindCore AI, men mental health, AI mental health coach, mental health for men, "
-    "anxiety, recovery, sobriety, emotional health, AI companion, mens wellness"
+    "MindCore AI, men mental health, AI mental health app, mental health for men, "
+    "AI mental health coach, anxiety help for men, men depression, "
+    "recovery app, sobriety support, emotional health men, "
+    "AI companion men, mental wellness app"
 )
 
 # ---------------------------------------------------------------------------
@@ -360,6 +394,9 @@ def upload_to_platforms(video_path: str) -> dict:
         return {"skipped": True, "reason": "no API key"}
 
     print(f"  Uploading to TikTok + Facebook + Instagram + YouTube as '{UPLOAD_POST_USER}'...")
+    print(f"  TikTok/IG: {TIKTOK_CAPTION[:80]}...")
+    print(f"  Facebook:  {FACEBOOK_TITLE}")
+    print(f"  YouTube:   {YOUTUBE_TITLE}")
 
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
     data = [
@@ -368,9 +405,12 @@ def upload_to_platforms(video_path: str) -> dict:
         ("platform[]",           "facebook"),
         ("platform[]",           "instagram"),
         ("platform[]",           "youtube"),
+        # TikTok + Instagram caption (same field)
         ("title",                TIKTOK_CAPTION[:2200]),
+        # Facebook
         ("facebook_title",       FACEBOOK_TITLE[:255]),
-        ("facebook_description", FACEBOOK_DESCRIPTION),
+        ("facebook_description", FACEBOOK_DESCRIPTION[:2000]),
+        # YouTube
         ("youtube_title",        YOUTUBE_TITLE[:100]),
         ("youtube_description",  YOUTUBE_DESCRIPTION[:5000]),
         ("youtube_tags",         YOUTUBE_TAGS),
@@ -389,8 +429,7 @@ def upload_to_platforms(video_path: str) -> dict:
         if resp.ok:
             print(f"  Upload successful: {resp.status_code}")
         else:
-            print(f"  Upload WARNING: {resp.status_code}")
-            print(f"  {resp.text[:300]}")
+            print(f"  Upload WARNING: {resp.status_code} -- {resp.text[:300]}")
 
         return result
 
@@ -423,6 +462,11 @@ def main():
     print(f"  Upload:    {'ENABLED -> TikTok + Facebook + Instagram + YouTube' if upload_ready else 'DISABLED (no API key)'}")
     print("=" * 55)
 
+    print("\n  [Platform metadata]")
+    print(f"  TikTok/IG: {TIKTOK_CAPTION[:80]}...")
+    print(f"  Facebook:  {FACEBOOK_TITLE}")
+    print(f"  YouTube:   {YOUTUBE_TITLE}")
+
     print("\n  [Script preview]")
     print(f"  {INTRO_SCRIPT[:120]}...")
 
@@ -446,8 +490,8 @@ def main():
     if upload_ready:
         print("\n  Uploading to all platforms...")
         result = upload_to_platforms(final)
-        import json
         (OUTPUT_DIR / "intro_upload_result.json").write_text(json.dumps(result, indent=2))
+        print(f"  Result saved: intro_upload_result.json")
     else:
         print("\n  Auto-upload disabled -- video saved for manual download from Artifacts")
 
