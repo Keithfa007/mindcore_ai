@@ -10,6 +10,11 @@ Voice:   6be73833ef9a4eb0aeee399b8fe9d62b
 API:     HeyGen v3 /v3/videos  (same as main pipeline)
 Output:  video_pipeline/output/mindcore_intro.mp4
 
+Script format: INTERVIEW RESPONSE
+  Written as if the founder was just asked "Why did you build MindCore AI?"
+  Conversational, mid-answer tone. No prepared speech feel.
+  No name. No free trial.
+
 Subtitles: Whisper (tiny, CPU) -> ASS word-by-word captions burned in.
 Crop:      cropdetect limit=200 to strip white letterbox padding.
 """
@@ -50,43 +55,43 @@ SUBTITLE_MARGIN_V  = 500
 SUBTITLE_CHUNK     = 3
 
 # ---------------------------------------------------------------------------
-# Introduction script -- no name, anonymous founder voice
+# Introduction script -- interview format, no name, no free trial
 #
-# Structure:
-#   Hook        -- hard truth that stops the scroll
-#   Problem     -- why men suffer alone (the gap this fills)
-#   Origin      -- why MindCore AI exists, anonymous, authentic
-#   What it is  -- clear description of the app
-#   CTA         -- soft, dignified invitation
+# Written as a direct answer to: "Why did you build MindCore AI?"
+# Sounds like someone caught mid-conversation, not delivering a speech.
 #
-# ~140 words / ~65 seconds
+# ~135 words / ~62 seconds
 # ---------------------------------------------------------------------------
 
 INTRO_SCRIPT = (
-    "Most men would rather suffer in silence than admit they're struggling. "
-    "I know, because that was me.  "
+    "Yeah, honestly -- because I needed it and nothing like it existed.  "
 
-    "There's no space built for the way men actually think. "
-    "No place to say what's really going on without being fixed, advised, or judged. "
-    "So most men just carry it. "
-    "Quietly. Alone. Until it gets too heavy.  "
+    "For a long time I was completely alone with my own head. "
+    "No judgment-free space. Nobody to talk to without it turning into advice, "
+    "or worry, or 'you should see someone.' "
+    "And I know I'm not alone in that. "
+    "Millions of men go through the same thing every single day -- "
+    "quietly, pretending everything's fine.  "
 
-    "I built MindCore AI because I needed something like it and nothing existed. "
-    "A private, judgment-free companion built specifically for men -- "
-    "available any time, day or night, for whatever you're dealing with. "
-    "Anxiety. Stress. Recovery. The stuff you can't say out loud to anyone.  "
+    "So I built something. "
+    "A private AI companion, built specifically for men. "
+    "Available any time, day or night, for whatever you're carrying. "
+    "Anxiety. Stress. Recovery. "
+    "The stuff you can't say out loud to anyone.  "
 
     "It's not therapy. It's not a hotline. "
     "It's just an honest conversation, whenever you need one. "
-    "Your first week is free. "
-    "Find MindCore AI on Google Play. "
+    "It's called MindCore AI. It's on Google Play. "
     "You don't have to keep carrying this alone."
 )
 
+# Motion prompt: interview-style -- as if responding to an off-camera question
 MOTION_PROMPT = (
-    "Warm, steady eye contact. Speaking directly to camera as if to one person. "
-    "Calm, grounded gestures. Slight nod on emotional moments. "
-    "Unhurried, conversational, credible."
+    "Relaxed, natural posture as if in a podcast interview. "
+    "Warm, direct eye contact with camera -- like answering someone you trust. "
+    "Genuine hand gestures when making a point. "
+    "Slight pause and nod before the emotional moments. "
+    "Unhurried. Real. Not rehearsed."
 )
 
 
@@ -254,8 +259,8 @@ def get_dimensions(path: str) -> tuple:
 
 def detect_crop(path: str) -> tuple:
     """
-    limit=200 catches white/near-white letterbox padding.
-    Looks that fill the frame natively return the full dimensions unchanged.
+    limit=200 catches white/near-white letterbox padding from HeyGen.
+    Looks that fill the frame natively are unaffected.
     """
     cmd     = ["ffmpeg", "-i", path, "-vf",
                "cropdetect=limit=200:round=2:reset=0",
@@ -326,7 +331,7 @@ def main():
     print("\n  MindCore AI -- Introduction Video")
     print(f"  Avatar:    {AVATAR_ID[:8]}...")
     print(f"  Voice:     {VOICE_ID[:8]}...")
-    print(f"  Script:    {word_count} words (~{est_secs}s)")
+    print(f"  Script:    {word_count} words (~{est_secs}s) -- INTERVIEW FORMAT")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold")
     print(f"  Crop:      cropdetect limit=200 (strips white letterbox)")
     print(f"  Format:    1080x1920 9:16 portrait")
@@ -359,6 +364,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        print(f"\n  FAILED: {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"\n  FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
