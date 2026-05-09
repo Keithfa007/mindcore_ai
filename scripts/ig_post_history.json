@@ -89,5 +89,15 @@
     "image_sources": {
       "dalle": 7
     }
+  },
+  {
+    "timestamp": "2026-05-09T10:03:20.602913+00:00",
+    "keyword": "why do i feel guilty for taking time for myself",
+    "format": "reframe",
+    "hook": "Stop Feeling Guilty. Reframe Rest Like This.",
+    "job_id": "3becb79c80724359a282a805cd8e96d7",
+    "image_sources": {
+      "dalle": 7
+    }
   }
 ]
