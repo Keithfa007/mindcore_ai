@@ -4,41 +4,56 @@ class LiveVoicePreferences {
   LiveVoicePreferences._();
   static final LiveVoicePreferences instance = LiveVoicePreferences._();
 
-  static const _kAutoSpeakChatReplies = 'voice_auto_speak_chat_replies_v1';
-  static const _kStreamChatReplies = 'voice_stream_chat_replies_v1';
+  // ── Fish Audio voice IDs ──────────────────────────────────────────────────
+  // Male: warm, calm, grounded
+  static const String maleVoiceId   = 'eed26f2294d64177911af612473cca98';
+  // Female: warm, calm, grounded — UPDATE this ID once chosen from fish.audio
+  static const String femaleVoiceId = 'eed26f2294d64177911af612473cca98'; // TODO: replace with female voice ID
+
+  // ── Preference keys ───────────────────────────────────────────────────────
+  static const _kAutoSpeakChatReplies  = 'voice_auto_speak_chat_replies_v1';
+  static const _kStreamChatReplies     = 'voice_stream_chat_replies_v1';
   static const _kInterruptOnNewMessage = 'voice_interrupt_on_new_message_v1';
-  static const _kReplayAllowed = 'voice_replay_allowed_v1';
-  static const _kChatStreamingVoice = 'live_voice_chat_streaming_v1';
-  static const _kAiBreathingCoach = 'ai_breathing_coach_enabled_v1';
-  static const _kChatVoiceProfile = 'live_voice_chat_profile_v1';
-  static const _kAmbientBlendPreset = 'live_voice_ambient_blend_v1';
-  static const _kAmbientBlendLevel = 'live_voice_ambient_level_v1';
+  static const _kReplayAllowed         = 'voice_replay_allowed_v1';
+  static const _kChatStreamingVoice    = 'live_voice_chat_streaming_v1';
+  static const _kAiBreathingCoach      = 'ai_breathing_coach_enabled_v1';
+  static const _kChatVoiceProfile      = 'live_voice_chat_profile_v1';
+  static const _kAmbientBlendPreset    = 'live_voice_ambient_blend_v1';
+  static const _kAmbientBlendLevel     = 'live_voice_ambient_level_v1';
+  static const _kCompanionGender       = 'companion_voice_gender_v1'; // 'male' | 'female'
 
-  bool _autoSpeakChatReplies = true;
-  bool _streamChatReplies = true;
-  bool _interruptOnNewMessage = true;
-  bool _replayAllowed = true;
-  String _chatVoiceProfile = 'auto';
-  String _ambientBlendPreset = 'off';
-  double _ambientBlendLevel = 0.18;
+  bool   _autoSpeakChatReplies  = true;
+  bool   _streamChatReplies     = true;
+  bool   _interruptOnNewMessage = true;
+  bool   _replayAllowed         = true;
+  String _chatVoiceProfile      = 'auto';
+  String _ambientBlendPreset    = 'off';
+  double _ambientBlendLevel     = 0.18;
+  String _companionGender       = 'male';
 
-  bool get autoSpeakChatReplies => _autoSpeakChatReplies;
-  bool get streamChatReplies => _streamChatReplies;
-  bool get interruptOnNewMessage => _interruptOnNewMessage;
-  bool get replayAllowed => _replayAllowed;
-  String get chatVoiceProfile => _chatVoiceProfile;
-  String get ambientBlendPreset => _ambientBlendPreset;
-  double get ambientBlendLevel => _ambientBlendLevel;
+  bool   get autoSpeakChatReplies  => _autoSpeakChatReplies;
+  bool   get streamChatReplies     => _streamChatReplies;
+  bool   get interruptOnNewMessage => _interruptOnNewMessage;
+  bool   get replayAllowed         => _replayAllowed;
+  String get chatVoiceProfile      => _chatVoiceProfile;
+  String get ambientBlendPreset    => _ambientBlendPreset;
+  double get ambientBlendLevel     => _ambientBlendLevel;
+  String get companionGender       => _companionGender;
+
+  /// Returns the active Fish Audio voice ID based on the user's gender preference.
+  String get activeVoiceId =>
+      _companionGender == 'female' ? femaleVoiceId : maleVoiceId;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    _autoSpeakChatReplies = prefs.getBool(_kAutoSpeakChatReplies) ?? true;
-    _streamChatReplies = prefs.getBool(_kStreamChatReplies) ?? true;
-    _interruptOnNewMessage = prefs.getBool(_kInterruptOnNewMessage) ?? true;
-    _replayAllowed = prefs.getBool(_kReplayAllowed) ?? true;
-    _chatVoiceProfile = prefs.getString(_kChatVoiceProfile) ?? 'auto';
-    _ambientBlendPreset = prefs.getString(_kAmbientBlendPreset) ?? 'off';
-    _ambientBlendLevel = prefs.getDouble(_kAmbientBlendLevel) ?? 0.18;
+    _autoSpeakChatReplies  = prefs.getBool(_kAutoSpeakChatReplies)  ?? true;
+    _streamChatReplies     = prefs.getBool(_kStreamChatReplies)      ?? true;
+    _interruptOnNewMessage = prefs.getBool(_kInterruptOnNewMessage)  ?? true;
+    _replayAllowed         = prefs.getBool(_kReplayAllowed)          ?? true;
+    _chatVoiceProfile      = prefs.getString(_kChatVoiceProfile)     ?? 'auto';
+    _ambientBlendPreset    = prefs.getString(_kAmbientBlendPreset)   ?? 'off';
+    _ambientBlendLevel     = prefs.getDouble(_kAmbientBlendLevel)    ?? 0.18;
+    _companionGender       = prefs.getString(_kCompanionGender)      ?? 'male';
   }
 
   Future<void> setAutoSpeakChatReplies(bool value) async {
@@ -97,12 +112,18 @@ class LiveVoicePreferences {
     await prefs.setDouble(_kAmbientBlendLevel, _ambientBlendLevel);
   }
 
-
+  /// Sets companion voice gender: 'male' or 'female'
+  Future<void> setCompanionGender(String gender) async {
+    final v = gender == 'female' ? 'female' : 'male';
+    _companionGender = v;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kCompanionGender, v);
+  }
 
   // Compatibility aliases for older call sites.
-  Future<void> setVoiceProfile(String value) async => setChatVoiceProfile(value);
-  Future<void> setAmbientPreset(String value) async => setAmbientBlendPreset(value);
-  Future<void> setAmbientLevel(double value) async => setAmbientBlendLevel(value);
+  Future<void> setVoiceProfile(String value)    async => setChatVoiceProfile(value);
+  Future<void> setAmbientPreset(String value)   async => setAmbientBlendPreset(value);
+  Future<void> setAmbientLevel(double value)    async => setAmbientBlendLevel(value);
 
   static Future<bool> getChatStreamingVoiceEnabled() async {
     final prefs = await SharedPreferences.getInstance();

@@ -10,12 +10,13 @@ import 'package:mindcore_ai/ai/orchestrator_models.dart';
 import 'package:mindcore_ai/env/env.dart';
 import 'package:mindcore_ai/pages/helpers/chat_persona_prefs.dart';
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
+import 'package:mindcore_ai/services/user_memory_service.dart';
+import 'package:mindcore_ai/services/persona_service.dart';
 
 class ChatStreamService {
   static String get _apiKey  => Env.openaiKey;
   static const _endpoint    = 'https://api.openai.com/v1/chat/completions';
   static const _model       = 'gpt-4o-mini';
-  // Slightly lower temperature — more consistent, grounded, less drift
   static const _temperature = 0.45;
 
   static Future<OrchestratorReply> streamOrchestratedReply({
@@ -51,6 +52,18 @@ class ChatStreamService {
     // ── Build context ────────────────────────────────────────────────
     final personaProfile  = await ChatPersonaPrefs.loadPersona();
     final journalSummary  = await _recentJournalSummary();
+
+    // ── Memory + persona ─────────────────────────────────────────────
+    // Fetched concurrently to minimise latency
+    final results = await Future.wait([
+      UserMemoryService.getMemorySummary(),
+      PersonaService.getPersonaStyle().then((s) => s.name),
+    ]);
+    final memorySummary = results[0] as String;
+    final personaStyle  = results[1] == 'feminine'
+        ? PersonaStyle.feminine
+        : PersonaStyle.standard;
+
     final context = AgentContext(
       userInput:            userInput,
       moodLabel:            moodLabel,
@@ -62,9 +75,11 @@ class ChatStreamService {
     final decision = AgentRouter.decide(context);
     final maxOut   = _maxTokensForAgent(decision.agent.key);
     final system   = AgentPrompts.buildSystemPrompt(
-      agent:             decision.agent,
-      context:           context,
+      agent:              decision.agent,
+      context:            context,
       personaProfileText: personaProfile.profileText,
+      userMemorySummary:  memorySummary,
+      personaStyle:       personaStyle,
     );
 
     final normalizedHistory = history
@@ -142,7 +157,7 @@ class ChatStreamService {
       }
 
       final clean = buffer.toString().trim().isEmpty
-          ? "I’m here with you. What’s going on?"
+          ? "I'm here with you. What's going on?"
           : buffer.toString().trim();
 
       return OrchestratorReply(
@@ -162,7 +177,7 @@ class ChatStreamService {
         suggestedActions: decision.actions, ttsText: text,
       );
     } catch (_) {
-      const text = 'My connection dropped for a moment. Let’s try again.';
+      const text = 'My connection dropped for a moment. Let\'s try again.';
       await onDelta(text);
       return OrchestratorReply(
         reply: text, agent: decision.agent, confidence: decision.confidence,
@@ -177,44 +192,26 @@ class ChatStreamService {
   // ── Crisis ───────────────────────────────────────────────────────────────
 
   static const String _crisisText =
-      "What you\'re feeling right now matters, and so do you.\n\n"
-      "I\'m not able to provide crisis support, but real help is available right now.\n\n"
+      "What you're feeling right now matters, and so do you.\n\n"
+      "I'm not able to provide crisis support, but real help is available right now.\n\n"
       "\u{1F1F2}\u{1F1F9} Malta: 1579 (Mental Health Helpline) or 112 (Emergency)\n"
       "\u{1F1FA}\u{1F1F8} USA / Canada: Call or text 988 (Suicide & Crisis Lifeline)\n"
-      "\u{1F1EC}\u{1F1E7} UK: Samaritans 116 123 (free, 24\/7)\n"
+      "\u{1F1EC}\u{1F1E7} UK: Samaritans 116 123 (free, 24/7)\n"
       "\u{1F1E6}\u{1F1FA} Australia: Lifeline 13 11 14\n"
       "\u{1F310} Everywhere: findahelpline.com\n\n"
       "If you are in immediate danger, please call emergency services now.\n\n"
-      "You don\'t have to go through this alone. Someone is there.";
+      "You don't have to go through this alone. Someone is there.";
 
-  // Expanded keyword list including indirect expressions people actually use
   static bool _isCrisis(String input) {
     final t = input.toLowerCase();
     const keywords = [
-      'kill myself',
-      'killing myself',
-      'suicide',
-      'suicidal',
-      'end my life',
-      'end it all',
-      'take my life',
-      'want to die',
-      'wish i was dead',
-      'better off dead',
-      'not want to be here',
-      "don't want to be here",
-      'no reason to live',
-      'harm myself',
-      'self harm',
-      'self-harm',
-      'cut myself',
-      'hurt myself',
-      'everyone would be better off without me',
-      'nobody would miss me',
-      'can\'t go on',
-      'cannot go on',
-      'done with everything',
-      'done with life',
+      'kill myself', 'killing myself', 'suicide', 'suicidal',
+      'end my life', 'end it all', 'take my life', 'want to die',
+      'wish i was dead', 'better off dead', 'not want to be here',
+      "don't want to be here", 'no reason to live', 'harm myself',
+      'self harm', 'self-harm', 'cut myself', 'hurt myself',
+      'everyone would be better off without me', 'nobody would miss me',
+      'can\'t go on', 'cannot go on', 'done with everything', 'done with life',
     ];
     return keywords.any(t.contains);
   }
@@ -223,14 +220,14 @@ class ChatStreamService {
 
   static int _maxTokensForAgent(String agent) {
     switch (agent) {
-      case 'reset':           return 280;  // grounding needs space
-      case 'sleep':           return 260;
-      case 'journalInsight':  return 320;  // reflective mode needs room
-      case 'focus':           return 300;
-      case 'prep':            return 300;
-      case 'routine':         return 280;
+      case 'reset':          return 280;
+      case 'sleep':          return 260;
+      case 'journalInsight': return 320;
+      case 'focus':          return 300;
+      case 'prep':           return 300;
+      case 'routine':        return 280;
       case 'companion':
-      default:                return 300;  // up from 240 — less rushed
+      default:               return 300;
     }
   }
 
@@ -248,7 +245,7 @@ class ChatStreamService {
       if (latest.isEmpty) return '';
       final joined = latest.join(' | ');
       return joined.length > 400
-          ? '${joined.substring(0, 400)}…'
+          ? '${joined.substring(0, 400)}\u2026'
           : joined;
     } catch (_) {
       return '';

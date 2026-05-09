@@ -43,13 +43,20 @@ class NotificationService {
   static const _blogChannelDesc =
       'Notifies you when a new article is published on MindCore AI';
 
+  // Weekly summary channel — Sunday evening progress notification
+  static const _weeklySummaryChannelId   = 'weekly_summary_channel';
+  static const _weeklySummaryChannelName = 'Weekly Progress';
+  static const _weeklySummaryChannelDesc =
+      'A warm Sunday evening summary of your week\'s wellness journey';
+
   // ── Notification IDs ─────────────────────────────────────────────────────────
 
-  static const int _dailyNotificationId = 2000;
-  static const int _checkInMorningId    = 4001;
-  static const int _checkInAfternoonId  = 4002;
-  static const int _checkInEveningId    = 4003;
-  static const int _blogNotificationId  = 5001;
+  static const int _dailyNotificationId    = 2000;
+  static const int _checkInMorningId       = 4001;
+  static const int _checkInAfternoonId     = 4002;
+  static const int _checkInEveningId       = 4003;
+  static const int _blogNotificationId     = 5001;
+  static const int _weeklySummaryId        = 6001;
 
   static const String _kLastScheduledSignature =
       'recommendation_last_schedule_signature';
@@ -79,6 +86,31 @@ class NotificationService {
         'You deserve a moment of peace.'),
     _CheckInMsg('Just here if you need us \ud83c\udf43',
         'No pressure \u2014 just checking in.'),
+  ];
+
+  // ── Weekly summary messages (rotates by week number) ──────────────────────────
+
+  static const _weeklySummaryMessages = [
+    _CheckInMsg(
+      'Your week, reflected back \ud83c\udf1f',
+      'You showed up this week. Open MindCore AI to see how far you have come.',
+    ),
+    _CheckInMsg(
+      'Sunday check-in \ud83c\udf19',
+      'Every small step this week counted. Take a moment to acknowledge that.',
+    ),
+    _CheckInMsg(
+      'You made it through another week \ud83d\udc9a',
+      'Open MindCore AI to reflect on your week and start the next one gently.',
+    ),
+    _CheckInMsg(
+      'A quiet Sunday moment \u2728',
+      'How was your week really? Take 2 minutes to check in with yourself.',
+    ),
+    _CheckInMsg(
+      'Weekly reflection time \ud83c\udf3f',
+      'Progress is not always visible. But you kept going. That matters.',
+    ),
   ];
 
   // ── Init ─────────────────────────────────────────────────────────────────────
@@ -119,6 +151,8 @@ class NotificationService {
             description: _checkInChannelDesc, importance: Importance.high),
         const AndroidNotificationChannel(_blogChannelId, _blogChannelName,
             description: _blogChannelDesc, importance: Importance.high),
+        const AndroidNotificationChannel(_weeklySummaryChannelId, _weeklySummaryChannelName,
+            description: _weeklySummaryChannelDesc, importance: Importance.high),
       ]) {
         await android?.createNotificationChannel(ch);
       }
@@ -132,6 +166,9 @@ class NotificationService {
     if (checkInEnabled) {
       await scheduleCheckInNotifications(timesPerDay: checkInFreq);
     }
+
+    // Schedule weekly Sunday summary
+    await scheduleWeeklySummary();
   }
 
   void _handleNotificationResponse(NotificationResponse response) {
@@ -164,8 +201,6 @@ class NotificationService {
   }
 
   // ── New blog post notification ───────────────────────────────────────────────
-  // Fires immediately when the app detects a post it hasn’t seen before.
-  // Tapping it opens the blog screen.
 
   Future<void> showNewBlogPostNotification({
     required String postTitle,
@@ -347,6 +382,54 @@ class NotificationService {
     await _plugin.cancel(_checkInEveningId);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kCheckInEnabled, false);
+  }
+
+  // ── Weekly Sunday summary notification ────────────────────────────────────────
+  // Fires every Sunday at 19:00 (7pm) with a warm reflection message.
+  // Tapping it opens the home screen.
+
+  Future<void> scheduleWeeklySummary() async {
+    try {
+      final weekNumber = DateTime.now().difference(
+        DateTime(DateTime.now().year, 1, 1),
+      ).inDays ~/ 7;
+      final msg = _weeklySummaryMessages[
+          weekNumber % _weeklySummaryMessages.length];
+      final payload = jsonEncode({'routeName': '/home'});
+
+      final nowTz = tz.TZDateTime.now(tz.local);
+
+      // Find the next Sunday at 19:00
+      var scheduled = tz.TZDateTime(
+          tz.local, nowTz.year, nowTz.month, nowTz.day, 19, 0);
+      // Advance to next Sunday (weekday 7)
+      while (scheduled.weekday != DateTime.sunday || scheduled.isBefore(nowTz)) {
+        scheduled = scheduled.add(const Duration(days: 1));
+      }
+
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          _weeklySummaryChannelId, _weeklySummaryChannelName,
+          channelDescription: _weeklySummaryChannelDesc,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+
+      await _plugin.cancel(_weeklySummaryId);
+      await _plugin.zonedSchedule(
+        _weeklySummaryId, msg.title, msg.body, scheduled, details,
+        payload: payload,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+    } catch (_) {
+      // Silent fail — weekly summary is enhancement, not critical
+    }
+  }
+
+  Future<void> cancelWeeklySummary() async {
+    await _plugin.cancel(_weeklySummaryId);
   }
 
   Future<void> cancelAll() => _plugin.cancelAll();
