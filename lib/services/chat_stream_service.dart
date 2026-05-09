@@ -26,7 +26,7 @@ class ChatStreamService {
     required Future<void> Function(String delta) onDelta,
     String screen = 'chat',
   }) async {
-    // ── Crisis gate ────────────────────────────────────────────────────
+    // ── Crisis gate ───────────────────────────────────────────────────────────
     if (_isCrisis(userInput)) {
       await onDelta(_crisisText);
       return const OrchestratorReply(
@@ -39,7 +39,7 @@ class ChatStreamService {
       );
     }
 
-    // ── API key guard ─────────────────────────────────────────────────
+    // ── API key guard ─────────────────────────────────────────────────────────
     if (_apiKey.trim().isEmpty) {
       const text = 'AI is not configured yet (missing API key).';
       await onDelta(text);
@@ -49,12 +49,11 @@ class ChatStreamService {
       );
     }
 
-    // ── Build context ────────────────────────────────────────────────
+    // ── Build context ─────────────────────────────────────────────────────────
     final personaProfile  = await ChatPersonaPrefs.loadPersona();
     final journalSummary  = await _recentJournalSummary();
 
-    // ── Memory + persona ─────────────────────────────────────────────
-    // Fetched concurrently to minimise latency
+    // ── Memory + persona (concurrent fetch) ───────────────────────────────────
     final results = await Future.wait([
       UserMemoryService.getMemorySummary(),
       PersonaService.getPersonaStyle().then((s) => s.name),
@@ -73,8 +72,16 @@ class ChatStreamService {
       now:                  DateTime.now(),
     );
     final decision = AgentRouter.decide(context);
-    final maxOut   = _maxTokensForAgent(decision.agent.key);
-    final system   = AgentPrompts.buildSystemPrompt(
+
+    // ── Token limit ───────────────────────────────────────────────────────────
+    // Voice replies must be 1-3 short sentences — cap at 120 tokens.
+    // This speeds up both the AI response and the subsequent TTS generation.
+    // Text chat uses the standard per-agent limits.
+    final maxOut = screen == 'voice'
+        ? 120
+        : _maxTokensForAgent(decision.agent.key);
+
+    final system = AgentPrompts.buildSystemPrompt(
       agent:              decision.agent,
       context:            context,
       personaProfileText: personaProfile.profileText,
@@ -96,7 +103,7 @@ class ChatStreamService {
       if (shouldAppendUser) {'role': 'user', 'content': userInput},
     ];
 
-    // ── Stream ───────────────────────────────────────────────────────────────
+    // ── Stream ────────────────────────────────────────────────────────────────
     final client = http.Client();
     final buffer = StringBuffer();
     try {
@@ -189,7 +196,7 @@ class ChatStreamService {
     }
   }
 
-  // ── Crisis ───────────────────────────────────────────────────────────────
+  // ── Crisis ────────────────────────────────────────────────────────────────
 
   static const String _crisisText =
       "What you're feeling right now matters, and so do you.\n\n"
