@@ -22,6 +22,7 @@ import 'package:mindcore_ai/pages/helpers/mood_suggester.dart';
 import 'package:mindcore_ai/services/live_voice_preferences.dart';
 import 'package:mindcore_ai/services/chat_stream_service.dart';
 import 'package:mindcore_ai/services/therapist_mode_service.dart';
+import 'package:mindcore_ai/services/user_memory_service.dart';
 
 import 'package:mindcore_ai/services/usage_service.dart';
 import 'package:mindcore_ai/widgets/usage_banner.dart';
@@ -62,6 +63,9 @@ class _ChatScreenState extends State<ChatScreen> {
   MoodSuggestion? _pendingMood;
   bool _showMoodSuggestion  = false;
   int _turnsSinceMoodPrompt = 0;
+
+  // Memory: save a snapshot every 5 user messages
+  int _userMessageCount = 0;
 
   static const double _autoLogMinConfidence = 0.78;
   static const double _suggestMinConfidence = 0.58;
@@ -625,6 +629,16 @@ class _ChatScreenState extends State<ChatScreen> {
         await _handleMoodFromConversation(
             userText: text, botText: result.reply);
       }
+
+      // ── Persistent memory: save every 5 user messages ──────────────
+      _userMessageCount++;
+      if (_userMessageCount % 5 == 0) {
+        final fullHistory = _messages
+            .map((m) => {'role': m.role, 'content': m.text})
+            .toList();
+        unawaited(UserMemoryService.saveMemory(fullHistory));
+      }
+
     } catch (e) {
       if (mounted && _currentConvId == convIdAtSend) {
         setState(() {
@@ -1097,7 +1111,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safeBottom  = MediaQuery.of(context).viewPadding.bottom;
 
-    // Mood button: show current logged emoji, or 🙂 as default
     final moodButtonEmoji = _currentMoodEmoji ?? '🙂';
 
     return Scaffold(
@@ -1119,7 +1132,6 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           const UsageBanner(compact: true),
           const SizedBox(width: 4),
-          // Colour emoji mood button
           Tooltip(
             message: 'Log mood',
             child: InkWell(
