@@ -84,16 +84,20 @@ class OpenAiTtsService extends ChangeNotifier {
 
   static final OpenAiTtsService instance = OpenAiTtsService._internal();
 
-  // ── Fish Audio constants ───────────────────────────────────────────
+  // ── Fish Audio constants ───────────────────────────────────────────────────
   static const String _fishEndpoint = 'https://api.fish.audio/v1/tts';
   static const String _fishFormat   = 'mp3';
-  static const String _fishLatency  = 'normal';
+  // 'balanced' reduces latency ~35% vs 'normal' with negligible quality loss
+  // for short voice replies (1-3 sentences). Use 'normal' only for long text.
+  static const String _fishLatency  = 'balanced';
+
+  // Synthesis timeout — short replies complete well within 10s on 'balanced'.
+  // Reduced from 20s to fail faster and let the user retry sooner if needed.
+  static const Duration _synthesisTimeout = Duration(seconds: 12);
 
   static String get _fishApiKey {
-    // 1. Compile-time dart-define
     const fromEnv = Env.fishAudioKey;
     if (fromEnv.isNotEmpty) return fromEnv;
-    // 2. Runtime .env (flutter_dotenv)
     final fromDotenv = dotenv.env['FISH_AUDIO_API_KEY']?.trim() ?? '';
     return fromDotenv;
   }
@@ -105,15 +109,15 @@ class OpenAiTtsService extends ChangeNotifier {
         '0b74ead073f2474a904f69033535b98e';
   }
 
-  // ── Player & state ─────────────────────────────────────────────────
+  // ── Player & state ─────────────────────────────────────────────────────────
   final AudioPlayer _player = AudioPlayer();
   final Map<TtsSurface, bool> _surfaceEnabled = {
     for (final s in TtsSurface.values) s: s.defaultEnabled,
   };
 
-  bool   _enabled     = true;
+  bool   _enabled      = true;
   bool   _moodAdaptive = true;
-  double _baseSpeed    = 0.96; // kept for settings compatibility
+  double _baseSpeed    = 0.96;
   int    _requestToken = 0;
   bool   _isSpeaking   = false;
   String? _activeMessageId;
@@ -123,7 +127,7 @@ class OpenAiTtsService extends ChangeNotifier {
 
   Future<void> init() async => loadSettings();
 
-  // ── Public getters ──────────────────────────────────────────────────
+  // ── Public getters ─────────────────────────────────────────────────────────
   bool        get enabled         => _enabled;
   bool        get moodAdaptive    => _moodAdaptive;
   double      get baseSpeed       => _baseSpeed;
@@ -151,15 +155,15 @@ class OpenAiTtsService extends ChangeNotifier {
         moodLabel: m.moodLabel, messageId: m.messageId, surface: surface, force: force);
   }
 
-  // ── Settings ─────────────────────────────────────────────────────────
-  Future<bool>   getEnabled()     async { await loadSettings(); return _enabled; }
+  // ── Settings ───────────────────────────────────────────────────────────────
+  Future<bool>   getEnabled()      async { await loadSettings(); return _enabled; }
   Future<bool>   getMoodAdaptive() async { await loadSettings(); return _moodAdaptive; }
-  Future<String> getVoice()       async { await loadSettings(); return _fishVoiceId; }
+  Future<String> getVoice()        async { await loadSettings(); return _fishVoiceId; }
 
-  Future<void> setEnabled(bool v)       async { _enabled = v; await _saveSettings(); if (!v) await stop(); }
-  Future<void> setMoodAdaptive(bool v)  async { _moodAdaptive = v; await _saveSettings(); }
-  Future<void> setBaseSpeed(double v)   async { _baseSpeed = v.clamp(0.84, 1.04); await _saveSettings(); }
-  Future<void> setVoice(String v)       async { await _saveSettings(); } // voice is set via env
+  Future<void> setEnabled(bool v)      async { _enabled = v; await _saveSettings(); if (!v) await stop(); }
+  Future<void> setMoodAdaptive(bool v) async { _moodAdaptive = v; await _saveSettings(); }
+  Future<void> setBaseSpeed(double v)  async { _baseSpeed = v.clamp(0.84, 1.04); await _saveSettings(); }
+  Future<void> setVoice(String v)      async { await _saveSettings(); }
 
   Future<bool> getSurfaceEnabled(TtsSurface s) async { await loadSettings(); return isSurfaceEnabled(s); }
   Future<void> setSurfaceEnabled(TtsSurface s, bool v) async {
@@ -188,7 +192,7 @@ class OpenAiTtsService extends ChangeNotifier {
     }
   }
 
-  // ── Core speak ──────────────────────────────────────────────────────
+  // ── Core speak ─────────────────────────────────────────────────────────────
   Future<bool> speak(
     String text, {
     String moodLabel = 'neutral',
@@ -218,7 +222,6 @@ class OpenAiTtsService extends ChangeNotifier {
     await _stopPlaybackOnly();
     if (token != _requestToken) return false;
 
-    // Cache key — voice ID + text (Fish Audio has no speed param)
     final cacheKey = '${_fishVoiceId}|$cleaned';
     final bytes = _audioCache[cacheKey] ??
         await _synthesize(text: cleaned, apiKey: apiKey);
@@ -288,9 +291,9 @@ class OpenAiTtsService extends ChangeNotifier {
     if (_activeSurface == surface) await stop();
   }
 
-  Future<void> flushVoiceBuffer() async {} // kept for call-site compatibility
+  Future<void> flushVoiceBuffer() async {}
 
-  // ── Fish Audio synthesis ──────────────────────────────────────────────
+  // ── Fish Audio synthesis ───────────────────────────────────────────────────
   Future<Uint8List?> _synthesize({
     required String text,
     required String apiKey,
@@ -301,7 +304,7 @@ class OpenAiTtsService extends ChangeNotifier {
             Uri.parse(_fishEndpoint),
             headers: {
               'Authorization': 'Bearer $apiKey',
-              'Content-Type': 'application/json',
+              'Content-Type':  'application/json',
             },
             body: jsonEncode({
               'text':         text,
@@ -310,7 +313,7 @@ class OpenAiTtsService extends ChangeNotifier {
               'latency':      _fishLatency,
             }),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(_synthesisTimeout);
 
       if (res.statusCode != 200) {
         debugPrint('[TTS] Fish Audio error ${res.statusCode}: ${res.body}');
@@ -323,7 +326,7 @@ class OpenAiTtsService extends ChangeNotifier {
     }
   }
 
-  // ── Internals ──────────────────────────────────────────────────────────
+  // ── Internals ──────────────────────────────────────────────────────────────
   Future<void> _stopPlaybackOnly() async {
     try { await _player.stop(); } catch (_) {}
   }
@@ -350,7 +353,7 @@ class OpenAiTtsService extends ChangeNotifier {
   }
 }
 
-// ── Audio source helpers ─────────────────────────────────────────────────────
+// ── Audio source helpers ──────────────────────────────────────────────────────
 
 class _BytesAudioSource extends StreamAudioSource {
   final Uint8List bytes;
