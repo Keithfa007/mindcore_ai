@@ -7,8 +7,8 @@ class LiveVoicePreferences {
   // ── Fish Audio voice IDs ──────────────────────────────────────────────────
   // Male: warm, calm, grounded
   static const String maleVoiceId   = 'eed26f2294d64177911af612473cca98';
-  // Female: warm, calm, grounded — UPDATE this ID once chosen from fish.audio
-  static const String femaleVoiceId = 'eed26f2294d64177911af612473cca98'; // TODO: replace with female voice ID
+  // Female: warm, relaxing — fish.audio model 072bc615ad46485889e4eecc823985c5
+  static const String femaleVoiceId = '072bc615ad46485889e4eecc823985c5';
 
   // ── Preference keys ───────────────────────────────────────────────────────
   static const _kAutoSpeakChatReplies  = 'voice_auto_speak_chat_replies_v1';
