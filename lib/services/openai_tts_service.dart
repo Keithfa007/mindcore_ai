@@ -1,5 +1,4 @@
 // OpenAI chat + Fish Audio TTS service for MindCore AI.
-// All public API is identical — only the underlying synthesis call changed.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -11,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/live_voice_preferences.dart';
 
 enum TtsMood { calm, anxious, low, neutral }
 
@@ -26,35 +26,23 @@ enum TtsSurface {
 extension TtsSurfaceX on TtsSurface {
   String get prefsKey {
     switch (this) {
-      case TtsSurface.chat:
-        return 'tts_surface_chat';
-      case TtsSurface.recommendation:
-        return 'tts_surface_recommendation';
-      case TtsSurface.dailyMotivation:
-        return 'tts_surface_daily_motivation';
-      case TtsSurface.journal:
-        return 'tts_surface_journal';
-      case TtsSurface.reflection:
-        return 'tts_surface_reflection';
-      case TtsSurface.breathe:
-        return 'tts_surface_breathe';
+      case TtsSurface.chat:            return 'tts_surface_chat';
+      case TtsSurface.recommendation:  return 'tts_surface_recommendation';
+      case TtsSurface.dailyMotivation: return 'tts_surface_daily_motivation';
+      case TtsSurface.journal:         return 'tts_surface_journal';
+      case TtsSurface.reflection:      return 'tts_surface_reflection';
+      case TtsSurface.breathe:         return 'tts_surface_breathe';
     }
   }
 
   String get label {
     switch (this) {
-      case TtsSurface.chat:
-        return 'Chat replies';
-      case TtsSurface.recommendation:
-        return 'Recommendations';
-      case TtsSurface.dailyMotivation:
-        return 'Daily motivation';
-      case TtsSurface.journal:
-        return 'Journal entries';
-      case TtsSurface.reflection:
-        return 'AI reflections';
-      case TtsSurface.breathe:
-        return 'Breathing cues';
+      case TtsSurface.chat:            return 'Chat replies';
+      case TtsSurface.recommendation:  return 'Recommendations';
+      case TtsSurface.dailyMotivation: return 'Daily motivation';
+      case TtsSurface.journal:         return 'Journal entries';
+      case TtsSurface.reflection:      return 'AI reflections';
+      case TtsSurface.breathe:         return 'Breathing cues';
     }
   }
 
@@ -84,32 +72,21 @@ class OpenAiTtsService extends ChangeNotifier {
 
   static final OpenAiTtsService instance = OpenAiTtsService._internal();
 
-  // ── Fish Audio constants ───────────────────────────────────────────────────
+  // ── Fish Audio constants ───────────────────────────────────────────────
   static const String _fishEndpoint = 'https://api.fish.audio/v1/tts';
   static const String _fishFormat   = 'mp3';
-  // 'balanced' reduces latency ~35% vs 'normal' with negligible quality loss
-  // for short voice replies (1-3 sentences). Use 'normal' only for long text.
+  // 'balanced' reduces latency ~35% vs 'normal' — ideal for short voice replies
   static const String _fishLatency  = 'balanced';
-
-  // Synthesis timeout — short replies complete well within 10s on 'balanced'.
-  // Reduced from 20s to fail faster and let the user retry sooner if needed.
+  // Synthesis timeout — balanced mode + short replies complete well within 12s
   static const Duration _synthesisTimeout = Duration(seconds: 12);
 
   static String get _fishApiKey {
     const fromEnv = Env.fishAudioKey;
     if (fromEnv.isNotEmpty) return fromEnv;
-    final fromDotenv = dotenv.env['FISH_AUDIO_API_KEY']?.trim() ?? '';
-    return fromDotenv;
+    return dotenv.env['FISH_AUDIO_API_KEY']?.trim() ?? '';
   }
 
-  static String get _fishVoiceId {
-    const fromEnv = Env.fishAudioVoiceId;
-    if (fromEnv.isNotEmpty) return fromEnv;
-    return dotenv.env['FISH_AUDIO_VOICE_ID']?.trim() ??
-        '0b74ead073f2474a904f69033535b98e';
-  }
-
-  // ── Player & state ─────────────────────────────────────────────────────────
+  // ── Player & state ─────────────────────────────────────────────────────
   final AudioPlayer _player = AudioPlayer();
   final Map<TtsSurface, bool> _surfaceEnabled = {
     for (final s in TtsSurface.values) s: s.defaultEnabled,
@@ -127,7 +104,7 @@ class OpenAiTtsService extends ChangeNotifier {
 
   Future<void> init() async => loadSettings();
 
-  // ── Public getters ─────────────────────────────────────────────────────────
+  // ── Public getters ─────────────────────────────────────────────────────
   bool        get enabled         => _enabled;
   bool        get moodAdaptive    => _moodAdaptive;
   double      get baseSpeed       => _baseSpeed;
@@ -152,13 +129,15 @@ class OpenAiTtsService extends ChangeNotifier {
     final m = _lastBySurface[surface];
     if (m == null || m.text.trim().isEmpty) return false;
     return speak(m.text,
-        moodLabel: m.moodLabel, messageId: m.messageId, surface: surface, force: force);
+        moodLabel: m.moodLabel,
+        messageId: m.messageId,
+        surface: surface,
+        force: force);
   }
 
-  // ── Settings ───────────────────────────────────────────────────────────────
+  // ── Settings ───────────────────────────────────────────────────────────
   Future<bool>   getEnabled()      async { await loadSettings(); return _enabled; }
   Future<bool>   getMoodAdaptive() async { await loadSettings(); return _moodAdaptive; }
-  Future<String> getVoice()        async { await loadSettings(); return _fishVoiceId; }
 
   Future<void> setEnabled(bool v)      async { _enabled = v; await _saveSettings(); if (!v) await stop(); }
   Future<void> setMoodAdaptive(bool v) async { _moodAdaptive = v; await _saveSettings(); }
@@ -174,9 +153,9 @@ class OpenAiTtsService extends ChangeNotifier {
 
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _enabled      = prefs.getBool('tts_enabled') ?? true;
+    _enabled      = prefs.getBool('tts_enabled')      ?? true;
     _moodAdaptive = prefs.getBool('tts_mood_adaptive') ?? true;
-    _baseSpeed    = prefs.getDouble('tts_speed') ?? 0.96;
+    _baseSpeed    = prefs.getDouble('tts_speed')      ?? 0.96;
     for (final s in TtsSurface.values) {
       _surfaceEnabled[s] = prefs.getBool(s.prefsKey) ?? s.defaultEnabled;
     }
@@ -184,15 +163,15 @@ class OpenAiTtsService extends ChangeNotifier {
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('tts_enabled', _enabled);
+    await prefs.setBool('tts_enabled',      _enabled);
     await prefs.setBool('tts_mood_adaptive', _moodAdaptive);
-    await prefs.setDouble('tts_speed', _baseSpeed);
+    await prefs.setDouble('tts_speed',      _baseSpeed);
     for (final e in _surfaceEnabled.entries) {
       await prefs.setBool(e.key.prefsKey, e.value);
     }
   }
 
-  // ── Core speak ─────────────────────────────────────────────────────────────
+  // ── Core speak ─────────────────────────────────────────────────────────
   Future<bool> speak(
     String text, {
     String moodLabel = 'neutral',
@@ -222,9 +201,13 @@ class OpenAiTtsService extends ChangeNotifier {
     await _stopPlaybackOnly();
     if (token != _requestToken) return false;
 
-    final cacheKey = '${_fishVoiceId}|$cleaned';
+    // Get the active voice ID from user preference (male or female)
+    await LiveVoicePreferences.instance.load();
+    final voiceId = LiveVoicePreferences.instance.activeVoiceId;
+
+    final cacheKey = '$voiceId|$cleaned';
     final bytes = _audioCache[cacheKey] ??
-        await _synthesize(text: cleaned, apiKey: apiKey);
+        await _synthesize(text: cleaned, apiKey: apiKey, voiceId: voiceId);
 
     if (token != _requestToken) return false;
     if (bytes == null || bytes.isEmpty) {
@@ -266,8 +249,8 @@ class OpenAiTtsService extends ChangeNotifier {
   }) async {
     if (!_enabled || !isSurfaceEnabled(surface)) return false;
     final prefs = await SharedPreferences.getInstance();
-    final now = DateTime.now();
-    final ymd =
+    final now   = DateTime.now();
+    final ymd   =
         '${now.year.toString().padLeft(4, '0')}-'
         '${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
@@ -293,10 +276,11 @@ class OpenAiTtsService extends ChangeNotifier {
 
   Future<void> flushVoiceBuffer() async {}
 
-  // ── Fish Audio synthesis ───────────────────────────────────────────────────
+  // ── Fish Audio synthesis ───────────────────────────────────────────────
   Future<Uint8List?> _synthesize({
     required String text,
     required String apiKey,
+    required String voiceId,
   }) async {
     try {
       final res = await http
@@ -308,7 +292,7 @@ class OpenAiTtsService extends ChangeNotifier {
             },
             body: jsonEncode({
               'text':         text,
-              'reference_id': _fishVoiceId,
+              'reference_id': voiceId,  // active voice from user preference
               'format':       _fishFormat,
               'latency':      _fishLatency,
             }),
@@ -326,7 +310,7 @@ class OpenAiTtsService extends ChangeNotifier {
     }
   }
 
-  // ── Internals ──────────────────────────────────────────────────────────────
+  // ── Internals ──────────────────────────────────────────────────────────
   Future<void> _stopPlaybackOnly() async {
     try { await _player.stop(); } catch (_) {}
   }
@@ -344,7 +328,7 @@ class OpenAiTtsService extends ChangeNotifier {
   String _cleanText(String text) {
     var c = text.replaceAll('\r', ' ').replaceAll('\n', ' ');
     c = c.replaceAll(RegExp(r'\s+'), ' ');
-    c = c.replaceAll('•', '');
+    c = c.replaceAll('\u2022', '');
     c = c.replaceAllMapped(
       RegExp(r'([a-zA-Z])\s*-\s*([a-zA-Z])'),
       (m) => '${m.group(1)} ${m.group(2)}',
