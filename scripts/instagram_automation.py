@@ -5,19 +5,23 @@ MindCore AI — Instagram Daily Carousel Automation
 Generates a 7-slide educational carousel each day at the optimal IG time and
 publishes it via Upload-Post (which handles the Meta Graph API plumbing).
 
-Format is rotated through 6 proven IG carousel archetypes for the men's mental
-health niche (signs/reframe/myth-bust/how-to/truth-bomb/comparison). Reads the
-format bank from scripts/ig_formats.json and the same keyword bank as the FB
-pipeline (scripts/fb_keywords.json) so topics stay aligned across platforms.
+Format is rotated through 6 proven IG carousel archetypes (signs/reframe/
+myth-bust/how-to/truth-bomb/comparison). Reads the format bank from
+scripts/ig_formats.json and merges keyword pools from BOTH scripts/fb_keywords.json
+(men's topics) and scripts/neutral_keywords.json (audience-agnostic topics).
+
+PHASE 1 AUDIENCE STRATEGY:
+  70% men's content (preserves men 35+ wedge positioning)
+  30% neutral content (broadens reach without losing focus)
+  No women-specific content on social yet (blog only).
+  Revisit ratio after first 100 app installs.
 
 Design: warm calm minimal illustrations (DALL-E 3 with brand-locked style anchor)
-overlaid with text rendered server-side via Pillow, since DALL-E renders text
-poorly. Output is 1080x1080 JPEG per slide.
+overlaid with text rendered server-side via Pillow.
 
 Resilience: DALL-E's content filter routinely blocks mental-health imagery, so
 the script (a) sanitizes scene prompts to avoid trigger words, (b) retries with
-a softer prompt if the first attempt is filtered, and (c) falls back to a solid
-warm-toned background if both attempts fail. The carousel always publishes.
+a softer prompt if filtered, and (c) falls back to a solid warm background.
 
 Required env vars:
   ANTHROPIC_API_KEY      - content & format selection
@@ -46,15 +50,20 @@ OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
 UPLOADPOST_API_KEY = os.environ["UPLOAD_POST_API_KEY"].strip()
 UPLOADPOST_USER    = os.environ.get("UPLOADPOST_USER", "MindCoreAI").strip()
 
-KEYWORDS_FILE = Path("scripts/fb_keywords.json")
-FORMATS_FILE  = Path("scripts/ig_formats.json")
-HISTORY_FILE  = Path("scripts/ig_post_history.json")
-WORK_DIR      = Path("/tmp/ig_carousel")
+MENS_KEYWORDS_FILE    = Path("scripts/fb_keywords.json")
+NEUTRAL_KEYWORDS_FILE = Path("scripts/neutral_keywords.json")
+FORMATS_FILE          = Path("scripts/ig_formats.json")
+HISTORY_FILE          = Path("scripts/ig_post_history.json")
+WORK_DIR              = Path("/tmp/ig_carousel")
 
-SLIDE_COUNT      = 7
-SLIDE_SIZE       = 1080
-HISTORY_LIMIT    = 25
+SLIDE_COUNT          = 7
+SLIDE_SIZE           = 1080
+HISTORY_LIMIT        = 25
 FORMAT_HISTORY_LIMIT = 4
+
+# Phase 1 audience mix — adjust here when ready to evolve
+MENS_WEIGHT    = 0.70
+NEUTRAL_WEIGHT = 0.30
 
 SITE_URL = "https://mindcoreai.eu"
 
@@ -122,9 +131,10 @@ SAFE_FALLBACK_SCENE = (
 )
 
 APP_FACTS = """
-MindCore AI — voice-first AI mental health companion.
+MindCore AI — voice-first AI mental wellness companion.
 - Available 24/7, no judgment, no waiting rooms.
-- Built for men 35+, recovery, anxiety, burnout, loneliness.
+- Built primarily for men 35+ navigating anxiety, burnout, loneliness, recovery —
+  with expanding content for everyone navigating modern mental health.
 - 7-day trial €1.99 (NOT free — never say "free trial").
 - Premium €14.99/month. Pro €25/month.
 - Website: https://mindcoreai.eu
@@ -134,10 +144,7 @@ MindCore AI — voice-first AI mental health companion.
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
 def ensure_brand_hashtag(text: str) -> str:
-    """
-    Belt-and-braces: guarantee #mindcoreai is in the caption even if Claude
-    omits it despite the prompt instruction.
-    """
+    """Belt-and-braces: guarantee #mindcoreai is in the caption."""
     if REQUIRED_BRAND_HASHTAG.lower() in text.lower():
         return text
     lines = text.rstrip().split("\n")
@@ -149,11 +156,34 @@ def ensure_brand_hashtag(text: str) -> str:
     print(f"  ⚙ No hashtags found — appending brand line")
     return text.rstrip() + f"\n\n{REQUIRED_BRAND_HASHTAG}"
 
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def load_json(path: Path):
     if not path.exists():
         raise FileNotFoundError(f"{path} missing")
     return json.loads(path.read_text())
+
+
+def _load_topic_file(path: Path, audience_tag: str) -> list:
+    data = load_json(path)
+    topics = data.get("topics", [])
+    if not topics:
+        raise ValueError(f"{path} contains no topics.")
+    for t in topics:
+        t["audience"] = audience_tag
+    print(f"  Loaded {len(topics)} {audience_tag} keywords (last updated: {data.get('last_updated', 'unknown')})")
+    return topics
+
+
+def load_topic_pools() -> dict:
+    """Returns {'men': [...], 'neutral': [...]}."""
+    pools = {
+        "men":     _load_topic_file(MENS_KEYWORDS_FILE,    "men"),
+        "neutral": _load_topic_file(NEUTRAL_KEYWORDS_FILE, "neutral"),
+    }
+    print(f"  Audience mix: {int(MENS_WEIGHT * 100)}% men / {int(NEUTRAL_WEIGHT * 100)}% neutral")
+    return pools
+
 
 def load_history() -> list:
     if HISTORY_FILE.exists():
@@ -167,10 +197,25 @@ def save_history(history: list) -> None:
     HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
     HISTORY_FILE.write_text(json.dumps(history[-200:], indent=2))
 
-def pick_topic(topics: list, history: list) -> dict:
-    recent = {h["keyword"] for h in history[-HISTORY_LIMIT:]}
-    available = [t for t in topics if t["keyword"] not in recent]
-    return random.choice(available or topics)
+
+def pick_topic(pools: dict, history: list) -> dict:
+    """Weighted pick: 70% men / 30% neutral. Avoid recent topics. Fall back if pool exhausted."""
+    audience = random.choices(
+        ["men", "neutral"],
+        weights=[MENS_WEIGHT, NEUTRAL_WEIGHT],
+        k=1,
+    )[0]
+    recent_keywords = {h["keyword"] for h in history[-HISTORY_LIMIT:]}
+    available = [t for t in pools[audience] if t["keyword"] not in recent_keywords]
+    if not available:
+        other = "neutral" if audience == "men" else "men"
+        available = [t for t in pools[other] if t["keyword"] not in recent_keywords]
+        if available:
+            print(f"  {audience} pool on cooldown — falling back to {other}")
+        else:
+            available = pools[audience]
+    return random.choice(available)
+
 
 def pick_format(formats: list, history: list) -> dict:
     recent = {h.get("format") for h in history[-FORMAT_HISTORY_LIMIT:]}
@@ -182,8 +227,25 @@ def pick_format(formats: list, history: list) -> dict:
 def generate_carousel_content(topic: dict, fmt: dict) -> dict:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    prompt = f"""You are writing an Instagram carousel post for MindCore AI, an AI mental
-health companion app for men 35+. Today's post must follow this format:
+    audience = topic.get("audience", "men")
+
+    if audience == "men":
+        voice_guidance = (
+            "Like a man who's been through it talking to a friend, not a therapist or marketer. "
+            "Plain, direct, second-person. The kind of honesty men rarely get from each other."
+        )
+        brand_position = "AI mental health companion app primarily for men 35+"
+        always_hashtags = "#mindcoreai #MensMentalHealth #MentalHealthMatters"
+    else:  # neutral
+        voice_guidance = (
+            "Warm, plain, direct, second-person. Universal — speaks to anyone navigating this. "
+            "Not gendered. Not therapy-speak. Just honest."
+        )
+        brand_position = "voice-first AI mental wellness companion for anyone navigating modern mental health"
+        always_hashtags = "#mindcoreai #MentalHealthMatters #MentalHealthAwareness"
+
+    prompt = f"""You are writing an Instagram carousel post for MindCore AI, a {brand_position}.
+Today's post must follow this format:
 
 FORMAT: {fmt['name']}
 FORMAT GUIDE: {fmt['description']}
@@ -192,6 +254,8 @@ HOOK STYLE EXAMPLES: {' | '.join(fmt['examples'])}
 
 TOPIC SEED: {topic['keyword']}
 ANGLE: {topic['angle']}
+AUDIENCE: {audience}
+VOICE GUIDANCE: {voice_guidance}
 
 APP FACTS (for the final CTA slide and caption):
 {APP_FACTS}
@@ -203,9 +267,8 @@ CAROUSEL STRUCTURE — EXACTLY {SLIDE_COUNT} slides:
 - Slide {SLIDE_COUNT}: CTA. Title: "Save this. Send to a friend who needs it."
   Body: "24/7 voice-first mental health support — link in bio. 🔗"
 
-VOICE:
+VOICE (general rules):
 - Plain, direct, second-person ("you").
-- Like a man who's been through it talking to a friend, not a therapist or marketer.
 - No clichés, no corporate tone, no toxic positivity.
 - Concrete language. Use specific everyday situations (the car after work, 3am, dinner table).
 
@@ -215,7 +278,7 @@ ALSO WRITE A CAPTION (separate from slides) for the post:
 - Expand the carousel's theme without just summarising it. Add a single insight or story beat.
 - End with: "→ Link in bio for MindCore AI. 7-day trial €1.99."
 - Then on a NEW LINE, 10 hashtags.
-  ALWAYS INCLUDE THESE BRAND HASHTAGS (non-negotiable): #mindcoreai #MensMentalHealth #MentalHealthMatters
+  ALWAYS INCLUDE THESE BRAND HASHTAGS (non-negotiable): {always_hashtags}
   Plus 7 niche tags relevant to {topic['keyword']}. No spaces between # and word. No commas.
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
@@ -269,6 +332,18 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 def generate_scene_prompts(content: dict, topic: dict) -> list:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+    audience = topic.get("audience", "men")
+    if audience == "men":
+        figure_guidance = (
+            "If a human appears, ONLY hands, back-view silhouettes, or feet. "
+            "For men-focused content the figure (if any) reads as male."
+        )
+    else:
+        figure_guidance = (
+            "Prefer NO people at all — focus on still life, objects, light, environment. "
+            "If a figure is unavoidable, keep gender ambiguous (silhouette, hands, back-view only)."
+        )
+
     slide_briefs = [
         f"Slide 1 (cover): {content['hook']}",
     ] + [
@@ -286,6 +361,7 @@ for tonal context only — the SCENES themselves must NOT depict distress,
 illness, or any clinical / mental health subject matter.
 
 CAROUSEL TOPIC (for tonal context only): {topic['keyword']}
+AUDIENCE: {audience}
 
 SLIDES (do not describe the words on each slide — just write a fitting calm scene):
 {chr(10).join(slide_briefs)}
@@ -293,7 +369,7 @@ SLIDES (do not describe the words on each slide — just write a fitting calm sc
 ABSOLUTE RULES:
 - Every scene is a STILL LIFE or QUIET ENVIRONMENT. Objects, light, textures, places.
 - NO depiction of emotional states. NO sad, anxious, exhausted, lonely, suffering people.
-- NO faces. If a human appears, ONLY hands, back-view silhouettes, or feet.
+- {figure_guidance}
 - NEVER use words like: anxiety, depression, mental health, burnout, trauma, panic,
   addiction, recovery, struggle, pain, suffering, crying, tears, despair, broken, numb.
 - DO use words like: morning, kitchen, coffee, window, table, sweater, book, walk,
@@ -304,7 +380,7 @@ ABSOLUTE RULES:
 GOOD EXAMPLES:
 - "A pottery mug of black coffee on a wooden countertop, steam catching morning light from a window. A folded knitted sweater nearby. Sage green tile backsplash."
 - "An empty park bench at dawn, dew on the wood. A pair of running shoes left beside it. Soft mist over a cream-coloured horizon."
-- "A man's hands wrapped around a ceramic bowl of warm water, sleeves of a beige jumper rolled up. Terracotta tile counter."
+- "A pair of hands wrapped around a ceramic bowl of warm water, sleeves of a beige jumper rolled up. Terracotta tile counter."
 
 Return EXACTLY {SLIDE_COUNT} scene descriptions as a JSON array of strings.
 Return ONLY the JSON array, no preamble, no markdown:
@@ -383,7 +459,7 @@ def make_solid_background() -> bytes:
     return out.getvalue()
 
 
-# ── Step 4: text overlay ─────────────────────────────────────────────────────
+# ── Step 4: text overlay ────────────────────────────────────────────────────
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     candidates_bold = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -570,18 +646,19 @@ def main():
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
 
-    keywords = load_json(KEYWORDS_FILE).get("topics", [])
+    pools    = load_topic_pools()
     formats  = load_json(FORMATS_FILE).get("formats", [])
     history  = load_history()
 
-    if not keywords or not formats:
-        raise RuntimeError("Keywords or formats file empty")
+    if not formats:
+        raise RuntimeError("Formats file empty")
 
-    topic = pick_topic(keywords, history)
+    topic = pick_topic(pools, history)
     fmt   = pick_format(formats, history)
-    print(f"\n  Topic   : {topic['keyword']}")
-    print(f"  Angle   : {topic['angle']}")
-    print(f"  Format  : {fmt['name']} ({fmt['id']})\n")
+    print(f"\n  Topic    : {topic['keyword']}")
+    print(f"  Angle    : {topic['angle']}")
+    print(f"  Audience : {topic.get('audience', 'unknown')}")
+    print(f"  Format   : {fmt['name']} ({fmt['id']})\n")
 
     print("  Generating carousel content with Claude…")
     content = generate_carousel_content(topic, fmt)
@@ -630,6 +707,7 @@ def main():
     history.append({
         "timestamp"     : datetime.now(timezone.utc).isoformat(),
         "keyword"       : topic["keyword"],
+        "audience"      : topic.get("audience", "unknown"),
         "format"        : fmt["id"],
         "hook"          : content["hook"],
         "job_id"        : job_id,
