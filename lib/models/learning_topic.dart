@@ -6,6 +6,7 @@ class LearningTopic {
   final List<String> strategies;
   final List<String> tags;
   final bool isFavorite;
+  final bool isNew;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -17,9 +18,11 @@ class LearningTopic {
     required this.strategies,
     this.tags = const [],
     bool? isFavorite,
+    bool? isNew,
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : isFavorite = isFavorite ?? false,
+        isNew = isNew ?? false,
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
@@ -30,6 +33,7 @@ class LearningTopic {
     List<String>? strategies,
     List<String>? tags,
     bool? isFavorite,
+    bool? isNew,
     DateTime? updatedAt,
   }) {
     return LearningTopic(
@@ -40,6 +44,7 @@ class LearningTopic {
       strategies: strategies ?? this.strategies,
       tags: tags ?? this.tags,
       isFavorite: isFavorite ?? this.isFavorite,
+      isNew: isNew ?? this.isNew,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -53,6 +58,7 @@ class LearningTopic {
     strategies: (j['strategies'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     tags: (j['tags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     isFavorite: (j['fav'] as bool?) ?? false,
+    isNew: (j['isNew'] as bool?) ?? false,
     createdAt: DateTime.tryParse((j['createdAt'] ?? '') as String? ?? '') ?? DateTime.now(),
     updatedAt: DateTime.tryParse((j['updatedAt'] ?? '') as String? ?? '') ?? DateTime.now(),
   );
@@ -65,6 +71,7 @@ class LearningTopic {
     'strategies': strategies,
     'tags': tags,
     'fav': isFavorite,
+    'isNew': isNew,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
   };

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:mindcore_ai/models/learning_topic.dart';
 import 'package:mindcore_ai/data/learning_seeds.dart';
@@ -7,12 +9,47 @@ import 'package:mindcore_ai/data/learning_seeds.dart';
 class LearningRepo {
   static const _storeKey = 'learning_topics_store_v1';
 
-  /// Load topics from seeds + merge saved favorites/metadata.
-  /// Returns ALL topics, sorted alphabetically by title.
+  // ── Load remote topics from Firestore ────────────────────────────────────────
+  static Future<List<LearningTopic>> _loadRemote() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('learning_items')
+          .get();
+
+      final remote = snapshot.docs
+          .where((doc) => doc.data()['active'] == true)
+          .map((doc) {
+            final d         = doc.data();
+            final ts        = d['created_at'];
+            final createdAt = ts is Timestamp ? ts.toDate() : DateTime.now();
+            return LearningTopic(
+              id:         'remote_${doc.id}',
+              title:      d['title']      ?? '',
+              overview:   d['overview']   ?? '',
+              examples:   List<String>.from(d['examples']   ?? []),
+              strategies: List<String>.from(d['strategies'] ?? []),
+              tags:       List<String>.from(d['tags']       ?? []),
+              isNew:      d['is_new']     ?? false,
+              createdAt:  createdAt,
+            );
+          })
+          .toList();
+
+      // Newest remote items first
+      remote.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      if (kDebugMode) debugPrint('Learning: loaded ${remote.length} remote item(s)');
+      return remote;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Learning Firestore error: $e');
+      return [];
+    }
+  }
+
+  // ── Load all topics: remote first, then local seeds ───────────────────────────
   static Future<List<LearningTopic>> load() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Read saved topics (for isFavorite + timestamps)
+    // Read saved favorites / metadata
     final raw = prefs.getString(_storeKey);
     final Map<String, Map<String, dynamic>> savedById = {};
     if (raw != null && raw.isNotEmpty) {
@@ -21,7 +58,7 @@ class LearningRepo {
         if (parsed is List) {
           for (final e in parsed) {
             if (e is Map) {
-              final m = Map<String, dynamic>.from(e);
+              final m  = Map<String, dynamic>.from(e);
               final id = (m['id'] ?? '').toString();
               if (id.isNotEmpty) savedById[id] = m;
             }
@@ -30,33 +67,45 @@ class LearningRepo {
       } catch (_) {}
     }
 
-    // Build topics from seeds and overlay saved flags/dates
-    final List<LearningTopic> topics = [];
+    // Build local topics from seeds
+    final List<LearningTopic> localTopics = [];
     for (final s in kLearningSeeds) {
-      final saved = savedById[s.id];
-      final isFav = (saved?['fav'] as bool?) ?? false;
+      final saved     = savedById[s.id];
+      final isFav     = (saved?['fav'] as bool?) ?? false;
       final createdAt = DateTime.tryParse((saved?['createdAt'] ?? '') as String? ?? '') ?? DateTime.now();
       final updatedAt = DateTime.tryParse((saved?['updatedAt'] ?? '') as String? ?? '') ?? DateTime.now();
 
-      topics.add(LearningTopic(
-        id: s.id,
-        title: s.title,
-        overview: s.overview,
-        examples: List<String>.from(s.examples),
+      localTopics.add(LearningTopic(
+        id:         s.id,
+        title:      s.title,
+        overview:   s.overview,
+        examples:   List<String>.from(s.examples),
         strategies: List<String>.from(s.strategies),
-        tags: List<String>.from(s.tags),
+        tags:       List<String>.from(s.tags),
         isFavorite: isFav,
-        createdAt: createdAt,
-        updatedAt: updatedAt,
+        createdAt:  createdAt,
+        updatedAt:  updatedAt,
       ));
     }
 
-    // Sort alphabetically by title (stable)
-    topics.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    // Load remote topics and restore their favorites from prefs
+    final remoteTopics = await _loadRemote();
+    for (var i = 0; i < remoteTopics.length; i++) {
+      final saved = savedById[remoteTopics[i].id];
+      if (saved != null) {
+        remoteTopics[i] = remoteTopics[i].copyWith(
+          isFavorite: (saved['fav'] as bool?) ?? false,
+        );
+      }
+    }
 
-    // Save a normalized snapshot so future loads are fast/consistent
-    await _saveAll(topics);
-    return topics;
+    // Combine: remote (newest first) + local (alphabetical)
+    localTopics.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    final all = [...remoteTopics, ...localTopics];
+
+    // Persist a normalized snapshot for favorites tracking
+    await _saveAll(all);
+    return all;
   }
 
   static Future<void> _saveAll(List<LearningTopic> topics) async {
@@ -69,7 +118,7 @@ class LearningRepo {
 
   static Future<void> setFavorite(String id, bool fav) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_storeKey);
+    final raw   = prefs.getString(_storeKey);
     List<Map<String, dynamic>> list = [];
     if (raw != null && raw.isNotEmpty) {
       try {
@@ -82,24 +131,15 @@ class LearningRepo {
 
     final i = list.indexWhere((m) => (m['id'] ?? '') == id);
     if (i != -1) {
-      list[i]['fav'] = fav;
+      list[i]['fav']       = fav;
       list[i]['updatedAt'] = DateTime.now().toIso8601String();
     } else {
-      // If not found (e.g., first run), seed it from the seeds list
-      final seed = kLearningSeeds.firstWhere(
-            (s) => s.id == id,
-        orElse: () => kLearningSeeds.first,
-      );
+      // Remote item not yet in store — seed it
       list.add({
-        'id': seed.id,
-        'title': seed.title,
-        'overview': seed.overview,
-        'examples': seed.examples,
-        'strategies': seed.strategies,
-        'tags': seed.tags,
-        'fav': fav,
-        'createdAt': DateTime.now().toIso8601String(),
-        'updatedAt': DateTime.now().toIso8601String(),
+        'id':         id,
+        'fav':        fav,
+        'createdAt':  DateTime.now().toIso8601String(),
+        'updatedAt':  DateTime.now().toIso8601String(),
       });
     }
 
