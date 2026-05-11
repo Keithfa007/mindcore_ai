@@ -25,6 +25,14 @@
     "eeede353c9f04afa9338c06a4a600e13"
   ],
   "voice_id": "6be73833ef9a4eb0aeee399b8fe9d62b",
+  "voice_id_men": "6be73833ef9a4eb0aeee399b8fe9d62b",
+  "voice_id_neutral": "6be73833ef9a4eb0aeee399b8fe9d62b",
+  "voice_id_women": "788cd5ac4afe4f88a88c86feafebf88e",
+  "audience_weights": {
+    "men": 0.70,
+    "neutral": 0.20,
+    "women": 0.10
+  },
   "background_color": "#07071a",
   "use_natural_gestures": true,
   "upload_enabled": true,

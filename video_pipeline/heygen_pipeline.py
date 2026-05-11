@@ -1,42 +1,40 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.14
-=================================
+MindCore AI Video Pipeline -- HeyGen Edition v4.8
+===================================================
 
-CHANGES (v5.14):
-  Fix avatar letterboxing. Some HeyGen avatar looks render with white space
-  both above and below (letterboxed), while others fill the frame correctly.
-  Root cause: cropdetect=limit=30 only detected near-black borders. White
-  padding (value 255) was invisible to it.
-  Fix: raised cropdetect limit to 200, which detects white/near-white borders.
-  Correctly framed looks are unaffected (no white border = nothing to crop).
-  Letterboxed looks now have white padding stripped and avatar scaled to fill
-  the full 1080x1920 frame.
-
-CHANGES (v5.13):
-  Fix descriptions reproducing the full script. Metadata generator no longer
-  receives the full voiceover. Explicit no-copy rule added.
-
-CHANGES (v5.12):
-  Word-by-word subtitles for avatar videos (Whisper + ASS, 75px Arial bold).
-
-CHANGES (v5.11):
-  Avatar scripts rewritten in interview response mode.
-
-CHANGES (v5.10):
-  Lower background music volume to 5% (0.05).
-
-CHANGES (v5.8):
-  Shuffled look queue: all avatar looks used before any repeats.
-
-CHANGES (v5.6):
-  Background music for cinematic videos via FFmpeg amix.
-
-CHANGES (v5.0):
-  Cinematic format: Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
+CHANGES (v4.8):
+  Phase 1 audience expansion in the video pipeline.
+  Loads three keyword pools (men / neutral / women), picks audience by weight
+  from heygen_config.json -> audience_weights. Voice swaps automatically:
+  men/neutral -> male HeyGen voice. women -> female HeyGen voice.
+  Default mix: 70/20/10. Script prompts are audience-aware (men's voice,
+  universal voice, women's voice) so the male narrator never explains
+  women's experience.
 
 CHANGES (v4.7):
-  YouTube Shorts as 4th platform. Brand hashtag enforcement.
+  Add YouTube Shorts as a 4th auto-upload platform.
+
+CHANGES (v4.6):
+  Enforce #mindcoreai brand hashtag in all captions.
+
+CHANGES (v4.5):
+  Add Instagram Reels to auto-upload platforms.
+
+CHANGES (v4.4):
+  Fix Upload-Post field mapping.
+
+CHANGES (v4.3):
+  Add type: 'avatar' discriminator field to /v3/videos payload.
+
+CHANGES (v4.2):
+  Switch to POST /v3/videos per HeyGen support.
+
+CHANGES (v4.1):
+  Added super_resolution: true and talking_style: 'expressive'.
+
+CHANGES (v4.0):
+  Full body motion: pose=full_body, motion_prompt, expressiveness=high.
 """
 
 import json
@@ -52,49 +50,30 @@ from pathlib import Path
 import anthropic
 import requests
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
+# -- Config -------------------------------------------------------------------
 
 ANTHROPIC_API_KEY   = os.environ["ANTHROPIC_API_KEY"]
 HEYGEN_API_KEY      = os.environ["HEYGEN_API_KEY"]
-FISH_AUDIO_API_KEY  = os.environ.get("FISH_AUDIO_API_KEY", "")
-PEXELS_API_KEY      = os.environ.get("PEXELS_API_KEY", "")
 SERP_API_KEY        = os.environ.get("SERP_API_KEY", "")
 UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
-FORCE_FORMAT        = os.environ.get("FORCE_FORMAT", "").strip().lower()
 
 GITHUB_RUN_NUMBER = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
 HEYGEN_V3_URL       = "https://api.heygen.com/v3/videos"
 HEYGEN_STATUS_URL   = "https://api.heygen.com/v1/video_status.get"
-FISH_AUDIO_TTS_URL  = "https://api.fish.audio/v1/tts"
-PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-FISH_AUDIO_VOICE_ID = "4ea1bbc944004fa89ea67021d86129ef"
+OUTPUT_DIR   = Path("video_pipeline/output")
+PIPELINE_DIR = Path("video_pipeline")
+SCENE_ORDER  = ["hook", "problem", "story", "solution_cta"]
 
-OUTPUT_DIR          = Path("video_pipeline/output")
-PIPELINE_DIR        = Path("video_pipeline")
-MUSIC_DIR           = PIPELINE_DIR / "music"
-TOPIC_HISTORY_PATH  = PIPELINE_DIR / "topic_history.json"
-LOOK_QUEUE_PATH     = PIPELINE_DIR / "look_queue.json"
-SCENE_ORDER         = ["hook", "problem", "story", "solution_cta"]
-
-MUSIC_VOLUME = 0.05   # 5% -- subtle atmosphere only
-
-# ---------------------------------------------------------------------------
-# Subtitle config -- calibrated for 1080x1920 portrait
-# ---------------------------------------------------------------------------
-WHISPER_MODEL      = "tiny"
-SUBTITLE_FONT      = "Arial"
-SUBTITLE_FONT_SIZE = 75
-SUBTITLE_MARGIN_V  = 500
-SUBTITLE_CHUNK     = 3
+KEYWORDS_FILE_MEN     = PIPELINE_DIR / "niche_keywords.json"
+KEYWORDS_FILE_NEUTRAL = PIPELINE_DIR / "neutral_keywords.json"
+KEYWORDS_FILE_WOMEN   = PIPELINE_DIR / "women_keywords.json"
 
 POLL_INTERVAL = 15
-VIDEO_TIMEOUT = 1200
+VIDEO_TIMEOUT = 1200  # 20 minutes
 
 CLAUDE_MAX_RETRIES = 10
 CLAUDE_RETRY_BASE  = 30
@@ -106,236 +85,47 @@ TIKTOK_CAPTION_LIMIT      = 2200
 YOUTUBE_TITLE_LIMIT       = 100
 YOUTUBE_DESCRIPTION_LIMIT = 5000
 
-PEXELS_CLIPS_PER_VIDEO = 5
-TOPIC_HISTORY_SIZE     = 5
-
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
-# ---------------------------------------------------------------------------
-# Interview response hooks
-# ---------------------------------------------------------------------------
-
-INTERVIEW_HOOKS = [
-    "direct_answer",
-    "reframe_first",
-    "counter_intuitive",
-    "personal_truth",
-    "hard_fact",
-    "challenge_premise",
-]
-
-BANNED_OPENINGS = [
-    "I remember sitting at my kid",
-    "I remember sitting at a",
-    "I was sitting at",
-    "There I was, sitting",
-    "Picture this",
-    "Let me tell you something",
-    "Here's the thing",
-    "Great question",
-    "That's a great",
-    "So today we're talking about",
-    "In this video",
-]
-
-# ---------------------------------------------------------------------------
-# Ad topics
-# ---------------------------------------------------------------------------
-
-AD_TOPICS = [
-    {
-        "pain_point": "talking to yourself at 3am trying to figure out why you can't sleep",
-        "insight":    "Most men don't have a safe space to process what's going on in their head -- without judgment, without advice they didn't ask for.",
-        "feature":    "MindCore AI gives you a private, calm space to talk through whatever's keeping you up. It's built for men, available 24/7, and it actually listens.",
-    },
-    {
-        "pain_point": "the anger that comes out of nowhere in recovery",
-        "insight":    "Sobriety doesn't remove your emotions. It removes the thing you were using to numb them. And suddenly all that feeling has nowhere to go.",
-        "feature":    "MindCore AI helps men in recovery understand and process what's underneath the anger -- without judgment, without a waiting list.",
-    },
-    {
-        "pain_point": "feeling like no one around you actually gets what you're going through",
-        "insight":    "Men are wired to solve problems, not talk about them. Which means the pain just builds. And eventually it comes out sideways.",
-        "feature":    "MindCore AI is built specifically for men's mental health. No small talk. No generic advice. Just honest, private conversations whenever you need them.",
-    },
-    {
-        "pain_point": "the emotional numbness that creeps in after years of staying strong",
-        "insight":    "Emotional shutdown isn't weakness. It's your brain protecting you from overwhelm. But over time, it cuts you off from everything -- the good stuff too.",
-        "feature":    "MindCore AI helps men reconnect with what they're actually feeling, one conversation at a time. It's on Google Play and your first week is free.",
-    },
-    {
-        "pain_point": "anxiety that shows up as irritability and short fuses, not panic attacks",
-        "insight":    "Most men with anxiety don't recognise it as anxiety. It looks like anger, withdrawal, or just constantly feeling on edge for no obvious reason.",
-        "feature":    "MindCore AI understands how anxiety actually shows up in men -- and helps you work through it in a way that actually fits how you think.",
-    },
-    {
-        "pain_point": "lying awake wondering if what you're feeling is normal",
-        "insight":    "The number of men silently asking that question every night is staggering. And most of them never ask anyone out loud.",
-        "feature":    "MindCore AI exists for exactly that moment. A private AI mental health companion for men -- honest, non-judgmental, available any time.",
-    },
-    {
-        "pain_point": "going through the motions every day but feeling completely disconnected from your own life",
-        "insight":    "That disconnect has a name. And it's more common in men over 35 than almost any other mental health experience. But nobody talks about it.",
-        "feature":    "MindCore AI was built to help men name what they're feeling and start actually dealing with it -- privately, on their own terms.",
-    },
-    {
-        "pain_point": "not wanting to burden your family with what's going on in your head",
-        "insight":    "That instinct to protect the people you love can become its own trap. You end up carrying everything alone, and they can tell something's off anyway.",
-        "feature":    "MindCore AI gives you somewhere to put it that isn't your partner, your kids, or your mates. Just you, and a tool that was built for this.",
-    },
-]
-
-WORD_TARGETS_AD = {
-    "hook":         (10, 15),
-    "problem":      (30, 40),
-    "story":        (40, 55),
-    "solution_cta": (20, 30),
+WORD_LIMITS_AD = {
+    "hook":         8,
+    "problem":      12,
+    "story":        14,
+    "solution_cta": 14,
 }
 
 WORD_TARGETS_CONTENT = {
-    "hook":         (10, 18),
-    "problem":      (30, 45),
-    "story":        (45, 65),
-    "solution_cta": (20, 35),
+    "hook":         (10, 15),
+    "problem":      (30, 40),
+    "story":        (50, 65),
+    "solution_cta": (25, 35),
 }
 
+SEO_KEYWORDS = [
+    "AI mental health coach",
+    "recovery support anxiety depression",
+    "mental wellness app",
+]
+
+AD_CTA_POOL = [
+    "Try it. Find MindCore AI on Google Play.",
+    "Start your trial. Find us on Google Play.",
+    "Give it a go. Search MindCore AI on Google Play.",
+    "Try it today. MindCore AI on Google Play.",
+    "It's waiting for you. Find MindCore AI on Google Play.",
+    "Take the first step. MindCore AI on Google Play.",
+    "You don't have to do this alone. Try MindCore AI on Google Play.",
+    "Start when you're ready. MindCore AI on Google Play.",
+]
+
 BANNED_PHRASE_REPLACEMENTS = [
-    (r"try\s+it\s+for\s+free", "try it"),
-    (r"download\s+now",        "find MindCore AI on Google Play"),
-    (r"free\s+trial",          "free first week"),
+    (r"try\s+it\s+for\s+free",  "try it"),
+    (r"download\s+now",         "find us on Google Play"),
+    (r"free\s+trial",           "trial"),
 ]
 
 
-# ---------------------------------------------------------------------------
-# Topic history
-# ---------------------------------------------------------------------------
-
-def load_topic_history() -> list:
-    if TOPIC_HISTORY_PATH.exists():
-        try:
-            return json.loads(TOPIC_HISTORY_PATH.read_text())
-        except Exception:
-            return []
-    return []
-
-
-def save_topic_history(history: list, new_topic: str):
-    history.append(new_topic)
-    TOPIC_HISTORY_PATH.write_text(json.dumps(history[-TOPIC_HISTORY_SIZE:], indent=2))
-
-
-# ---------------------------------------------------------------------------
-# Avatar look queue -- shuffled deck rotation
-# ---------------------------------------------------------------------------
-
-def load_look_queue(all_looks: list) -> list:
-    if LOOK_QUEUE_PATH.exists():
-        try:
-            queue = json.loads(LOOK_QUEUE_PATH.read_text())
-            queue = [l for l in queue if l in all_looks]
-            if queue:
-                return queue
-        except Exception:
-            pass
-    deck = all_looks[:]
-    random.shuffle(deck)
-    print(f"  Look queue: new shuffled deck of {len(deck)} looks")
-    return deck
-
-
-def save_look_queue(queue: list):
-    LOOK_QUEUE_PATH.write_text(json.dumps(queue, indent=2))
-
-
-# ---------------------------------------------------------------------------
-# Music track selection
-# ---------------------------------------------------------------------------
-
-def pick_music_track() -> str | None:
-    if not MUSIC_DIR.exists():
-        print("  Music folder not found -- no background music")
-        return None
-    tracks = [t for t in MUSIC_DIR.glob("*.mp3") if t.stem != ".gitkeep"]
-    if not tracks:
-        print("  No music tracks in video_pipeline/music/ -- no background music")
-        return None
-    chosen = random.choice(tracks)
-    print(f"  Background music: {chosen.name} @ {int(MUSIC_VOLUME * 100)}% volume")
-    return str(chosen)
-
-
-# ---------------------------------------------------------------------------
-# Subtitle generation -- Whisper transcription + ASS file
-# ---------------------------------------------------------------------------
-
-def transcribe_audio_whisper(video_path: str) -> list:
-    try:
-        import whisper
-        print(f"  Whisper: loading '{WHISPER_MODEL}' model (CPU)...")
-        model  = whisper.load_model(WHISPER_MODEL)
-        result = model.transcribe(str(video_path), word_timestamps=True, language="en", fp16=False)
-        words  = []
-        for seg in result.get("segments", []):
-            for w in seg.get("words", []):
-                word = w.get("word", "").strip()
-                if word:
-                    words.append({"word": word, "start": float(w.get("start", 0)), "end": float(w.get("end", 0))})
-        print(f"  Whisper: {len(words)} words transcribed")
-        return words
-    except Exception as e:
-        print(f"  Whisper failed ({e}) -- continuing without subtitles")
-        return []
-
-
-def generate_ass_subtitles(words: list, output_path: str) -> bool:
-    if not words:
-        return False
-
-    def ts(secs: float) -> str:
-        h = int(secs // 3600)
-        m = int((secs % 3600) // 60)
-        s = secs % 60
-        return f"{h}:{m:02d}:{s:05.2f}"
-
-    header = (
-        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n"
-        "ScaledBorderAndShadow: yes\nWrapStyle: 1\n\n"
-        "[V4+ Styles]\n"
-        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
-        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
-        "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
-        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{SUBTITLE_FONT},{SUBTITLE_FONT_SIZE},"
-        "&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
-        f"-1,0,0,0,100,100,1,0,1,4,0,2,60,60,{SUBTITLE_MARGIN_V},1\n\n"
-        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-    )
-
-    chunks = []
-    i = 0
-    while i < len(words):
-        chunk = words[i : i + SUBTITLE_CHUNK]
-        text  = " ".join(w["word"].upper() for w in chunk)
-        start = chunk[0]["start"]
-        end   = chunk[-1]["end"]
-        if chunks and start < chunks[-1]["end"]:
-            start = chunks[-1]["end"]
-        chunks.append({"text": text, "start": start, "end": end})
-        i += SUBTITLE_CHUNK
-
-    events = "".join(
-        f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n"
-        for c in chunks
-    )
-
-    Path(output_path).write_text(header + events, encoding="utf-8")
-    print(f"  Subtitles: {len(chunks)} groups | {SUBTITLE_FONT} {SUBTITLE_FONT_SIZE}px | MarginV {SUBTITLE_MARGIN_V}px")
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# -- Helpers ------------------------------------------------------------------
 
 def determine_mode() -> str:
     return "ad" if GITHUB_RUN_NUMBER % 10 == 0 else "content"
@@ -347,18 +137,43 @@ def load_config() -> dict:
 
 
 def pick_avatar_look(cfg: dict) -> str:
-    all_looks = cfg.get("avatar_look_ids", [])
-    if not all_looks:
+    looks = cfg.get("avatar_look_ids", [])
+    if not looks:
         raise RuntimeError("No avatar_look_ids found in heygen_config.json")
-    queue  = load_look_queue(all_looks)
-    chosen = queue.pop(0)
-    save_look_queue(queue)
-    remaining = len(queue)
-    if remaining == 0:
-        print(f"  Avatar look: {chosen[:8]}... (deck exhausted -- reshuffles next run | {len(all_looks)} total)")
-    else:
-        print(f"  Avatar look: {chosen[:8]}... ({remaining} remaining in deck | {len(all_looks)} total)")
+    chosen = random.choice(looks)
+    print(f"  Avatar look: {chosen} (1 of {len(looks)} looks)")
     return chosen
+
+
+def pick_audience(cfg: dict) -> str:
+    """
+    Returns 'men', 'neutral', or 'women' using audience_weights from config.
+    Defaults to 70/20/10 if config is missing the field.
+    """
+    weights = cfg.get("audience_weights", {"men": 0.70, "neutral": 0.20, "women": 0.10})
+    audiences = list(weights.keys())
+    values    = [weights[a] for a in audiences]
+    chosen = random.choices(audiences, weights=values, k=1)[0]
+    print(f"  Audience    : {chosen} (weights: {weights})")
+    return chosen
+
+
+def pick_voice_id(cfg: dict, audience: str) -> str:
+    """
+    Pick the HeyGen voice ID based on the chosen audience.
+    Falls back to the legacy 'voice_id' field if audience-specific fields are missing.
+    """
+    legacy = cfg.get("voice_id", "")
+    voice_key = {
+        "men":     "voice_id_men",
+        "neutral": "voice_id_neutral",
+        "women":   "voice_id_women",
+    }.get(audience, "voice_id_men")
+    voice_id = cfg.get(voice_key) or legacy
+    if not voice_id:
+        raise RuntimeError(f"No voice_id configured for audience '{audience}' (key '{voice_key}')")
+    print(f"  Voice       : {audience} -> {voice_id[:8]}... ({voice_key})")
+    return voice_id
 
 
 def load_app_facts() -> dict:
@@ -366,24 +181,33 @@ def load_app_facts() -> dict:
         return json.load(f)
 
 
-def load_niche_keywords() -> dict:
-    path = PIPELINE_DIR / "niche_keywords.json"
+def load_keywords_for_audience(audience: str) -> dict:
+    """
+    Load the keyword file for the chosen audience.
+    Each file has: seed_queries[], content_angles[].
+    """
+    path = {
+        "men":     KEYWORDS_FILE_MEN,
+        "neutral": KEYWORDS_FILE_NEUTRAL,
+        "women":   KEYWORDS_FILE_WOMEN,
+    }.get(audience, KEYWORDS_FILE_MEN)
+
     if not path.exists():
-        return {"seed_queries": ["men mental health tips"], "content_angles": ["real talk"], "visual_styles": []}
+        print(f"  WARNING: {path} missing -- falling back to men's keywords")
+        path = KEYWORDS_FILE_MEN
+
     with open(path) as f:
-        return json.load(f)
+        data = json.load(f)
+    print(f"  Keywords    : loaded {len(data.get('seed_queries', []))} seeds from {path.name}")
+    return data
 
 
-def pick_visual_style(keywords: dict) -> dict:
-    styles = keywords.get("visual_styles", [])
-    if not styles:
-        return {"name": "atmospheric_solitude", "query_templates": ["lonely man window", "empty room", "man thinking alone"]}
-    return random.choice(styles)
-
+# -- Brand hashtag enforcement ------------------------------------------------
 
 def ensure_brand_hashtag(text: str) -> str:
+    """Belt-and-braces: guarantee #mindcoreai is in the text."""
     if not text:
-        return REQUIRED_BRAND_HASHTAG
+        return f"{REQUIRED_BRAND_HASHTAG}"
     if REQUIRED_BRAND_HASHTAG.lower() in text.lower():
         return text
     lines = text.rstrip().split("\n")
@@ -393,6 +217,8 @@ def ensure_brand_hashtag(text: str) -> str:
             return "\n".join(lines)
     return text.rstrip() + f"\n{REQUIRED_BRAND_HASHTAG}"
 
+
+# -- Script sanitizer ---------------------------------------------------------
 
 def sanitize_script(script: dict) -> dict:
     for scene in SCENE_ORDER:
@@ -406,6 +232,421 @@ def sanitize_script(script: dict) -> dict:
             print(f"  SANITIZED [{scene}]: '{original}' -> '{cleaned}'")
             script[scene]["voiceover"] = cleaned
     return script
+
+
+# -- Ad validation ------------------------------------------------------------
+
+def validate_ad_word_counts(script: dict) -> tuple:
+    errors = []
+    for scene in SCENE_ORDER:
+        vo = script[scene]["voiceover"]
+        wc = len(vo.split())
+        hi = WORD_LIMITS_AD[scene]
+        if wc > hi:
+            errors.append(f"  [{scene}] {wc} words -- TOO LONG (max {hi}): '{vo}'")
+    return (len(errors) == 0), errors
+
+
+def generate_ad_with_validation(generate_fn, generate_args, max_attempts=3):
+    for attempt in range(1, max_attempts + 1):
+        script = generate_fn(*generate_args)
+        script = sanitize_script(script)
+        passed, errors = validate_ad_word_counts(script)
+        if passed:
+            print(f"  CHECKPOINT PASSED -- all word counts within limits")
+            return script
+        print(f"  CHECKPOINT FAILED (attempt {attempt}/{max_attempts}):")
+        for e in errors:
+            print(e)
+        if attempt < max_attempts:
+            print(f"  Regenerating script...")
+        else:
+            raise RuntimeError(
+                f"Ad script exceeded word count limits after {max_attempts} attempts.\n"
+                + "\n".join(errors)
+            )
+    raise RuntimeError("Unexpected exit from validation loop")
+
+
+# -- Step 1a -- SERP Keyword Research -----------------------------------------
+
+def _serp_google_query(seed: str) -> dict:
+    params = {
+        "engine":  "google",
+        "q":       seed,
+        "api_key": SERP_API_KEY,
+        "num":     10,
+        "hl":      "en",
+        "gl":      "us",
+    }
+    resp = requests.get(SERP_API_URL, params=params, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _serp_autocomplete_query(seed: str) -> list:
+    params = {
+        "engine":  "google_autocomplete",
+        "q":       seed,
+        "api_key": SERP_API_KEY,
+        "hl":      "en",
+        "gl":      "us",
+    }
+    try:
+        resp = requests.get(SERP_API_URL, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        return [s.get("value", "").strip() for s in data.get("suggestions", []) if s.get("value")]
+    except Exception as e:
+        print(f"  Autocomplete failed for '{seed}': {e}")
+        return []
+
+
+def _word_count(text: str) -> int:
+    return len(text.split())
+
+
+def _keyword_type(text: str) -> str:
+    wc = _word_count(text)
+    if wc <= 3:   return "short_tail"
+    elif wc <= 5: return "mid_tail"
+    else:         return "long_tail"
+
+
+def research_keyword_candidates_from_serp(seeds: list) -> list:
+    candidates = []
+    seen       = set()
+
+    regular_seeds = random.sample(seeds, min(SERP_SEEDS_PER_RUN, len(seeds)))
+    for seed in regular_seeds:
+        try:
+            data          = _serp_google_query(seed)
+            total_results = int(
+                str(data.get("search_information", {}).get("total_results", "0"))
+                    .replace(",", "").replace(".", "") or "0"
+            )
+            paa_count = 0
+            for q in data.get("related_questions", []):
+                text = q.get("question", "").strip()
+                if text and text.lower() not in seen:
+                    seen.add(text.lower())
+                    candidates.append({"text": text, "source": "people_also_ask",
+                                       "tail_type": _keyword_type(text),
+                                       "word_count": _word_count(text),
+                                       "seed": seed, "total_results": total_results})
+                    paa_count += 1
+            rs_count = 0
+            for r in data.get("related_searches", []):
+                text = r.get("query", "").strip()
+                if text and text.lower() not in seen:
+                    seen.add(text.lower())
+                    candidates.append({"text": text, "source": "related_search",
+                                       "tail_type": _keyword_type(text),
+                                       "word_count": _word_count(text),
+                                       "seed": seed, "total_results": 0})
+                    rs_count += 1
+            for org in data.get("organic_results", [])[:3]:
+                title = org.get("title", "").strip()
+                if title and title.lower() not in seen and len(title) < 120:
+                    seen.add(title.lower())
+                    candidates.append({"text": title, "source": "organic_title",
+                                       "tail_type": _keyword_type(title),
+                                       "word_count": _word_count(title),
+                                       "seed": seed, "total_results": total_results})
+            print(f"  [GOOGLE] '{seed[:45]}': {paa_count} PAA | {rs_count} related | {total_results:,} results")
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"  Google search failed for '{seed}': {e}")
+
+    autocomplete_bases = []
+    for seed in seeds:
+        words = seed.split()
+        if len(words) >= 3:
+            autocomplete_bases.append(" ".join(words[:2]))
+            autocomplete_bases.append(" ".join(words[:3]))
+        else:
+            autocomplete_bases.append(seed)
+    autocomplete_bases = list(set(autocomplete_bases))
+    ac_seeds = random.sample(autocomplete_bases, min(AUTOCOMPLETE_SEEDS_PER_RUN, len(autocomplete_bases)))
+    for ac_seed in ac_seeds:
+        suggestions = _serp_autocomplete_query(ac_seed)
+        ac_count = 0
+        for text in suggestions:
+            if text and text.lower() not in seen and _word_count(text) <= 6:
+                seen.add(text.lower())
+                candidates.append({"text": text, "source": "autocomplete",
+                                   "tail_type": _keyword_type(text),
+                                   "word_count": _word_count(text),
+                                   "seed": ac_seed, "total_results": 0})
+                ac_count += 1
+        if ac_count:
+            print(f"  [AUTOCOMPLETE] '{ac_seed}': {ac_count} suggestions")
+        time.sleep(0.5)
+
+    short = sum(1 for c in candidates if c["tail_type"] == "short_tail")
+    mid   = sum(1 for c in candidates if c["tail_type"] == "mid_tail")
+    long  = sum(1 for c in candidates if c["tail_type"] == "long_tail")
+    print(f"  Total candidates: {len(candidates)} ({short} short | {mid} mid | {long} long tail)")
+    return candidates
+
+
+def rank_and_select_keyword_claude(candidates: list, audience: str, client: anthropic.Anthropic) -> dict:
+    if not candidates:
+        raise ValueError("No SERP candidates to rank")
+
+    type_order   = {"short_tail": 0, "mid_tail": 1, "long_tail": 2}
+    source_order = {"autocomplete": 0, "people_also_ask": 1, "related_search": 2, "organic_title": 3}
+    sorted_cands = sorted(
+        candidates,
+        key=lambda c: (type_order.get(c["tail_type"], 3), source_order.get(c["source"], 4))
+    )
+
+    candidate_list = "\n".join([
+        f"{i+1}. [{c['tail_type'].upper()} | {c['source'].upper()} | {c['word_count']}w] {c['text']}"
+        for i, c in enumerate(sorted_cands[:50])
+    ])
+
+    if audience == "men":
+        audience_brief = "men 35-55 struggling silently with anxiety, depression, recovery, sobriety, isolation"
+    elif audience == "women":
+        audience_brief = "women navigating perimenopause, mental load, caregiver burnout, people-pleasing, relationship dynamics, ADHD diagnosed in adulthood"
+    else:
+        audience_brief = "adults navigating high-functioning anxiety, burnout, sleep issues, loneliness, recovery, modern mental health"
+
+    prompt = f"""You are an SEO expert for mental health video content on TikTok / Reels / YouTube Shorts.
+Target audience for THIS video: {audience_brief}.
+
+Below are REAL search queries from Google. Each is labelled with tail type and word count.
+
+CHOOSE THE SINGLE BEST keyword/topic for a short video today targeting that audience.
+
+FAVOUR SHORT-TAIL IF it's niche-emotional and under big-brand radar.
+FAVOUR LONG-TAIL IF it answers a precise question only specific people search for.
+
+SCORING:
+1. Emotional resonance for the target audience
+2. Competition reality: niche enough to avoid big brand dominance?
+3. Niche fit for mental health / mental wellness
+4. Video potential: powerful in 30-45 seconds spoken word?
+
+CANDIDATES (short-tail first):
+{candidate_list}
+
+Return ONLY valid JSON, no markdown:
+{{
+  "topic": "exact text of chosen candidate",
+  "question": "how a person in the target audience types this into Google",
+  "keyword": "primary 1-5 word SEO keyword",
+  "tail_type": "short_tail|mid_tail|long_tail",
+  "competition_signal": "low|medium|high",
+  "why": "one sentence: why this beats the others",
+  "source": "autocomplete|people_also_ask|related_search|organic_title"
+}}"""
+
+    result = _call_claude_raw(prompt, client, max_tokens=500)
+    print(f"  Winner: '{result.get('keyword')}' [{result.get('tail_type','?')} | {result.get('competition_signal','?')} competition]")
+    print(f"  Reason: {result.get('why', '')}")
+    return result
+
+
+def fetch_trending_topic_claude_fallback(seeds: list, audience: str, client: anthropic.Anthropic) -> dict:
+    seed = random.choice(seeds)
+
+    if audience == "men":
+        audience_brief = "men 35-55 struggling silently with mental health"
+    elif audience == "women":
+        audience_brief = "women navigating perimenopause, mental load, people-pleasing, caregiver burnout, adult ADHD"
+    else:
+        audience_brief = "adults navigating modern mental health (universal, not gendered)"
+
+    prompt = f"""SEO expert for mental health video content.
+Target audience: {audience_brief}.
+
+Generate ONE keyword/topic for a TikTok/Reels/Shorts video. Related to: "{seed}"
+
+Consider BOTH short-tail (1-3 words, niche emotional) AND long-tail (4+ words, specific).
+
+Return ONLY valid JSON:
+{{
+  "topic": "the keyword or question",
+  "question": "how someone in the target audience types this into Google",
+  "keyword": "primary 1-5 word SEO keyword",
+  "tail_type": "short_tail|mid_tail|long_tail",
+  "competition_signal": "low|medium|high",
+  "why": "one sentence rationale",
+  "source": "claude_generated"
+}}"""
+    return _call_claude_raw(prompt, client, max_tokens=300)
+
+
+def fetch_trending_topic(audience: str, client: anthropic.Anthropic) -> dict:
+    keywords = load_keywords_for_audience(audience)
+    seeds    = keywords.get("seed_queries", [])
+
+    if not seeds:
+        raise RuntimeError(f"No seed_queries found for audience '{audience}'")
+
+    if SERP_API_KEY:
+        print(f"  Keyword research: {SERP_SEEDS_PER_RUN} Google + {AUTOCOMPLETE_SEEDS_PER_RUN} autocomplete...")
+        try:
+            candidates = research_keyword_candidates_from_serp(seeds)
+            if candidates:
+                topic = rank_and_select_keyword_claude(candidates, audience, client)
+                topic["source"] = f"serp_{topic.get('source', 'research')}"
+                topic["audience"] = audience
+                log_path = OUTPUT_DIR / "keyword_research.json"
+                log_path.write_text(json.dumps({
+                    "run": GITHUB_RUN_NUMBER,
+                    "audience": audience,
+                    "candidates": candidates,
+                    "winner": topic
+                }, indent=2))
+                return topic
+            print("  No candidates found -- falling back to Claude")
+        except Exception as e:
+            print(f"  SERP research failed ({e}) -- falling back to Claude")
+
+    print("  Generating topic with Claude (no SERP)...")
+    topic = fetch_trending_topic_claude_fallback(seeds, audience, client)
+    topic["audience"] = audience
+    print(f"  Topic: {topic.get('topic')} [{topic.get('tail_type','?')} | {topic.get('competition_signal','?')}]")
+    return topic
+
+
+# -- Step 1b -- Script Generation ---------------------------------------------
+
+def _audience_voice_guidance(audience: str) -> str:
+    """Returns the voice/POV guidance for Claude based on the audience."""
+    if audience == "men":
+        return (
+            "Voice: like a man who's been through it talking to another man. "
+            "Plain, direct, brotherly. Use male-coded everyday situations naturally "
+            "(the car after work, the silence at the dinner table, the gym, the garage). "
+            "Speak FROM lived male experience, not ABOUT it."
+        )
+    elif audience == "women":
+        return (
+            "Voice: like a woman who's been through it talking to another woman. "
+            "Warm, direct, sisterly. Use female-coded everyday situations naturally "
+            "(the school run, the kitchen at midnight, the bathroom after putting kids to bed, "
+            "the work email that drained you). Speak FROM lived female experience, not ABOUT it. "
+            "NEVER write as a man explaining women's experience. Write from the inside."
+        )
+    else:  # neutral
+        return (
+            "Voice: warm, plain, direct, second-person. Universal -- speaks to anyone navigating this. "
+            "Not gendered. Use everyday situations that work for anyone (the 3am wake-up, the post-work tiredness, "
+            "the moment of catching your own reflection). Not therapy-speak. Just honest."
+        )
+
+
+def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
+    audience  = topic.get("audience", "men")
+    keyword   = topic.get("keyword", topic["topic"])
+    question  = topic.get("question", topic["topic"])
+    tail_type = topic.get("tail_type", "long_tail")
+    keywords  = load_keywords_for_audience(audience)
+    angles    = keywords.get("content_angles", [])
+    angle     = random.choice(angles) if angles else "real talk"
+    voice_guidance = _audience_voice_guidance(audience)
+
+    print(f"  Generating CONTENT script for: {topic['topic']} (audience: {audience})")
+
+    lo_hook,  hi_hook  = WORD_TARGETS_CONTENT["hook"]
+    lo_prob,  hi_prob  = WORD_TARGETS_CONTENT["problem"]
+    lo_story, hi_story = WORD_TARGETS_CONTENT["story"]
+    lo_cta,   hi_cta   = WORD_TARGETS_CONTENT["solution_cta"]
+
+    if tail_type == "short_tail":
+        kw_guidance = f"SHORT-TAIL keyword '{keyword}'. Explore the full emotional depth. LIVE it from the inside."
+    else:
+        kw_guidance = f"SPECIFIC keyword '{keyword}'. Answer the exact question implied. Be precise and emotionally honest."
+
+    prompt = f"""Top-performing TikTok/Reels/Shorts creator in the mental health + recovery space.
+Content gets millions of views -- RAW TRUTH, REAL STORIES the audience recognises.
+
+Create a 4-scene script:
+TOPIC: {topic['topic']}
+SEARCH QUESTION: {question}
+PRIMARY SEO KEYWORD: {keyword}
+KEYWORD GUIDANCE: {kw_guidance}
+CONTENT ANGLE: {angle}
+COMPETITION: {topic.get('competition_signal', 'unknown')}
+AUDIENCE: {audience}
+
+{voice_guidance}
+
+FORMAT: Hook -> Problem/Truth -> Real Story or Insight -> Genuine Takeaway
+
+PURE VALUE -- NOT AN AD:
+- No MindCore AI mentions. No download CTA. No product plugs.
+- Last scene = genuine human takeaway, not promotion.
+
+WRITE FOR THE EAR:
+- Natural spoken language, contractions, conversational connectors
+- "And the thing is...", "Because here's what nobody tells you...", "The truth is..."
+- Each scene = one continuous thought.
+
+WORD COUNTS:
+- hook: {lo_hook}-{hi_hook} words -- stops the scroll
+- problem: {lo_prob}-{hi_prob} words -- names the pain
+- story: {lo_story}-{hi_story} words -- real and specific
+- solution_cta: {lo_cta}-{hi_cta} words -- genuine takeaway
+
+Total ~130-150 words. No "hey guys". No "in today's video".
+Weave '{keyword}' naturally at least once.
+
+Return ONLY valid JSON, no markdown:
+{{
+  "video_type": "content",
+  "audience": "{audience}",
+  "topic": "{topic['topic']}",
+  "seo_keyword": "{keyword}",
+  "hook": {{"voiceover": "..."}},
+  "problem": {{"voiceover": "..."}},
+  "story": {{"voiceover": "..."}},
+  "solution_cta": {{"voiceover": "..."}}
+}}"""
+    return _call_claude_raw(prompt, client, max_tokens=1200)
+
+
+def generate_ad_script(app_facts: dict, audience: str, client: anthropic.Anthropic) -> dict:
+    """
+    Ads run regardless of audience -- the MindCore AI value prop is universal.
+    But we tune the voice to the audience for the next 9-out-of-10 content videos
+    so the ad doesn't feel jarring next to them.
+    """
+    cta = random.choice(AD_CTA_POOL)
+    voice_guidance = _audience_voice_guidance(audience)
+    print(f"  Generating APP AD script... CTA: \"{cta}\" (audience: {audience})")
+
+    prompt = f"""Performance marketing copywriter for MindCore AI.
+4-scene video ad: Hook -> Problem -> Story -> Solution+CTA.
+
+AUDIENCE: {audience}
+{voice_guidance}
+
+TONE: Raw, honest, warm. Not salesy.
+TARGET: ~20 seconds. Every word earns its place.
+
+BANNED: "try it for free" -> "try it", "free trial" -> "trial", "download now" -> "find us on Google Play"
+ABOUT MINDCORE AI: AI mental wellness companion, Google Play, available 24/7.
+SOLUTION_CTA MUST END WITH: "{cta}"
+SEO KEYWORDS: {', '.join(SEO_KEYWORDS)}
+STRICT WORD COUNT: hook<=8, problem<=12, story<=14, solution_cta<=14
+
+Return ONLY valid JSON:
+{{
+  "video_type": "ad",
+  "audience": "{audience}",
+  "topic": "MindCore AI -- your AI mental wellness companion",
+  "seo_keyword": "AI mental health coach",
+  "hook": {{"voiceover": "..."}},
+  "problem": {{"voiceover": "..."}},
+  "story": {{"voiceover": "..."}},
+  "solution_cta": {{"voiceover": "..."}}
+}}"""
+    return _call_claude_raw(prompt, client, max_tokens=800)
 
 
 def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int = 1000) -> dict:
@@ -438,363 +679,7 @@ def _call_claude_raw(prompt: str, client: anthropic.Anthropic, max_tokens: int =
     raise RuntimeError("Unexpected exit from retry loop")
 
 
-# ---------------------------------------------------------------------------
-# SERP Keyword Research
-# ---------------------------------------------------------------------------
-
-def _serp_google_query(seed: str) -> dict:
-    params = {"engine": "google", "q": seed, "api_key": SERP_API_KEY, "num": 10, "hl": "en", "gl": "us"}
-    resp = requests.get(SERP_API_URL, params=params, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def _serp_autocomplete_query(seed: str) -> list:
-    params = {"engine": "google_autocomplete", "q": seed, "api_key": SERP_API_KEY, "hl": "en", "gl": "us"}
-    try:
-        resp = requests.get(SERP_API_URL, params=params, timeout=30)
-        resp.raise_for_status()
-        return [s.get("value", "").strip() for s in resp.json().get("suggestions", []) if s.get("value")]
-    except Exception as e:
-        print(f"  Autocomplete failed for '{seed}': {e}")
-        return []
-
-
-def _word_count(text: str) -> int:
-    return len(text.split())
-
-
-def _keyword_type(text: str) -> str:
-    wc = _word_count(text)
-    if wc <= 3:   return "short_tail"
-    elif wc <= 5: return "mid_tail"
-    else:         return "long_tail"
-
-
-def research_keyword_candidates_from_serp(seeds: list) -> list:
-    candidates = []
-    seen = set()
-    regular_seeds = random.sample(seeds, min(SERP_SEEDS_PER_RUN, len(seeds)))
-    for seed in regular_seeds:
-        try:
-            data = _serp_google_query(seed)
-            total_results = int(
-                str(data.get("search_information", {}).get("total_results", "0"))
-                    .replace(",", "").replace(".", "") or "0"
-            )
-            paa_count = 0
-            for q in data.get("related_questions", []):
-                text = q.get("question", "").strip()
-                if text and text.lower() not in seen:
-                    seen.add(text.lower())
-                    candidates.append({"text": text, "source": "people_also_ask",
-                                       "tail_type": _keyword_type(text), "word_count": _word_count(text),
-                                       "seed": seed, "total_results": total_results})
-                    paa_count += 1
-            rs_count = 0
-            for r in data.get("related_searches", []):
-                text = r.get("query", "").strip()
-                if text and text.lower() not in seen:
-                    seen.add(text.lower())
-                    candidates.append({"text": text, "source": "related_search",
-                                       "tail_type": _keyword_type(text), "word_count": _word_count(text),
-                                       "seed": seed, "total_results": 0})
-                    rs_count += 1
-            for org in data.get("organic_results", [])[:3]:
-                title = org.get("title", "").strip()
-                if title and title.lower() not in seen and len(title) < 120:
-                    seen.add(title.lower())
-                    candidates.append({"text": title, "source": "organic_title",
-                                       "tail_type": _keyword_type(title), "word_count": _word_count(title),
-                                       "seed": seed, "total_results": total_results})
-            print(f"  [GOOGLE] '{seed[:45]}': {paa_count} PAA | {rs_count} related | {total_results:,} results")
-            time.sleep(0.5)
-        except Exception as e:
-            print(f"  Google search failed for '{seed}': {e}")
-
-    autocomplete_bases = []
-    for seed in seeds:
-        words = seed.split()
-        if len(words) >= 3:
-            autocomplete_bases.extend([" ".join(words[:2]), " ".join(words[:3])])
-        else:
-            autocomplete_bases.append(seed)
-    ac_seeds = random.sample(list(set(autocomplete_bases)), min(AUTOCOMPLETE_SEEDS_PER_RUN, len(set(autocomplete_bases))))
-    for ac_seed in ac_seeds:
-        suggestions = _serp_autocomplete_query(ac_seed)
-        ac_count = 0
-        for text in suggestions:
-            if text and text.lower() not in seen and _word_count(text) <= 6:
-                seen.add(text.lower())
-                candidates.append({"text": text, "source": "autocomplete",
-                                   "tail_type": _keyword_type(text), "word_count": _word_count(text),
-                                   "seed": ac_seed, "total_results": 0})
-                ac_count += 1
-        if ac_count:
-            print(f"  [AUTOCOMPLETE] '{ac_seed}': {ac_count} suggestions")
-        time.sleep(0.5)
-
-    short = sum(1 for c in candidates if c["tail_type"] == "short_tail")
-    mid   = sum(1 for c in candidates if c["tail_type"] == "mid_tail")
-    long  = sum(1 for c in candidates if c["tail_type"] == "long_tail")
-    print(f"  Total candidates: {len(candidates)} ({short} short | {mid} mid | {long} long tail)")
-    return candidates
-
-
-def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic,
-                                   topic_history: list, visual_style: dict) -> dict:
-    if not candidates:
-        raise ValueError("No SERP candidates to rank")
-
-    type_order   = {"short_tail": 0, "mid_tail": 1, "long_tail": 2}
-    source_order = {"autocomplete": 0, "people_also_ask": 1, "related_search": 2, "organic_title": 3}
-    sorted_cands = sorted(candidates, key=lambda c: (type_order.get(c["tail_type"], 3), source_order.get(c["source"], 4)))
-    candidate_list = "\n".join([
-        f"{i+1}. [{c['tail_type'].upper()} | {c['source'].upper()} | {c['word_count']}w] {c['text']}"
-        for i, c in enumerate(sorted_cands[:50])
-    ])
-
-    history_note = ""
-    if topic_history:
-        history_note = f"\nRECENT TOPICS (DO NOT REPEAT these or anything closely related):\n"
-        history_note += "\n".join(f"  - {t}" for t in topic_history)
-        history_note += "\nPick something DIFFERENT in theme, emotion, and angle.\n"
-
-    style_templates = visual_style.get("query_templates", ["lonely man window", "empty road", "man thinking"])
-    style_name      = visual_style.get("name", "atmospheric_solitude")
-    style_desc      = visual_style.get("description", "moody atmospheric")
-
-    prompt = f"""Expert in SEO for men's mental health, recovery, sobriety on TikTok/Reels/YouTube Shorts.
-
-Below are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.
-{history_note}
-FAVOUR: questions men actually ask ("why do I isolate", "how to stop feeling numb")
-and short emotional phrases ("sobriety anger", "emotional numbness men").
-
-SCORING:
-1. Would a man ask this out loud to someone he trusted?
-2. Emotional resonance for men 35-55 struggling silently
-3. Low competition: under big-brand radar?
-4. Niche fit: men's mental health, sobriety, recovery
-
-FORMAT DECISION:
-- "avatar": questions, advice, testimony, how-to, direct answers -- PREFERRED
-- "cinematic": abstract emotional states, atmospheric, no clear question implied
-
-VISUAL STYLE FOR THIS RUN: {style_name} ({style_desc})
-If cinematic, generate 4 Pexels queries in this style: {style_templates}
-
-CANDIDATES (short-tail first):
-{candidate_list}
-
-Return ONLY valid JSON, no markdown:
-{{
-  "topic": "exact text of chosen candidate",
-  "question": "the exact question a man would ask -- rephrase as a question if needed",
-  "keyword": "primary 1-5 word SEO keyword",
-  "tail_type": "short_tail|mid_tail|long_tail",
-  "competition_signal": "low|medium|high",
-  "why": "one sentence: why this beats the others",
-  "source": "autocomplete|people_also_ask|related_search|organic_title",
-  "format": "avatar|cinematic",
-  "visual_style": "{style_name}",
-  "pexels_queries": ["specific query 1", "specific query 2", "specific query 3", "specific query 4"]
-}}"""
-
-    result = _call_claude_raw(prompt, client, max_tokens=700)
-
-    if FORCE_FORMAT in ("avatar", "cinematic"):
-        result["format"] = FORCE_FORMAT
-        print(f"  Format: FORCED to {FORCE_FORMAT.upper()}")
-    else:
-        print(f"  Format: {result.get('format', 'avatar').upper()} (Claude's choice)")
-
-    print(f"  Winner: '{result.get('keyword')}' [{result.get('tail_type','?')} | {result.get('competition_signal','?')} competition]")
-    print(f"  Question: {result.get('question','')}")
-    print(f"  Reason: {result.get('why', '')}")
-    return result
-
-
-def fetch_trending_topic_claude_fallback(seeds: list, topic_history: list,
-                                          visual_style: dict, client: anthropic.Anthropic) -> dict:
-    seed = random.choice(seeds)
-    history_note = ""
-    if topic_history:
-        history_note = f"AVOID these recent topics: {', '.join(topic_history)}. Pick something different.\n"
-    style_name = visual_style.get("name", "atmospheric_solitude")
-    prompt = f"""SEO expert for men's mental health, recovery, anxiety, sobriety.
-Generate ONE question/topic for a short interview-style answer video. Related to: "{seed}"
-{history_note}Return ONLY valid JSON:
-{{
-  "topic": "the question or keyword",
-  "question": "the exact question a man would ask -- must be a question",
-  "keyword": "primary 1-5 word SEO keyword",
-  "tail_type": "short_tail|mid_tail|long_tail",
-  "competition_signal": "low|medium|high",
-  "why": "one sentence rationale",
-  "source": "claude_generated",
-  "format": "avatar",
-  "visual_style": "{style_name}",
-  "pexels_queries": ["lonely man window", "man thinking dark room", "empty street night", "person silhouette fog"]
-}}"""
-    result = _call_claude_raw(prompt, client, max_tokens=400)
-    if FORCE_FORMAT in ("avatar", "cinematic"):
-        result["format"] = FORCE_FORMAT
-    return result
-
-
-def fetch_trending_topic(client: anthropic.Anthropic) -> dict:
-    keywords      = load_niche_keywords()
-    seeds         = keywords["seed_queries"]
-    topic_history = load_topic_history()
-    visual_style  = pick_visual_style(keywords)
-
-    print(f"  Visual style this run: {visual_style.get('name')} ({visual_style.get('description')})")
-    if topic_history:
-        print(f"  Avoiding recent topics: {topic_history}")
-
-    if SERP_API_KEY:
-        print(f"  Keyword research: {SERP_SEEDS_PER_RUN} Google + {AUTOCOMPLETE_SEEDS_PER_RUN} autocomplete...")
-        try:
-            candidates = research_keyword_candidates_from_serp(seeds)
-            if candidates:
-                topic = rank_and_select_keyword_claude(candidates, client, topic_history, visual_style)
-                topic["source"] = f"serp_{topic.get('source', 'research')}"
-                (OUTPUT_DIR / "keyword_research.json").write_text(json.dumps(
-                    {"run": GITHUB_RUN_NUMBER, "candidates": candidates, "winner": topic}, indent=2
-                ))
-                return topic
-            print("  No candidates -- falling back to Claude")
-        except Exception as e:
-            print(f"  SERP research failed ({e}) -- falling back to Claude")
-
-    print("  Generating topic with Claude (no SERP)...")
-    topic = fetch_trending_topic_claude_fallback(seeds, topic_history, visual_style, client)
-    print(f"  Topic: {topic.get('topic')} [{topic.get('tail_type','?')} | {topic.get('competition_signal','?')}]")
-    return topic
-
-
-# ---------------------------------------------------------------------------
-# Script Generation
-# ---------------------------------------------------------------------------
-
-def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
-    print(f"  Generating INTERVIEW RESPONSE script for: {topic['topic']}")
-    keyword    = topic.get("keyword", topic["topic"])
-    question   = topic.get("question", topic["topic"])
-    fmt        = topic.get("format", "avatar")
-    hook_style = random.choice(INTERVIEW_HOOKS)
-
-    lo_hook,  hi_hook  = WORD_TARGETS_CONTENT["hook"]
-    lo_prob,  hi_prob  = WORD_TARGETS_CONTENT["problem"]
-    lo_story, hi_story = WORD_TARGETS_CONTENT["story"]
-    lo_cta,   hi_cta   = WORD_TARGETS_CONTENT["solution_cta"]
-
-    cinematic_note = (
-        "\nNOTE: This is a voiceover for cinematic B-roll. Write for the ear only."
-        if fmt == "cinematic" else ""
-    )
-
-    banned_openings_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
-
-    hook_instructions = {
-        "direct_answer":     "Start mid-answer, as if you just heard the question and launched straight in. No setup.",
-        "reframe_first":     "Reframe what the question is really about. 'The real issue isn't X, it's...'",
-        "counter_intuitive": "Start with what most people get wrong about this.",
-        "personal_truth":    "Start with a raw, honest admission. First person, unguarded.",
-        "hard_fact":         "Lead with the uncomfortable truth nobody says out loud.",
-        "challenge_premise": "Push back on how this is usually framed. 'Everyone talks about X, but...'",
-    }
-
-    prompt = f"""You are a credible man in his 40s being interviewed on a podcast about men's mental health.
-The interviewer just asked you: "{question}"
-
-ANSWER IT. Not perform. Not present. ANSWER IT.{cinematic_note}
-
-HOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}
-
-4 SCENES:
-1. hook: First thing out of your mouth. No preamble.
-2. problem: Why this is the way it is. The real cause underneath.
-3. story: The truth most men relate to but nobody says.
-4. solution_cta: Genuine takeaway. What a man can actually do or understand.
-
-AUDIENCE: Men 35+, asking this privately because they can't ask out loud.
-SEO KEYWORD: {keyword} (weave in naturally)
-
-TONE: Direct, warm, no bullshit. Trusted older brother.
-No MindCore AI. No CTAs. Pure value.
-
-BANNED OPENINGS:
-{banned_openings_str}
-
-WORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}
-Total ~120-150 words.
-
-Return ONLY valid JSON:
-{{
-  "video_type": "content",
-  "topic": "{topic['topic']}",
-  "seo_keyword": "{keyword}",
-  "render_format": "{fmt}",
-  "interview_question": "{question}",
-  "hook_style": "{hook_style}",
-  "hook": {{"voiceover": "..."}},
-  "problem": {{"voiceover": "..."}},
-  "story": {{"voiceover": "..."}},
-  "solution_cta": {{"voiceover": "..."}}
-}}"""
-    return _call_claude_raw(prompt, client, max_tokens=1200)
-
-
-def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
-    ad_topic   = random.choice(AD_TOPICS)
-    hook_style = random.choice(INTERVIEW_HOOKS)
-
-    print(f"  Generating INFORMATIONAL AD script...")
-    print(f"  Pain point: {ad_topic['pain_point'][:65]}...")
-
-    lo_hook,  hi_hook  = WORD_TARGETS_AD["hook"]
-    lo_prob,  hi_prob  = WORD_TARGETS_AD["problem"]
-    lo_story, hi_story = WORD_TARGETS_AD["story"]
-    lo_cta,   hi_cta   = WORD_TARGETS_AD["solution_cta"]
-
-    banned_openings_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
-
-    prompt = f"""Expert men's mental health content creator and performance marketer.
-
-Write an informational video script for MindCore AI that feels like content for the first two scenes.
-
-PAIN POINT: {ad_topic['pain_point']}
-INSIGHT: {ad_topic['insight']}
-FEATURE: {ad_topic['feature']} (also: private, 24/7, built for men, Google Play, free first week)
-
-SCENES:
-- hook: Stops scroll. No MindCore AI. Pure emotional truth.
-- problem: Expands insight. No MindCore AI.
-- story: Introduce MindCore AI naturally. "There's a tool built specifically for men called MindCore AI..."
-- solution_cta: Encouragement + "Find MindCore AI on Google Play."
-
-BANNED: "download now", "try it for free", "free trial"
-BANNED OPENINGS:
-{banned_openings_str}
-
-WORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}
-
-Return ONLY valid JSON:
-{{
-  "video_type": "ad",
-  "topic": "{ad_topic['pain_point'][:55]}",
-  "seo_keyword": "AI mental health coach for men",
-  "render_format": "avatar",
-  "hook_style": "{hook_style}",
-  "hook": {{"voiceover": "..."}},
-  "problem": {{"voiceover": "..."}},
-  "story": {{"voiceover": "..."}},
-  "solution_cta": {{"voiceover": "..."}}
-}}"""
-    return _call_claude_raw(prompt, client, max_tokens=1200)
-
+# -- Step 2 -- Build full script ----------------------------------------------
 
 def build_full_script(script: dict) -> str:
     parts = []
@@ -806,19 +691,19 @@ def build_full_script(script: dict) -> str:
     return "  ".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# AVATAR PATH -- HeyGen /v3/videos
-# ---------------------------------------------------------------------------
+# -- Step 3 -- Submit to HeyGen via /v3/videos --------------------------------
 
 def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
                         background_color: str, natural_gestures: bool) -> str:
     headers = {"X-Api-Key": HEYGEN_API_KEY, "Content-Type": "application/json"}
+
     MOTION_PROMPT = (
         "Gesturing naturally with hands while presenting. "
         "Warm eye contact. Nodding gently on emotional points. "
         "Open palm gestures when sharing insights. "
         "Grounded upper body movement throughout."
     )
+
     payload = {
         "type":                "avatar",
         "avatar_id":           avatar_id,
@@ -832,19 +717,31 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str,
         "super_resolution":    True,
         "talking_style":       "expressive",
     }
-    print(f"  HeyGen: POST /v3/videos | type=avatar | expressiveness=high")
+
+    print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high")
+    print(f"  Avatar: {avatar_id[:8]}... | voice: {voice_id[:8]}...")
+
     resp = requests.post(HEYGEN_V3_URL, headers=headers, json=payload, timeout=30)
-    print(f"  v3/videos response [{resp.status_code}]: {resp.text[:200]}")
+    print(f"  v3/videos response [{resp.status_code}]: {resp.text[:300]}")
+
     if not resp.ok:
         raise RuntimeError(f"HeyGen v3/videos failed {resp.status_code}: {resp.text}")
+
     data     = resp.json()
-    video_id = (data.get("data", {}).get("video_id") or data.get("video_id")
-                or data.get("data", {}).get("id") or data.get("id"))
+    video_id = (
+        data.get("data", {}).get("video_id")
+        or data.get("video_id")
+        or data.get("data", {}).get("id")
+        or data.get("id")
+    )
     if not video_id:
-        raise RuntimeError(f"No video_id in HeyGen response: {data}")
+        raise RuntimeError(f"No video_id in v3/videos response: {data}")
+
     print(f"  Submitted -- video_id: {video_id}")
     return video_id
 
+
+# -- Step 4 -- Poll -----------------------------------------------------------
 
 def poll_heygen_video(video_id: str) -> str:
     headers  = {"X-Api-Key": HEYGEN_API_KEY}
@@ -869,236 +766,7 @@ def poll_heygen_video(video_id: str) -> str:
     raise TimeoutError(f"HeyGen timed out after {VIDEO_TIMEOUT}s")
 
 
-def render_avatar_video(script_text: str, cfg: dict) -> str:
-    avatar_id        = pick_avatar_look(cfg)
-    voice_id         = cfg.get("voice_id", "")
-    background_color = cfg.get("background_color", "#07071a")
-    natural_gestures = cfg.get("use_natural_gestures", True)
-    video_id  = submit_heygen_video(script_text, avatar_id, voice_id, background_color, natural_gestures)
-    video_url = poll_heygen_video(video_id)
-    raw_path   = str(OUTPUT_DIR / "mindcore_ai_raw.mp4")
-    final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
-    download_video(video_url, raw_path)
-
-    print("\n  [Subtitles] Transcribing audio with Whisper...")
-    ass_path = str(OUTPUT_DIR / "subtitles.ass")
-    words    = transcribe_audio_whisper(raw_path)
-    if not generate_ass_subtitles(words, ass_path):
-        ass_path = None
-
-    crop_to_portrait(raw_path, final_path, ass_path=ass_path)
-    return final_path
-
-
-# ---------------------------------------------------------------------------
-# CINEMATIC PATH -- Fish Audio TTS + Pexels B-roll + FFmpeg + Background Music
-# ---------------------------------------------------------------------------
-
-def generate_fish_audio_tts(script_text: str, output_path: str) -> str:
-    if not FISH_AUDIO_API_KEY:
-        raise RuntimeError("FISH_AUDIO_API_KEY not set")
-    headers = {"Authorization": f"Bearer {FISH_AUDIO_API_KEY}", "Content-Type": "application/json"}
-    payload = {"text": script_text, "reference_id": FISH_AUDIO_VOICE_ID, "format": "mp3", "mp3_bitrate": 192, "latency": "normal"}
-    print(f"  Fish Audio TTS: voice={FISH_AUDIO_VOICE_ID[:8]}... | {len(script_text)} chars")
-    resp = requests.post(FISH_AUDIO_TTS_URL, headers=headers, json=payload, stream=True, timeout=120)
-    if not resp.ok:
-        raise RuntimeError(f"Fish Audio TTS failed {resp.status_code}: {resp.text[:300]}")
-    with open(output_path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=65_536):
-            if chunk:
-                f.write(chunk)
-    size_kb = Path(output_path).stat().st_size / 1024
-    print(f"  TTS saved: {output_path} ({size_kb:.0f} KB)")
-    return output_path
-
-
-def get_audio_duration(audio_path: str) -> float:
-    cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", audio_path]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return float(result.stdout.strip())
-
-
-def search_pexels_clips(queries: list, num_clips: int = PEXELS_CLIPS_PER_VIDEO) -> list:
-    if not PEXELS_API_KEY:
-        raise RuntimeError("PEXELS_API_KEY not set")
-    headers  = {"Authorization": PEXELS_API_KEY}
-    clips    = []
-    seen_ids = set()
-
-    for query in queries:
-        if len(clips) >= num_clips:
-            break
-        for orientation in ("portrait", None):
-            if len(clips) >= num_clips:
-                break
-            params = {"query": query, "per_page": 5, "size": "medium"}
-            if orientation:
-                params["orientation"] = orientation
-            try:
-                resp = requests.get(PEXELS_VIDEO_URL, headers=headers, params=params, timeout=30)
-                if not resp.ok:
-                    print(f"  Pexels [{query}] {resp.status_code} -- skipping")
-                    break
-                for video in resp.json().get("videos", []):
-                    vid_id = video["id"]
-                    if vid_id in seen_ids:
-                        continue
-                    seen_ids.add(vid_id)
-                    files          = video.get("video_files", [])
-                    portrait_files = [f for f in files if f.get("width", 1) < f.get("height", 1)]
-                    chosen_files   = portrait_files if portrait_files else files
-                    chosen_files   = [f for f in chosen_files if f.get("height", 0) <= 1920]
-                    chosen_files.sort(key=lambda x: x.get("height", 0), reverse=True)
-                    if chosen_files:
-                        clips.append({"url": chosen_files[0]["link"], "query": query,
-                                      "id": vid_id, "duration": video.get("duration", 10)})
-                        if len(clips) >= num_clips:
-                            break
-                time.sleep(0.3)
-            except Exception as e:
-                print(f"  Pexels search error for '{query}': {e}")
-                break
-
-    print(f"  Pexels: found {len(clips)} clips from {len(queries)} queries")
-    return clips[:num_clips]
-
-
-def download_clip(url: str, output_path: str) -> str:
-    resp = requests.get(url, stream=True, timeout=120)
-    resp.raise_for_status()
-    with open(output_path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=65_536):
-            if chunk:
-                f.write(chunk)
-    size_mb = Path(output_path).stat().st_size / (1024 * 1024)
-    print(f"  Downloaded: {Path(output_path).name} ({size_mb:.1f} MB)")
-    return output_path
-
-
-def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) -> str:
-    cmd = [
-        "ffmpeg", "-stream_loop", "-1", "-i", clip_path,
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30",
-        "-t", str(duration), "-an", "-c:v", "libx264", "-crf", "20", "-preset", "fast",
-        "-y", output_path
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Clip processing failed: {result.stderr[-300:]}")
-    return output_path
-
-
-def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str, music_path: str = None):
-    audio_duration = get_audio_duration(audio_path)
-    n              = len(clip_paths)
-    clip_duration  = audio_duration / n
-    print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s total")
-
-    processed = []
-    for i, raw_path in enumerate(clip_paths):
-        out = str(OUTPUT_DIR / f"clip_{i}_processed.mp4")
-        try:
-            process_clip_to_portrait(raw_path, out, clip_duration)
-            processed.append(out)
-            print(f"  Clip {i+1}/{n} processed")
-        except Exception as e:
-            print(f"  Clip {i+1} failed ({e}) -- skipping")
-
-    if not processed:
-        raise RuntimeError("No clips processed successfully")
-
-    if len(processed) < n:
-        clip_duration = audio_duration / len(processed)
-        reprocessed   = []
-        for i, raw_path in enumerate(clip_paths[:len(processed)]):
-            out = str(OUTPUT_DIR / f"clip_{i}_adj.mp4")
-            try:
-                process_clip_to_portrait(raw_path, out, clip_duration)
-                reprocessed.append(out)
-            except Exception:
-                pass
-        processed = reprocessed
-
-    concat_file = OUTPUT_DIR / "concat.txt"
-    with open(concat_file, "w") as f:
-        for p in processed:
-            f.write(f"file '{Path(p).resolve()}'\n")
-
-    concat_video = str(OUTPUT_DIR / "concat_video.mp4")
-    result = subprocess.run(
-        ["ffmpeg", "-f", "concat", "-safe", "0", "-i", str(concat_file),
-         "-c:v", "libx264", "-crf", "16", "-preset", "slow", "-t", str(audio_duration), "-y", concat_video],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
-    print(f"  Concat complete: {audio_duration:.1f}s")
-
-    if music_path:
-        cmd = [
-            "ffmpeg", "-i", concat_video, "-i", audio_path,
-            "-stream_loop", "-1", "-i", music_path,
-            "-filter_complex",
-            f"[2:a]volume={MUSIC_VOLUME}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[aout]",
-            "-map", "0:v", "-map", "[aout]", "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "192k", "-t", str(audio_duration), "-y", output_path
-        ]
-    else:
-        cmd = [
-            "ffmpeg", "-i", concat_video, "-i", audio_path,
-            "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "192k", "-t", str(audio_duration), "-y", output_path
-        ]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        if music_path:
-            print("  WARNING: music mix failed -- retrying without music")
-            assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None)
-            return
-        raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
-
-    size_mb   = Path(output_path).stat().st_size / (1024 * 1024)
-    w, h      = get_video_dimensions(output_path)
-    music_tag = f" + music @ {int(MUSIC_VOLUME * 100)}%" if music_path else ""
-    print(f"  Cinematic final: {output_path} ({w}x{h} | {size_mb:.1f} MB{music_tag})")
-
-
-def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
-    print("\n  [Cinematic] Generating voiceover via Fish Audio...")
-    audio_path = str(OUTPUT_DIR / "voiceover.mp3")
-    generate_fish_audio_tts(script_text, audio_path)
-
-    print(f"\n  [Cinematic] Searching Pexels B-roll: {pexels_queries}")
-    clips = search_pexels_clips(pexels_queries, num_clips=PEXELS_CLIPS_PER_VIDEO)
-    if not clips:
-        raise RuntimeError("No Pexels clips found")
-
-    print(f"\n  [Cinematic] Downloading {len(clips)} clips...")
-    clips_dir = OUTPUT_DIR / "clips"
-    clips_dir.mkdir(exist_ok=True)
-    raw_clip_paths = []
-    for i, clip in enumerate(clips):
-        clip_path = str(clips_dir / f"raw_{i}.mp4")
-        try:
-            download_clip(clip["url"], clip_path)
-            raw_clip_paths.append(clip_path)
-        except Exception as e:
-            print(f"  Clip {i+1} download failed ({e}) -- skipping")
-
-    if not raw_clip_paths:
-        raise RuntimeError("All clip downloads failed")
-
-    music_path = pick_music_track()
-    print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
-    final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
-    assemble_cinematic_video(raw_clip_paths, audio_path, final_path, music_path)
-    return final_path
-
-
-# ---------------------------------------------------------------------------
-# Shared video utilities
-# ---------------------------------------------------------------------------
+# -- Step 5 -- Download -------------------------------------------------------
 
 def download_video(url: str, output_path: str):
     resp = requests.get(url, stream=True, timeout=120)
@@ -1111,35 +779,29 @@ def download_video(url: str, output_path: str):
     print(f"  Downloaded: {output_path} ({size_mb:.1f} MB)")
 
 
+# -- Step 5b -- Force 9:16 portrait with zoom-to-fill ------------------------
+
 def get_video_dimensions(path: str) -> tuple:
-    cmd    = ["ffprobe", "-v", "error", "-select_streams", "v:0",
-              "-show_entries", "stream=width,height", "-of", "csv=p=0", path]
+    cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0",
+           "-show_entries", "stream=width,height", "-of", "csv=p=0", path]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     parts  = result.stdout.strip().split(",")
     return int(parts[0]), int(parts[1])
 
 
 def detect_content_crop(video_path: str) -> tuple:
-    """
-    Detect borders using cropdetect.
-
-    limit=200 catches white/near-white padding (value 255) that HeyGen adds
-    when letterboxing certain avatar looks. Looks that fill the frame natively
-    have no uniform border so cropdetect returns the full frame unchanged.
-    Previous limit=30 only caught near-black borders and missed white padding.
-    """
-    cmd     = ["ffmpeg", "-i", video_path, "-vf", "cropdetect=limit=200:round=2:reset=0",
-               "-frames:v", "90", "-f", "null", "-"]
+    cmd = ["ffmpeg", "-i", video_path, "-vf", "cropdetect=limit=30:round=2:reset=0",
+           "-frames:v", "90", "-f", "null", "-"]
     result  = subprocess.run(cmd, capture_output=True, text=True)
     matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", result.stderr)
     if not matches:
         return None
     cw, ch, cx, cy = map(int, matches[-1])
-    print(f"  cropdetect: {cw}x{ch} at x={cx}, y={cy}")
+    print(f"  cropdetect: content area {cw}x{ch} at x={cx}, y={cy}")
     return cw, ch, cx, cy
 
 
-def make_portrait_filter(cw, ch, cx, cy) -> str:
+def make_portrait_filter(cw: int, ch: int, cx: int, cy: int) -> str:
     return (
         f"crop={cw}:{ch}:{cx}:{cy},"
         f"scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,"
@@ -1148,67 +810,79 @@ def make_portrait_filter(cw, ch, cx, cy) -> str:
     )
 
 
-def crop_to_portrait(raw_path: str, final_path: str, ass_path: str = None):
+def crop_to_portrait(raw_path: str, final_path: str):
     w, h = get_video_dimensions(raw_path)
-    print(f"  Raw dimensions: {w}x{h}")
+    print(f"  Raw video dimensions: {w}x{h}")
     crop_result = detect_content_crop(raw_path)
-    filter_str  = (make_portrait_filter(*crop_result) if crop_result
-                   else make_portrait_filter(w, h, 0, 0))
-
-    if ass_path and Path(ass_path).exists():
-        safe_ass    = str(Path(ass_path).resolve()).replace("\\", "/")
-        filter_str += f",ass='{safe_ass}'"
-        print(f"  Burning subtitles: {Path(ass_path).name} ({SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} | MarginV {SUBTITLE_MARGIN_V}px)")
+    if crop_result:
+        cw, ch, cx, cy = crop_result
+        filter_str = make_portrait_filter(cw, ch, cx, cy)
     else:
-        print("  No subtitle file -- rendering without captions")
-
-    cmd    = ["ffmpeg", "-i", raw_path, "-vf", filter_str,
-              "-c:v", "libx264", "-crf", "16", "-preset", "slow",
-              "-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M",
-              "-c:a", "copy", "-y", final_path]
+        print("  cropdetect found no bars -- using full frame")
+        filter_str = make_portrait_filter(w, h, 0, 0)
+    print(f"  FFmpeg filter: {filter_str}")
+    cmd = ["ffmpeg", "-i", raw_path, "-vf", filter_str,
+           "-c:v", "libx264", "-crf", "16", "-preset", "slow",
+           "-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M",
+           "-c:a", "copy", "-y", final_path]
     result = subprocess.run(cmd, capture_output=True, text=True)
-
     if result.returncode != 0:
-        if ass_path and Path(ass_path).exists():
-            print("  WARNING: subtitle burn failed -- retrying without captions")
-            crop_to_portrait(raw_path, final_path, ass_path=None)
-            return
-        raise RuntimeError(f"ffmpeg failed: {result.stderr[-1000:]}")
-
-    size_mb  = Path(final_path).stat().st_size / (1024 * 1024)
-    w2, h2   = get_video_dimensions(final_path)
-    sub_note = " + captions" if (ass_path and Path(ass_path).exists()) else ""
-    print(f"  Final: {final_path} ({w2}x{h2} | {size_mb:.1f} MB{sub_note})")
+        print(f"  ffmpeg stderr:\n{result.stderr[-1000:]}")
+        raise RuntimeError(f"ffmpeg failed with code {result.returncode}")
+    size_mb = Path(final_path).stat().st_size / (1024 * 1024)
+    w2, h2  = get_video_dimensions(final_path)
+    print(f"  Final: {final_path} ({w2}x{h2} | {size_mb:.1f} MB)")
 
 
-# ---------------------------------------------------------------------------
-# Metadata Generation
-# ---------------------------------------------------------------------------
+# -- Step 6 -- Upload Guide + Metadata ----------------------------------------
 
-def generate_upload_guide(script: dict, mode: str, render_fmt: str, client: anthropic.Anthropic) -> str:
+def generate_upload_guide(script: dict, mode: str, client: anthropic.Anthropic) -> str:
     print("  Generating upload guide...")
+    full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
-    question   = script.get("interview_question", topic)
-    hook_vo    = script.get("hook", {}).get("voiceover", "")
     video_type = script.get("video_type", mode)
-    prompt = f"""Social media expert for TikTok, Instagram Reels, Facebook Reels and YouTube Shorts,
-men's mental health niche.
+    audience   = script.get("audience", "men")
 
-VIDEO TYPE: {video_type.upper()} | FORMAT: {render_fmt.upper()}
-QUESTION ANSWERED: {question}
+    prompt = f"""Social media growth expert for TikTok, Instagram Reels, Facebook Reels and YouTube Shorts,
+mental health and recovery niche.
+
+Generate a complete upload guide for TikTok, Instagram, Facebook AND YouTube Shorts.
+
+VIDEO TYPE: {video_type.upper()}
+AUDIENCE: {audience}
+TOPIC: {topic}
 SEO KEYWORD: {seo_kw}
-HOOK LINE: {hook_vo}
+FULL VOICEOVER: \"\"\"{full_vo}\"\"\"
 
-Generate upload copy for all 4 platforms.
-TIKTOK / INSTAGRAM: Caption starts with the question or hook. 8-12 hashtags. Max 2200 chars. Include {REQUIRED_BRAND_HASHTAG}.
-FACEBOOK: Title + Description (2-3 original sentences + question + hashtags). Include {REQUIRED_BRAND_HASHTAG}.
-YOUTUBE SHORTS: Title phrased as the question. Description + mindcoreai.eu + {REQUIRED_BRAND_HASHTAG}.
-ON-SCREEN TEXT: 1 punchy line -- the question or hook.
-Thumbnail suggestion + A/B hook idea.
-Plain text, clear labels, copy-paste ready.
+TIKTOK / INSTAGRAM REELS:
+- Caption (keyword-first hook + 8-12 hashtags inline, max 2200 chars)
+- ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the hashtag set (non-negotiable)
+- On-screen text overlay suggestion: 1 punchy line
 
-CRITICAL: Write ALL descriptions in your own words. Do NOT copy or reproduce the video script."""
+FACEBOOK REELS:
+- Title: max 255 characters, keyword-first
+- Description: 2-3 sentences, emotionally engaging, ends with a question + 5-7 hashtags
+- ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the Facebook hashtag set (non-negotiable)
+
+YOUTUBE SHORTS:
+- Title: max 100 chars, keyword-first, scroll-stopping
+- Description: 2-4 sentences (longer than IG caption since YouTube viewers read more) +
+  link to mindcoreai.eu + 5-8 hashtags ending with #Shorts to ensure Shorts placement
+- ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the YouTube hashtag set (non-negotiable)
+- Tags (comma-separated keywords for YouTube SEO, separate from hashtags): 8-12 keywords
+
+HASHTAG GUIDANCE BY AUDIENCE:
+- men      -> include #MensMentalHealth #MenMentalHealth where natural
+- women    -> include #WomensMentalHealth #MentalHealthForWomen where natural
+- neutral  -> include #MentalHealth #MentalHealthAwareness where natural
+
+ALSO INCLUDE:
+- Thumbnail suggestion
+- A/B test hook idea
+
+Plain text only. Clear labels. Copy-paste ready."""
+
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(
@@ -1218,56 +892,76 @@ CRITICAL: Write ALL descriptions in your own words. Do NOT copy or reproduce the
             return msg.content[0].text.strip()
         except anthropic.APIStatusError as e:
             if e.status_code == 529:
-                time.sleep(CLAUDE_RETRY_BASE * attempt)
+                wait = CLAUDE_RETRY_BASE * attempt
+                print(f"  Anthropic overloaded -- waiting {wait}s...")
+                time.sleep(wait)
             else:
                 raise
     raise RuntimeError("Could not generate upload guide")
 
 
 def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropic) -> dict:
-    print("  Generating platform metadata...")
+    print("  Generating platform metadata for upload...")
+    full_vo    = " ".join(script[scene]["voiceover"] for scene in SCENE_ORDER)
     topic      = script.get("topic", "")
     seo_kw     = script.get("seo_keyword", "")
-    question   = script.get("interview_question", topic)
-    hook_vo    = script.get("hook", {}).get("voiceover", "")
     video_type = script.get("video_type", mode).upper()
+    audience   = script.get("audience", "men")
 
-    prompt = f"""Social media expert for men's mental health on TikTok, Instagram, Facebook and YouTube Shorts.
+    if audience == "men":
+        audience_hashtag_hint = "#MensMentalHealth #MenMentalHealth"
+    elif audience == "women":
+        audience_hashtag_hint = "#WomensMentalHealth #MentalHealthForWomen"
+    else:
+        audience_hashtag_hint = "#MentalHealth #MentalHealthAwareness"
+
+    prompt = f"""Social media expert for mental health content on TikTok, Instagram Reels, Facebook Reels and YouTube Shorts.
+
+Generate optimised upload metadata for this video. Each platform needs DIFFERENT optimisation.
 
 VIDEO TYPE: {video_type}
-QUESTION THIS VIDEO ANSWERS: {question}
+AUDIENCE: {audience}
+TOPIC: {topic}
 SEO KEYWORD: {seo_kw}
-OPENING LINE OF VIDEO: {hook_vo}
+FULL VOICEOVER: {full_vo}
 
-Write platform metadata. CRITICAL RULES:
-- ALL descriptions must be original sentences written from scratch.
-- Do NOT copy, quote, or paraphrase the video script. Write new sentences.
-- tiktok_caption: 1-2 punchy sentences related to the question + 8-10 hashtags.
-  Max 2200 chars. MUST include: {REQUIRED_BRAND_HASHTAG} #mensmentalhealth
-- facebook_title: max 255 chars, phrase as the question if possible
-- facebook_description: 2 original sentences about the topic + question + 4-5 hashtags.
-  MUST include {REQUIRED_BRAND_HASHTAG}. Do NOT reproduce the script.
-- youtube_title: max 100 chars -- phrase as the question men search for
-- youtube_description: exactly 2 short original sentences about the topic (not the script).
-  Then a blank line. Then: "Try MindCore AI: https://mindcoreai.eu"
-  Then a blank line. Then 6-8 hashtags ending with #Shorts.
-  MUST include {REQUIRED_BRAND_HASHTAG}. Max 500 chars before the link.
-- youtube_tags: comma-separated 8-12 keywords (no # symbols)
+RULES:
 
-Return ONLY valid JSON:
+TIKTOK + INSTAGRAM (shared caption, hashtags inline):
+- tiktok_caption: keyword-first sentence (max 100 chars) + space + 8-10 hashtags inline.
+  Used for BOTH TikTok and Instagram Reels captions.
+  ALWAYS INCLUDE these brand hashtags (non-negotiable): {REQUIRED_BRAND_HASHTAG}
+  Audience-fit hashtags to include: {audience_hashtag_hint}
+  Max 2200 chars total.
+
+FACEBOOK (separate title and description):
+- facebook_title: max 255 chars, keyword-first
+- facebook_description: 2-3 emotionally engaging sentences + question at end + 5-6 hashtags
+  ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the Facebook hashtag set (non-negotiable)
+  Audience-fit hashtags to include: {audience_hashtag_hint}
+
+YOUTUBE SHORTS (separate title, description, and tags):
+- youtube_title: max 100 chars, keyword-first, scroll-stopping question or statement.
+- youtube_description: 2-4 sentences expanding the topic + a line break + the link
+  "Try MindCore AI: https://mindcoreai.eu" + a line break + 6-8 hashtags ending with #Shorts.
+  ALWAYS INCLUDE the brand hashtag {REQUIRED_BRAND_HASHTAG} in the YouTube hashtag set (non-negotiable).
+  ALWAYS END the hashtag line with #Shorts to ensure YouTube treats this as a Short.
+- youtube_tags: comma-separated string of 8-12 keywords (NO hashtags here, just keywords).
+
+Return ONLY valid JSON, no markdown:
 {{
-  "tiktok_caption": "1-2 sentences about the topic... {REQUIRED_BRAND_HASHTAG} #mensmentalhealth #hashtag",
+  "tiktok_caption": "keyword-first hook sentence {REQUIRED_BRAND_HASHTAG} #hashtag2 #hashtag3 ...",
   "facebook_title": "...",
-  "facebook_description": "2 original sentences. {REQUIRED_BRAND_HASHTAG} #hashtag",
-  "youtube_title": "...",
-  "youtube_description": "Sentence 1. Sentence 2.\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #mentalhealth #Shorts",
-  "youtube_tags": "keyword1, keyword2, keyword3"
+  "facebook_description": "... {REQUIRED_BRAND_HASHTAG} #tag2 ...",
+  "youtube_title": "scroll-stopping title with keyword",
+  "youtube_description": "2-4 sentences\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #mentalhealth #Shorts",
+  "youtube_tags": "keyword1, keyword2, keyword3, keyword4, keyword5, keyword6, keyword7, keyword8"
 }}"""
 
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(
-                model="claude-sonnet-4-6", max_tokens=700,
+                model="claude-sonnet-4-6", max_tokens=900,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = msg.content[0].text.strip()
@@ -1275,29 +969,34 @@ Return ONLY valid JSON:
                 parts = raw.split("```")
                 raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
             metadata = json.loads(raw)
-            for key in ("tiktok_caption", "facebook_description", "youtube_description"):
-                metadata[key] = ensure_brand_hashtag(metadata.get(key, ""))
-            metadata["youtube_title"] = metadata.get("youtube_title", "")[:YOUTUBE_TITLE_LIMIT]
-            print(f"  TikTok+IG: {metadata.get('tiktok_caption','')[:80]}...")
-            print(f"  Facebook:  {metadata.get('facebook_title','')[:60]}...")
-            print(f"  YouTube:   {metadata.get('youtube_title','')[:60]}...")
+
+            metadata["tiktok_caption"]       = ensure_brand_hashtag(metadata.get("tiktok_caption", ""))
+            metadata["facebook_description"] = ensure_brand_hashtag(metadata.get("facebook_description", ""))
+            metadata["youtube_description"]  = ensure_brand_hashtag(metadata.get("youtube_description", ""))
+            metadata["youtube_title"]        = metadata.get("youtube_title", "")[:YOUTUBE_TITLE_LIMIT]
+
+            print(f"  Caption (TikTok+IG)  : {metadata.get('tiktok_caption', '')[:80]}...")
+            print(f"  Facebook title       : {metadata.get('facebook_title', '')[:60]}...")
+            print(f"  YouTube title        : {metadata.get('youtube_title', '')[:60]}...")
+            print(f"  YouTube tags         : {metadata.get('youtube_tags', '')[:80]}...")
             return metadata
         except (anthropic.APIStatusError, json.JSONDecodeError) as e:
             if attempt == CLAUDE_MAX_RETRIES:
-                raise RuntimeError(f"Could not generate metadata: {e}")
+                raise RuntimeError(f"Could not generate upload metadata: {e}")
             time.sleep(10)
     raise RuntimeError("Unexpected exit from metadata generation")
 
 
-# ---------------------------------------------------------------------------
-# Upload
-# ---------------------------------------------------------------------------
+# -- Step 7 -- Auto-upload to TikTok + Facebook + Instagram + YouTube --------
 
 def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
     if not UPLOAD_POST_API_KEY:
+        print("  UPLOAD_POST_API_KEY not set -- skipping upload")
         return {"skipped": True, "reason": "no API key"}
+
     user = cfg.get("upload_post_user", "")
     if not user:
+        print("  upload_post_user not set in config -- skipping upload")
         return {"skipped": True, "reason": "no user configured"}
 
     caption              = metadata.get("tiktok_caption", "")[:TIKTOK_CAPTION_LIMIT]
@@ -1308,7 +1007,12 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
     youtube_tags         = metadata.get("youtube_tags", "")
 
     print(f"  Uploading to TikTok + Facebook + Instagram + YouTube as '{user}'...")
+    print(f"  Caption ({len(caption)} chars)        : {caption[:80]}...")
+    print(f"  Facebook title                  : {facebook_title[:60]}...")
+    print(f"  YouTube title                   : {youtube_title[:60]}...")
+
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
+
     data = [
         ("user",                 user),
         ("platform[]",           "tiktok"),
@@ -1322,49 +1026,54 @@ def upload_to_platforms(video_path: str, metadata: dict, cfg: dict) -> dict:
         ("youtube_description",  youtube_description),
         ("youtube_tags",         youtube_tags),
     ]
+
     try:
         with open(video_path, "rb") as f:
-            files  = [("video", ("mindcore_ai_video.mp4", f, "video/mp4"))]
-            resp   = requests.post(UPLOAD_POST_API_URL, headers=headers,
-                                   files=files, data=data, timeout=180)
-        result = (resp.json() if resp.headers.get("content-type", "").startswith("application/json")
-                  else {"raw": resp.text})
+            files = [("video", ("mindcore_ai_video.mp4", f, "video/mp4"))]
+            resp  = requests.post(
+                UPLOAD_POST_API_URL,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=180,
+            )
+
+        result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
         result["status_code"] = resp.status_code
-        print(f"  Upload {'successful' if resp.ok else 'WARNING'}: {resp.status_code}")
-        if not resp.ok:
-            print(f"  {resp.text[:300]}")
+
+        if resp.ok:
+            print(f"  Upload successful! Status: {resp.status_code}")
+        else:
+            print(f"  Upload WARNING -- status {resp.status_code}: {resp.text[:300]}")
+
         return result
+
     except Exception as e:
         print(f"  Upload failed: {e}")
-        return {"error": str(e)}
+        return {"error": str(e), "skipped": False}
 
 
-def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int, render_fmt: str):
+def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int, avatar_id: str, audience: str):
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     topic        = script.get("topic", "N/A")
     seo_kw       = script.get("seo_keyword", "N/A")
-    question     = script.get("interview_question", topic)
     video_type   = script.get("video_type", mode).upper()
-    hook_style   = script.get("hook_style", "unknown")
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
-    music_tracks = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-    music_note   = f"{len(music_tracks)} tracks @ {int(MUSIC_VOLUME * 100)}% volume" if music_tracks else "none"
+
     header = f"""================================================================================
   MINDCORE AI -- VIDEO UPLOAD GUIDE
   Run #{run_number} | {generated_at}
 ================================================================================
-  Video type      : {video_type}
-  Format          : {render_fmt.upper()} ({'HeyGen Avatar + Whisper captions' if render_fmt == 'avatar' else 'Fish Audio TTS + Pexels B-roll'})
-  Hook style      : {hook_style}
-  Question answered: {question}
-  Topic           : {topic}
-  SEO keyword     : {seo_kw}
-  Subtitles       : {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold white | {SUBTITLE_CHUNK} words/group | MarginV {SUBTITLE_MARGIN_V}px
-  Est. length     : ~{est_duration}s ({total_words} words @ ~130 wpm)
-  Output          : 1080x1920 9:16 30fps
-  Music library   : {music_note}
-  Platforms       : TikTok + Facebook + Instagram Reels + YouTube Shorts
+  Video type  : {video_type}
+  Audience    : {audience}
+  Topic       : {topic}
+  SEO keyword : {seo_kw}
+  Avatar look : {avatar_id}
+  Est. length : ~{est_duration}s ({total_words} words @ ~130 wpm)
+  Format      : 1080x1920 9:16 30fps | Zoom-to-fill | Full body motion
+  Platforms   : TikTok + Facebook + Instagram Reels + YouTube Shorts
+  Schedule    : Tue/Wed/Thu 17:00 UTC
 ================================================================================
 
 FULL SCRIPT
@@ -1373,75 +1082,71 @@ FULL SCRIPT
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
         header += f"[{scene.upper()}]  ({wc} words)\n{script[scene]['voiceover']}\n\n"
+
     header += "================================================================================\n"
     header += "  PLATFORM UPLOAD DETAILS\n"
     header += "================================================================================\n\n"
+
     full = header + guide_text + "\n\n================================================================================\n"
-    (OUTPUT_DIR / "upload_guide.txt").write_text(full, encoding="utf-8")
-    print(f"  Upload guide saved")
+    out  = OUTPUT_DIR / "upload_guide.txt"
+    out.write_text(full, encoding="utf-8")
+    print(f"  Upload guide saved -> {out}")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+# -- Main ---------------------------------------------------------------------
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUTPUT_DIR / "clips").mkdir(exist_ok=True)
 
-    mode          = determine_mode()
-    cfg           = load_config()
-    client        = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
-    topic_history  = load_topic_history()
-    music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-    all_looks      = cfg.get("avatar_look_ids", [])
+    mode             = determine_mode()
+    cfg              = load_config()
+    audience         = pick_audience(cfg)
+    avatar_id        = pick_avatar_look(cfg)
+    voice_id         = pick_voice_id(cfg, audience)
+    background_color = cfg.get("background_color", "#07071a")
+    natural_gestures = cfg.get("use_natural_gestures", True)
+    upload_enabled   = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    print(f"\n  MindCore AI Video Pipeline v5.14")
-    print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar looks: {len(all_looks)} | shuffled deck rotation")
-    print(f"  Script mode: INTERVIEW RESPONSE (question-driven, direct answers)")
-    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | {SUBTITLE_CHUNK} words/group")
-    print(f"  Crop: cropdetect limit=200 (strips white letterbox padding from affected looks)")
-    print(f"  Formats: Avatar (HeyGen + captions) + Cinematic (Fish Audio + Pexels + Music @ {int(MUSIC_VOLUME * 100)}%)")
-    print(f"  Platforms: TikTok + Facebook + Instagram + YouTube")
-    print(f"  Fish Audio voice: {FISH_AUDIO_VOICE_ID[:8]}...")
-    print(f"  Music library: {len(music_tracks)} track(s)")
-    print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
-    if FORCE_FORMAT:
-        print(f"  Format override: {FORCE_FORMAT.upper()}")
+    print(f"\n  MindCore AI Video Pipeline -- HeyGen Edition v4.8")
+    print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Audience: {audience.upper()}")
+    print(f"  Avatar: {cfg.get('avatar_name', 'Unknown')} | look: {avatar_id[:8]}... ({len(cfg['avatar_look_ids'])} looks)")
+    print(f"  Voice : {voice_id[:8]}... (audience-matched)")
+    print(f"  Endpoint: POST /v3/videos | type=avatar | expressiveness=high | motion_prompt active")
+    print(f"  Format: 1080x1920 9:16 30fps | zoom-to-fill")
+    print(f"  Platforms: TikTok + Facebook + Instagram Reels + YouTube Shorts")
+    print(f"  Schedule: Tue/Wed/Thu 17:00 UTC")
+    print(f"  Keywords: SERP short+long tail {'active' if SERP_API_KEY else 'DISABLED'}")
+    print(f"  Auto-upload: {'TikTok + Facebook + Instagram + YouTube' if upload_enabled else 'DISABLED'}")
+    if mode == "content":
+        print("  Content: educational + storytelling only -- zero promotion")
+    else:
+        print("  Ad: rotating CTA | ~20s")
     print("=" * 60)
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     print("\n  Generating script...")
     if mode == "ad":
-        script         = generate_ad_script(load_app_facts(), client)
-        script         = sanitize_script(script)
-        render_fmt     = "avatar"
-        pexels_queries = []
+        app_facts = load_app_facts()
+        script    = generate_ad_with_validation(generate_ad_script, (app_facts, audience, client))
     else:
-        topic          = fetch_trending_topic(client)
-        script         = generate_content_script(topic, client)
-        script         = sanitize_script(script)
-        render_fmt     = topic.get("format", "avatar")
-        pexels_queries = topic.get("pexels_queries", ["man thinking", "empty road", "lonely man"])
-        save_topic_history(topic_history, topic.get("keyword", topic.get("topic", "")))
+        topic  = fetch_trending_topic(audience, client)
+        script = generate_content_script(topic, client)
+        script = sanitize_script(script)
 
-    script["render_format"] = render_fmt
+    # Tag the script with audience so downstream functions can use it
+    script["audience"] = audience
+
     (OUTPUT_DIR / "script.json").write_text(json.dumps(script, indent=2))
-
     total_words  = sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration = round(total_words / 130 * 60)
-
-    print(f"\n  Video type:        {script.get('video_type', mode)}")
-    print(f"  Question answered: {script.get('interview_question', script.get('topic','N/A'))}")
-    print(f"  Hook style:        {script.get('hook_style', 'N/A')}")
-    print(f"  SEO kw:            {script.get('seo_keyword', 'N/A')}")
-    print(f"  Render format:     {render_fmt.upper()}")
-    print(f"  Est. length:       ~{est_duration}s ({total_words} words)")
-    if render_fmt == "cinematic":
-        print(f"  Pexels queries: {pexels_queries}")
+    print(f"\n  Video type: {script.get('video_type', mode)}")
+    print(f"  Audience:   {audience}")
+    print(f"  Topic:      {script.get('topic', 'N/A')}")
+    print(f"  SEO kw:     {script.get('seo_keyword', 'N/A')}")
+    print(f"  Est. length: ~{est_duration}s ({total_words} words)")
     if est_duration > 60:
-        print(f"  NOTE: >{est_duration}s -- YouTube will post as regular video, not Short.")
+        print(f"  WARNING: Video is {est_duration}s -- YouTube treats >60s as regular video, not Shorts.")
     print()
     for scene in SCENE_ORDER:
         wc = len(script[scene]["voiceover"].split())
@@ -1450,30 +1155,29 @@ def main():
     full_script = build_full_script(script)
     print(f"\n  Full script:\n  {full_script}")
 
-    final_path = None
-    if render_fmt == "cinematic":
-        print(f"\n  Rendering CINEMATIC video...")
-        try:
-            final_path = render_cinematic_video(full_script, pexels_queries)
-        except Exception as e:
-            print(f"\n  CINEMATIC RENDER FAILED: {e}")
-            print(f"  Falling back to AVATAR render...")
-            render_fmt = "avatar"
-            script["render_format"] = "avatar"
+    print("\n  Submitting to HeyGen v3/videos...")
+    video_id = submit_heygen_video(full_script, avatar_id, voice_id, background_color, natural_gestures)
 
-    if render_fmt == "avatar" or final_path is None:
-        print(f"\n  Rendering AVATAR video (HeyGen + Whisper captions)...")
-        final_path = render_avatar_video(full_script, cfg)
+    print(f"\n  Waiting for HeyGen to render (up to {VIDEO_TIMEOUT//60} min)...")
+    video_url = poll_heygen_video(video_id)
+
+    print("\n  Downloading raw video from HeyGen...")
+    raw_path   = str(OUTPUT_DIR / "mindcore_ai_raw.mp4")
+    final_path = str(OUTPUT_DIR / "mindcore_ai_video.mp4")
+    download_video(video_url, raw_path)
+
+    print("\n  Converting to 9:16 portrait (zoom-to-fill)...")
+    crop_to_portrait(raw_path, final_path)
 
     print("\n  Generating upload guide...")
-    guide_text = generate_upload_guide(script, mode, render_fmt, client)
-    save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, render_fmt)
+    guide_text = generate_upload_guide(script, mode, client)
+    save_upload_guide(guide_text, script, mode, GITHUB_RUN_NUMBER, avatar_id, audience)
 
     upload_metadata = generate_upload_metadata(script, mode, client)
     (OUTPUT_DIR / "upload_metadata.json").write_text(json.dumps(upload_metadata, indent=2))
 
     if upload_enabled:
-        print("\n  Uploading to all platforms...")
+        print("\n  Uploading to TikTok + Facebook + Instagram + YouTube...")
         upload_result = upload_to_platforms(final_path, upload_metadata, cfg)
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps(upload_result, indent=2))
     else:
@@ -1481,10 +1185,12 @@ def main():
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps({"skipped": True}, indent=2))
 
     print(f"\n  DONE")
-    print(f"  Format: {render_fmt.upper()} | ~{est_duration}s | Hook: {script.get('hook_style','?')}")
-    print(f"  Video:  {final_path}")
+    print(f"  Video:    {final_path}")
+    print(f"  Guide:    video_pipeline/output/upload_guide.txt")
+    print(f"  Audience: {audience}")
+    print(f"  Mode:     {mode.upper()} | ~{est_duration}s | Look: {avatar_id[:8]}...")
     if upload_enabled:
-        print("  Posted: TikTok + Facebook + Instagram + YouTube")
+        print("  Posted: TikTok + Facebook + Instagram Reels + YouTube Shorts")
     print("\n  Pipeline complete!")
 
 
