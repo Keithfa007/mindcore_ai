@@ -50,7 +50,7 @@ class ChatPersistence {
           id: m.id,
           title: m.title,
           updatedAt: m.updatedAt,
-          lastText: m.lastText,
+          lastText: m.lastText ?? '',
         ),
       );
     }
@@ -89,7 +89,6 @@ class ChatPersistence {
     final before = metas.length;
     metas.removeWhere((m) => m.id == id);
     if (metas.length != before) {
-      // Remove from local index without re-uploading the deleted entry
       final byId = <String, ConversationMeta>{};
       for (final m in metas) {
         byId[m.id] = m;
@@ -226,8 +225,6 @@ class ChatPersistence {
 
   // ── Cloud sync ──────────────────────────────────────────────────────────
 
-  /// Pull all conversations + messages from Firestore and merge into local.
-  /// Same pattern as JournalService.syncFromFirestore().
   static Future<void> syncFromFirestore() async {
     try {
       final remoteMetas =
@@ -253,7 +250,6 @@ class ChatPersistence {
         final title = (raw['title'] as String?) ?? 'Chat';
         final lastText = (raw['lastText'] as String?) ?? '';
 
-        // Merge: keep the most recently updated version
         final existing = byId[id];
         if (existing == null || updatedAt.isAfter(existing.updatedAt)) {
           byId[id] = ConversationMeta(
@@ -263,16 +259,13 @@ class ChatPersistence {
             lastText: lastText,
           );
 
-          // Fetch and store messages locally
-          final msgs =
-              await ChatFirestoreService.instance.getMessages(id);
+          final msgs = await ChatFirestoreService.instance.getMessages(id);
           if (msgs.isNotEmpty) {
             await prefs.setString(_histKey(id), jsonEncode(msgs));
           }
         }
       }
 
-      // Persist merged index locally (without re-uploading to cloud)
       final merged = byId.values.toList()
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       await prefs.setString(
@@ -280,10 +273,10 @@ class ChatPersistence {
 
       if (kDebugMode) {
         print(
-            'ChatPersistence: Firestore → local merge sync complete (${merged.length} conversations)');
+            'ChatPersistence: Firestore \u2192 local merge sync complete (${merged.length} conversations)');
       }
     } catch (e) {
-      if (kDebugMode) print('ChatPersistence: syncFromFirestore failed → $e');
+      if (kDebugMode) print('ChatPersistence: syncFromFirestore failed \u2192 $e');
     }
   }
 
