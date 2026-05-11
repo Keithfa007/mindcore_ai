@@ -12,6 +12,7 @@ import 'package:mindcore_ai/pages/helpers/chat_persona_prefs.dart';
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 import 'package:mindcore_ai/services/user_memory_service.dart';
 import 'package:mindcore_ai/services/persona_service.dart';
+import 'package:mindcore_ai/services/user_profile_service.dart';
 
 class ChatStreamService {
   static String get _apiKey  => Env.openaiKey;
@@ -26,7 +27,7 @@ class ChatStreamService {
     required Future<void> Function(String delta) onDelta,
     String screen = 'chat',
   }) async {
-    // ── Crisis gate ───────────────────────────────────────────────────────────
+    // ── Crisis gate ────────────────────────────────────────────────────
     if (_isCrisis(userInput)) {
       await onDelta(_crisisText);
       return const OrchestratorReply(
@@ -39,7 +40,6 @@ class ChatStreamService {
       );
     }
 
-    // ── API key guard ─────────────────────────────────────────────────────────
     if (_apiKey.trim().isEmpty) {
       const text = 'AI is not configured yet (missing API key).';
       await onDelta(text);
@@ -49,19 +49,22 @@ class ChatStreamService {
       );
     }
 
-    // ── Build context ─────────────────────────────────────────────────────────
-    final personaProfile  = await ChatPersonaPrefs.loadPersona();
-    final journalSummary  = await _recentJournalSummary();
-
-    // ── Memory + persona (concurrent fetch) ───────────────────────────────────
+    // ── Fetch context concurrently ────────────────────────────────────────────
     final results = await Future.wait([
+      ChatPersonaPrefs.loadPersona(),
+      _recentJournalSummary(),
       UserMemoryService.getMemorySummary(),
       PersonaService.getPersonaStyle().then((s) => s.name),
+      UserProfileService.buildProfileBlock(),
     ]);
-    final memorySummary = results[0] as String;
-    final personaStyle  = results[1] == 'feminine'
+
+    final personaProfile  = results[0] as dynamic;
+    final journalSummary  = results[1] as String;
+    final memorySummary   = results[2] as String;
+    final personaStyle    = results[3] == 'feminine'
         ? PersonaStyle.feminine
         : PersonaStyle.standard;
+    final profileBlock    = results[4] as String;
 
     final context = AgentContext(
       userInput:            userInput,
@@ -73,13 +76,8 @@ class ChatStreamService {
     );
     final decision = AgentRouter.decide(context);
 
-    // ── Token limit ───────────────────────────────────────────────────────────
-    // Voice replies must be 1-3 short sentences — cap at 120 tokens.
-    // This speeds up both the AI response and the subsequent TTS generation.
-    // Text chat uses the standard per-agent limits.
-    final maxOut = screen == 'voice'
-        ? 120
-        : _maxTokensForAgent(decision.agent.key);
+    // Voice uses 200 tokens — enough for 2-4 warm sentences without being too short
+    final maxOut = screen == 'voice' ? 200 : _maxTokensForAgent(decision.agent.key);
 
     final system = AgentPrompts.buildSystemPrompt(
       agent:              decision.agent,
@@ -87,6 +85,7 @@ class ChatStreamService {
       personaProfileText: personaProfile.profileText,
       userMemorySummary:  memorySummary,
       personaStyle:       personaStyle,
+      userProfileBlock:   profileBlock,
     );
 
     final normalizedHistory = history
@@ -103,7 +102,7 @@ class ChatStreamService {
       if (shouldAppendUser) {'role': 'user', 'content': userInput},
     ];
 
-    // ── Stream ────────────────────────────────────────────────────────────────
+    // ── Stream ───────────────────────────────────────────────────────────────
     final client = http.Client();
     final buffer = StringBuffer();
     try {
@@ -196,8 +195,7 @@ class ChatStreamService {
     }
   }
 
-  // ── Crisis ────────────────────────────────────────────────────────────────
-
+  // ── Crisis ───────────────────────────────────────────────────────────────
   static const String _crisisText =
       "What you're feeling right now matters, and so do you.\n\n"
       "I'm not able to provide crisis support, but real help is available right now.\n\n"
@@ -223,8 +221,6 @@ class ChatStreamService {
     return keywords.any(t.contains);
   }
 
-  // ── Token limits per agent ────────────────────────────────────────────────
-
   static int _maxTokensForAgent(String agent) {
     switch (agent) {
       case 'reset':          return 280;
@@ -238,25 +234,16 @@ class ChatStreamService {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
   static Future<String> _recentJournalSummary() async {
     try {
       final entries = await JournalService.getEntries();
       if (entries.isEmpty) return '';
-      final latest = entries
-          .take(3)
-          .map((e) => e.note.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
+      final latest = entries.take(3).map((e) => e.note.trim())
+          .where((e) => e.isNotEmpty).toList();
       if (latest.isEmpty) return '';
       final joined = latest.join(' | ');
-      return joined.length > 400
-          ? '${joined.substring(0, 400)}\u2026'
-          : joined;
-    } catch (_) {
-      return '';
-    }
+      return joined.length > 400 ? '${joined.substring(0, 400)}\u2026' : joined;
+    } catch (_) { return ''; }
   }
 
   static String? _extractOpenAiError(String body) {

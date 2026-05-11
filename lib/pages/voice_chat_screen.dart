@@ -1,19 +1,26 @@
 // lib/pages/voice_chat_screen.dart
 import 'dart:async';
+import 'dart:collection';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:mindcore_ai/env/env.dart';
 import 'package:mindcore_ai/services/chat_stream_service.dart';
+import 'package:mindcore_ai/services/live_voice_preferences.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
+import 'package:mindcore_ai/services/tts_chunk_coordinator.dart';
 import 'package:mindcore_ai/services/usage_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/services/user_memory_service.dart';
 
 class VoiceChatScreen extends StatefulWidget {
   const VoiceChatScreen({super.key});
-
   @override
   State<VoiceChatScreen> createState() => _VoiceChatScreenState();
 }
@@ -30,36 +37,43 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   String      _moodLabel = 'calm';
 
   final List<Map<String, String>> _history = [];
-
-  // Memory: save after every 5 voice exchanges
   int _voiceMessageCount = 0;
 
+  // ── Sentence streaming TTS pipeline ─────────────────────────────────────
+  // Uses TtsChunkCoordinator to detect sentence boundaries in the
+  // streaming AI response. Each sentence is synthesised immediately
+  // via Fish Audio (in parallel with the AI still generating the next
+  // sentence). This cuts perceived latency from ~10s to ~3-4s.
+  final TtsChunkCoordinator _coordinator = TtsChunkCoordinator();
+  final AudioPlayer         _chunkPlayer = AudioPlayer();
+  final Queue<Future<Uint8List?>> _synthesisQueue = Queue();
+  bool _chunkPlaying = false;
+  bool _cancelled    = false;
+
+  // ── Visual animations ─────────────────────────────────────────────────
   late AnimationController _pulseController;
   late AnimationController _waveController;
   late Animation<double>   _pulseAnim;
-
   Timer? _voiceTimer;
 
   @override
   void initState() {
     super.initState();
-
     _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-
+        vsync: this, duration: const Duration(milliseconds: 1800))
+      ..repeat(reverse: true);
     _waveController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    )..repeat(reverse: true);
-
+        vsync: this, duration: const Duration(milliseconds: 800))
+      ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.92, end: 1.08).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
+        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
 
     _initStt();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAccess());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAccess();
+      // Pre-warm Fish Audio TCP connection and load voice prefs
+      _preWarm();
+    });
   }
 
   @override
@@ -67,10 +81,106 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _pulseController.dispose();
     _waveController.dispose();
     _voiceTimer?.cancel();
+    _coordinator.cancel();
+    _chunkPlayer.dispose();
     UsageService.instance.flushVoiceBuffer();
     OpenAiTtsService.instance.stop();
     super.dispose();
   }
+
+  // ── Pre-warm Fish Audio connection ──────────────────────────────────────
+  // Sends a tiny silent request to establish the TCP connection before
+  // the user speaks. First real request then skips the handshake.
+
+  Future<void> _preWarm() async {
+    try {
+      await LiveVoicePreferences.instance.load();
+      final key = Env.fishAudioKey;
+      if (key.isEmpty) return;
+      await http.post(
+        Uri.parse('https://api.fish.audio/v1/tts'),
+        headers: {
+          'Authorization': 'Bearer $key',
+          'Content-Type':  'application/json',
+        },
+        body: jsonEncode({
+          'text':         ' ',
+          'reference_id': LiveVoicePreferences.instance.activeVoiceId,
+          'format':       'mp3',
+          'latency':      'balanced',
+        }),
+      ).timeout(const Duration(seconds: 5));
+    } catch (_) {} // Silent fail — pre-warm is optional
+  }
+
+  // ── Direct Fish Audio synthesis ──────────────────────────────────────────
+
+  Future<Uint8List?> _synthesise(String text) async {
+    try {
+      final key     = Env.fishAudioKey;
+      final voiceId = LiveVoicePreferences.instance.activeVoiceId;
+      if (key.isEmpty || text.trim().isEmpty) return null;
+      final res = await http.post(
+        Uri.parse('https://api.fish.audio/v1/tts'),
+        headers: {
+          'Authorization': 'Bearer $key',
+          'Content-Type':  'application/json',
+        },
+        body: jsonEncode({
+          'text':         text.trim(),
+          'reference_id': voiceId,
+          'format':       'mp3',
+          'latency':      'balanced',
+        }),
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) return null;
+      return Uint8List.fromList(res.bodyBytes);
+    } catch (_) { return null; }
+  }
+
+  // ── Sentence streaming pipeline ───────────────────────────────────────────
+  // When a sentence boundary is detected by TtsChunkCoordinator,
+  // _enqueueChunk immediately starts synthesis (returns a Future).
+  // _drainChunks plays them in order as each Future resolves.
+  // While sentence 1 is playing, sentence 2 is already being synthesised.
+
+  void _enqueueChunk(String text) {
+    if (_cancelled) return;
+    _synthesisQueue.add(_synthesise(text));
+    if (!_chunkPlaying) unawaited(_drainChunks());
+  }
+
+  Future<void> _drainChunks() async {
+    if (_chunkPlaying) return;
+    _chunkPlaying = true;
+    try {
+      while (_synthesisQueue.isNotEmpty && !_cancelled && mounted) {
+        final bytes = await _synthesisQueue.removeFirst();
+        if (bytes == null || _cancelled || !mounted) continue;
+        try {
+          await _chunkPlayer
+              .setAudioSource(_BytesSource(bytes, contentType: 'audio/mpeg'));
+          await _chunkPlayer.play();
+          // Wait until this chunk finishes playing
+          while (_chunkPlayer.playing && mounted && !_cancelled) {
+            await Future.delayed(const Duration(milliseconds: 80));
+          }
+        } catch (_) {}
+      }
+    } finally {
+      _chunkPlaying = false;
+    }
+  }
+
+  void _cancelAudio() {
+    _cancelled = true;
+    _coordinator.cancel();
+    _synthesisQueue.clear();
+    _chunkPlayer.stop();
+    _chunkPlaying = false;
+  }
+
+  // ── Access check ──────────────────────────────────────────────────────────
 
   Future<void> _checkAccess() async {
     if (!mounted) return;
@@ -78,14 +188,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     await Navigator.of(context).pushNamed('/paywall');
     if (!mounted) return;
     if (!PremiumService.isPremium.value) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
     }
   }
 
   Future<void> _initStt() async {
     final available = await _stt.initialize(
-      onError: (e) => debugPrint('STT error: $e'),
-    );
+        onError: (e) => debugPrint('STT error: $e'));
     if (mounted) setState(() => _sttReady = available);
   }
 
@@ -95,7 +204,9 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     if (!_sttReady || _state != _VoiceState.idle) return;
     final allowed = await UsageService.instance.tryConsumeVoice(context);
     if (!allowed) return;
-    await OpenAiTtsService.instance.stop();
+    // Cancel any ongoing AI response / audio
+    _cancelAudio();
+    OpenAiTtsService.instance.stop();
     setState(() => _state = _VoiceState.listening);
     _startVoiceTimer();
     await _stt.listen(
@@ -124,26 +235,70 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     await _sendToAI(spoken);
   }
 
-  // ── AI call ────────────────────────────────────────────────────────────
+  // ── AI call with sentence streaming TTS ─────────────────────────────────
 
   Future<void> _sendToAI(String userText) async {
     _history.add({'role': 'user', 'content': userText});
+
+    // Reset pipeline for new turn
+    _cancelled = false;
+    _synthesisQueue.clear();
+    _chunkPlaying = false;
+
+    final sessionId  = _uuid.v4();
+    _coordinator.startSession(sessionId);
+    final accumulated = StringBuffer();
+    bool firstChunk   = true;
+
     try {
       final result = await ChatStreamService.streamOrchestratedReply(
-        history:    _history,
-        moodLabel:  _moodLabel,
-        userInput:  userText,
-        screen:     'voice',
-        onDelta:    (delta) async {},
+        history:   _history,
+        moodLabel: _moodLabel,
+        userInput: userText,
+        screen:    'voice',
+        onDelta: (delta) async {
+          if (_cancelled) return;
+          accumulated.write(delta);
+          // Feed accumulated text into coordinator.
+          // When a sentence boundary is detected, player is called immediately.
+          _coordinator.ingest(
+            sessionId: sessionId,
+            fullText:  accumulated.toString(),
+            player: (chunk, idx, next) async {
+              if (_cancelled) return;
+              _enqueueChunk(chunk);
+              // Switch to speaking state as soon as first chunk is enqueued
+              if (firstChunk && mounted) {
+                firstChunk = false;
+                setState(() => _state = _VoiceState.speaking);
+              }
+            },
+          );
+        },
       );
-      final reply = result.reply.trim();
-      if (reply.isEmpty) {
+
+      if (_cancelled) {
         if (mounted) setState(() => _state = _VoiceState.idle);
         return;
       }
-      _history.add({'role': 'assistant', 'content': reply});
 
-      // Persistent memory — save every 5 user voice turns
+      // Flush any remaining text (last sentence that may not have ended with punctuation)
+      await _coordinator.finish(
+        sessionId: sessionId,
+        fullText:  result.reply,
+        player: (chunk, idx, next) async {
+          if (_cancelled) return;
+          _enqueueChunk(chunk);
+          if (firstChunk && mounted) {
+            firstChunk = false;
+            setState(() => _state = _VoiceState.speaking);
+          }
+        },
+      );
+
+      _history.add({'role': 'assistant', 'content': result.reply});
+
+      // Persistent memory — save every 5 voice turns
       _voiceMessageCount++;
       if (_voiceMessageCount % 5 == 0) {
         unawaited(UserMemoryService.saveMemory(_history));
@@ -155,29 +310,15 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
               ? 'low'
               : 'calm';
 
-      if (!mounted) return;
-      setState(() => _state = _VoiceState.speaking);
-      await Future.delayed(const Duration(milliseconds: 200));
-      await OpenAiTtsService.instance.speak(
-        reply,
-        moodLabel: _moodLabel,
-        messageId: _uuid.v4(),
-        surface:   TtsSurface.chat,
-        force:     true,
-      );
-      await Future.delayed(const Duration(milliseconds: 500));
-      await _waitForTtsToFinish();
+      // Wait for all audio chunks to finish playing
+      while ((_chunkPlaying || _synthesisQueue.isNotEmpty) && mounted && !_cancelled) {
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+
       if (mounted) setState(() => _state = _VoiceState.idle);
     } catch (e) {
       debugPrint('VoiceChat error: $e');
       if (mounted) setState(() => _state = _VoiceState.idle);
-    }
-  }
-
-  Future<void> _waitForTtsToFinish() async {
-    while (OpenAiTtsService.instance.isSpeakingNow) {
-      await Future.delayed(const Duration(milliseconds: 200));
-      if (!mounted) return;
     }
   }
 
@@ -189,17 +330,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       if (!stillOk && mounted) {
         await _onRelease();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Voice minutes used up for this month.')),
+          const SnackBar(content: Text('Voice minutes used up for this month.')),
         );
       }
     });
   }
 
-  void _stopVoiceTimer() {
-    _voiceTimer?.cancel();
-    _voiceTimer = null;
-  }
+  void _stopVoiceTimer() { _voiceTimer?.cancel(); _voiceTimer = null; }
 
   String get _minutesLabel {
     final snap = UsageService.instance.snapshot.value;
@@ -207,7 +344,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     return '${snap.voiceMinutesRemaining} min left';
   }
 
-  // ── UI ─────────────────────────────────────────────────────────────────
+  // ── UI ───────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -225,10 +362,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
             valueListenable: UsageService.instance.snapshot,
             builder: (_, snap, __) => Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                  child: Text(_minutesLabel,
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 12))),
+              child: Center(child: Text(_minutesLabel,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12))),
             ),
           ),
         ],
@@ -263,8 +398,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              if (_state == _VoiceState.listening ||
-                  _state == _VoiceState.speaking)
+              if (_state == _VoiceState.listening || _state == _VoiceState.speaking)
                 ..._buildWaveRings(color),
               if (_state == _VoiceState.idle)
                 Transform.scale(
@@ -284,14 +418,11 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                 height: _state == _VoiceState.listening ? 120 : 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: color.withValues(alpha: 0.15),
-                  border:
-                      Border.all(color: color.withValues(alpha: 0.6), width: 2),
+                  color:  color.withValues(alpha: 0.15),
+                  border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
                   boxShadow: [
-                    BoxShadow(
-                        color: color.withValues(alpha: 0.3),
-                        blurRadius: 40,
-                        spreadRadius: 8)
+                    BoxShadow(color: color.withValues(alpha: 0.3),
+                        blurRadius: 40, spreadRadius: 8)
                   ],
                 ),
                 child: Center(
@@ -308,9 +439,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   List<Widget> _buildWaveRings(Color color) {
     return List.generate(3, (i) {
-      final scale = 1.0 +
-          (i * 0.18) +
-          (_waveController.value * 0.12 * (i + 1));
+      final scale   = 1.0 + (i * 0.18) + (_waveController.value * 0.12 * (i + 1));
       final opacity = (0.18 - i * 0.05).clamp(0.0, 1.0);
       return Transform.scale(
         scale: scale,
@@ -318,8 +447,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           width: 100, height: 100,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(
-                color: color.withValues(alpha: opacity), width: 1.5),
+            border: Border.all(color: color.withValues(alpha: opacity), width: 1.5),
           ),
         ),
       );
@@ -329,29 +457,17 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   Widget _buildOrbIcon() {
     switch (_state) {
       case _VoiceState.idle:
-        return ClipOval(
-            child: Image.asset('assets/images/logo512.png',
-                width: 52, height: 52,
-                fit: BoxFit.cover,
-                key: const ValueKey('idle')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png',
+            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('idle')));
       case _VoiceState.listening:
-        return ClipOval(
-            child: Image.asset('assets/images/logo512.png',
-                width: 58, height: 58,
-                fit: BoxFit.cover,
-                key: const ValueKey('listening')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png',
+            width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
       case _VoiceState.thinking:
-        return const SizedBox(
-            key: ValueKey('thinking'),
-            width: 28, height: 28,
-            child: CircularProgressIndicator(
-                strokeWidth: 2, color: Colors.white70));
+        return const SizedBox(key: ValueKey('thinking'), width: 28, height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
       case _VoiceState.speaking:
-        return ClipOval(
-            child: Image.asset('assets/images/logo512.png',
-                width: 52, height: 52,
-                fit: BoxFit.cover,
-                key: const ValueKey('speaking')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png',
+            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
     }
   }
 
@@ -368,14 +484,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     String label;
     switch (_state) {
       case _VoiceState.idle:      label = 'Hold to speak'; break;
-      case _VoiceState.listening: label = 'Listening\u2026';    break;
-      case _VoiceState.thinking:  label = 'Thinking\u2026';     break;
-      case _VoiceState.speaking:  label = 'Speaking\u2026';     break;
+      case _VoiceState.listening: label = 'Listening…';   break;
+      case _VoiceState.thinking:  label = 'Thinking…';    break;
+      case _VoiceState.speaking:  label = 'Speaking…';    break;
     }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      child: Text(label,
-          key: ValueKey(label),
+      child: Text(label, key: ValueKey(label),
           style: const TextStyle(
               color: Colors.white38, fontSize: 15, letterSpacing: 0.5)),
     );
@@ -384,8 +499,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   Widget _buildHoldButton() {
     final isListening = _state == _VoiceState.listening;
     return GestureDetector(
-      onTapDown: (_) => _onHold(),
-      onTapUp: (_) => _onRelease(),
+      onTapDown:  (_) => _onHold(),
+      onTapUp:    (_) => _onRelease(),
       onTapCancel: () => _onRelease(),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -411,6 +526,26 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           size: 30,
         ),
       ),
+    );
+  }
+}
+
+// ── Local audio source ────────────────────────────────────────────────────────────
+
+class _BytesSource extends StreamAudioSource {
+  final Uint8List bytes;
+  final String contentType;
+  _BytesSource(this.bytes, {required this.contentType});
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    start ??= 0;
+    end   ??= bytes.length;
+    return StreamAudioResponse(
+      sourceLength:  bytes.length,
+      contentLength: end - start,
+      offset:        start,
+      stream:        Stream.value(bytes.sublist(start, end)),
+      contentType:   contentType,
     );
   }
 }
