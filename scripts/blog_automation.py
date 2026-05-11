@@ -19,17 +19,74 @@ WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 HISTORY_FILE   = "scripts/blog_history.json"
 MIN_WORD_COUNT = 1200
 
-# Known category IDs from WordPress (avoids repeated API calls that trigger rate limits)
+# Audience rotation order — cycles men -> women -> neutral -> men -> ...
+AUDIENCE_ROTATION = ["men", "women", "neutral"]
+
+# Known category IDs from WordPress
 CATEGORY_IDS = {
     "Anxiety & Stress":       6,
     "Recovery & Sobriety":    7,
     "AI & Wellness":          4,
     "Men's Mental Health":    None,   # fetched dynamically
+    "Women's Mental Health":  None,   # fetched dynamically (new)
     "Sleep & Burnout":        None,
     "Relationships & Family": None,
 }
 
 CATEGORIES = list(CATEGORY_IDS.keys())
+
+# Audience-specific guidance for research and writing
+AUDIENCE_PROFILES = {
+    "men": {
+        "label": "Men's Mental Health",
+        "description": (
+            "Men 35+ who are massively underserved in mental health. "
+            "They suffer in silence, rarely seek help, and respond to honest, "
+            "shame-free, practical content. Topics: emotional suppression, "
+            "addiction recovery, work stress, midlife, anger, identity, "
+            "fatherhood and mental health."
+        ),
+        "tone": (
+            "Direct, honest, no-nonsense — like advice from a mate who has been there. "
+            "Never preachy. Never clinical. Speak to men who would never normally "
+            "read a mental health article."
+        ),
+        "preferred_categories": ["Men's Mental Health", "Recovery & Sobriety", "Anxiety & Stress"],
+    },
+    "women": {
+        "label": "Women's Mental Health",
+        "description": (
+            "Women 25-45 navigating anxiety, burnout, people-pleasing, "
+            "relationship stress, hormonal mental health, postpartum, "
+            "and the mental load of modern life. They ARE willing to seek help "
+            "but are overwhelmed by generic advice. Topics: anxiety in women, "
+            "burnout for working mothers, emotional exhaustion, self-worth, "
+            "setting boundaries, hormones and mood, toxic relationships."
+        ),
+        "tone": (
+            "Warm, empathetic, validating — like advice from a trusted friend who "
+            "truly gets it. Acknowledge the invisible load women carry. "
+            "Practical and empowering, never patronising."
+        ),
+        "preferred_categories": ["Women's Mental Health", "Anxiety & Stress", "Relationships & Family", "Sleep & Burnout"],
+    },
+    "neutral": {
+        "label": "Gender-Neutral Wellness",
+        "description": (
+            "Adults of any gender exploring AI-powered mental health tools, "
+            "addiction recovery, sleep problems, stress management, and "
+            "general emotional wellbeing. Topics: AI for mental health, "
+            "sobriety support, sleep and mental health, stress reduction, "
+            "mindfulness alternatives, digital wellness."
+        ),
+        "tone": (
+            "Accessible, intelligent, and warm — speaks to anyone who is "
+            "open-minded about their wellbeing and curious about new approaches. "
+            "Not gendered. Inclusive and forward-looking."
+        ),
+        "preferred_categories": ["AI & Wellness", "Recovery & Sobriety", "Sleep & Burnout", "Anxiety & Stress"],
+    },
+}
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -87,50 +144,73 @@ def load_history():
         return json.load(f)
 
 
+def get_next_audience(history):
+    """Determine next audience based on rotation. Cycles men -> women -> neutral."""
+    if not history:
+        return "men"
+    last_audience = history[-1].get("audience", "neutral")
+    current_index = AUDIENCE_ROTATION.index(last_audience) if last_audience in AUDIENCE_ROTATION else 2
+    next_index    = (current_index + 1) % len(AUDIENCE_ROTATION)
+    return AUDIENCE_ROTATION[next_index]
+
+
 def format_history_for_prompt(history):
     if not history:
         return "None yet - this is the first post."
     return "\n".join(
-        f"  {i}. [{e['date']}] \"{e['title']}\" - keyword: \"{e['primary_keyword']}\""
+        f"  {i}. [{e['date']}] \"{e['title']}\" - keyword: \"{e['primary_keyword']}\" (audience: {e.get('audience', 'unknown')})"
         for i, e in enumerate(history, 1)
     )
 
 
 # -- Step 1: Research topic ---------------------------------------------------
 def research_topic(history):
-    print("Researching best SEO topic for this week...")
+    audience    = get_next_audience(history)
+    profile     = AUDIENCE_PROFILES[audience]
+    history_txt = format_history_for_prompt(history)
+
+    print(f"Researching best SEO topic for this week... (Audience: {profile['label']})")
+
+    preferred_cats = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
+    all_cats       = "\n".join(f"  - {c}" for c in CATEGORIES)
+
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO strategist specialising in mental wellness content.
 
-Your task: identify the single best blog topic for this week for mindcoreai.eu.
-This is an AI mental health companion app targeting:
-  - Men 35+ (primary - massively underserved)
-  - People in addiction recovery seeking mental wellness support
-  - Adults exploring AI-powered mental health tools
+Your task: find the single most UNTAPPED blog topic for this week for mindcoreai.eu.
+Think like a SERP analyst — identify real "People Also Ask" and "Related Searches" patterns on Google.
+Find the sweet spot: HIGH monthly search volume + VERY LOW competition + NO strong existing content.
 
-Selection criteria:
-  - High Google search demand, VERY low keyword competition
-  - Mirrors real "People Also Ask" or "Related Searches" questions on Google
-  - Evergreen - ranks over months, not just days
-  - Primary keyword must be 2-5 words
+THIS WEEK'S TARGET AUDIENCE: {profile['label']}
+Audience profile: {profile['description']}
 
-CRITICAL - ALREADY PUBLISHED (DO NOT REPEAT):
-{format_history_for_prompt(history)}
+SELECTION CRITERIA:
+  - High Google search demand (ideally 1,000+ monthly searches)
+  - VERY low keyword difficulty — avoid any term dominated by WebMD, Healthline, Mayo Clinic, Psychology Today
+  - Look for long-tail, question-based, or conversational keywords that big sites ignore
+  - Evergreen content that ranks for months, not days
+  - Primary keyword must be 2-5 words, specific enough to rank
 
-Available categories (pick the most relevant one exactly as written):
-  - Anxiety & Stress
-  - Recovery & Sobriety
-  - Men's Mental Health
-  - AI & Wellness
-  - Sleep & Burnout
-  - Relationships & Family
+ALREADY PUBLISHED — DO NOT REPEAT ANY TOPIC, KEYWORD, OR CLOSE VARIATION:
+{history_txt}
 
-Respond ONLY in this exact JSON - no markdown, no preamble:
-{{"topic":"title containing keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char description with keyword","image_prompt":"DALL-E prompt: warm soft hopeful mental wellness illustration, human, approachable, no text or letters in image","rationale":"why high demand low competition","category":"exact category name from list above"}}"""}]
+PREFERRED CATEGORIES FOR THIS AUDIENCE:
+{preferred_cats}
+
+ALL AVAILABLE CATEGORIES:
+{all_cats}
+
+Find the most untapped angle that nobody else is targeting well. Think niche, specific, and real.
+
+Respond ONLY in this exact JSON — no markdown, no preamble:
+{{"topic":"compelling title containing primary keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what the reader is actually looking for","meta_description":"150-160 char meta description containing primary keyword","image_prompt":"DALL-E prompt: warm soft hopeful mental wellness illustration, human and approachable, no text or letters","rationale":"why this keyword is high demand and low competition — cite specific SERP insight","category":"exact category name from list above","audience":"{audience}"}}"""}]
     )
+
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
     data = json.loads(raw)
+    data["audience"] = audience  # ensure it's always set
+    print(f"   Audience : {profile['label']}")
     print(f"   Topic    : {data['topic']}")
     print(f"   Keyword  : {data['primary_keyword']}")
     print(f"   Category : {data.get('category', 'N/A')}")
@@ -141,17 +221,25 @@ Respond ONLY in this exact JSON - no markdown, no preamble:
 # -- Step 2: Write post -------------------------------------------------------
 def write_blog_post(topic_data):
     print("Writing blog post...")
+    audience = topic_data.get("audience", "neutral")
+    profile  = AUDIENCE_PROFILES[audience]
+
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=6000,
         messages=[{"role": "user", "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
 
-Write a full blog post:
+Write a full, publish-ready blog post:
   Title           : {topic_data['topic']}
   Primary Keyword : {topic_data['primary_keyword']}
   Secondary KWs   : {', '.join(topic_data['secondary_keywords'])}
   Search Intent   : {topic_data['search_intent']}
+  Target Audience : {profile['label']}
+  Audience Notes  : {profile['description']}
 
-YOAST SEO REQUIREMENTS:
+TONE & VOICE:
+  {profile['tone']}
+
+YOAST SEO REQUIREMENTS (all must be met):
   1. Primary keyword in the H1 title
   2. Primary keyword in the very first sentence
   3. Primary keyword in at least 3 H2 subheadings
@@ -159,19 +247,19 @@ YOAST SEO REQUIREMENTS:
   5. Minimum 1,200 words of readable content
 
 WRITING REQUIREMENTS:
-  - Warm, honest, human tone - like advice from a friend who has been there
-  - Audience: men 35+, people in recovery, adults open to AI wellness
   - Structure: H1 -> intro (2-3 para) -> 5-7 H2 sections (150-200 words each) -> conclusion + CTA
   - Include at least one list
-  - Final section: natural CTA to download MindCore AI
+  - Real, actionable, specific advice — zero generic platitudes
+  - Final section: natural CTA to download MindCore AI as their 24/7 AI companion
 
 FORMAT:
   - Clean WordPress HTML only: h1 h2 h3 p ul li strong em tags
   - No html head body style script tags
-  - After all HTML on its own line: EXCERPT: [2-3 sentence hook with keyword]"""}]
+  - After all HTML on its own line: EXCERPT: [2-3 sentence hook containing primary keyword]"""}]
     )
+
     content = response.content[0].text
-    wc = count_words_in_html(content)
+    wc      = count_words_in_html(content)
     print(f"   Written ({wc} words)")
     if wc < MIN_WORD_COUNT:
         print(f"   Only {wc} words - expanding...")
@@ -180,7 +268,7 @@ FORMAT:
 
 
 def expand_blog_post(content, topic_data, current_words):
-    needed = MIN_WORD_COUNT - current_words
+    needed   = MIN_WORD_COUNT - current_words
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
         messages=[{"role": "user", "content": f"""This blog post is {current_words} words but needs {MIN_WORD_COUNT}.
@@ -255,7 +343,7 @@ def resolve_category_id(category_name):
         print(f"   Category  : {category_name} (ID: {cat_id}) [created]")
         return cat_id
     elif create.status_code == 400:
-        err = create.json()
+        err     = create.json()
         term_id = err.get("data", {}).get("term_id") or (err.get("additional_data") or [None])[0]
         if term_id:
             CATEGORY_IDS[category_name] = int(term_id)
@@ -291,7 +379,7 @@ def publish_to_wordpress(topic_data, content, image_id=None):
         "content":    content,
         "excerpt":    excerpt,
         "slug":       slug,
-        "status":     "publish",          # <-- auto-publish live
+        "status":     "publish",
         "categories": [cat_id] if cat_id else [],
         "meta": {
             "_yoast_wpseo_metadesc": topic_data["meta_description"],
@@ -382,6 +470,7 @@ def main():
         "title":           topic_data["topic"],
         "primary_keyword": topic_data["primary_keyword"],
         "category":        topic_data.get("category", ""),
+        "audience":        topic_data.get("audience", "neutral"),
         "slug":            keyword_to_slug(topic_data["primary_keyword"]),
         "wp_post_id":      post.get("id"),
     })
