@@ -1,0 +1,73 @@
+{
+  "seed_queries": [
+    "anxiety in women symptoms",
+    "feeling overwhelmed all the time",
+    "how to stop people pleasing",
+    "women mental health support",
+    "burnout recovery for women",
+    "self worth confidence women",
+    "relationship anxiety help",
+    "emotional exhaustion women",
+    "overthinking anxiety women",
+    "setting boundaries without guilt",
+    "why do i feel so empty inside",
+    "signs of anxiety in women",
+    "women depression symptoms",
+    "how to stop overthinking at night",
+    "why am i always tired and sad",
+    "feeling like a failure as a woman",
+    "women and mental health stigma",
+    "how to love yourself again",
+    "emotional numbness in women",
+    "why cant i stop crying for no reason"
+  ],
+  "content_angles": [
+    "what women never admit to themselves",
+    "the real reason you can't stop overthinking",
+    "why helping everyone else is hurting you",
+    "what burnout actually looks like in women",
+    "the sign nobody talks about",
+    "what strong women actually feel",
+    "the silent pattern most women share",
+    "why you feel guilty for saying no",
+    "what nobody tells you about anxiety in women",
+    "the thing keeping you stuck",
+    "what it actually feels like from the inside",
+    "the moment everything shifted",
+    "what I wish someone had told me",
+    "the question women are afraid to ask",
+    "why you feel lonely even surrounded by people",
+    "what the pressure to have it all is doing",
+    "the hidden cost of people pleasing",
+    "what happens when you finally put yourself first",
+    "the myth most women believe about strength",
+    "what you are feeling has a name"
+  ],
+  "visual_styles": [
+    {
+      "name": "quiet_reflection",
+      "description": "Soft, intimate, introspective moments",
+      "query_templates": ["woman looking out window", "woman sitting alone cafe", "woman journaling morning light", "woman alone bedroom soft light", "solitary woman nature walk"]
+    },
+    {
+      "name": "emotional_weight",
+      "description": "Body language of exhaustion and overwhelm",
+      "query_templates": ["woman tired head in hands", "woman lying awake night", "woman crying alone", "woman overwhelmed desk", "woman sitting floor exhausted"]
+    },
+    {
+      "name": "nature_solitude",
+      "description": "Nature as emotional mirror, feminine and still",
+      "query_templates": ["woman walking alone forest", "rain window close up", "woman ocean sunrise", "flowers fading slow motion", "woman field golden hour alone"]
+    },
+    {
+      "name": "urban_quiet",
+      "description": "City moments of aloneness",
+      "query_templates": ["woman alone city street night", "woman coffee shop window rain", "woman subway alone thinking", "woman park bench alone autumn", "city rooftop woman alone"]
+    },
+    {
+      "name": "abstract_feminine",
+      "description": "Soft abstract textures, light, calm",
+      "query_templates": ["soft light bokeh abstract", "candle flame close up", "flower petals falling slow motion", "water ripple surface calm", "silk fabric movement slow motion"]
+    }
+  ]
+}
