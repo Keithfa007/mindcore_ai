@@ -2,11 +2,12 @@
 //
 // Quick Reset — one-tap grounding sequence.
 // Step 1: Breathing (follow the orb) — with voice guidance
-// Step 2: 5-4-3-2-1 grounding technique
+// Step 2: 5-4-3-2-1 grounding technique — interactive tap-to-check
 // Step 3: Calming audio
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
@@ -19,11 +20,11 @@ enum _SosStep { breathe, grounding, audio }
 const _kCalmColor = Color(0xFF2D7DD2);
 
 const _groundingItems = [
-  _GroundingItem('5 things you can see',  Icons.visibility_rounded,  Color(0xFF185FA5)),
-  _GroundingItem('4 things you can touch', Icons.touch_app_rounded,  Color(0xFF0F6E56)),
-  _GroundingItem('3 things you can hear',  Icons.hearing_rounded,    Color(0xFF534AB7)),
-  _GroundingItem('2 things you can smell', Icons.air_rounded,        Color(0xFF854F0B)),
-  _GroundingItem('1 thing you can taste',  Icons.restaurant_rounded, Color(0xFF993556)),
+  _GroundingItem('5 things you can see',   Icons.visibility_rounded,   Color(0xFF185FA5)),
+  _GroundingItem('4 things you can touch',  Icons.touch_app_rounded,    Color(0xFF0F6E56)),
+  _GroundingItem('3 things you can hear',   Icons.hearing_rounded,      Color(0xFF534AB7)),
+  _GroundingItem('2 things you can smell',  Icons.air_rounded,          Color(0xFF854F0B)),
+  _GroundingItem('1 thing you can taste',   Icons.restaurant_rounded,   Color(0xFF993556)),
 ];
 
 class _GroundingItem {
@@ -42,23 +43,21 @@ class SosScreen extends StatefulWidget {
 class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   _SosStep _step = _SosStep.breathe;
 
-  // Breathing — 8s cycle (4 inhale / 4 exhale), auto-advances after 60s
+  // Breathing
   late final AnimationController _breathCtrl;
   Timer? _breathTimer;
   int _breathSecondsLeft = 60;
 
-  // Voice guidance — tracks last spoken phase to avoid repeating
   bool _lastWasInhale = false;
-  bool _voiceStarted = false;
+  bool _voiceStarted  = false;
 
-  // Audio (Step 3)
+  // Audio
   final AudioPlayer _player = AudioPlayer();
   bool _audioPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    // Keep screen on for the entire SOS session
     WakelockPlus.enable();
 
     _breathCtrl = AnimationController(
@@ -66,7 +65,6 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 8),
     )..repeat()..addListener(_onBreathTick);
 
-    // Speak intro after a short delay so screen has rendered
     Future.delayed(const Duration(milliseconds: 600), _speakIntro);
 
     _breathTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -78,19 +76,15 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     });
   }
 
-  // Speak a warm intro then start phase guidance
   Future<void> _speakIntro() async {
     if (!mounted) return;
     await OpenAiTtsService.instance.speak(
       'You are safe. Just breathe with me. Breathe in slowly...',
-      moodLabel: 'calm',
-      messageId: 'sos_intro',
-      surface: TtsSurface.breathe,
+      moodLabel: 'calm', messageId: 'sos_intro', surface: TtsSurface.breathe,
     );
     _voiceStarted = true;
   }
 
-  // Fires on every animation tick — speaks when phase changes
   void _onBreathTick() {
     if (!_voiceStarted) return;
     final isInhale = _breathCtrl.value < 0.5;
@@ -105,10 +99,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
         ? 'Breathe in slowly and gently...'
         : 'Breathe out... let it all go...';
     await OpenAiTtsService.instance.speak(
-      text,
-      moodLabel: 'calm',
-      messageId: 'sos_phase',
-      surface: TtsSurface.breathe,
+      text, moodLabel: 'calm', messageId: 'sos_phase', surface: TtsSurface.breathe,
     );
   }
 
@@ -138,8 +129,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     try {
       await _player.play(AssetSource('audio/Panic Calmer.mp3'));
       setState(() => _audioPlaying = true);
-      _player.onPlayerComplete
-          .listen((_) => setState(() => _audioPlaying = false));
+      _player.onPlayerComplete.listen((_) => setState(() => _audioPlaying = false));
     } catch (_) {}
   }
 
@@ -184,9 +174,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                         Text('Quick Reset',
                             style: tt.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
-                                color: isDark
-                                    ? Colors.white
-                                    : const Color(0xFF0E1320))),
+                                color: isDark ? Colors.white : const Color(0xFF0E1320))),
                         Text('3 steps to calm',
                             style: tt.bodySmall?.copyWith(
                                 color: isDark
@@ -195,15 +183,11 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                       ],
                     ),
                     const Spacer(),
-                    // Voice indicator
                     if (_step == _SosStep.breathe)
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
-                        child: Icon(
-                          Icons.record_voice_over_rounded,
-                          size: 18,
-                          color: _kCalmColor.withValues(alpha: 0.55),
-                        ),
+                        child: Icon(Icons.record_voice_over_rounded,
+                            size: 18, color: _kCalmColor.withValues(alpha: 0.55)),
                       ),
                   ],
                 ),
@@ -215,7 +199,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                 child: _StepBar(current: _step),
               ),
 
-              // Step content
+              // Content
               Expanded(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 600),
@@ -235,23 +219,18 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     switch (_step) {
       case _SosStep.breathe:
         return _BreatheStep(
-          key: const ValueKey('b'),
-          ctrl: _breathCtrl,
-          onSkip: _advanceStep,
-          tt: tt, isDark: isDark,
+          key: const ValueKey('b'), ctrl: _breathCtrl,
+          onSkip: _advanceStep, tt: tt, isDark: isDark,
         );
       case _SosStep.grounding:
         return _GroundingStep(
           key: const ValueKey('g'),
-          onNext: _advanceStep,
-          tt: tt, isDark: isDark,
+          onNext: _advanceStep, tt: tt, isDark: isDark,
         );
       case _SosStep.audio:
         return _AudioStep(
           key: const ValueKey('a'),
-          isPlaying: _audioPlaying,
-          onPlay: _startAudio,
-          onStop: _stopAudio,
+          isPlaying: _audioPlaying, onPlay: _startAudio, onStop: _stopAudio,
           onClose: () { _stopAudio(); Navigator.of(context).pop(); },
           tt: tt, isDark: isDark,
         );
@@ -259,7 +238,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   }
 }
 
-// ── Step 1: Breathing ─────────────────────────────────────────────────────────
+// ── Step 1: Breathing ────────────────────────────────────────────────────────
 
 class _BreatheStep extends StatelessWidget {
   final AnimationController ctrl;
@@ -267,8 +246,7 @@ class _BreatheStep extends StatelessWidget {
   final TextTheme tt;
   final bool isDark;
   const _BreatheStep({
-    super.key,
-    required this.ctrl, required this.onSkip,
+    super.key, required this.ctrl, required this.onSkip,
     required this.tt, required this.isDark,
   });
 
@@ -279,25 +257,18 @@ class _BreatheStep extends StatelessWidget {
     return Column(
       children: [
         const SizedBox(height: 16),
-        Text(
-          'Step 1  —  Breathe',
-          style: tt.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.0,
-              color: _kCalmColor.withValues(alpha: 0.70)),
-        ),
+        Text('Step 1  —  Breathe',
+            style: tt.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600, letterSpacing: 1.0,
+                color: _kCalmColor.withValues(alpha: 0.70))),
         const SizedBox(height: 6),
-        Text(
-          'Put your phone down and just listen.',
-          textAlign: TextAlign.center,
-          style: tt.bodyMedium?.copyWith(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.45)
-                  : Colors.black.withValues(alpha: 0.40),
-              fontStyle: FontStyle.italic),
-        ),
-
-        // Orb
+        Text('Put your phone down and just listen.',
+            textAlign: TextAlign.center,
+            style: tt.bodyMedium?.copyWith(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.45)
+                    : Colors.black.withValues(alpha: 0.40),
+                fontStyle: FontStyle.italic)),
         Expanded(
           child: Center(
             child: AnimatedBuilder(
@@ -306,56 +277,37 @@ class _BreatheStep extends StatelessWidget {
                 final v        = ctrl.value;
                 final isInhale = v < 0.5;
                 final localP   = isInhale ? v / 0.5 : (v - 0.5) / 0.5;
-                final scale = isInhale
-                    ? _lerp(0.65, 0.93,
-                        Curves.easeInOut.transform(localP))
-                    : _lerp(0.93, 0.65,
-                        Curves.easeInOut.transform(localP));
+                final scale    = isInhale
+                    ? _lerp(0.65, 0.93, Curves.easeInOut.transform(localP))
+                    : _lerp(0.93, 0.65, Curves.easeInOut.transform(localP));
 
                 return SizedBox(
                   width: 260, height: 260,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Transform.scale(
-                        scale: scale * 1.45,
-                        child: Container(
-                          width: 190, height: 190,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _kCalmColor.withValues(alpha: 0.04),
-                          ),
+                      Transform.scale(scale: scale * 1.45, child: Container(
+                        width: 190, height: 190,
+                        decoration: BoxDecoration(shape: BoxShape.circle,
+                            color: _kCalmColor.withValues(alpha: 0.04)))),
+                      Transform.scale(scale: scale * 1.22, child: Container(
+                        width: 190, height: 190,
+                        decoration: BoxDecoration(shape: BoxShape.circle,
+                            color: _kCalmColor.withValues(alpha: 0.08)))),
+                      Transform.scale(scale: scale, child: Container(
+                        width: 190, height: 190,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(colors: [
+                            Colors.white.withValues(alpha: 0.28),
+                            _kCalmColor.withValues(alpha: 0.50),
+                            _kCalmColor.withValues(alpha: 0.20),
+                            _kCalmColor.withValues(alpha: 0.03),
+                          ], stops: const [0.0, 0.25, 0.60, 1.0]),
+                          border: Border.all(
+                              color: _kCalmColor.withValues(alpha: 0.22), width: 1.0),
                         ),
-                      ),
-                      Transform.scale(
-                        scale: scale * 1.22,
-                        child: Container(
-                          width: 190, height: 190,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _kCalmColor.withValues(alpha: 0.08),
-                          ),
-                        ),
-                      ),
-                      Transform.scale(
-                        scale: scale,
-                        child: Container(
-                          width: 190, height: 190,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(colors: [
-                              Colors.white.withValues(alpha: 0.28),
-                              _kCalmColor.withValues(alpha: 0.50),
-                              _kCalmColor.withValues(alpha: 0.20),
-                              _kCalmColor.withValues(alpha: 0.03),
-                            ], stops: const [0.0, 0.25, 0.60, 1.0]),
-                            border: Border.all(
-                              color: _kCalmColor.withValues(alpha: 0.22),
-                              width: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
+                      )),
                     ],
                   ),
                 );
@@ -363,42 +315,33 @@ class _BreatheStep extends StatelessWidget {
             ),
           ),
         ),
-
         SizedBox(
           height: 32,
           child: AnimatedBuilder(
             animation: ctrl,
             builder: (_, __) {
-              final label =
-                  ctrl.value < 0.5 ? 'Breathe In' : 'Breathe Out';
+              final label = ctrl.value < 0.5 ? 'Breathe In' : 'Breathe Out';
               return AnimatedSwitcher(
                 duration: const Duration(milliseconds: 800),
-                child: Text(
-                  label,
-                  key: ValueKey(label),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w300,
-                    letterSpacing: 4,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.75)
-                        : const Color(0xFF1A3550),
-                  ),
-                ),
+                child: Text(label, key: ValueKey(label),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w300, letterSpacing: 4,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : const Color(0xFF1A3550),
+                    )),
               );
             },
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          'Voice is guiding you — no need to look',
-          style: tt.bodySmall?.copyWith(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.30)
-                  : Colors.black.withValues(alpha: 0.28),
-              fontStyle: FontStyle.italic),
-        ),
+        Text('Voice is guiding you — no need to look',
+            style: tt.bodySmall?.copyWith(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.30)
+                    : Colors.black.withValues(alpha: 0.28),
+                fontStyle: FontStyle.italic)),
         const SizedBox(height: 16),
         TextButton.icon(
           onPressed: onSkip,
@@ -413,16 +356,34 @@ class _BreatheStep extends StatelessWidget {
   }
 }
 
-// ── Step 2: Grounding ─────────────────────────────────────────────────────────
+// ── Step 2: Grounding (interactive tap-to-check) ─────────────────────────────
 
-class _GroundingStep extends StatelessWidget {
+class _GroundingStep extends StatefulWidget {
   final VoidCallback onNext;
   final TextTheme tt;
   final bool isDark;
   const _GroundingStep({
-    super.key,
-    required this.onNext, required this.tt, required this.isDark,
+    super.key, required this.onNext, required this.tt, required this.isDark,
   });
+  @override
+  State<_GroundingStep> createState() => _GroundingStepState();
+}
+
+class _GroundingStepState extends State<_GroundingStep> {
+  final Set<int> _checked = {};
+
+  bool get _allChecked => _checked.length == _groundingItems.length;
+
+  void _toggle(int i) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_checked.contains(i)) {
+        _checked.remove(i);
+      } else {
+        _checked.add(i);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -433,83 +394,159 @@ class _GroundingStep extends StatelessWidget {
         children: [
           Text('Step 2  —  Ground Yourself',
               textAlign: TextAlign.center,
-              style: tt.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.0,
+              style: widget.tt.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w600, letterSpacing: 1.0,
                   color: AppColors.mintDeep.withValues(alpha: 0.75))),
           const SizedBox(height: 4),
           Text(
-            'Name each one slowly. There is no hurry.',
+            _allChecked
+                ? 'Well done. Take one more breath.'
+                : 'Tap each one as you name it. There is no hurry.',
             textAlign: TextAlign.center,
-            style: tt.bodyMedium?.copyWith(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.45)
-                    : Colors.black.withValues(alpha: 0.40),
+            style: widget.tt.bodyMedium?.copyWith(
+                color: _allChecked
+                    ? AppColors.mintDeep
+                    : (widget.isDark
+                        ? Colors.white.withValues(alpha: 0.45)
+                        : Colors.black.withValues(alpha: 0.40)),
                 fontStyle: FontStyle.italic),
           ),
           const SizedBox(height: 16),
+
+          // Progress indicator
+          Row(
+            children: [
+              Text('${_checked.length} / ${_groundingItems.length}',
+                  style: widget.tt.labelMedium?.copyWith(
+                      color: AppColors.mintDeep, fontWeight: FontWeight.w800)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _checked.length / _groundingItems.length,
+                    backgroundColor:
+                        AppColors.mintDeep.withValues(alpha: 0.12),
+                    color: AppColors.mintDeep,
+                    minHeight: 5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Grounding items
           Expanded(
             child: ListView.separated(
               itemCount: _groundingItems.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, i) {
-                final item = _groundingItems[i];
-                return Container(
-                  decoration: BoxDecoration(
-                    color: item.color.withValues(
-                        alpha: isDark ? 0.10 : 0.06),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: item.color.withValues(alpha: 0.22)),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32, height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: item.color.withValues(alpha: 0.14),
-                          border: Border.all(
-                              color: item.color.withValues(alpha: 0.30)),
-                        ),
-                        child: Center(
-                          child: Text('${5 - i}',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: item.color)),
-                        ),
+                final item    = _groundingItems[i];
+                final checked = _checked.contains(i);
+
+                return GestureDetector(
+                  onTap: () => _toggle(i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                    decoration: BoxDecoration(
+                      color: checked
+                          ? item.color.withValues(alpha: widget.isDark ? 0.20 : 0.12)
+                          : item.color.withValues(alpha: widget.isDark ? 0.08 : 0.05),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: checked
+                            ? item.color.withValues(alpha: 0.60)
+                            : item.color.withValues(alpha: 0.20),
+                        width: checked ? 1.8 : 0.8,
                       ),
-                      const SizedBox(width: 12),
-                      Icon(item.icon, color: item.color, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(item.label,
-                            style: tt.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: isDark
-                                    ? Colors.white.withValues(alpha: 0.82)
-                                    : const Color(0xFF0E1320))),
-                      ),
-                    ],
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    child: Row(
+                      children: [
+                        // Number badge
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          width: 32, height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: checked
+                                ? item.color
+                                : item.color.withValues(alpha: 0.14),
+                            border: Border.all(
+                                color: item.color.withValues(
+                                    alpha: checked ? 0.0 : 0.30)),
+                          ),
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: checked
+                                  ? Icon(Icons.check_rounded,
+                                      key: const ValueKey('check'),
+                                      size: 16, color: Colors.white)
+                                  : Text('${5 - i}',
+                                      key: const ValueKey('num'),
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: item.color)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        AnimatedOpacity(
+                          opacity: checked ? 0.55 : 1.0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(item.icon, color: item.color, size: 18),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 200),
+                            style: (widget.tt.bodyMedium ?? const TextStyle()).copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: checked
+                                  ? (widget.isDark
+                                      ? Colors.white.withValues(alpha: 0.45)
+                                      : Colors.black.withValues(alpha: 0.40))
+                                  : (widget.isDark
+                                      ? Colors.white.withValues(alpha: 0.85)
+                                      : const Color(0xFF0E1320)),
+                              decoration: checked ? TextDecoration.lineThrough : TextDecoration.none,
+                            ),
+                            child: Text(item.label),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
             ),
           ),
+
           const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onNext,
-            icon: const Icon(Icons.headphones_rounded, size: 18),
-            label: const Text('I\u2019m ready — play calming audio',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.mintDeep,
-              minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            child: FilledButton.icon(
+              onPressed: widget.onNext,
+              icon: const Icon(Icons.headphones_rounded, size: 18),
+              label: Text(
+                _allChecked
+                    ? 'I\u2019m ready — play calming audio'
+                    : 'Skip to calming audio',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: _allChecked
+                    ? AppColors.mintDeep
+                    : AppColors.mintDeep.withValues(alpha: 0.55),
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
             ),
           ),
         ],
@@ -518,7 +555,7 @@ class _GroundingStep extends StatelessWidget {
   }
 }
 
-// ── Step 3: Audio ─────────────────────────────────────────────────────────────
+// ── Step 3: Audio ────────────────────────────────────────────────────────────
 
 class _AudioStep extends StatelessWidget {
   final bool isPlaying;
@@ -526,8 +563,7 @@ class _AudioStep extends StatelessWidget {
   final TextTheme tt;
   final bool isDark;
   const _AudioStep({
-    super.key,
-    required this.isPlaying, required this.onPlay,
+    super.key, required this.isPlaying, required this.onPlay,
     required this.onStop, required this.onClose,
     required this.tt, required this.isDark,
   });
@@ -540,8 +576,7 @@ class _AudioStep extends StatelessWidget {
         children: [
           Text('Step 3  —  Listen',
               style: tt.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.0,
+                  fontWeight: FontWeight.w600, letterSpacing: 1.0,
                   color: AppColors.violet.withValues(alpha: 0.70))),
           const SizedBox(height: 4),
           Text('A short calming audio is playing. Just be here.',
@@ -559,8 +594,7 @@ class _AudioStep extends StatelessWidget {
             child: Column(
               children: [
                 Text('Panic Calmer',
-                    style: tt.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700),
+                    style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                     textAlign: TextAlign.center),
                 const SizedBox(height: 6),
                 Text(
@@ -582,9 +616,7 @@ class _AudioStep extends StatelessWidget {
                           backgroundColor: AppColors.violet,
                           minimumSize: const Size(56, 56)),
                       icon: Icon(
-                        isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                        isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                         color: Colors.white, size: 28,
                       ),
                     ),
@@ -609,8 +641,7 @@ class _AudioStep extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w700)),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
           ),
         ],
@@ -619,13 +650,12 @@ class _AudioStep extends StatelessWidget {
   }
 }
 
-// ── Pulsing audio orb ─────────────────────────────────────────────────────────
+// ── Pulsing audio orb ───────────────────────────────────────────────────────────
 
 class _PulsingAudioOrb extends StatefulWidget {
   final bool isPlaying;
   const _PulsingAudioOrb({required this.isPlaying});
-  @override
-  State<_PulsingAudioOrb> createState() => _PulsingAudioOrbState();
+  @override State<_PulsingAudioOrb> createState() => _PulsingAudioOrbState();
 }
 
 class _PulsingAudioOrbState extends State<_PulsingAudioOrb>
@@ -636,15 +666,13 @@ class _PulsingAudioOrbState extends State<_PulsingAudioOrb>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))
       ..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.90, end: 1.08)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
-  @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -662,13 +690,10 @@ class _PulsingAudioOrbState extends State<_PulsingAudioOrb>
               AppColors.violet.withValues(alpha: 0.15),
               Colors.transparent,
             ], stops: const [0.0, 0.30, 0.65, 1.0]),
-            border: Border.all(
-                color: AppColors.violet.withValues(alpha: 0.35), width: 1.5),
+            border: Border.all(color: AppColors.violet.withValues(alpha: 0.35), width: 1.5),
           ),
           child: Icon(
-            widget.isPlaying
-                ? Icons.music_note_rounded
-                : Icons.music_off_rounded,
+            widget.isPlaying ? Icons.music_note_rounded : Icons.music_off_rounded,
             color: AppColors.violet.withValues(alpha: 0.80), size: 40,
           ),
         ),
@@ -677,7 +702,7 @@ class _PulsingAudioOrbState extends State<_PulsingAudioOrb>
   }
 }
 
-// ── Step bar ───────────────────────────────────────────────────────────────────
+// ── Step bar ──────────────────────────────────────────────────────────────────
 
 class _StepBar extends StatelessWidget {
   final _SosStep current;
@@ -693,38 +718,33 @@ class _StepBar extends StatelessWidget {
     return Column(
       children: [
         Row(
-          children: List.generate(3, (i) {
-            return Expanded(
-              child: Container(
-                margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
-                height: 3,
-                decoration: BoxDecoration(
-                  color: i <= active
-                      ? colors[i]
-                      : colors[i].withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+          children: List.generate(3, (i) => Expanded(
+            child: Container(
+              margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
+              height: 3,
+              decoration: BoxDecoration(
+                color: i <= active
+                    ? colors[i]
+                    : colors[i].withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
               ),
-            );
-          }),
+            ),
+          )),
         ),
         const SizedBox(height: 5),
         Row(
           children: List.generate(3, (i) {
             final isActive = i == active;
             return Expanded(
-              child: Text(
-                labels[i],
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight:
-                      isActive ? FontWeight.w700 : FontWeight.w400,
-                  color: isActive
-                      ? colors[i]
-                      : colors[i].withValues(alpha: 0.35),
-                ),
-              ),
+              child: Text(labels[i],
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                    color: isActive
+                        ? colors[i]
+                        : colors[i].withValues(alpha: 0.35),
+                  )),
             );
           }),
         ),

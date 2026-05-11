@@ -1,9 +1,9 @@
 // lib/widgets/streak_badge.dart
 //
-// Animated streak counter with 3 visual states:
-//  0       = dim grey pill
-//  1–6     = glowing blue
-//  7+      = pulsing neon violet (milestone achieved)
+// Animated streak counter with 2 visual states:
+//  1–6  = glowing blue
+//  7+   = pulsing neon violet (milestone achieved)
+// Hidden entirely when streak = 0
 
 import 'package:flutter/material.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
@@ -53,40 +53,21 @@ class _StreakBadgeState extends State<StreakBadge>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tt = Theme.of(context).textTheme;
+    // Hide entirely when no streak — nothing to show until day 1
+    if (widget.streak == 0) return const SizedBox.shrink();
 
-    final s = widget.streak;
-    final isEmpty = s == 0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tt     = Theme.of(context).textTheme;
+    final s      = widget.streak;
     final isMilestone = s >= 7;
 
-    // Colour
-    final Color accent = isEmpty
-        ? (isDark
-            ? Colors.white.withValues(alpha: 0.20)
-            : Colors.black.withValues(alpha: 0.18))
-        : isMilestone
-            ? AppColors.violet
-            : AppColors.primary;
+    final Color accent = isMilestone ? AppColors.violet : AppColors.primary;
+    final Color glowColor = isMilestone
+        ? AppColors.violet.withValues(alpha: 0.35)
+        : AppColors.primary.withValues(alpha: 0.28);
 
-    final Color glowColor = isEmpty
-        ? Colors.transparent
-        : isMilestone
-            ? AppColors.violet.withValues(alpha: 0.35)
-            : AppColors.primary.withValues(alpha: 0.28);
-
-    // Label
-    final String label = isEmpty
-        ? 'Start your streak'
-        : s == 1
-            ? '1 day streak'
-            : '$s day streak';
-
-    final String emoji = isEmpty
-        ? ''
-        : isMilestone
-            ? ' 🔥'
-            : ' ✦';
+    final String label = s == 1 ? '1 day streak' : '$s day streak';
+    final String emoji = isMilestone ? ' \ud83d\udd25' : ' \u2756';
 
     return AnimatedBuilder(
       animation: _ctrl,
@@ -95,8 +76,7 @@ class _StreakBadgeState extends State<StreakBadge>
         return Transform.scale(
           scale: scale,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: accent.withValues(alpha: isDark ? 0.14 : 0.10),
               borderRadius: BorderRadius.circular(24),
@@ -104,25 +84,21 @@ class _StreakBadgeState extends State<StreakBadge>
                 color: accent.withValues(alpha: isDark ? 0.45 : 0.35),
                 width: isMilestone ? 1.5 : 1.0,
               ),
-              boxShadow: isEmpty
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: glowColor,
-                        blurRadius: isMilestone ? 20 : 12,
-                        spreadRadius: isMilestone ? 2 : 0,
-                      ),
-                    ],
+              boxShadow: [
+                BoxShadow(
+                  color: glowColor,
+                  blurRadius: isMilestone ? 20 : 12,
+                  spreadRadius: isMilestone ? 2 : 0,
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  isEmpty
-                      ? Icons.local_fire_department_outlined
-                      : isMilestone
-                          ? Icons.local_fire_department_rounded
-                          : Icons.bolt_rounded,
+                  isMilestone
+                      ? Icons.local_fire_department_rounded
+                      : Icons.bolt_rounded,
                   size: 15,
                   color: accent,
                 ),
@@ -130,11 +106,7 @@ class _StreakBadgeState extends State<StreakBadge>
                 Text(
                   '$label$emoji',
                   style: tt.labelSmall?.copyWith(
-                    color: isEmpty
-                        ? (isDark
-                            ? Colors.white.withValues(alpha: 0.40)
-                            : Colors.black.withValues(alpha: 0.40))
-                        : accent,
+                    color: accent,
                     fontWeight: FontWeight.w800,
                     fontSize: 11,
                   ),
