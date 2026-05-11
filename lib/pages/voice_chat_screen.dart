@@ -83,23 +83,35 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     super.dispose();
   }
 
-  // ── Pre-warm Fish Audio connection ────────────────────────────────────────
+  // ── Pre-warm Fish Audio + audio player ───────────────────────────────────
+  //
+  // Sends a real short word so Fish Audio warms the voice model connection,
+  // and initialises the AudioPlayer so its first-use latency is eliminated.
 
   Future<void> _preWarm() async {
     try {
       await LiveVoicePreferences.instance.load();
+
+      // Warm the audio player (eliminates first-use initialisation lag)
+      await _chunkPlayer.setVolume(1.0);
+
       final key = Env.fishAudioKey;
       if (key.isEmpty) return;
+
+      // Send a real short word — a space doesn't warm the voice model
       await http.post(
         Uri.parse('https://api.fish.audio/v1/tts'),
-        headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
+        headers: {
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json',
+        },
         body: jsonEncode({
-          'text': ' ',
+          'text': 'hi',
           'reference_id': LiveVoicePreferences.instance.activeVoiceId,
           'format': 'mp3',
           'latency': 'balanced',
         }),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 8));
     } catch (_) {}
   }
 
@@ -112,21 +124,38 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       if (key.isEmpty || text.trim().isEmpty) return null;
       final res = await http.post(
         Uri.parse('https://api.fish.audio/v1/tts'),
-        headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
+        headers: {
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json',
+        },
         body: jsonEncode({
-          'text': text.trim(), 'reference_id': voiceId,
-          'format': 'mp3', 'latency': 'balanced',
+          'text': text.trim(),
+          'reference_id': voiceId,
+          'format': 'mp3',
+          'latency': 'balanced',
         }),
       ).timeout(const Duration(seconds: 12));
       if (res.statusCode != 200) return null;
       return Uint8List.fromList(res.bodyBytes);
-    } catch (_) { return null; }
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Sentence streaming pipeline ───────────────────────────────────────────
 
+  /// Enqueue a sentence for synthesis and playback.
+  /// Flips UI to [_VoiceState.speaking] immediately on the first sentence —
+  /// this eliminates the perceived pause between "Thinking…" and audio
+  /// actually starting (Fish Audio synthesis takes ~400-800ms; the user
+  /// should see the speaking state as soon as we know we have a sentence,
+  /// not when the audio bytes arrive).
   void _enqueueChunk(String text) {
     if (_cancelled) return;
+    // Instant speaking state — no more waiting for audio to start
+    if (mounted && _state == _VoiceState.thinking) {
+      setState(() => _state = _VoiceState.speaking);
+    }
     _synthesisQueue.add(_synthesise(text));
     if (!_chunkPlaying) unawaited(_drainChunks());
   }
@@ -142,8 +171,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           await _chunkPlayer
               .setAudioSource(_BytesSource(bytes, contentType: 'audio/mpeg'));
 
-          // Use a Completer + playerStateStream to reliably detect
-          // when the audio chunk finishes — polling .playing is unreliable.
+          // Completer + playerStateStream for reliable completion detection
           final completer = Completer<void>();
           final sub = _chunkPlayer.playerStateStream.listen((state) {
             if (!completer.isCompleted) {
@@ -155,7 +183,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
           await _chunkPlayer.play();
 
-          // Wait for completion with a safety timeout
           await completer.future
               .timeout(const Duration(seconds: 30), onTimeout: () {})
               .catchError((_) {});
@@ -165,7 +192,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       }
     } finally {
       _chunkPlaying = false;
-      // Safety reset — guarantees idle state even if _sendToAI fails to set it
       if (mounted && !_cancelled) {
         setState(() => _state = _VoiceState.idle);
       }
@@ -201,7 +227,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   // ── Hold to speak ─────────────────────────────────────────────────────────
 
   Future<void> _onHold() async {
-    // Allow tap to cancel if currently speaking
     if (_state == _VoiceState.speaking) {
       _cancelAudio();
       if (mounted) setState(() => _state = _VoiceState.idle);
@@ -252,7 +277,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     final sessionId   = _uuid.v4();
     _coordinator.startSession(sessionId);
     final accumulated = StringBuffer();
-    bool firstChunk   = true;
 
     try {
       final result = await ChatStreamService.streamOrchestratedReply(
@@ -268,11 +292,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
             fullText:  accumulated.toString(),
             player: (chunk, idx, next) async {
               if (_cancelled) return;
+              // _enqueueChunk now handles the speaking state flip
               _enqueueChunk(chunk);
-              if (firstChunk && mounted) {
-                firstChunk = false;
-                setState(() => _state = _VoiceState.speaking);
-              }
             },
           );
         },
@@ -283,17 +304,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         return;
       }
 
-      // Flush remaining text
+      // Flush any remaining sentence fragment
       await _coordinator.finish(
         sessionId: sessionId,
         fullText:  result.reply,
         player: (chunk, idx, next) async {
           if (_cancelled) return;
           _enqueueChunk(chunk);
-          if (firstChunk && mounted) {
-            firstChunk = false;
-            setState(() => _state = _VoiceState.speaking);
-          }
         },
       );
 
@@ -310,9 +327,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
               ? 'low'
               : 'calm';
 
-      // If no chunks were enqueued (very short or empty reply),
-      // reset to idle immediately
-      if (firstChunk && mounted) {
+      // No chunks were emitted (empty / very short reply) — reset to idle
+      if (_state == _VoiceState.thinking && mounted) {
         setState(() => _state = _VoiceState.idle);
       }
       // Otherwise _drainChunks() finally block handles the idle reset
@@ -331,13 +347,17 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       if (!stillOk && mounted) {
         await _onRelease();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Voice minutes used up for this month.')),
+          const SnackBar(
+              content: Text('Voice minutes used up for this month.')),
         );
       }
     });
   }
 
-  void _stopVoiceTimer() { _voiceTimer?.cancel(); _voiceTimer = null; }
+  void _stopVoiceTimer() {
+    _voiceTimer?.cancel();
+    _voiceTimer = null;
+  }
 
   String get _minutesLabel {
     final snap = UsageService.instance.snapshot.value;
@@ -355,7 +375,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white54),
+          icon:
+              const Icon(Icons.arrow_back_ios_new, color: Colors.white54),
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
@@ -363,8 +384,10 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
             valueListenable: UsageService.instance.snapshot,
             builder: (_, snap, __) => Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Center(child: Text(_minutesLabel,
-                  style: const TextStyle(color: Colors.white38, fontSize: 12))),
+              child: Center(
+                  child: Text(_minutesLabel,
+                      style: const TextStyle(
+                          color: Colors.white38, fontSize: 12))),
             ),
           ),
         ],
@@ -395,17 +418,20 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       animation: Listenable.merge([_pulseController, _waveController]),
       builder: (_, __) {
         return SizedBox(
-          width: 220, height: 220,
+          width: 220,
+          height: 220,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              if (_state == _VoiceState.listening || _state == _VoiceState.speaking)
+              if (_state == _VoiceState.listening ||
+                  _state == _VoiceState.speaking)
                 ..._buildWaveRings(color),
               if (_state == _VoiceState.idle)
                 Transform.scale(
                   scale: _pulseAnim.value,
                   child: Container(
-                    width: 160, height: 160,
+                    width: 160,
+                    height: 160,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -415,15 +441,18 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                 ),
               AnimatedContainer(
                 duration: const Duration(milliseconds: 400),
-                width:  _state == _VoiceState.listening ? 120 : 100,
+                width: _state == _VoiceState.listening ? 120 : 100,
                 height: _state == _VoiceState.listening ? 120 : 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color:  color.withValues(alpha: 0.15),
-                  border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
+                  color: color.withValues(alpha: 0.15),
+                  border: Border.all(
+                      color: color.withValues(alpha: 0.6), width: 2),
                   boxShadow: [
-                    BoxShadow(color: color.withValues(alpha: 0.3),
-                        blurRadius: 40, spreadRadius: 8)
+                    BoxShadow(
+                        color: color.withValues(alpha: 0.3),
+                        blurRadius: 40,
+                        spreadRadius: 8)
                   ],
                 ),
                 child: Center(
@@ -440,15 +469,18 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   List<Widget> _buildWaveRings(Color color) {
     return List.generate(3, (i) {
-      final scale   = 1.0 + (i * 0.18) + (_waveController.value * 0.12 * (i + 1));
+      final scale =
+          1.0 + (i * 0.18) + (_waveController.value * 0.12 * (i + 1));
       final opacity = (0.18 - i * 0.05).clamp(0.0, 1.0);
       return Transform.scale(
         scale: scale,
         child: Container(
-          width: 100, height: 100,
+          width: 100,
+          height: 100,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: color.withValues(alpha: opacity), width: 1.5),
+            border: Border.all(
+                color: color.withValues(alpha: opacity), width: 1.5),
           ),
         ),
       );
@@ -458,17 +490,33 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   Widget _buildOrbIcon() {
     switch (_state) {
       case _VoiceState.idle:
-        return ClipOval(child: Image.asset('assets/images/logo512.png',
-            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('idle')));
+        return ClipOval(
+            child: Image.asset('assets/images/logo512.png',
+                width: 52,
+                height: 52,
+                fit: BoxFit.cover,
+                key: const ValueKey('idle')));
       case _VoiceState.listening:
-        return ClipOval(child: Image.asset('assets/images/logo512.png',
-            width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
+        return ClipOval(
+            child: Image.asset('assets/images/logo512.png',
+                width: 58,
+                height: 58,
+                fit: BoxFit.cover,
+                key: const ValueKey('listening')));
       case _VoiceState.thinking:
-        return const SizedBox(key: ValueKey('thinking'), width: 28, height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
+        return const SizedBox(
+            key: ValueKey('thinking'),
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: Colors.white70));
       case _VoiceState.speaking:
-        return ClipOval(child: Image.asset('assets/images/logo512.png',
-            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
+        return ClipOval(
+            child: Image.asset('assets/images/logo512.png',
+                width: 52,
+                height: 52,
+                fit: BoxFit.cover,
+                key: const ValueKey('speaking')));
     }
   }
 
@@ -484,14 +532,15 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   Widget _buildStateLabel() {
     String label;
     switch (_state) {
-      case _VoiceState.idle:      label = 'Hold to speak';  break;
-      case _VoiceState.listening: label = 'Listening…';     break;
-      case _VoiceState.thinking:  label = 'Thinking…';      break;
-      case _VoiceState.speaking:  label = 'Tap to stop';    break;
+      case _VoiceState.idle:      label = 'Hold to speak'; break;
+      case _VoiceState.listening: label = 'Listening\u2026';    break;
+      case _VoiceState.thinking:  label = 'Thinking\u2026';     break;
+      case _VoiceState.speaking:  label = 'Tap to stop';   break;
     }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      child: Text(label, key: ValueKey(label),
+      child: Text(label,
+          key: ValueKey(label),
           style: const TextStyle(
               color: Colors.white38, fontSize: 15, letterSpacing: 0.5)),
     );
@@ -549,6 +598,7 @@ class _BytesSource extends StreamAudioSource {
   final Uint8List bytes;
   final String contentType;
   _BytesSource(this.bytes, {required this.contentType});
+
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     start ??= 0;
