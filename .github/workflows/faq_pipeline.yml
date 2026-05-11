@@ -1,0 +1,29 @@
+name: ❓ FAQ Pipeline
+
+on:
+  schedule:
+    - cron: '0 10 1 * *'   # 1st of every month at 10:00 UTC
+  workflow_dispatch:         # Manual trigger
+
+jobs:
+  generate-faq:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic firebase-admin
+
+      - name: Run FAQ Pipeline
+        env:
+          ANTHROPIC_API_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: python scripts/faq_pipeline.py
