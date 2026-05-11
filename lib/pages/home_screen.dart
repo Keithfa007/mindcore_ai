@@ -13,6 +13,7 @@ import 'package:mindcore_ai/ai/daily_briefing_service.dart';
 import 'package:mindcore_ai/ai/mood_pattern_service.dart';
 import 'package:mindcore_ai/ai/weekly_report_service.dart';
 import 'package:mindcore_ai/services/streak_service.dart';
+import 'package:mindcore_ai/services/journey_service.dart';
 
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 import 'package:mindcore_ai/services/daily_plan_service.dart';
@@ -29,8 +30,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final TextEditingController _plan = TextEditingController();
   bool _savingPlan = false;
 
@@ -42,8 +42,8 @@ class _HomeScreenState extends State<HomeScreen>
   MoodPrediction? _prediction;
   WeeklyReport? _weeklyReport;
   int _streak = 0;
+  String _journeyStatLine = ''; // real mood stat for insight card
 
-  // Staggered entrance — 7 cards now (Daily Reset removed)
   late final AnimationController _entranceCtrl;
   final List<Animation<double>> _fadeAnims  = [];
   final List<Animation<Offset>> _slideAnims = [];
@@ -53,28 +53,19 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     _entranceCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 950),
-    );
+        vsync: this, duration: const Duration(milliseconds: 950));
     for (int i = 0; i < _cardCount; i++) {
       final start    = (i * 0.10).clamp(0.0, 0.88);
       final end      = (start + 0.36).clamp(0.0, 1.0);
       final interval = Interval(start, end, curve: Curves.easeOut);
-      _fadeAnims.add(
-        Tween<double>(begin: 0.0, end: 1.0)
-            .animate(CurvedAnimation(parent: _entranceCtrl, curve: interval)),
-      );
-      _slideAnims.add(
-        Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
-            .animate(CurvedAnimation(parent: _entranceCtrl, curve: interval)),
-      );
+      _fadeAnims.add(Tween<double>(begin: 0.0, end: 1.0)
+          .animate(CurvedAnimation(parent: _entranceCtrl, curve: interval)));
+      _slideAnims.add(Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+          .animate(CurvedAnimation(parent: _entranceCtrl, curve: interval)));
     }
     _loadAll();
     _loadAI();
     _entranceCtrl.forward();
-
-    // Check for new blog posts silently on every open.
-    // Fires a notification if a post was published since last visit.
     BlogService.checkForNewPost().ignore();
   }
 
@@ -88,9 +79,8 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _animated(int index, Widget child) {
     if (index >= _fadeAnims.length) return child;
     return FadeTransition(
-      opacity: _fadeAnims[index],
-      child: SlideTransition(position: _slideAnims[index], child: child),
-    );
+        opacity: _fadeAnims[index],
+        child: SlideTransition(position: _slideAnims[index], child: child));
   }
 
   Future<void> _loadAI() async {
@@ -117,10 +107,13 @@ class _HomeScreenState extends State<HomeScreen>
     final suggestion = await ProactiveSupportService.buildHomeSuggestion();
     final reminderEnabled = await SettingsService.getDailyReminderEnabled();
     final reminderTime    = await SettingsService.getDailyReminderTime();
+    // Load real journey stat for insight card
+    final journeyStat = await JourneyService.getHomeStatLine();
+    // Re-schedule Sunday notification with real stat
+    await NotificationService.instance.scheduleWeeklySummaryWithStat(journeyStat);
 
     if (reminderEnabled) {
-      await NotificationService.instance
-          .scheduleDailyRecommendationNotification(
+      await NotificationService.instance.scheduleDailyRecommendationNotification(
         uniqueKey: suggestion.id,
         title: suggestion.notificationTitle,
         body: suggestion.notificationBody,
@@ -136,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen>
       _plan.text         = '';
       _last7             = mood;
       _supportSuggestion = suggestion;
+      _journeyStatLine   = journeyStat;
     });
   }
 
@@ -143,8 +137,8 @@ class _HomeScreenState extends State<HomeScreen>
     final text = _plan.text.trim();
     if (_savingPlan) return;
     if (text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Write something first.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Write something first.')));
       return;
     }
     setState(() => _savingPlan = true);
@@ -154,7 +148,6 @@ class _HomeScreenState extends State<HomeScreen>
     _plan.clear();
     FocusScope.of(context).unfocus();
     await _loadAll();
-    // Refresh mood pattern after new journal entry
     final newPrediction = await MoodPatternService.refresh();
     if (mounted) setState(() => _prediction = newPrediction);
     ScaffoldMessenger.of(context)
@@ -216,12 +209,65 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ),
                   const SizedBox(height: 10),
+
+                  // ── Evolved insight card ────────────────────────────────────
+                  // Shows real mood stat + daily briefing + journey button
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 500),
                     child: _briefingLoading
                         ? _BriefingShimmer(isDark: isDark)
-                        : _BriefingText(
-                            text: _briefing ?? '', isDark: isDark, tt: tt),
+                        : Column(
+                            children: [
+                              // Real stat line
+                              if (_journeyStatLine.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Text(
+                                    _journeyStatLine,
+                                    textAlign: TextAlign.center,
+                                    style: tt.bodySmall?.copyWith(
+                                      color: AppColors.mintDeep,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.1,
+                                    ),
+                                  ),
+                                ),
+                              // Daily AI briefing
+                              _BriefingText(
+                                  text: _briefing ?? '',
+                                  isDark: isDark, tt: tt),
+                              // Journey link
+                              const SizedBox(height: 10),
+                              GestureDetector(
+                                onTap: () => Navigator.of(context).pushNamed('/journey'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(100),
+                                    border: Border.all(
+                                        color: AppColors.primary.withValues(alpha: 0.20)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'See your full journey',
+                                        style: tt.labelMedium?.copyWith(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Icon(Icons.arrow_forward_rounded,
+                                          size: 14, color: AppColors.primary),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
                 ],
               ),
@@ -232,12 +278,11 @@ class _HomeScreenState extends State<HomeScreen>
             _animated(1, Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _SosButton(
-                onTap: () => Navigator.of(context).pushNamed('/sos'),
-                isDark: isDark, tt: tt,
-              ),
+                  onTap: () => Navigator.of(context).pushNamed('/sos'),
+                  isDark: isDark, tt: tt),
             )),
 
-            // 2 ─ Mood insight chip (AI-powered, only shows with real data)
+            // 2 ─ Mood insight chip
             if (_prediction != null)
               _animated(2, Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -270,25 +315,20 @@ class _HomeScreenState extends State<HomeScreen>
                           width: 50, height: 50,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                              begin: Alignment.topLeft, end: Alignment.bottomRight,
                               colors: [Color(0xFF4D7CFF), Color(0xFF74C3FF)],
                             ),
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.35),
-                                blurRadius: 16, offset: const Offset(0, 6),
-                              )
+                                  color: AppColors.primary.withValues(alpha: 0.35),
+                                  blurRadius: 16, offset: const Offset(0, 6))
                             ],
                           ),
-                          child: const Icon(Icons.chat_rounded,
-                              color: Colors.white, size: 24),
+                          child: const Icon(Icons.chat_rounded, color: Colors.white, size: 24),
                         ),
                         const SizedBox(height: 10),
-                        Text('Text Chat',
-                            style: tt.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        Text('Text Chat', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 4),
                         Text('Type your thoughts',
                             style: tt.bodySmall?.copyWith(
@@ -298,11 +338,9 @@ class _HomeScreenState extends State<HomeScreen>
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
-                            onPressed: () =>
-                                Navigator.of(context).pushNamed('/chat'),
+                            onPressed: () => Navigator.of(context).pushNamed('/chat'),
                             style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 10)),
+                                padding: const EdgeInsets.symmetric(vertical: 10)),
                             child: const Text('Open'),
                           ),
                         ),
@@ -321,29 +359,20 @@ class _HomeScreenState extends State<HomeScreen>
                           width: 50, height: 50,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Color(0xFF32D0BE), Color(0xFF89E0CF)
-                              ],
+                              begin: Alignment.topLeft, end: Alignment.bottomRight,
+                              colors: [Color(0xFF32D0BE), Color(0xFF89E0CF)],
                             ),
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.mintDeep
-                                    .withValues(alpha: 0.35),
-                                blurRadius: 16,
-                                offset: const Offset(0, 6),
-                              )
+                                  color: AppColors.mintDeep.withValues(alpha: 0.35),
+                                  blurRadius: 16, offset: const Offset(0, 6))
                             ],
                           ),
-                          child: const Icon(Icons.mic_rounded,
-                              color: Colors.white, size: 24),
+                          child: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
                         ),
                         const SizedBox(height: 10),
-                        Text('Voice Chat',
-                            style: tt.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        Text('Voice Chat', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 4),
                         Text('Speak hands-free',
                             style: tt.bodySmall?.copyWith(
@@ -353,11 +382,9 @@ class _HomeScreenState extends State<HomeScreen>
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
-                            onPressed: () => Navigator.of(context)
-                                .pushNamed('/voice-chat'),
+                            onPressed: () => Navigator.of(context).pushNamed('/voice-chat'),
                             style: FilledButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
                               backgroundColor: AppColors.mintDeep,
                               foregroundColor: Colors.white,
                             ),
@@ -383,21 +410,15 @@ class _HomeScreenState extends State<HomeScreen>
                     children: [
                       const SectionHeroCard(
                         title: 'Guided Sessions',
-                        subtitle:
-                            'Ready-to-play calming audio journeys for focus, sleep, panic, and emotional reset',
+                        subtitle: 'Ready-to-play calming audio journeys for focus, sleep, panic, and emotional reset',
                       ),
                       const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          onPressed: () =>
-                              _openPremiumRoute('/guided-sessions'),
-                          icon: Icon(isPremium
-                              ? Icons.self_improvement_rounded
-                              : Icons.lock_rounded),
-                          label: Text(isPremium
-                              ? 'Open Guided Sessions'
-                              : 'Unlock Guided Sessions'),
+                          onPressed: () => _openPremiumRoute('/guided-sessions'),
+                          icon: Icon(isPremium ? Icons.self_improvement_rounded : Icons.lock_rounded),
+                          label: Text(isPremium ? 'Open Guided Sessions' : 'Unlock Guided Sessions'),
                         ),
                       ),
                     ],
@@ -417,8 +438,7 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     const SectionHeroCard(
                       title: 'Recommended for you',
-                      subtitle:
-                          'A gentle nudge based on your recent activity',
+                      subtitle: 'A gentle nudge based on your recent activity',
                     ),
                     const SizedBox(height: 12),
                     NestCard(
@@ -431,11 +451,8 @@ class _HomeScreenState extends State<HomeScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  _supportSuggestion!.title,
-                                  style: tt.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700),
-                                ),
+                                Text(_supportSuggestion!.title,
+                                    style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 6),
                                 Text(_supportSuggestion!.subtitle),
                               ],
@@ -458,15 +475,14 @@ class _HomeScreenState extends State<HomeScreen>
               )),
             if (_supportSuggestion != null) const SizedBox(height: 12),
 
-            // Journal (no animation wrapper — always visible)
+            // Journal
             GlassCard(
               padding: const EdgeInsets.all(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SectionHeroCard(
-                      title: 'Journal',
-                      subtitle: 'You can write anything here.'),
+                      title: 'Journal', subtitle: 'You can write anything here.'),
                   const SizedBox(height: 12),
                   NestCard(
                     child: TextField(
@@ -474,9 +490,8 @@ class _HomeScreenState extends State<HomeScreen>
                       maxLines: 4,
                       textInputAction: TextInputAction.newline,
                       decoration: const InputDecoration(
-                        hintText: 'A few lines is enough\u2026',
-                        border: InputBorder.none,
-                      ),
+                          hintText: 'A few lines is enough\u2026',
+                          border: InputBorder.none),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -489,10 +504,8 @@ class _HomeScreenState extends State<HomeScreen>
                             child: FilledButton(
                               onPressed: _savingPlan ? null : _saveJournal,
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 12.0),
-                                child: Text(
-                                    _savingPlan ? 'Saving\u2026' : 'Save entry'),
+                                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                                child: Text(_savingPlan ? 'Saving\u2026' : 'Save entry'),
                               ),
                             ),
                           ),
@@ -500,15 +513,11 @@ class _HomeScreenState extends State<HomeScreen>
                           OutlinedButton.icon(
                             onPressed: () => _openPremiumRoute('/daily-hub'),
                             icon: Icon(
-                              isPremium
-                                  ? Icons.visibility_rounded
-                                  : Icons.lock_rounded,
-                              size: 16,
-                            ),
+                                isPremium ? Icons.visibility_rounded : Icons.lock_rounded,
+                                size: 16),
                             label: const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12.0),
-                              child: Text('View'),
-                            ),
+                                padding: EdgeInsets.symmetric(vertical: 12.0),
+                                child: Text('View')),
                           ),
                         ],
                       );
@@ -518,10 +527,9 @@ class _HomeScreenState extends State<HomeScreen>
                   Text(
                     'Saved locally on your device.',
                     style: tt.bodySmall?.copyWith(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.45)
-                          : Colors.black.withValues(alpha: 0.45),
-                    ),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.45)
+                            : Colors.black.withValues(alpha: 0.45)),
                   ),
                 ],
               ),
@@ -533,36 +541,29 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ── SOS button ────────────────────────────────────────────────────────────────────
+// ── SOS button ──────────────────────────────────────────────────────────────────
 
 class _SosButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isDark;
   final TextTheme tt;
-  const _SosButton(
-      {required this.onTap, required this.isDark, required this.tt});
-
+  const _SosButton({required this.onTap, required this.isDark, required this.tt});
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFFFF6B6B)
-                .withValues(alpha: isDark ? 0.55 : 0.40),
-            width: 1.5,
-          ),
-          color: const Color(0xFFFF6B6B)
-              .withValues(alpha: isDark ? 0.10 : 0.07),
+              color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.55 : 0.40),
+              width: 1.5),
+          color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.10 : 0.07),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFFF6B6B).withValues(alpha: 0.18),
-              blurRadius: 18, spreadRadius: 1,
-            )
+                color: const Color(0xFFFF6B6B).withValues(alpha: 0.18),
+                blurRadius: 18, spreadRadius: 1)
           ],
         ),
         child: Row(
@@ -570,9 +571,8 @@ class _SosButton extends StatelessWidget {
             Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFFF6B6B).withValues(alpha: 0.15),
-              ),
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFF6B6B).withValues(alpha: 0.15)),
               child: const Icon(Icons.warning_amber_rounded,
                   color: Color(0xFFFF6B6B), size: 20),
             ),
@@ -581,30 +581,21 @@ class _SosButton extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'SOS \u2014 I need help right now',
-                    style: tt.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFFFF6B6B),
-                    ),
-                  ),
+                  Text('SOS \u2014 I need help right now',
+                      style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFFF6B6B))),
                   const SizedBox(height: 2),
-                  Text(
-                    'Tap for instant grounding: breathe, ground, audio',
-                    style: tt.bodySmall?.copyWith(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.50)
-                          : Colors.black.withValues(alpha: 0.50),
-                    ),
-                  ),
+                  Text('Tap for instant grounding: breathe, ground, audio',
+                      style: tt.bodySmall?.copyWith(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.50)
+                              : Colors.black.withValues(alpha: 0.50))),
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: const Color(0xFFFF6B6B).withValues(alpha: 0.70),
-              size: 20,
-            ),
+            Icon(Icons.chevron_right_rounded,
+                color: const Color(0xFFFF6B6B).withValues(alpha: 0.70), size: 20),
           ],
         ),
       ),
@@ -612,15 +603,13 @@ class _SosButton extends StatelessWidget {
   }
 }
 
-// ── Weekly report card ─────────────────────────────────────────────────────────
+// ── Weekly report card ──────────────────────────────────────────────────────────────
 
 class _WeeklyReportCard extends StatelessWidget {
   final WeeklyReport report;
   final TextTheme tt;
   final bool isDark;
-  const _WeeklyReportCard(
-      {required this.report, required this.tt, required this.isDark});
-
+  const _WeeklyReportCard({required this.report, required this.tt, required this.isDark});
   @override
   Widget build(BuildContext context) {
     return GlassCard(
@@ -629,50 +618,30 @@ class _WeeklyReportCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: AppColors.violet.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                  color: AppColors.violet.withValues(alpha: 0.35)),
+              border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
             ),
             child: Text('Weekly Report',
                 style: tt.labelSmall?.copyWith(
-                    color: AppColors.violet,
-                    fontWeight: FontWeight.w800)),
+                    color: AppColors.violet, fontWeight: FontWeight.w800)),
           ),
           const SizedBox(height: 12),
-          Text(
-            report.summary,
-            style: tt.bodyMedium?.copyWith(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.85)
-                  : const Color(0xFF0E1320),
-              height: 1.5,
-            ),
-          ),
+          Text(report.summary,
+              style: tt.bodyMedium?.copyWith(
+                  color: isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF0E1320),
+                  height: 1.5)),
           const SizedBox(height: 14),
-          _ReportRow(
-              icon: Icons.star_rounded,
-              color: AppColors.mintDeep,
-              label: 'Best day',
-              value: report.bestDay,
-              tt: tt, isDark: isDark),
+          _ReportRow(icon: Icons.star_rounded, color: AppColors.mintDeep,
+              label: 'Best day', value: report.bestDay, tt: tt, isDark: isDark),
           const SizedBox(height: 8),
-          _ReportRow(
-              icon: Icons.lightbulb_rounded,
-              color: AppColors.primary,
-              label: 'What helped',
-              value: report.highlight,
-              tt: tt, isDark: isDark),
+          _ReportRow(icon: Icons.lightbulb_rounded, color: AppColors.primary,
+              label: 'What helped', value: report.highlight, tt: tt, isDark: isDark),
           const SizedBox(height: 8),
-          _ReportRow(
-              icon: Icons.visibility_rounded,
-              color: AppColors.violet,
-              label: 'Watch out',
-              value: report.watchOut,
-              tt: tt, isDark: isDark),
+          _ReportRow(icon: Icons.visibility_rounded, color: AppColors.violet,
+              label: 'Watch out', value: report.watchOut, tt: tt, isDark: isDark),
         ],
       ),
     );
@@ -686,11 +655,8 @@ class _ReportRow extends StatelessWidget {
   final String value;
   final TextTheme tt;
   final bool isDark;
-  const _ReportRow({
-    required this.icon, required this.color, required this.label,
-    required this.value, required this.tt, required this.isDark,
-  });
-
+  const _ReportRow({required this.icon, required this.color, required this.label,
+      required this.value, required this.tt, required this.isDark});
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -702,15 +668,10 @@ class _ReportRow extends StatelessWidget {
           child: RichText(
             text: TextSpan(
               style: tt.bodySmall?.copyWith(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.65)
-                    : const Color(0xFF475467),
-                height: 1.4,
-              ),
+                  color: isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF475467),
+                  height: 1.4),
               children: [
-                TextSpan(
-                    text: '$label: ',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w800)),
                 TextSpan(text: value),
               ],
             ),
@@ -721,32 +682,25 @@ class _ReportRow extends StatelessWidget {
   }
 }
 
-// ── Briefing shimmer ───────────────────────────────────────────────────────────────
+// ── Briefing shimmer ─────────────────────────────────────────────────────────────────
 
 class _BriefingShimmer extends StatefulWidget {
   final bool isDark;
   const _BriefingShimmer({required this.isDark});
-  @override
-  State<_BriefingShimmer> createState() => _BriefingShimmerState();
+  @override State<_BriefingShimmer> createState() => _BriefingShimmerState();
 }
-
 class _BriefingShimmerState extends State<_BriefingShimmer>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _anim;
-
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
-
-  @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
-
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -754,38 +708,28 @@ class _BriefingShimmerState extends State<_BriefingShimmer>
       builder: (_, __) {
         final alpha = 0.08 + _anim.value * 0.12;
         return Column(children: [
-          Container(
-            width: 240, height: 13,
-            decoration: BoxDecoration(
-              color: (widget.isDark ? Colors.white : Colors.black)
-                  .withValues(alpha: alpha),
-              borderRadius: BorderRadius.circular(6),
-            ),
-          ),
+          Container(width: 240, height: 13,
+              decoration: BoxDecoration(
+                  color: (widget.isDark ? Colors.white : Colors.black).withValues(alpha: alpha),
+                  borderRadius: BorderRadius.circular(6))),
           const SizedBox(height: 6),
-          Container(
-            width: 180, height: 11,
-            decoration: BoxDecoration(
-              color: (widget.isDark ? Colors.white : Colors.black)
-                  .withValues(alpha: alpha * 0.7),
-              borderRadius: BorderRadius.circular(6),
-            ),
-          ),
+          Container(width: 180, height: 11,
+              decoration: BoxDecoration(
+                  color: (widget.isDark ? Colors.white : Colors.black).withValues(alpha: alpha * 0.7),
+                  borderRadius: BorderRadius.circular(6))),
         ]);
       },
     );
   }
 }
 
-// ── Briefing text ───────────────────────────────────────────────────────────────
+// ── Briefing text ───────────────────────────────────────────────────────────────────
 
 class _BriefingText extends StatelessWidget {
   final String text;
   final bool isDark;
   final TextTheme tt;
-  const _BriefingText(
-      {required this.text, required this.isDark, required this.tt});
-
+  const _BriefingText({required this.text, required this.isDark, required this.tt});
   @override
   Widget build(BuildContext context) {
     if (text.isEmpty) return const SizedBox.shrink();
@@ -795,11 +739,8 @@ class _BriefingText extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: tt.bodyMedium?.copyWith(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.65)
-              : const Color(0xFF475467),
-          height: 1.5,
-          letterSpacing: 0.1,
+          color: isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF475467),
+          height: 1.5, letterSpacing: 0.1,
         ),
       ),
     );

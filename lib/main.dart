@@ -26,6 +26,7 @@ import 'pages/voice_chat_screen.dart';
 import 'pages/sos_screen.dart';
 import 'pages/disclaimer_screen.dart';
 import 'pages/blog_screen.dart';
+import 'pages/journey_screen.dart';
 
 import 'pages/helpers/route_observer.dart';
 import 'services/settings_service.dart';
@@ -36,7 +37,6 @@ import 'services/usage_service.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
-// ── FCM background message handler (top-level, required by Firebase) ─────────
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -64,45 +64,25 @@ Future<void> main() async {
 
   await Firebase.initializeApp();
 
-  // ── FCM setup ──────────────────────────────────────────────────────────────
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   final messaging = FirebaseMessaging.instance;
-
-  // Request permission (Android 13+)
-  await messaging.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
-
-  // Subscribe to relax audio topic — receives notification when new track drops
+  await messaging.requestPermission(alert: true, badge: true, sound: true);
   await messaging.subscribeToTopic('relax_audio_updates');
 
-  // Handle FCM tap when app is in foreground
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     final screen = message.data['screen'];
-    if (screen == 'relax_audio') {
-      appNavigatorKey.currentState?.pushNamed('/relax-audio');
-    }
+    if (screen == 'relax_audio') appNavigatorKey.currentState?.pushNamed('/relax-audio');
   });
 
-  // Handle FCM tap when app is opened from background/terminated
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
     final screen = message.data['screen'];
-    if (screen == 'relax_audio') {
-      appNavigatorKey.currentState?.pushNamed('/relax-audio');
-    }
+    if (screen == 'relax_audio') appNavigatorKey.currentState?.pushNamed('/relax-audio');
   });
-
-  // ── End FCM setup ──────────────────────────────────────────────────────────
 
   await PremiumService.init();
   await UsageService.instance.init();
-
-  await NotificationService.instance.init(
-    navigatorKey: appNavigatorKey,
-  );
+  await NotificationService.instance.init(navigatorKey: appNavigatorKey);
 
   runApp(const MindCoreApp());
 }
@@ -143,18 +123,15 @@ class MindCoreApp extends StatelessWidget {
             '/sos':              (_) => const SosScreen(),
             '/disclaimer':       (_) => const DisclaimerScreen(),
             '/blog':             (_) => const BlogScreen(),
+            '/journey':          (_) => const JourneyScreen(),
           },
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
               }
-              return snap.data == null
-                  ? const LoginScreen()
-                  : const PostLoginGate();
+              return snap.data == null ? const LoginScreen() : const PostLoginGate();
             },
           ),
         );
