@@ -5,8 +5,8 @@ class LiveVoicePreferences {
   static final LiveVoicePreferences instance = LiveVoicePreferences._();
 
   // ── Fish Audio voice IDs ──────────────────────────────────────────────────
-  // Male: warm, calm, grounded
-  static const String maleVoiceId   = 'eed26f2294d64177911af612473cca98';
+  // Male: warm, calm — fish.audio model 4ea1bbc944004fa89ea67021d86129ef
+  static const String maleVoiceId   = '4ea1bbc944004fa89ea67021d86129ef';
   // Female: warm, relaxing — fish.audio model 072bc615ad46485889e4eecc823985c5
   static const String femaleVoiceId = '072bc615ad46485889e4eecc823985c5';
 
