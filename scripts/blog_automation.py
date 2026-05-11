@@ -19,7 +19,7 @@ WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 HISTORY_FILE   = "scripts/blog_history.json"
 MIN_WORD_COUNT = 1200
 
-# Audience rotation order — cycles men -> women -> neutral -> men -> ...
+# Audience rotation order
 AUDIENCE_ROTATION = ["men", "women", "neutral"]
 
 # Known category IDs from WordPress
@@ -27,64 +27,160 @@ CATEGORY_IDS = {
     "Anxiety & Stress":       6,
     "Recovery & Sobriety":    7,
     "AI & Wellness":          4,
-    "Men's Mental Health":    None,   # fetched dynamically
-    "Women's Mental Health":  None,   # fetched dynamically (new)
+    "Men's Mental Health":    None,
+    "Women's Mental Health":  None,
     "Sleep & Burnout":        None,
     "Relationships & Family": None,
 }
 
 CATEGORIES = list(CATEGORY_IDS.keys())
 
-# Audience-specific guidance for research and writing
+# Audience-specific guidance — expanded topic pools for maximum keyword coverage
 AUDIENCE_PROFILES = {
     "men": {
         "label": "Men's Mental Health",
         "description": (
-            "Men 35+ who are massively underserved in mental health. "
-            "They suffer in silence, rarely seek help, and respond to honest, "
-            "shame-free, practical content. Topics: emotional suppression, "
-            "addiction recovery, work stress, midlife, anger, identity, "
-            "fatherhood and mental health."
+            "Men 35+ who are massively underserved in mental health. They suffer in silence, "
+            "rarely seek help, and respond to honest, shame-free, practical content. "
+            "TOPIC POOL — find untapped angles within these areas:\n"
+            "  - Emotional suppression and how to open up\n"
+            "  - Male depression (men die by suicide at 3-4x the rate of women — almost zero targeted content)\n"
+            "  - The male loneliness epidemic (friendship loss after 35)\n"
+            "  - Addiction and recovery: alcohol, cocaine, gambling, porn\n"
+            "  - Men and anxiety (often presents physically — chest, stomach — men don't recognise it)\n"
+            "  - Men and panic attacks (frequently mistaken for heart attacks)\n"
+            "  - ADHD in adult men (undiagnosed, misunderstood, affecting relationships and work)\n"
+            "  - Male burnout and work identity crisis\n"
+            "  - Anger and emotional dysregulation in men\n"
+            "  - Men and grief (loss of parent, relationship, identity)\n"
+            "  - Men and trauma (childhood, workplace, relationship)\n"
+            "  - Men and PTSD\n"
+            "  - Men and OCD\n"
+            "  - Men and eating disorders (massively underreported)\n"
+            "  - Men and insomnia\n"
+            "  - Men and social anxiety\n"
+            "  - Men and perfectionism\n"
+            "  - Men and imposter syndrome at work\n"
+            "  - Men and self-worth\n"
+            "  - Men after divorce or separation\n"
+            "  - Fatherhood and mental health\n"
+            "  - Midlife identity crisis in men\n"
+            "  - Masculinity, stoicism and mental health\n"
+            "  - Men and therapy resistance (why they avoid it and how to start)\n"
+            "  - Men in recovery navigating social life\n"
+            "  - High-functioning depression in men\n"
+            "  - Men and high-pressure careers\n"
+            "  - Veterans and mental health"
         ),
         "tone": (
             "Direct, honest, no-nonsense — like advice from a mate who has been there. "
             "Never preachy. Never clinical. Speak to men who would never normally "
-            "read a mental health article."
+            "read a mental health article. Use real language, not therapy-speak."
         ),
-        "preferred_categories": ["Men's Mental Health", "Recovery & Sobriety", "Anxiety & Stress"],
+        "preferred_categories": ["Men's Mental Health", "Recovery & Sobriety", "Anxiety & Stress", "Sleep & Burnout"],
     },
     "women": {
         "label": "Women's Mental Health",
         "description": (
-            "Women 25-45 navigating anxiety, burnout, people-pleasing, "
-            "relationship stress, hormonal mental health, postpartum, "
-            "and the mental load of modern life. They ARE willing to seek help "
-            "but are overwhelmed by generic advice. Topics: anxiety in women, "
-            "burnout for working mothers, emotional exhaustion, self-worth, "
-            "setting boundaries, hormones and mood, toxic relationships."
+            "Women 25-50 who are willing to seek help but overwhelmed by generic advice. "
+            "They carry invisible loads and need content that truly validates their experience. "
+            "TOPIC POOL — find untapped angles within these areas:\n"
+            "  - ADHD in women (massively underdiagnosed — exploding search volume, almost no targeted content)\n"
+            "  - Perimenopause and mental health (anxiety, depression, rage — barely covered)\n"
+            "  - Menopause and identity loss\n"
+            "  - Postpartum depression vs postpartum anxiety (very different, confused constantly)\n"
+            "  - Maternal mental health beyond postpartum\n"
+            "  - Caregiver burnout (women disproportionately carry this)\n"
+            "  - The mental load and emotional labour\n"
+            "  - Burnout in working mothers\n"
+            "  - People-pleasing and codependency\n"
+            "  - Setting boundaries without guilt\n"
+            "  - Imposter syndrome in women at work\n"
+            "  - Women in addiction recovery (underserved niche)\n"
+            "  - Loneliness in adult women (friendships fading after 35)\n"
+            "  - Perfectionism and anxiety in women\n"
+            "  - Body image, self-worth and mental health\n"
+            "  - Financial anxiety in women\n"
+            "  - Empty nest syndrome\n"
+            "  - Grief and loss in women\n"
+            "  - Trauma recovery for women\n"
+            "  - Toxic relationship recovery\n"
+            "  - Women and OCD\n"
+            "  - Women and social anxiety\n"
+            "  - Women navigating divorce\n"
+            "  - Chronic illness and mental health in women\n"
+            "  - Endometriosis, PCOS and mental health\n"
+            "  - Hormones and mood (PMS, PMDD)\n"
+            "  - Women and sleep disorders\n"
+            "  - Anxiety in high-achieving women\n"
+            "  - Self-compassion for women who always put others first\n"
+            "  - Women and panic attacks\n"
+            "  - Emotional exhaustion and recovery\n"
+            "  - Gaslighting and recovery\n"
+            "  - Women and eating disorders (beyond stereotypes)"
         ),
         "tone": (
-            "Warm, empathetic, validating — like advice from a trusted friend who "
-            "truly gets it. Acknowledge the invisible load women carry. "
-            "Practical and empowering, never patronising."
+            "Warm, empathetic, validating — like advice from a trusted friend who truly gets it. "
+            "Acknowledge the invisible load women carry without dramatising it. "
+            "Practical and empowering, never patronising or preachy. "
+            "Make the reader feel seen, understood, and capable."
         ),
-        "preferred_categories": ["Women's Mental Health", "Anxiety & Stress", "Relationships & Family", "Sleep & Burnout"],
+        "preferred_categories": ["Women's Mental Health", "Anxiety & Stress", "Relationships & Family", "Sleep & Burnout", "Recovery & Sobriety"],
     },
     "neutral": {
-        "label": "Gender-Neutral Wellness",
+        "label": "Gender-Neutral Mental Wellness",
         "description": (
-            "Adults of any gender exploring AI-powered mental health tools, "
-            "addiction recovery, sleep problems, stress management, and "
-            "general emotional wellbeing. Topics: AI for mental health, "
-            "sobriety support, sleep and mental health, stress reduction, "
-            "mindfulness alternatives, digital wellness."
+            "Adults of any gender exploring mental wellness, recovery, and emotional health. "
+            "Broad audience — people who wouldn't necessarily identify as 'mental health seekers' "
+            "but are Googling their symptoms, struggles, or questions. "
+            "TOPIC POOL — find untapped angles within these areas:\n"
+            "  - High-functioning anxiety (looks fine on the outside, chaos inside)\n"
+            "  - High-functioning depression\n"
+            "  - Complex PTSD (C-PTSD) — what it is and how to recover\n"
+            "  - Nervous system dysregulation and how to regulate\n"
+            "  - Emotional dysregulation in adults\n"
+            "  - AI and mental health (how AI companions are changing support)\n"
+            "  - Therapy alternatives when you can't afford it\n"
+            "  - Sobriety and social life (navigating sober in a drinking world)\n"
+            "  - Early sobriety challenges\n"
+            "  - Sleep and mental health (bidirectional relationship)\n"
+            "  - Insomnia and anxiety loop\n"
+            "  - Seasonal affective disorder (SAD)\n"
+            "  - Financial anxiety and mental health\n"
+            "  - Workplace mental health and burnout\n"
+            "  - Burnout recovery — what actually works\n"
+            "  - Loneliness epidemic — why everyone feels alone\n"
+            "  - Loneliness in remote workers\n"
+            "  - Social media and mental health\n"
+            "  - Digital detox and mental health\n"
+            "  - Grief and loss — practical support\n"
+            "  - Chronic illness and mental health\n"
+            "  - Panic attacks — what they are and how to stop them\n"
+            "  - Anxiety management without medication\n"
+            "  - Meditation alternatives for people who hate meditation\n"
+            "  - Journaling and mental health\n"
+            "  - Exercise and mental health\n"
+            "  - Gut health and mental health\n"
+            "  - Nutrition and mental health\n"
+            "  - Mental health during major life transitions\n"
+            "  - Imposter syndrome — practical solutions\n"
+            "  - Codependency recovery\n"
+            "  - Emotional intelligence — how to build it\n"
+            "  - Self-compassion practices that actually work\n"
+            "  - Mental health stigma — why people still don't seek help\n"
+            "  - Setting boundaries — real-world guide\n"
+            "  - Trauma-informed self-care\n"
+            "  - Mental health apps — what works and what doesn't\n"
+            "  - Gaslighting — how to recognise and recover\n"
+            "  - Rumination and how to stop overthinking"
         ),
         "tone": (
-            "Accessible, intelligent, and warm — speaks to anyone who is "
-            "open-minded about their wellbeing and curious about new approaches. "
-            "Not gendered. Inclusive and forward-looking."
+            "Accessible, intelligent, and warm — speaks to anyone who is struggling but "
+            "might not call it a mental health issue. Not gendered. Not clinical. "
+            "Curious, practical, and grounded. Like a smart friend who has done the research "
+            "so you don't have to."
         ),
-        "preferred_categories": ["AI & Wellness", "Recovery & Sobriety", "Sleep & Burnout", "Anxiety & Stress"],
+        "preferred_categories": ["AI & Wellness", "Recovery & Sobriety", "Sleep & Burnout", "Anxiety & Stress", "Relationships & Family"],
     },
 }
 
@@ -145,7 +241,6 @@ def load_history():
 
 
 def get_next_audience(history):
-    """Determine next audience based on rotation. Cycles men -> women -> neutral."""
     if not history:
         return "men"
     last_audience = history[-1].get("audience", "neutral")
@@ -169,47 +264,47 @@ def research_topic(history):
     profile     = AUDIENCE_PROFILES[audience]
     history_txt = format_history_for_prompt(history)
 
-    print(f"Researching best SEO topic for this week... (Audience: {profile['label']})")
+    print(f"Researching best SEO topic... (Audience: {profile['label']})")
 
-    preferred_cats = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
-    all_cats       = "\n".join(f"  - {c}" for c in CATEGORIES)
+    all_cats = "\n".join(f"  - {c}" for c in CATEGORIES)
+    pref_cats = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
 
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO strategist specialising in mental wellness content.
 
 Your task: find the single most UNTAPPED blog topic for this week for mindcoreai.eu.
-Think like a SERP analyst — identify real "People Also Ask" and "Related Searches" patterns on Google.
-Find the sweet spot: HIGH monthly search volume + VERY LOW competition + NO strong existing content.
+Think like a SERP analyst. Find the sweet spot: HIGH monthly search volume + VERY LOW competition + NO strong existing content from big sites.
 
 THIS WEEK'S TARGET AUDIENCE: {profile['label']}
-Audience profile: {profile['description']}
+{profile['description']}
 
 SELECTION CRITERIA:
   - High Google search demand (ideally 1,000+ monthly searches)
-  - VERY low keyword difficulty — avoid any term dominated by WebMD, Healthline, Mayo Clinic, Psychology Today
-  - Look for long-tail, question-based, or conversational keywords that big sites ignore
-  - Evergreen content that ranks for months, not days
-  - Primary keyword must be 2-5 words, specific enough to rank
+  - VERY low keyword difficulty — avoid terms dominated by WebMD, Healthline, Mayo Clinic, Psychology Today, Verywell Mind
+  - Prefer long-tail, question-based, conversational keywords that authority sites ignore
+  - Look for "People Also Ask" questions and "Related Searches" that have no dedicated quality content
+  - Evergreen — ranks for months, not days
+  - Primary keyword: 2-5 words, specific enough to rank
 
 ALREADY PUBLISHED — DO NOT REPEAT ANY TOPIC, KEYWORD, OR CLOSE VARIATION:
 {history_txt}
 
 PREFERRED CATEGORIES FOR THIS AUDIENCE:
-{preferred_cats}
+{pref_cats}
 
 ALL AVAILABLE CATEGORIES:
 {all_cats}
 
-Find the most untapped angle that nobody else is targeting well. Think niche, specific, and real.
+Be bold — pick the most genuinely untapped angle. Niche and specific beats broad and competitive every time.
 
 Respond ONLY in this exact JSON — no markdown, no preamble:
-{{"topic":"compelling title containing primary keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what the reader is actually looking for","meta_description":"150-160 char meta description containing primary keyword","image_prompt":"DALL-E prompt: warm soft hopeful mental wellness illustration, human and approachable, no text or letters","rationale":"why this keyword is high demand and low competition — cite specific SERP insight","category":"exact category name from list above","audience":"{audience}"}}"""}]
+{{"topic":"compelling title containing primary keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what the reader is actually looking for","meta_description":"150-160 char meta description containing primary keyword","image_prompt":"DALL-E prompt: warm soft hopeful mental wellness illustration, human and approachable, no text or letters","rationale":"specific SERP insight — why high demand and low competition","category":"exact category name from list above","audience":"{audience}"}}"""}]
     )
 
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
     data = json.loads(raw)
-    data["audience"] = audience  # ensure it's always set
+    data["audience"] = audience
     print(f"   Audience : {profile['label']}")
     print(f"   Topic    : {data['topic']}")
     print(f"   Keyword  : {data['primary_keyword']}")
@@ -234,12 +329,11 @@ Write a full, publish-ready blog post:
   Secondary KWs   : {', '.join(topic_data['secondary_keywords'])}
   Search Intent   : {topic_data['search_intent']}
   Target Audience : {profile['label']}
-  Audience Notes  : {profile['description']}
 
 TONE & VOICE:
   {profile['tone']}
 
-YOAST SEO REQUIREMENTS (all must be met):
+YOAST SEO REQUIREMENTS:
   1. Primary keyword in the H1 title
   2. Primary keyword in the very first sentence
   3. Primary keyword in at least 3 H2 subheadings
@@ -250,7 +344,7 @@ WRITING REQUIREMENTS:
   - Structure: H1 -> intro (2-3 para) -> 5-7 H2 sections (150-200 words each) -> conclusion + CTA
   - Include at least one list
   - Real, actionable, specific advice — zero generic platitudes
-  - Final section: natural CTA to download MindCore AI as their 24/7 AI companion
+  - Final section: natural CTA to download MindCore AI as their 24/7 AI mental wellness companion
 
 FORMAT:
   - Clean WordPress HTML only: h1 h2 h3 p ul li strong em tags
