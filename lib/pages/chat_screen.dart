@@ -1,5 +1,5 @@
 // lib/pages/chat_screen.dart
-// TTS removed — voice is only in voice chat and breathing screens
+// Clean chat UI — AI messages are full-width text without card/avatar/action chips
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -37,46 +37,40 @@ import 'package:mindcore_ai/widgets/disclaimer_banner.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
-
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _id           = const Uuid();
-  final _controller   = TextEditingController();
+  final _id            = const Uuid();
+  final _controller    = TextEditingController();
   final _composerFocus = FocusNode();
-  final _scroll       = ScrollController();
+  final _scroll        = ScrollController();
 
   String _currentConvId = '';
   List<ConversationMeta> _convs = [];
 
   String? _currentMoodEmoji;
-  String _currentMoodLabel = 'Neutral';
+  String  _currentMoodLabel = 'Neutral';
 
   final List<ChatMessage> _messages = [];
-  bool _isSending   = false;
-  bool _isTyping    = false;
+  bool _isSending      = false;
+  bool _isTyping       = false;
   bool _showResetNudge = false;
   List<SupportPromptChip> _quickPrompts = const [];
 
   MoodSuggestion? _pendingMood;
   bool _showMoodSuggestion  = false;
-  int _turnsSinceMoodPrompt = 0;
-
-  // Memory: save a snapshot every 5 user messages
-  int _userMessageCount = 0;
+  int  _turnsSinceMoodPrompt = 0;
+  int  _userMessageCount     = 0;
 
   static const double _autoLogMinConfidence = 0.78;
   static const double _suggestMinConfidence = 0.58;
-
   static const String _kAutoMoodLastTs    = 'auto_mood_last_ts';
   static const String _kAutoMoodLastLabel = 'auto_mood_last_label';
   static const String _kManualMoodLastTs  = 'manual_mood_last_ts';
 
   bool _didHandleRouteArgs = false;
-
-  static const String? kBotLogoAsset = 'assets/images/logo512.png';
   TherapistModeConfig _therapistMode = TherapistModeConfig.fallback;
 
   @override
@@ -90,13 +84,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _boot() async {
     _therapistMode = await TherapistModeService.load();
-
     final id = await ChatPersistence.ensureDefault();
     await _refreshQuickPrompts();
     _currentConvId = id;
     _convs = await ChatPersistence.listConversations();
     final saved = await ChatPersistence.load(_currentConvId);
-
     if (!mounted) return;
     setState(() {
       _messages..clear()..addAll(saved);
@@ -113,20 +105,16 @@ class _ChatScreenState extends State<ChatScreen> {
     super.didChangeDependencies();
     if (_didHandleRouteArgs) return;
     _didHandleRouteArgs = true;
-
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args is! Map) return;
-
     final prefillText = args['prefillText']?.toString();
     final autoSend    = args['autoSend'] == true;
     if (prefillText == null || prefillText.trim().isEmpty) return;
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _controller.text = prefillText.trim();
-      _controller.selection =
-          TextSelection.fromPosition(
-              TextPosition(offset: _controller.text.length));
+      _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: _controller.text.length));
       setState(() {});
       if (autoSend && !_isSending) unawaited(_send());
     });
@@ -140,28 +128,16 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  // ---------- Conversation management ----------
+  // ── Conversation management ──────────────────────────────────────────────────
 
   Future<void> _newConversation() async {
-    if (_isSending) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Please wait for the reply to finish…')));
-      return;
-    }
+    if (_isSending) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please wait for the reply to finish…'))); return; }
     final newId = 'conv-${DateTime.now().millisecondsSinceEpoch}';
-    final meta = await ChatPersistence.createConversation(
-        id: newId, title: 'Chat ${_convs.length + 1}');
+    final meta  = await ChatPersistence.createConversation(id: newId, title: 'Chat ${_convs.length + 1}');
     _convs = await ChatPersistence.listConversations();
     await ChatPersistence.save(newId, const []);
     if (!mounted) return;
-    setState(() {
-      _currentConvId = meta.id;
-      _messages.clear();
-      _pendingMood = null;
-      _showMoodSuggestion = false;
-      _turnsSinceMoodPrompt = 0;
-    });
+    setState(() { _currentConvId = meta.id; _messages.clear(); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
     await _refreshQuickPrompts();
   }
 
@@ -169,22 +145,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final msgs = await ChatPersistence.load(convId);
     _convs = await ChatPersistence.listConversations();
     if (!mounted) return;
-    setState(() {
-      _currentConvId = convId;
-      _messages..clear()..addAll(msgs);
-      _pendingMood = null;
-      _showMoodSuggestion = false;
-      _turnsSinceMoodPrompt = 0;
-    });
+    setState(() { _currentConvId = convId; _messages..clear()..addAll(msgs); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
     await _refreshQuickPrompts();
     _scheduleScrollToBottom(animated: false);
   }
 
   Future<void> _renameConversation() async {
-    final current = _convs.firstWhere(
-        (c) => c.id == _currentConvId,
-        orElse: () =>
-            ConversationMeta(id: _currentConvId, title: 'Chat'));
+    final current = _convs.firstWhere((c) => c.id == _currentConvId, orElse: () => ConversationMeta(id: _currentConvId, title: 'Chat'));
     final controller = TextEditingController(text: current.title);
     final newTitle = await showDialog<String>(
       context: context,
@@ -192,19 +159,13 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Text('Rename chat'),
         content: TextField(controller: controller, autofocus: true),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () =>
-                  Navigator.pop(ctx, controller.text.trim()),
-              child: const Text('Save')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
         ],
       ),
     );
     if (newTitle == null || newTitle.isEmpty) return;
-    await ChatPersistence.renameConversation(
-        id: _currentConvId, title: newTitle);
+    await ChatPersistence.renameConversation(id: _currentConvId, title: newTitle);
     _convs = await ChatPersistence.listConversations();
     if (!mounted) return;
     setState(() {});
@@ -215,157 +176,96 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete chat?'),
-        content: const Text(
-            'This will permanently remove the conversation.'),
+        content: const Text('This will permanently remove the conversation.'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
         ],
       ),
     );
     if (confirm != true) return;
     await ChatPersistence.deleteConversation(_currentConvId);
     _convs = await ChatPersistence.listConversations();
-    _currentConvId = _convs.isEmpty
-        ? await ChatPersistence.ensureDefault()
-        : _convs.first.id;
+    _currentConvId = _convs.isEmpty ? await ChatPersistence.ensureDefault() : _convs.first.id;
     final msgs = await ChatPersistence.load(_currentConvId);
     if (!mounted) return;
-    setState(() {
-      _messages..clear()..addAll(msgs);
-      _pendingMood = null;
-      _showMoodSuggestion = false;
-      _turnsSinceMoodPrompt = 0;
-    });
+    setState(() { _messages..clear()..addAll(msgs); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
   }
 
   Future<void> _clearHistory() async {
     if (_currentConvId.isEmpty) return;
     await ChatPersistence.clear(_currentConvId);
     if (!mounted) return;
-    setState(() {
-      _messages.clear();
-      _pendingMood = null;
-      _showMoodSuggestion = false;
-      _turnsSinceMoodPrompt = 0;
-    });
+    setState(() { _messages.clear(); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
     await _refreshQuickPrompts();
   }
 
-  // ---------- Mood logging ----------
+  // ── Mood logging ────────────────────────────────────────────────────────────
 
   Future<void> _onLogMoodPressed() async {
     final picked = await _showMoodPicker();
     if (picked == null) return;
-    final emoji = picked['emoji']!;
-    final label = picked['label']!;
-    await MoodLogService.logMood(emoji: emoji, label: label);
+    await MoodLogService.logMood(emoji: picked['emoji']!, label: picked['label']!);
     await _markManualLogged();
     if (!mounted) return;
-    setState(() {
-      _currentMoodEmoji = emoji;
-      _currentMoodLabel = label;
-      _pendingMood = null;
-      _showMoodSuggestion = false;
-    });
+    setState(() { _currentMoodEmoji = picked['emoji']; _currentMoodLabel = picked['label']!; _pendingMood = null; _showMoodSuggestion = false; });
     await _refreshQuickPrompts();
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Mood logged: $emoji $label')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mood logged: ${picked['emoji']} ${picked['label']}')));
   }
 
   Future<Map<String, String>?> _showMoodPicker() async {
     final res = await showModalBottomSheet<dynamic>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
+      context: context, backgroundColor: Colors.transparent, isScrollControlled: true,
       builder: (_) => const MoodPickerSheet(),
     );
     if (res == null) return null;
-    if (res is Map) {
-      return {
-        'emoji': (res['emoji'] ?? '🙂').toString(),
-        'label': (res['label'] ?? 'Neutral').toString(),
-      };
-    }
+    if (res is Map) return {'emoji': (res['emoji'] ?? '\ud83d\ude42').toString(), 'label': (res['label'] ?? 'Neutral').toString()};
     return null;
   }
 
   Future<void> _markManualLogged() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(
-        _kManualMoodLastTs, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(_kManualMoodLastTs, DateTime.now().millisecondsSinceEpoch);
   }
 
   Future<bool> _canAutoLog(String label) async {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     final manualTsMs = prefs.getInt(_kManualMoodLastTs) ?? 0;
-    if (manualTsMs > 0) {
-      final manualTs =
-          DateTime.fromMillisecondsSinceEpoch(manualTsMs);
-      if (now.difference(manualTs).inHours < 3) return false;
-    }
+    if (manualTsMs > 0 && now.difference(DateTime.fromMillisecondsSinceEpoch(manualTsMs)).inHours < 3) return false;
     final lastAutoMs = prefs.getInt(_kAutoMoodLastTs) ?? 0;
-    if (lastAutoMs > 0) {
-      final lastAuto =
-          DateTime.fromMillisecondsSinceEpoch(lastAutoMs);
-      if (now.difference(lastAuto).inHours < 6) return false;
-    }
+    if (lastAutoMs > 0 && now.difference(DateTime.fromMillisecondsSinceEpoch(lastAutoMs)).inHours < 6) return false;
     final lastLabel = prefs.getString(_kAutoMoodLastLabel) ?? '';
-    if (lastAutoMs > 0 &&
-        lastLabel.toLowerCase() == label.toLowerCase()) {
-      final lastAuto =
-          DateTime.fromMillisecondsSinceEpoch(lastAutoMs);
-      if (now.difference(lastAuto).inHours < 12) return false;
-    }
+    if (lastAutoMs > 0 && lastLabel.toLowerCase() == label.toLowerCase() &&
+        now.difference(DateTime.fromMillisecondsSinceEpoch(lastAutoMs)).inHours < 12) return false;
     return true;
   }
 
   Future<void> _markAutoLogged(String label) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(
-        _kAutoMoodLastTs, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(_kAutoMoodLastTs, DateTime.now().millisecondsSinceEpoch);
     await prefs.setString(_kAutoMoodLastLabel, label);
   }
 
-  Future<void> _handleMoodFromConversation(
-      {required String userText, required String botText}) async {
+  Future<void> _handleMoodFromConversation({required String userText, required String botText}) async {
     _turnsSinceMoodPrompt++;
     if (_turnsSinceMoodPrompt < 2) return;
     _turnsSinceMoodPrompt = 0;
-    final suggestion =
-        MoodSuggester.suggest(userText: userText, botText: botText);
+    final suggestion = MoodSuggester.suggest(userText: userText, botText: botText);
     if (suggestion.confidence >= _autoLogMinConfidence) {
       final ok = await _canAutoLog(suggestion.label);
       if (!ok) return;
-      await MoodLogService.logMood(
-          emoji: suggestion.emoji,
-          label: suggestion.label,
-          note: 'Auto (chat)');
+      await MoodLogService.logMood(emoji: suggestion.emoji, label: suggestion.label, note: 'Auto (chat)');
       await _markAutoLogged(suggestion.label);
       if (!mounted) return;
-      setState(() {
-        _currentMoodEmoji = suggestion.emoji;
-        _currentMoodLabel = suggestion.label;
-        _pendingMood = null;
-        _showMoodSuggestion = false;
-      });
+      setState(() { _currentMoodEmoji = suggestion.emoji; _currentMoodLabel = suggestion.label; _pendingMood = null; _showMoodSuggestion = false; });
       await _refreshQuickPrompts();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              'Mood auto-logged: ${suggestion.emoji} ${suggestion.label}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mood auto-logged: ${suggestion.emoji} ${suggestion.label}')));
       return;
     }
     if (suggestion.confidence >= _suggestMinConfidence) {
       if (!mounted) return;
-      setState(() {
-        _pendingMood = suggestion;
-        _showMoodSuggestion = true;
-      });
+      setState(() { _pendingMood = suggestion; _showMoodSuggestion = true; });
     }
   }
 
@@ -380,9 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!_scroll.hasClients) return;
     final offset = _scroll.position.maxScrollExtent;
     if (animated) {
-      await _scroll.animateTo(offset,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic);
+      await _scroll.animateTo(offset, duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic);
     } else {
       _scroll.jumpTo(offset);
     }
@@ -392,14 +290,8 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_jumpToBottom(animated: animated));
-      Future.delayed(const Duration(milliseconds: 80), () {
-        if (!mounted) return;
-        unawaited(_jumpToBottom(animated: false));
-      });
-      Future.delayed(const Duration(milliseconds: 220), () {
-        if (!mounted) return;
-        unawaited(_jumpToBottom(animated: false));
-      });
+      Future.delayed(const Duration(milliseconds: 80),  () { if (!mounted) return; unawaited(_jumpToBottom(animated: false)); });
+      Future.delayed(const Duration(milliseconds: 220), () { if (!mounted) return; unawaited(_jumpToBottom(animated: false)); });
     });
   }
 
@@ -409,45 +301,29 @@ class _ChatScreenState extends State<ChatScreen> {
     await MoodLogService.logMood(emoji: s.emoji, label: s.label);
     await _markManualLogged();
     if (!mounted) return;
-    setState(() {
-      _currentMoodEmoji = s.emoji;
-      _currentMoodLabel = s.label;
-      _pendingMood = null;
-      _showMoodSuggestion = false;
-    });
+    setState(() { _currentMoodEmoji = s.emoji; _currentMoodLabel = s.label; _pendingMood = null; _showMoodSuggestion = false; });
     await _refreshQuickPrompts();
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Mood logged: ${s.emoji} ${s.label}')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mood logged: ${s.emoji} ${s.label}')));
   }
 
   Future<void> _changeMoodAndLog() async {
     final picked = await _showMoodPicker();
     if (picked == null) return;
-    await MoodLogService.logMood(
-        emoji: picked['emoji']!, label: picked['label']!);
+    await MoodLogService.logMood(emoji: picked['emoji']!, label: picked['label']!);
     await _markManualLogged();
     if (!mounted) return;
-    setState(() {
-      _currentMoodEmoji = picked['emoji']!;
-      _currentMoodLabel = picked['label']!;
-      _pendingMood = null;
-      _showMoodSuggestion = false;
-    });
+    setState(() { _currentMoodEmoji = picked['emoji']; _currentMoodLabel = picked['label']!; _pendingMood = null; _showMoodSuggestion = false; });
     await _refreshQuickPrompts();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Mood logged: ${picked['emoji']} ${picked['label']}')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mood logged: ${picked['emoji']} ${picked['label']}')));
   }
 
   Future<void> _refreshQuickPrompts() async {
-    final unifiedSuggestion =
-        await ProactiveSupportService.buildHomeSuggestion();
+    final unifiedSuggestion = await ProactiveSupportService.buildHomeSuggestion();
     if (!mounted) return;
     setState(() {
       _quickPrompts = ProactiveSupportService.buildChatPromptChips(
         moodLabel: _currentMoodLabel,
-        isEvening:
-            DateTime.now().hour >= 20 || DateTime.now().hour < 5,
+        isEvening: DateTime.now().hour >= 20 || DateTime.now().hour < 5,
         hasMessages: _messages.isNotEmpty,
         unifiedSuggestion: unifiedSuggestion,
       );
@@ -456,18 +332,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _applyPromptChip(SupportPromptChip chip) {
     if (chip.routeName != null) {
-      Navigator.of(context)
-          .pushNamed(chip.routeName!, arguments: chip.routeArguments);
+      Navigator.of(context).pushNamed(chip.routeName!, arguments: chip.routeArguments);
       return;
     }
     _controller.text = chip.promptText;
-    _controller.selection = TextSelection.fromPosition(
-        TextPosition(offset: _controller.text.length));
-    if (chip.autoSend) {
-      unawaited(_send());
-    } else {
-      setState(() {});
-    }
+    _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
+    if (chip.autoSend) unawaited(_send()); else setState(() {});
   }
 
   Widget _buildTherapistModeChip() {
@@ -477,31 +347,22 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Align(
         alignment: Alignment.centerLeft,
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: Theme.of(context)
-                .colorScheme
-                .primary
-                .withValues(alpha: 0.08),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(999),
           ),
-          child: Text(
-            'Therapist mode: ${_therapistMode.modeLabel}',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          child: Text('Therapist mode: ${_therapistMode.modeLabel}',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-          ),
+                  color: Theme.of(context).colorScheme.primary)),
         ),
       ),
     );
   }
 
   Widget _buildMoodSuggestionBar() {
-    if (!_showMoodSuggestion || _pendingMood == null) {
-      return const SizedBox.shrink();
-    }
+    if (!_showMoodSuggestion || _pendingMood == null) return const SizedBox.shrink();
     final s = _pendingMood!;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -512,21 +373,10 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Text(s.emoji, style: const TextStyle(fontSize: 18)),
               const SizedBox(width: 10),
-              Expanded(
-                  child: Text('Log mood: ${s.label}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                      overflow: TextOverflow.ellipsis)),
-              TextButton(
-                  onPressed: _logSuggestedMood,
-                  child: const Text('Log')),
-              TextButton(
-                  onPressed: _changeMoodAndLog,
-                  child: const Text('Change')),
-              IconButton(
-                  onPressed: () =>
-                      setState(() => _showMoodSuggestion = false),
-                  icon: const Icon(Icons.close, size: 18),
-                  tooltip: 'Not now'),
+              Expanded(child: Text('Log mood: ${s.label}', style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+              TextButton(onPressed: _logSuggestedMood, child: const Text('Log')),
+              TextButton(onPressed: _changeMoodAndLog, child: const Text('Change')),
+              IconButton(onPressed: () => setState(() => _showMoodSuggestion = false), icon: const Icon(Icons.close, size: 18), tooltip: 'Not now'),
             ],
           ),
         ),
@@ -534,25 +384,17 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ---------- Send ----------
+  // ── Send ───────────────────────────────────────────────────────────────────
 
   Future<void> _send() async {
     final text = _controller.text.trim();
     _showResetNudge = _shouldShowResetNudge(text);
     if (text.isEmpty || _isSending) return;
-
-    final allowed =
-        await UsageService.instance.tryConsumeMessage(context);
+    final allowed = await UsageService.instance.tryConsumeMessage(context);
     if (!allowed) return;
 
     final convIdAtSend = _currentConvId;
-
-    final userMsg = ChatMessage(
-        id: _id.v4(),
-        role: 'user',
-        text: text,
-        timestamp: DateTime.now());
-
+    final userMsg = ChatMessage(id: _id.v4(), role: 'user', text: text, timestamp: DateTime.now());
     if (_currentConvId != convIdAtSend) return;
     setState(() => _messages.add(userMsg));
     await _refreshQuickPrompts();
@@ -561,8 +403,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scheduleScrollToBottom(animated: true);
 
     if (_messages.where((m) => m.role == 'user').length == 1) {
-      await ChatPersistence.autoTitleIfUntitled(
-          id: convIdAtSend, seed: text);
+      await ChatPersistence.autoTitleIfUntitled(id: convIdAtSend, seed: text);
       _convs = await ChatPersistence.listConversations();
       if (mounted && _currentConvId == convIdAtSend) setState(() {});
     }
@@ -570,85 +411,51 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() { _isSending = true; _isTyping = true; });
 
     try {
-      final recent = _messages.length > 9
-          ? _messages.sublist(_messages.length - 9)
-          : List<ChatMessage>.from(_messages);
-      final history =
-          recent.map((m) => {'role': m.role, 'content': m.text}).toList();
-      if (history.isNotEmpty &&
-          history.last['role'] == 'user' &&
-          history.last['content'] == text) {
-        history.removeLast();
-      }
+      final recent  = _messages.length > 9 ? _messages.sublist(_messages.length - 9) : List<ChatMessage>.from(_messages);
+      final history = recent.map((m) => {'role': m.role, 'content': m.text}).toList();
+      if (history.isNotEmpty && history.last['role'] == 'user' && history.last['content'] == text) history.removeLast();
       final asstId = _id.v4();
       if (_currentConvId != convIdAtSend) return;
-
-      setState(() {
-        _messages.add(ChatMessage(
-            id: asstId,
-            role: 'assistant',
-            text: '',
-            timestamp: DateTime.now()));
-      });
+      setState(() { _messages.add(ChatMessage(id: asstId, role: 'assistant', text: '', timestamp: DateTime.now())); });
       await _refreshQuickPrompts();
       _persist(convId: convIdAtSend);
       _scheduleScrollToBottom(animated: false);
 
       final result = await ChatStreamService.streamOrchestratedReply(
-        history: history,
-        moodLabel: _currentMoodLabel,
-        userInput: text,
-        screen: 'chat',
+        history: history, moodLabel: _currentMoodLabel, userInput: text, screen: 'chat',
         onDelta: (delta) async {
           if (!mounted || _currentConvId != convIdAtSend) return;
           final idx = _messages.indexWhere((m) => m.id == asstId);
           if (idx == -1) return;
           final existing = _messages[idx];
           _messages[idx] = existing.copyWith(text: existing.text + delta);
-          if (mounted) {
-            setState(() {});
-            _scheduleScrollToBottom(animated: false);
-          }
+          if (mounted) { setState(() {}); _scheduleScrollToBottom(animated: false); }
         },
       );
 
       final finalIdx = _messages.indexWhere((m) => m.id == asstId);
       if (finalIdx != -1) {
         _messages[finalIdx] = _messages[finalIdx].copyWith(
-          routedAgent: result.agent.key,
-          supportModeLabel: result.supportModeLabel,
-          suggestedActions: result.suggestedActions,
-        );
+            routedAgent: result.agent.key, supportModeLabel: result.supportModeLabel, suggestedActions: result.suggestedActions);
         setState(() {});
       }
       await _refreshQuickPrompts();
       _persist(convId: convIdAtSend);
       _scheduleScrollToBottom(animated: false);
+      if (mounted && _currentConvId == convIdAtSend) await _handleMoodFromConversation(userText: text, botText: result.reply);
 
-      if (mounted && _currentConvId == convIdAtSend) {
-        await _handleMoodFromConversation(
-            userText: text, botText: result.reply);
-      }
-
-      // ── Persistent memory: save every 5 user messages ──────────────
+      // Memory save every 5 user messages
       _userMessageCount++;
       if (_userMessageCount % 5 == 0) {
-        final fullHistory = _messages
-            .map((m) => {'role': m.role, 'content': m.text})
-            .toList();
-        unawaited(UserMemoryService.saveMemory(fullHistory));
+        unawaited(UserMemoryService.saveMemory(_messages.map((m) => {'role': m.role, 'content': m.text}).toList()));
       }
-
     } catch (e) {
       if (mounted && _currentConvId == convIdAtSend) {
         setState(() {
           _messages.add(ChatMessage(
-            id: _id.v4(),
-            role: 'assistant',
-            text: '⚠️ I couldn\'t reach the AI right now.\n'
-                'Please check your internet connection and API key configuration.\n\nError: $e',
-            timestamp: DateTime.now(),
-            supportModeLabel: 'Connection issue',
+            id: _id.v4(), role: 'assistant',
+            text: '\u26a0\ufe0f I couldn\'t reach the AI right now.\nPlease check your internet connection.\n\nError: $e',
+            timestamp: DateTime.now(), supportModeLabel: 'Connection issue',
           ));
         });
       }
@@ -663,8 +470,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _retryAssistantMessage(String messageId) async {
     if (_isSending) return;
-    final idx = _messages
-        .indexWhere((m) => m.id == messageId && m.role == 'assistant');
+    final idx = _messages.indexWhere((m) => m.id == messageId && m.role == 'assistant');
     if (idx == -1) return;
     int u = idx - 1;
     while (u >= 0 && _messages[u].role != 'user') u--;
@@ -672,174 +478,89 @@ class _ChatScreenState extends State<ChatScreen> {
     final userMsg      = _messages[u];
     final convIdAtSend = _currentConvId;
     setState(() {
-      _messages[idx] = _messages[idx].copyWith(
-          text: '',
-          timestamp: DateTime.now(),
-          routedAgent: '',
-          supportModeLabel: '',
-          suggestedActions: const []);
-      _isSending = true;
-      _isTyping  = true;
+      _messages[idx] = _messages[idx].copyWith(text: '', timestamp: DateTime.now(), routedAgent: '', supportModeLabel: '', suggestedActions: const []);
+      _isSending = true; _isTyping = true;
     });
     _persist(convId: convIdAtSend);
     try {
-      final slice  = _messages.take(u + 1).toList();
-      final recent = slice.length > 9
-          ? slice.sublist(slice.length - 9)
-          : List<ChatMessage>.from(slice);
-      final history =
-          recent.map((m) => {'role': m.role, 'content': m.text}).toList();
-      if (history.isNotEmpty &&
-          history.last['role'] == 'user' &&
-          history.last['content'] == userMsg.text) {
-        history.removeLast();
-      }
+      final slice   = _messages.take(u + 1).toList();
+      final recent  = slice.length > 9 ? slice.sublist(slice.length - 9) : List<ChatMessage>.from(slice);
+      final history = recent.map((m) => {'role': m.role, 'content': m.text}).toList();
+      if (history.isNotEmpty && history.last['role'] == 'user' && history.last['content'] == userMsg.text) history.removeLast();
       final result = await ChatStreamService.streamOrchestratedReply(
-        history: history,
-        moodLabel: _currentMoodLabel,
-        userInput: userMsg.text,
-        screen: 'chat',
+        history: history, moodLabel: _currentMoodLabel, userInput: userMsg.text, screen: 'chat',
         onDelta: (delta) async {
           if (!mounted || _currentConvId != convIdAtSend) return;
           final ci = _messages.indexWhere((m) => m.id == messageId);
           if (ci == -1) return;
           final existing = _messages[ci];
-          _messages[ci] =
-              existing.copyWith(text: existing.text + delta);
-          if (mounted) {
-            setState(() {});
-            _scheduleScrollToBottom(animated: false);
-          }
+          _messages[ci] = existing.copyWith(text: existing.text + delta);
+          if (mounted) { setState(() {}); _scheduleScrollToBottom(animated: false); }
         },
       );
       final curIdx = _messages.indexWhere((m) => m.id == messageId);
       if (curIdx != -1) {
         _messages[curIdx] = _messages[curIdx].copyWith(
-            routedAgent: result.agent.key,
-            supportModeLabel: result.supportModeLabel,
-            suggestedActions: result.suggestedActions);
+            routedAgent: result.agent.key, supportModeLabel: result.supportModeLabel, suggestedActions: result.suggestedActions);
       }
       await _refreshQuickPrompts();
       _persist(convId: convIdAtSend);
       _scheduleScrollToBottom(animated: false);
-      if (mounted && _currentConvId == convIdAtSend) {
-        await _handleMoodFromConversation(
-            userText: userMsg.text, botText: result.reply);
-      }
+      if (mounted && _currentConvId == convIdAtSend) await _handleMoodFromConversation(userText: userMsg.text, botText: result.reply);
     } catch (e) {
       if (mounted && _currentConvId == convIdAtSend) {
         final ci = _messages.indexWhere((m) => m.id == messageId);
-        if (ci != -1) {
-          _messages[ci] = _messages[ci].copyWith(
-              text: '${_messages[ci].text}\n\n⚠️ Retry failed: $e',
-              supportModeLabel: 'Retry issue');
-          setState(() {});
-          _persist(convId: convIdAtSend);
-        }
+        if (ci != -1) { _messages[ci] = _messages[ci].copyWith(text: '${_messages[ci].text}\n\n\u26a0\ufe0f Retry failed: $e', supportModeLabel: 'Retry issue'); setState(() {}); _persist(convId: convIdAtSend); }
       }
     } finally {
-      if (mounted && _currentConvId == convIdAtSend) {
-        setState(() { _isSending = false; _isTyping = false; });
-      }
+      if (mounted && _currentConvId == convIdAtSend) setState(() { _isSending = false; _isTyping = false; });
     }
   }
 
-  // ---------- UI helpers ----------
+  // ── UI helpers ────────────────────────────────────────────────────────────
 
   String _prettyTime(DateTime dt) {
     final now     = DateTime.now();
-    final sameDay = dt.year == now.year &&
-        dt.month == now.month &&
-        dt.day == now.day;
+    final sameDay = dt.year == now.year && dt.month == now.month && dt.day == now.day;
     if (sameDay) return 'Today ${TimeOfDay.fromDateTime(dt).format(context)}';
     return DateFormat('yyyy-MM-dd').format(dt);
   }
 
-  String _formatMsgTimestamp(DateTime dt) =>
-      DateFormat('EEE, MMM d \u2022 HH:mm').format(dt);
+  String _formatMsgTimestamp(DateTime dt) => DateFormat('EEE, MMM d \u2022 HH:mm').format(dt);
 
   String _stripLeadingEmoji(String s) {
-    final regex = RegExp(
-      r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F1E6}-\u{1F1FF}]+[\s\-:]*',
-      unicode: true,
-    );
+    final regex = RegExp(r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F1E6}-\u{1F1FF}]+[\s\-:]*', unicode: true);
     return s.replaceFirst(regex, '');
   }
 
-  Widget _avatar({required bool isUser}) {
-    if (isUser) {
-      final userPhoto = FirebaseAuth.instance.currentUser?.photoURL;
-      if (userPhoto != null && userPhoto.isNotEmpty) {
-        return FadeAvatar(
-            child: CircleAvatar(
-                radius: 16,
-                backgroundImage: NetworkImage(userPhoto)));
-      }
-      return const FadeAvatar(
-          child: CircleAvatar(
-              radius: 16, child: Icon(Icons.person, size: 18)));
+  Widget _userAvatar() {
+    final userPhoto = FirebaseAuth.instance.currentUser?.photoURL;
+    if (userPhoto != null && userPhoto.isNotEmpty) {
+      return FadeAvatar(child: CircleAvatar(radius: 16, backgroundImage: NetworkImage(userPhoto)));
     }
-    if (kBotLogoAsset != null) {
-      return FadeAvatar(
-        child: Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent.withValues(alpha: 0.45),
-                blurRadius: 12,
-                spreadRadius: 2,
-              )
-            ],
-          ),
-          child: CircleAvatar(
-              radius: 16,
-              backgroundImage: AssetImage(kBotLogoAsset!)),
-        ),
-      );
-    }
-    return const FadeAvatar(
-        child: CircleAvatar(
-            radius: 16, child: Icon(Icons.smart_toy, size: 18)));
+    return const FadeAvatar(child: CircleAvatar(radius: 16, child: Icon(Icons.person, size: 18)));
   }
 
   Future<void> _showMessageActions(ChatMessage m) async {
     final isAssistant = m.role == 'assistant';
     await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
+      context: context, showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.copy),
-              title: const Text('Copy'),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: m.text));
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Copied')));
-              },
+              leading: const Icon(Icons.copy), title: const Text('Copy'),
+              onTap: () { Clipboard.setData(ClipboardData(text: m.text)); Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied'))); },
             ),
             if (isAssistant)
               ListTile(
-                leading: const Icon(Icons.refresh),
-                title: const Text('Regenerate reply'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _retryAssistantMessage(m.id);
-                },
+                leading: const Icon(Icons.refresh), title: const Text('Regenerate reply'),
+                onTap: () { Navigator.pop(ctx); _retryAssistantMessage(m.id); },
               ),
             ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete message'),
-              onTap: () {
-                setState(() =>
-                    _messages.removeWhere((x) => x.id == m.id));
-                _persist();
-                Navigator.pop(ctx);
-              },
+              leading: const Icon(Icons.delete_outline), title: const Text('Delete message'),
+              onTap: () { setState(() => _messages.removeWhere((x) => x.id == m.id)); _persist(); Navigator.pop(ctx); },
             ),
           ],
         ),
@@ -847,247 +568,158 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _handleAgentAction(
-      AgentAction action, ChatMessage message) async {
-    if (action.routeName != null && action.routeName!.isNotEmpty) {
-      await Navigator.of(context).pushNamed(action.routeName!);
-      return;
-    }
-    final payload = message.text.trim().isEmpty
-        ? (message.supportModeLabel ?? 'MindCore AI note')
-        : message.text.trim();
-    await Clipboard.setData(ClipboardData(text: payload));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('${action.label} copied')));
-  }
-
-  Widget _buildActionChips(ChatMessage m, Color color) {
-    if (m.suggestedActions.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: m.suggestedActions.take(2).map((action) {
-          return ActionChip(
-            label: Text(action.label),
-            avatar: Icon(
-              action.routeName != null
-                  ? Icons.arrow_forward_rounded
-                  : Icons.copy_rounded,
-              size: 16,
-            ),
-            onPressed: () => _handleAgentAction(action, m),
-            side:
-                BorderSide(color: color.withValues(alpha: 0.20)),
-          );
-        }).toList(),
-      ),
-    );
-  }
+  // ── Message item ───────────────────────────────────────────────────────────────
+  // User: bubble on right with avatar
+  // AI:   clean full-width text, no card, no avatar, no action chips
 
   Widget _messageItem(ChatMessage m) {
     final isUser = m.role == 'user';
     final theme  = Theme.of(context);
-    final bg     = isUser
-        ? theme.colorScheme.primaryContainer
-        : theme.colorScheme.surface;
-    final fg = isUser
-        ? theme.colorScheme.onPrimaryContainer
-        : theme.colorScheme.onSurface;
-    final ts             = m.timestamp ?? DateTime.now();
-    final maxBubbleWidth = MediaQuery.of(context).size.width * 0.82;
+    final ts     = m.timestamp ?? DateTime.now();
 
-    final bubble = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onLongPress: () => _showMessageActions(m),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-              vertical: 10, horizontal: 14),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: isUser
-                ? [
-                    BoxShadow(
-                      color: theme.colorScheme.primary
-                          .withValues(alpha: 0.25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    )
-                  ]
-                : const [
-                    BoxShadow(
-                      blurRadius: 6,
-                      color: Color(0x14000000),
-                      offset: Offset(0, 2),
-                    )
-                  ],
-          ),
-          child: Column(
-            crossAxisAlignment: isUser
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              if (!isUser &&
-                  (m.supportModeLabel ?? '').isNotEmpty) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                      color: theme.colorScheme.primary
-                          .withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(999)),
-                  child: Text(
-                    m.supportModeLabel!,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w700),
-                  ),
-                ),
-                const SizedBox(height: 8),
+    if (isUser) {
+      // User bubble — unchanged
+      final bubble = ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onLongPress: () => _showMessageActions(m),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.22),
+                  blurRadius: 8, offset: const Offset(0, 3),
+                )
               ],
-              Text(m.text,
-                  style: TextStyle(color: fg, height: 1.32)),
-              if (!isUser) _buildActionChips(m, theme.colorScheme.primary),
-              const SizedBox(height: 6),
-              Align(
-                alignment: isUser
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(m.text,
+                    style: TextStyle(
+                        color: theme.colorScheme.onPrimaryContainer,
+                        height: 1.4, fontSize: 15)),
+                const SizedBox(height: 4),
+                Text(_formatMsgTimestamp(ts),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.60),
+                        fontSize: 10)),
+              ],
+            ),
+          ),
+        ),
+      );
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(48, 6, 10, 6),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [Flexible(child: bubble), const SizedBox(width: 8), _userAvatar()],
+        ),
+      );
+    }
+
+    // AI message — clean full-width text, no card, no avatar, no action chips
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 48, 4),
+      child: InkWell(
+        onLongPress: () => _showMessageActions(m),
+        borderRadius: BorderRadius.circular(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Mode badge
+            if ((m.supportModeLabel ?? '').isNotEmpty) ...[  
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(100),
+                ),
                 child: Text(
-                  _formatMsgTimestamp(ts),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: isUser
-                          ? Colors.black87
-                          : theme.colorScheme.onSurface
-                              .withValues(alpha: 0.6)),
+                  m.supportModeLabel!,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.primary, fontWeight: FontWeight.w700),
                 ),
               ),
+              const SizedBox(height: 8),
             ],
-          ),
+            // Reply text — full width, comfortable reading size
+            Text(
+              m.text,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface,
+                height: 1.55,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 6),
+            // Timestamp
+            Text(
+              _formatMsgTimestamp(ts),
+              style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.40),
+                  fontSize: 10),
+            ),
+            const SizedBox(height: 2),
+            // Subtle divider between messages
+            Divider(height: 1, color: theme.colorScheme.onSurface.withValues(alpha: 0.06)),
+          ],
         ),
       ),
     );
-
-    final row = Row(
-      mainAxisAlignment:
-          isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: isUser
-          ? [
-              Flexible(child: bubble),
-              const SizedBox(width: 8),
-              _avatar(isUser: true),
-            ]
-          : [
-              _avatar(isUser: false),
-              const SizedBox(width: 8),
-              Flexible(child: bubble),
-            ],
-    );
-
-    return Padding(
-        padding: const EdgeInsets.symmetric(
-            vertical: 6, horizontal: 10),
-        child: row);
   }
 
   Widget _buildEmptyState() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.74),
-          padding: const EdgeInsets.symmetric(
-              horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: Theme.of(context)
-                .colorScheme
-                .surface
-                .withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: const [
-              BoxShadow(
-                  blurRadius: 6,
-                  color: Color(0x14000000),
-                  offset: Offset(0, 2))
-            ],
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your guide is ready whenever you are.',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your guide is ready whenever you are.',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Start typing to begin your check-in.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.72)),
-              ),
-            ],
+          const SizedBox(height: 6),
+          Text(
+            'Start typing to begin your check-in.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.60)),
           ),
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildTypingIndicator() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(
-            vertical: 6, horizontal: 10),
-        padding: const EdgeInsets.symmetric(
-            vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16)),
-        child: const Text('…typing'),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 48, 4),
+      child: Text('…', style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.40),
+          fontSize: 22)),
     );
   }
 
   Future<void> _openSwitcher() async {
-    if (_isSending) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Please wait for the reply to finish…')));
-      return;
-    }
+    if (_isSending) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please wait for the reply to finish…'))); return; }
     _convs = await ChatPersistence.listConversations();
     if (!mounted) return;
     final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
+      context: context, showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: ListView(
           children: [
-            ListTile(
-                leading: const Icon(Icons.add_circle_outline),
-                title: const Text('New chat'),
-                onTap: () => Navigator.pop(ctx, '__new__')),
+            ListTile(leading: const Icon(Icons.add_circle_outline), title: const Text('New chat'), onTap: () => Navigator.pop(ctx, '__new__')),
             const Divider(height: 0),
             ..._convs.map((c) => ListTile(
-                  leading: Icon(c.id == _currentConvId
-                      ? Icons.chat_bubble
-                      : Icons.chat_bubble_outline),
-                  title: Text(c.title),
-                  subtitle: Text(_prettyTime(c.updatedAt)),
-                  onTap: () => Navigator.pop(ctx, c.id),
-                )),
+              leading: Icon(c.id == _currentConvId ? Icons.chat_bubble : Icons.chat_bubble_outline),
+              title: Text(c.title), subtitle: Text(_prettyTime(c.updatedAt)),
+              onTap: () => Navigator.pop(ctx, c.id),
+            )),
           ],
         ),
       ),
@@ -1099,33 +731,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rawTitle = _convs
-        .firstWhere((c) => c.id == _currentConvId,
-            orElse: () =>
-                ConversationMeta(id: _currentConvId, title: 'Chat'))
-        .title;
+    final rawTitle       = _convs.firstWhere((c) => c.id == _currentConvId, orElse: () => ConversationMeta(id: _currentConvId, title: 'Chat')).title;
     final baseTitle      = _stripLeadingEmoji(rawTitle);
-    final decoratedTitle = _currentMoodEmoji == null
-        ? baseTitle
-        : '$baseTitle ${_currentMoodEmoji!}';
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final safeBottom  = MediaQuery.of(context).viewPadding.bottom;
-
-    final moodButtonEmoji = _currentMoodEmoji ?? '🙂';
+    final decoratedTitle = _currentMoodEmoji == null ? baseTitle : '$baseTitle ${_currentMoodEmoji!}';
+    final bottomInset    = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom     = MediaQuery.of(context).viewPadding.bottom;
+    final moodButtonEmoji = _currentMoodEmoji ?? '\ud83d\ude42';
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppTopBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_ios_new), tooltip: 'Back',
           onPressed: () {
             final navigator = Navigator.of(context);
-            if (navigator.canPop()) {
-              navigator.pop();
-            } else {
-              Navigator.of(context).pushReplacementNamed('/home');
-            }
+            if (navigator.canPop()) navigator.pop();
+            else Navigator.of(context).pushReplacementNamed('/home');
           },
         ),
         title: decoratedTitle,
@@ -1138,19 +759,12 @@ class _ChatScreenState extends State<ChatScreen> {
               borderRadius: BorderRadius.circular(20),
               onTap: _onLogMoodPressed,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 8),
-                child: Text(
-                  moodButtonEmoji,
-                  style: const TextStyle(fontSize: 22),
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Text(moodButtonEmoji, style: const TextStyle(fontSize: 22)),
               ),
             ),
           ),
-          IconButton(
-              icon: const Icon(Icons.folder_open),
-              tooltip: 'Switch chat',
-              onPressed: _openSwitcher),
+          IconButton(icon: const Icon(Icons.folder_open), tooltip: 'Switch chat', onPressed: _openSwitcher),
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'rename') _renameConversation();
@@ -1158,12 +772,9 @@ class _ChatScreenState extends State<ChatScreen> {
               if (v == 'delete') _deleteConversation();
             },
             itemBuilder: (ctx) => const [
-              PopupMenuItem(
-                  value: 'rename', child: Text('Rename chat')),
-              PopupMenuItem(
-                  value: 'clear', child: Text('Clear messages')),
-              PopupMenuItem(
-                  value: 'delete', child: Text('Delete chat')),
+              PopupMenuItem(value: 'rename', child: Text('Rename chat')),
+              PopupMenuItem(value: 'clear',  child: Text('Clear messages')),
+              PopupMenuItem(value: 'delete', child: Text('Delete chat')),
             ],
           ),
         ],
@@ -1179,48 +790,29 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Column(
                       children: [
                         const DisclaimerBanner(),
-
                         if (_therapistMode.enabled)
                           Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: _buildTherapistModeChip(),
-                            ),
+                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                            child: Align(alignment: Alignment.centerLeft, child: _buildTherapistModeChip()),
                           ),
-
                         Expanded(
                           child: ListView.builder(
                             controller: _scroll,
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
-                            itemCount:
-                                (_messages.isEmpty ? 1 : _messages.length) +
-                                    (_isTyping ? 1 : 0),
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
+                            itemCount: (_messages.isEmpty ? 1 : _messages.length) + (_isTyping ? 1 : 0),
                             itemBuilder: (context, index) {
-                              if (_messages.isEmpty && index == 0) {
-                                return _buildEmptyState();
-                              }
-                              final adjustedIndex =
-                                  _messages.isEmpty ? index - 1 : index;
-                              if (_isTyping &&
-                                  adjustedIndex == _messages.length) {
-                                return _buildTypingIndicator();
-                              }
-                              return _messageItem(
-                                  _messages[adjustedIndex]);
+                              if (_messages.isEmpty && index == 0) return _buildEmptyState();
+                              final adjustedIndex = _messages.isEmpty ? index - 1 : index;
+                              if (_isTyping && adjustedIndex == _messages.length) return _buildTypingIndicator();
+                              return _messageItem(_messages[adjustedIndex]);
                             },
                           ),
                         ),
-
                         _buildMoodSuggestionBar(),
-
                         if (_showResetNudge)
                           Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                             child: GlassCard(
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
@@ -1228,88 +820,43 @@ class _ChatScreenState extends State<ChatScreen> {
                                   children: [
                                     const Icon(Icons.spa_outlined),
                                     const SizedBox(width: 10),
-                                    const Expanded(
-                                      child: Text(
-                                        'Want a quick reset? 90 seconds can help.',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w600),
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () async {
-                                        setState(() =>
-                                            _showResetNudge = false);
-                                        if (!mounted) return;
-                                        Navigator.of(context)
-                                            .pushNamed('/reset');
-                                      },
-                                      child: const Text('Start'),
-                                    ),
-                                    IconButton(
-                                      onPressed: () => setState(
-                                          () => _showResetNudge = false),
-                                      icon: const Icon(Icons.close,
-                                          size: 18),
-                                    ),
+                                    const Expanded(child: Text('Want a quick reset? 90 seconds can help.', style: TextStyle(fontWeight: FontWeight.w600))),
+                                    TextButton(onPressed: () async { setState(() => _showResetNudge = false); if (!mounted) return; Navigator.of(context).pushNamed('/reset'); }, child: const Text('Start')),
+                                    IconButton(onPressed: () => setState(() => _showResetNudge = false), icon: const Icon(Icons.close, size: 18)),
                                   ],
                                 ),
                               ),
                             ),
                           ),
-
                         SafeArea(
                           top: false,
                           child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              10, 6, 10,
-                              bottomInset > 0
-                                  ? 10
-                                  : (10 + safeBottom.clamp(0, 12)),
-                            ),
+                            padding: EdgeInsets.fromLTRB(10, 6, 10, bottomInset > 0 ? 10 : (10 + safeBottom.clamp(0, 12))),
                             child: Row(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Expanded(
                                   child: TextField(
-                                    controller: _controller,
-                                    focusNode: _composerFocus,
-                                    textInputAction:
-                                        TextInputAction.send,
+                                    controller: _controller, focusNode: _composerFocus,
+                                    textInputAction: TextInputAction.send,
                                     onSubmitted: (_) => _send(),
-                                    onTap: () => _scheduleScrollToBottom(
-                                        animated: false),
-                                    minLines: 1,
-                                    maxLines: 3,
+                                    onTap: () => _scheduleScrollToBottom(animated: false),
+                                    minLines: 1, maxLines: 3,
                                     decoration: InputDecoration(
-                                      hintText: 'Type a message…',
-                                      filled: true,
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 18,
-                                              vertical: 16),
+                                      hintText: 'Type a message…', filled: true, isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
                                       border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(18),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      fillColor: Theme.of(context)
-                                          .colorScheme
-                                          .surface,
+                                          borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+                                      fillColor: Theme.of(context).colorScheme.surface,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Padding(
-                                  padding: const EdgeInsets.only(
-                                      bottom: 2),
+                                  padding: const EdgeInsets.only(bottom: 2),
                                   child: IconButton(
-                                    onPressed:
-                                        _isSending ? null : _send,
-                                    icon: const Icon(
-                                        Icons.send_rounded),
-                                    tooltip: 'Send',
+                                    onPressed: _isSending ? null : _send,
+                                    icon: const Icon(Icons.send_rounded), tooltip: 'Send',
                                   ),
                                 ),
                               ],
@@ -1332,35 +879,17 @@ class _ChatScreenState extends State<ChatScreen> {
 class FadeAvatar extends StatefulWidget {
   final Widget child;
   const FadeAvatar({super.key, required this.child});
-  @override
-  State<FadeAvatar> createState() => _FadeAvatarState();
+  @override State<FadeAvatar> createState() => _FadeAvatarState();
 }
-
-class _FadeAvatarState extends State<FadeAvatar>
-    with SingleTickerProviderStateMixin {
+class _FadeAvatarState extends State<FadeAvatar> with SingleTickerProviderStateMixin {
   late AnimationController _c;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 350))
-      ..forward();
-  }
-  @override
-  void dispose() { _c.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) =>
-      FadeTransition(opacity: _c, child: widget.child);
+  @override void initState() { super.initState(); _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 350))..forward(); }
+  @override void dispose() { _c.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) => FadeTransition(opacity: _c, child: widget.child);
 }
 
 bool _shouldShowResetNudge(String text) {
-  final t    = text.toLowerCase();
-  const cues = [
-    'overwhelmed', 'cant cope', 'panic', 'panicking', 'anxious',
-    'anxiety', 'stressed', 'stress', 'too much', 'i cant breathe',
-    'spiral', 'overthinking', 'my chest', 'heart racing',
-    'i feel trapped',
-  ];
+  final t = text.toLowerCase();
+  const cues = ['overwhelmed','cant cope','panic','panicking','anxious','anxiety','stressed','stress','too much','i cant breathe','spiral','overthinking','my chest','heart racing','i feel trapped'];
   return cues.any(t.contains);
 }
