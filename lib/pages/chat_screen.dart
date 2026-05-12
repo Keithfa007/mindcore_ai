@@ -21,6 +21,7 @@ import 'package:mindcore_ai/pages/helpers/mood_suggester.dart';
 
 import 'package:mindcore_ai/services/live_voice_preferences.dart';
 import 'package:mindcore_ai/services/chat_stream_service.dart';
+import 'package:mindcore_ai/services/shared_chat_session.dart';
 import 'package:mindcore_ai/services/therapist_mode_service.dart';
 import 'package:mindcore_ai/services/user_memory_service.dart';
 
@@ -89,6 +90,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _currentConvId = id;
     _convs = await ChatPersistence.listConversations();
     final saved = await ChatPersistence.load(_currentConvId);
+    // Load shared session so AI has context of voice chat messages too
+    unawaited(SharedChatSession.instance.ensureLoaded());
     if (!mounted) return;
     setState(() {
       _messages..clear()..addAll(saved);
@@ -128,7 +131,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  // ── Conversation management ──────────────────────────────────────────────────
+  // ── Conversation management ────────────────────────────────────────────────
 
   Future<void> _newConversation() async {
     if (_isSending) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please wait for the reply to finish…'))); return; }
@@ -136,6 +139,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final meta  = await ChatPersistence.createConversation(id: newId, title: 'Chat ${_convs.length + 1}');
     _convs = await ChatPersistence.listConversations();
     await ChatPersistence.save(newId, const []);
+    // Switch shared session to new conversation
+    unawaited(SharedChatSession.instance.switchConversation(meta.id));
     if (!mounted) return;
     setState(() { _currentConvId = meta.id; _messages.clear(); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
     await _refreshQuickPrompts();
@@ -144,6 +149,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _switchConversation(String convId) async {
     final msgs = await ChatPersistence.load(convId);
     _convs = await ChatPersistence.listConversations();
+    // Switch shared session so voice also gets the new context
+    unawaited(SharedChatSession.instance.switchConversation(convId));
     if (!mounted) return;
     setState(() { _currentConvId = convId; _messages..clear()..addAll(msgs); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
     await _refreshQuickPrompts();
@@ -188,6 +195,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _convs = await ChatPersistence.listConversations();
     _currentConvId = _convs.isEmpty ? await ChatPersistence.ensureDefault() : _convs.first.id;
     final msgs = await ChatPersistence.load(_currentConvId);
+    unawaited(SharedChatSession.instance.switchConversation(_currentConvId));
     if (!mounted) return;
     setState(() { _messages..clear()..addAll(msgs); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
   }
@@ -195,12 +203,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _clearHistory() async {
     if (_currentConvId.isEmpty) return;
     await ChatPersistence.clear(_currentConvId);
+    unawaited(SharedChatSession.instance.switchConversation(_currentConvId));
     if (!mounted) return;
     setState(() { _messages.clear(); _pendingMood = null; _showMoodSuggestion = false; _turnsSinceMoodPrompt = 0; });
     await _refreshQuickPrompts();
   }
 
-  // ── Mood logging ────────────────────────────────────────────────────────────
+  // ── Mood logging ────────────────────────────────────────────────────────
 
   Future<void> _onLogMoodPressed() async {
     final picked = await _showMoodPicker();
@@ -397,6 +406,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final userMsg = ChatMessage(id: _id.v4(), role: 'user', text: text, timestamp: DateTime.now());
     if (_currentConvId != convIdAtSend) return;
     setState(() => _messages.add(userMsg));
+    // Add to shared session so voice chat sees this message
+    SharedChatSession.instance.addUser(text);
     await _refreshQuickPrompts();
     _controller.clear();
     _persist(convId: convIdAtSend);
@@ -411,9 +422,12 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() { _isSending = true; _isTyping = true; });
 
     try {
-      final recent  = _messages.length > 9 ? _messages.sublist(_messages.length - 9) : List<ChatMessage>.from(_messages);
-      final history = recent.map((m) => {'role': m.role, 'content': m.text}).toList();
-      if (history.isNotEmpty && history.last['role'] == 'user' && history.last['content'] == text) history.removeLast();
+      // Build history from SharedChatSession so voice messages are included.
+      // The current user message was just added; remove it as it’s passed
+      // separately via userInput to avoid duplication.
+      final history = SharedChatSession.instance.historyForAI;
+      if (history.isNotEmpty && history.last['role'] == 'user') history.removeLast();
+
       final asstId = _id.v4();
       if (_currentConvId != convIdAtSend) return;
       setState(() { _messages.add(ChatMessage(id: asstId, role: 'assistant', text: '', timestamp: DateTime.now())); });
@@ -439,15 +453,18 @@ class _ChatScreenState extends State<ChatScreen> {
             routedAgent: result.agent.key, supportModeLabel: result.supportModeLabel, suggestedActions: result.suggestedActions);
         setState(() {});
       }
+      // Add AI reply to shared session so voice chat sees it
+      SharedChatSession.instance.addAssistant(result.reply);
       await _refreshQuickPrompts();
       _persist(convId: convIdAtSend);
       _scheduleScrollToBottom(animated: false);
       if (mounted && _currentConvId == convIdAtSend) await _handleMoodFromConversation(userText: text, botText: result.reply);
 
-      // Memory save every 5 user messages
       _userMessageCount++;
       if (_userMessageCount % 5 == 0) {
-        unawaited(UserMemoryService.saveMemory(_messages.map((m) => {'role': m.role, 'content': m.text}).toList()));
+        unawaited(UserMemoryService.saveMemory(
+          SharedChatSession.instance.historyForAI,
+        ));
       }
     } catch (e) {
       if (mounted && _currentConvId == convIdAtSend) {
@@ -568,17 +585,12 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ── Message item ───────────────────────────────────────────────────────────────
-  // User: bubble on right with avatar
-  // AI:   clean full-width text, no card, no avatar, no action chips
-
   Widget _messageItem(ChatMessage m) {
     final isUser = m.role == 'user';
     final theme  = Theme.of(context);
     final ts     = m.timestamp ?? DateTime.now();
 
     if (isUser) {
-      // User bubble — unchanged
       final bubble = ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         child: InkWell(
@@ -623,7 +635,6 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    // AI message — clean full-width text, no card, no avatar, no action chips
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 48, 4),
       child: InkWell(
@@ -632,8 +643,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Mode badge
-            if ((m.supportModeLabel ?? '').isNotEmpty) ...[  
+            if ((m.supportModeLabel ?? '').isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -648,7 +658,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(height: 8),
             ],
-            // Reply text — full width, comfortable reading size
             Text(
               m.text,
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -658,7 +667,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            // Timestamp
             Text(
               _formatMsgTimestamp(ts),
               style: theme.textTheme.bodySmall?.copyWith(
@@ -666,7 +674,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   fontSize: 10),
             ),
             const SizedBox(height: 2),
-            // Subtle divider between messages
             Divider(height: 1, color: theme.colorScheme.onSurface.withValues(alpha: 0.06)),
           ],
         ),
@@ -680,16 +687,12 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Your guide is ready whenever you are.',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
+          Text('Your guide is ready whenever you are.',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          Text(
-            'Start typing to begin your check-in.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.60)),
-          ),
+          Text('Start typing to begin your check-in.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.60))),
         ],
       ),
     );
@@ -698,7 +701,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildTypingIndicator() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 48, 4),
-      child: Text('…', style: TextStyle(
+      child: Text('\u2026', style: TextStyle(
           color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.40),
           fontSize: 22)),
     );
