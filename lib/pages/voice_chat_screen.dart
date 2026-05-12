@@ -68,7 +68,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       _checkAccess();
       _preWarm();
     });
-    // Load shared history so voice sees chat messages and vice versa
     unawaited(SharedChatSession.instance.ensureLoaded());
   }
 
@@ -93,8 +92,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       await _chunkPlayer.setVolume(1.0);
       final key = Env.fishAudioKey;
       if (key.isEmpty) return;
-      final req = http.Request(
-          'POST', Uri.parse('https://api.fish.audio/v1/tts'));
+      final req = http.Request('POST', Uri.parse('https://api.fish.audio/v1/tts'));
       req.headers['Authorization'] = 'Bearer $key';
       req.headers['Content-Type']  = 'application/json';
       req.body = jsonEncode({
@@ -105,9 +103,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       });
       final client = http.Client();
       try {
-        final res = await client
-            .send(req)
-            .timeout(const Duration(seconds: 8));
+        final res = await client.send(req).timeout(const Duration(seconds: 8));
         await res.stream.drain<void>();
       } finally {
         client.close();
@@ -116,11 +112,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   // ── Streaming TTS synthesis ────────────────────────────────────────────
-  //
-  // client.send() returns as soon as HTTP headers arrive (~100ms).
-  // just_audio then streams the MP3 bytes from Fish Audio directly,
-  // so playback starts while the audio is still being synthesised.
-  // Old http.post() waited for the full body (~1-2s) first.
 
   Future<_TtsSource?> _synthesise(String text) async {
     try {
@@ -128,8 +119,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       final voiceId = LiveVoicePreferences.instance.activeVoiceId;
       if (key.isEmpty || text.trim().isEmpty) return null;
 
-      final req = http.Request(
-          'POST', Uri.parse('https://api.fish.audio/v1/tts'));
+      final req = http.Request('POST', Uri.parse('https://api.fish.audio/v1/tts'));
       req.headers['Authorization'] = 'Bearer $key';
       req.headers['Content-Type']  = 'application/json';
       req.body = jsonEncode({
@@ -143,16 +133,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       final client = http.Client();
       _activeClient = client;
 
-      final response = await client
-          .send(req)
-          .timeout(const Duration(seconds: 12));
-
+      final response = await client.send(req).timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
         client.close();
         _activeClient = null;
         return null;
       }
-
       return _TtsSource(
         stream: response.stream.map((b) => Uint8List.fromList(b)),
         contentLength: response.contentLength,
@@ -169,7 +155,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   void _enqueueChunk(String text) {
     if (_cancelled) return;
-    // Flip to speaking immediately on first sentence — no visible pause
     if (mounted && _state == _VoiceState.thinking) {
       setState(() => _state = _VoiceState.speaking);
     }
@@ -194,8 +179,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           final completer = Completer<void>();
           final sub = _chunkPlayer.playerStateStream.listen((s) {
             if (!completer.isCompleted) {
-              final done =
-                  s.processingState == ProcessingState.completed ||
+              final done = s.processingState == ProcessingState.completed ||
                   s.processingState == ProcessingState.idle;
               if (done) completer.complete();
             }
@@ -239,8 +223,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   Future<void> _initStt() async {
-    final ok = await _stt.initialize(
-        onError: (e) => debugPrint('STT error: $e'));
+    final ok = await _stt.initialize(onError: (e) => debugPrint('STT error: $e'));
     if (mounted) setState(() => _sttReady = ok);
   }
 
@@ -264,9 +247,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       listenOptions: SpeechListenOptions(
         listenMode: ListenMode.dictation,
         cancelOnError: false,
-        // Default pauseFor was ~3s which cut the user off mid-thought.
-        // 8s gives enough time to pause and continue naturally.
-        pauseFor: const Duration(seconds: 8),
+        // Note: pauseFor is not available in this version of speech_to_text.
+        // The STT stops when the user releases the button via _onRelease().
         listenFor: const Duration(minutes: 3),
       ),
     );
@@ -294,9 +276,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   // ── AI call ────────────────────────────────────────────────────────────────
 
   Future<void> _sendToAI(String userText) async {
-    // Write to shared session so chat screen sees this voice message
     SharedChatSession.instance.addUser(userText);
-
     _cancelled = false;
     _synthesisQueue.clear();
     _chunkPlaying = false;
@@ -306,9 +286,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     final accumulated = StringBuffer();
 
     try {
-      // Pass full shared history so AI has context of both chat + voice
       final history = SharedChatSession.instance.historyForAI;
-      // Remove current user message — it’s passed separately as userInput
       if (history.isNotEmpty && history.last['role'] == 'user') history.removeLast();
 
       final result = await ChatStreamService.streamOrchestratedReply(
@@ -344,14 +322,11 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         },
       );
 
-      // Write AI reply to shared session so chat screen sees it
       SharedChatSession.instance.addAssistant(result.reply);
 
       _voiceMessageCount++;
       if (_voiceMessageCount % 5 == 0) {
-        unawaited(UserMemoryService.saveMemory(
-          SharedChatSession.instance.historyForAI,
-        ));
+        unawaited(UserMemoryService.saveMemory(SharedChatSession.instance.historyForAI));
       }
 
       _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
@@ -412,10 +387,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
             valueListenable: UsageService.instance.snapshot,
             builder: (_, __, ___) => Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Text(_minutesLabel,
-                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
-              ),
+              child: Center(child: Text(_minutesLabel, style: const TextStyle(color: Colors.white38, fontSize: 12))),
             ),
           ),
         ],
@@ -444,88 +416,67 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     final color = _stateColor();
     return AnimatedBuilder(
       animation: Listenable.merge([_pulseController, _waveController]),
-      builder: (_, __) {
-        return SizedBox(
-          width: 220, height: 220,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              if (_state == _VoiceState.listening ||
-                  _state == _VoiceState.speaking)
-                ..._buildWaveRings(color),
-              if (_state == _VoiceState.idle)
-                Transform.scale(
-                  scale: _pulseAnim.value,
-                  child: Container(
-                    width: 160, height: 160,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: color.withValues(alpha: 0.25), width: 1.5),
-                    ),
-                  ),
-                ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 400),
-                width:  _state == _VoiceState.listening ? 120 : 100,
-                height: _state == _VoiceState.listening ? 120 : 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color:  color.withValues(alpha: 0.15),
-                  border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                        color: color.withValues(alpha: 0.3),
-                        blurRadius: 40, spreadRadius: 8)
-                  ],
-                ),
-                child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _buildOrbIcon(),
+      builder: (_, __) => SizedBox(
+        width: 220, height: 220,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (_state == _VoiceState.listening || _state == _VoiceState.speaking)
+              ..._buildWaveRings(color),
+            if (_state == _VoiceState.idle)
+              Transform.scale(
+                scale: _pulseAnim.value,
+                child: Container(
+                  width: 160, height: 160,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
                   ),
                 ),
               ),
-            ],
-          ),
-        );
-      },
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              width:  _state == _VoiceState.listening ? 120 : 100,
+              height: _state == _VoiceState.listening ? 120 : 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color:  color.withValues(alpha: 0.15),
+                border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
+                boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 8)],
+              ),
+              child: Center(child: AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: _buildOrbIcon())),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  List<Widget> _buildWaveRings(Color color) {
-    return List.generate(3, (i) {
-      final scale = 1.0 + (i * 0.18) + (_waveController.value * 0.12 * (i + 1));
-      final opacity = (0.18 - i * 0.05).clamp(0.0, 1.0);
-      return Transform.scale(
-        scale: scale,
-        child: Container(
-          width: 100, height: 100,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-                color: color.withValues(alpha: opacity), width: 1.5),
-          ),
+  List<Widget> _buildWaveRings(Color color) => List.generate(3, (i) {
+    final scale   = 1.0 + (i * 0.18) + (_waveController.value * 0.12 * (i + 1));
+    final opacity = (0.18 - i * 0.05).clamp(0.0, 1.0);
+    return Transform.scale(
+      scale: scale,
+      child: Container(
+        width: 100, height: 100,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: color.withValues(alpha: opacity), width: 1.5),
         ),
-      );
-    });
-  }
+      ),
+    );
+  });
 
   Widget _buildOrbIcon() {
     switch (_state) {
       case _VoiceState.idle:
-        return ClipOval(child: Image.asset('assets/images/logo512.png',
-            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('idle')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('idle')));
       case _VoiceState.listening:
-        return ClipOval(child: Image.asset('assets/images/logo512.png',
-            width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
       case _VoiceState.thinking:
-        return const SizedBox(
-            key: ValueKey('thinking'), width: 28, height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
+        return const SizedBox(key: ValueKey('thinking'), width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
       case _VoiceState.speaking:
-        return ClipOval(child: Image.asset('assets/images/logo512.png',
-            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
     }
   }
 
@@ -548,10 +499,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      child: Text(label,
-          key: ValueKey(label),
-          style: const TextStyle(
-              color: Colors.white38, fontSize: 15, letterSpacing: 0.5)),
+      child: Text(label, key: ValueKey(label),
+          style: const TextStyle(color: Colors.white38, fontSize: 15, letterSpacing: 0.5)),
     );
   }
 
@@ -596,20 +545,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 }
 
-// ── TTS source ────────────────────────────────────────────────────────────────
-
 class _TtsSource {
   final Stream<Uint8List> stream;
   final int?        contentLength;
   final http.Client client;
-  const _TtsSource({
-    required this.stream,
-    required this.client,
-    this.contentLength,
-  });
+  const _TtsSource({required this.stream, required this.client, this.contentLength});
 }
-
-// ── Streaming audio source ─────────────────────────────────────────────────────
 
 class _StreamingAudioSource extends StreamAudioSource {
   final Stream<Uint8List> _stream;
