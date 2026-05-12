@@ -2,7 +2,7 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -19,6 +19,7 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  static const _settingsChannel = MethodChannel('com.mindcoreai.app/settings');
   bool _initialized = false;
   GlobalKey<NavigatorState>? _navigatorKey;
 
@@ -45,9 +46,11 @@ class NotificationService {
   static const int _blogNotificationId  = 5001;
   static const int _weeklySummaryId     = 6001;
 
-  static const String _kLastScheduledSignature = 'recommendation_last_schedule_signature';
-  static const String _kCheckInEnabled         = 'checkin_enabled';
-  static const String _kCheckInFrequency       = 'checkin_frequency';
+  static const String _kLastScheduledSignature    = 'recommendation_last_schedule_signature';
+  static const String _kCheckInEnabled            = 'checkin_enabled';
+  static const String _kCheckInFrequency          = 'checkin_frequency';
+  static const String _kNeedsReschedule           = 'needs_notification_reschedule';
+  static const String _kBatteryPromptShown        = 'battery_opt_prompt_shown';
 
   static const _checkInMessages = [
     _CheckInMsg('How are you doing? \ud83d\udc99', 'Take a moment to check in with yourself.'),
@@ -62,7 +65,6 @@ class NotificationService {
     _CheckInMsg('Just here if you need us \ud83c\udf43', 'No pressure \u2014 just checking in.'),
   ];
 
-  // Fallback Sunday messages used when no real stat is available
   static const _weeklySummaryMessages = [
     _CheckInMsg('Your week, reflected back \ud83c\udf1f', 'You showed up this week. Open MindCore AI to see how far you have come.'),
     _CheckInMsg('Sunday check-in \ud83c\udf19', 'Every small step this week counted. Take a moment to acknowledge that.'),
@@ -103,11 +105,19 @@ class NotificationService {
 
     _initialized = true;
 
-    final prefs          = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
+
+    // If BootReceiver flagged a reboot, force-reschedule everything
+    final needsReschedule = prefs.getBool(_kNeedsReschedule) ?? false;
+    if (needsReschedule) {
+      await prefs.remove(_kNeedsReschedule);
+      await prefs.remove(_kLastScheduledSignature); // force daily to reschedule
+    }
+
     final checkInEnabled = prefs.getBool(_kCheckInEnabled)  ?? true;
     final checkInFreq    = prefs.getInt(_kCheckInFrequency) ?? 2;
     if (checkInEnabled) await scheduleCheckInNotifications(timesPerDay: checkInFreq);
-    await scheduleWeeklySummary(); // fallback — home screen will reschedule with real stat
+    await scheduleWeeklySummary();
   }
 
   void _handleNotificationResponse(NotificationResponse response) {
@@ -121,6 +131,73 @@ class NotificationService {
       _navigatorKey?.currentState?.pushNamed(routeName, arguments: arguments);
     } catch (_) {}
   }
+
+  // ── Battery optimisation ─────────────────────────────────────────────────────
+
+  /// Returns true if the app is already exempted from battery optimisation.
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final result = await _settingsChannel
+          .invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Shows an explanation dialog then opens Android’s battery optimisation
+  /// settings so the user can exempt MindCore AI.
+  /// Call this from the Settings screen.
+  Future<void> promptBatteryOptimizationExemption(BuildContext context) async {
+    if (!Platform.isAndroid) return;
+    final already = await isIgnoringBatteryOptimizations();
+    if (already) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('\u2705 Background notifications are already enabled')),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Allow background notifications'),
+        content: const Text(
+          'To receive check-in reminders when the app is closed, tap Allow on the next screen.\n\n'
+          'Select \u201cUnrestricted\u201d or \u201cDon\u2019t optimise\u201d for battery usage.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),  child: const Text('Allow')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    try {
+      await _settingsChannel.invokeMethod('openBatterySettings');
+    } catch (_) {}
+    // Remember we’ve shown it so we don’t nag repeatedly
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kBatteryPromptShown, true);
+  }
+
+  /// Show once on first app open if not already exempted.
+  Future<void> promptBatteryOptimizationIfNeeded(BuildContext context) async {
+    if (!Platform.isAndroid) return;
+    final prefs   = await SharedPreferences.getInstance();
+    final shown   = prefs.getBool(_kBatteryPromptShown) ?? false;
+    if (shown) return;
+    final already = await isIgnoringBatteryOptimizations();
+    if (already) { await prefs.setBool(_kBatteryPromptShown, true); return; }
+    if (!context.mounted) return;
+    // Small delay so it doesn’t pop immediately on first launch
+    await Future.delayed(const Duration(seconds: 3));
+    if (!context.mounted) return;
+    await promptBatteryOptimizationExemption(context);
+  }
+
+  // ── Immediate / blog notifications ──────────────────────────────────────────
 
   Future<void> showImmediateNotification({required String title, required String body}) async {
     const details = NotificationDetails(
@@ -139,6 +216,8 @@ class NotificationService {
     );
     await _plugin.show(_blogNotificationId, 'New article \ud83d\udcd6', postTitle, details, payload: payload);
   }
+
+  // ── Daily recommendation ───────────────────────────────────────────────────
 
   Future<void> scheduleDailyRecommendationNotification({
     required String uniqueKey,
@@ -164,11 +243,6 @@ class NotificationService {
       android: AndroidNotificationDetails(_dailyChannelId, _dailyChannelName,
           channelDescription: _dailyChannelDesc, importance: Importance.max, priority: Priority.high),
     );
-
-    if (Platform.isAndroid && openSettingsIfNeeded) {
-      await _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestExactAlarmsPermission();
-    }
 
     await _plugin.cancel(_dailyNotificationId);
     Future<void> doSchedule(AndroidScheduleMode mode) => _plugin.zonedSchedule(
@@ -205,6 +279,8 @@ class NotificationService {
     await _plugin.cancel(_dailyNotificationId);
   }
 
+  // ── Check-in notifications ───────────────────────────────────────────────────
+
   Future<void> scheduleCheckInNotifications({required int timesPerDay}) async {
     await cancelCheckInNotifications();
     final dayOfYear = DateTime.now().difference(DateTime(DateTime.now().year)).inDays;
@@ -228,12 +304,23 @@ class NotificationService {
       android: AndroidNotificationDetails(_checkInChannelId, _checkInChannelName,
           channelDescription: _checkInChannelDesc, importance: Importance.high, priority: Priority.high),
     );
-    try {
-      await _plugin.zonedSchedule(id, msg.title, msg.body, scheduled, details,
-          payload: payload,
-          matchDateTimeComponents: DateTimeComponents.time,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
-    } catch (_) {}
+    // Try exact first — much more reliable than inexact in Doze mode
+    Future<void> doSchedule(AndroidScheduleMode mode) => _plugin.zonedSchedule(
+      id, msg.title, msg.body, scheduled, details,
+      payload: payload,
+      matchDateTimeComponents: DateTimeComponents.time,
+      androidScheduleMode: mode,
+    );
+    try { await doSchedule(AndroidScheduleMode.exactAllowWhileIdle); }
+    on PlatformException catch (e) {
+      if (e.code == 'exact_alarms_not_permitted') {
+        try { await doSchedule(AndroidScheduleMode.inexactAllowWhileIdle); } catch (_) {}
+      } else {
+        try { await doSchedule(AndroidScheduleMode.inexactAllowWhileIdle); } catch (_) {}
+      }
+    } catch (_) {
+      try { await doSchedule(AndroidScheduleMode.inexactAllowWhileIdle); } catch (_) {}
+    }
   }
 
   Future<void> cancelCheckInNotifications() async {
@@ -244,9 +331,8 @@ class NotificationService {
     await prefs.setBool(_kCheckInEnabled, false);
   }
 
-  // ── Weekly Sunday summary ─────────────────────────────────────────────────────────────
+  // ── Weekly Sunday summary ───────────────────────────────────────────────────
 
-  /// Generic fallback — used at app init when mood data hasn't loaded yet.
   Future<void> scheduleWeeklySummary() async {
     try {
       final weekNumber = DateTime.now().difference(DateTime(DateTime.now().year, 1, 1)).inDays ~/ 7;
@@ -255,8 +341,6 @@ class NotificationService {
     } catch (_) {}
   }
 
-  /// Called by home screen with the real mood stat line.
-  /// e.g. "This week: mood ⬆️ 6.4 — 5 check-ins"
   Future<void> scheduleWeeklySummaryWithStat(String statLine) async {
     try {
       final title = 'Your week, reflected back \ud83c\udf1f';
