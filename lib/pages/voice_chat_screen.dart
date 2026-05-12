@@ -39,12 +39,11 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   int         _voiceMessageCount = 0;
 
   // ── TTS pipeline ─────────────────────────────────────────────────────────
-  final TtsChunkCoordinator        _coordinator    = TtsChunkCoordinator();
-  final AudioPlayer                _chunkPlayer    = AudioPlayer();
-  final Queue<Future<_TtsSource?>> _synthesisQueue = Queue();
-  bool         _chunkPlaying = false;
-  bool         _cancelled    = false;
-  http.Client? _activeClient;
+  final TtsChunkCoordinator          _coordinator    = TtsChunkCoordinator();
+  final AudioPlayer                  _chunkPlayer    = AudioPlayer();
+  final Queue<Future<Uint8List?>>    _synthesisQueue = Queue();
+  bool _chunkPlaying = false;
+  bool _cancelled    = false;
 
   // ── Animations ───────────────────────────────────────────────────────────
   late AnimationController _pulseController;
@@ -78,13 +77,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _voiceTimer?.cancel();
     _coordinator.cancel();
     _chunkPlayer.dispose();
-    _activeClient?.close();
     UsageService.instance.flushVoiceBuffer();
     OpenAiTtsService.instance.stop();
     super.dispose();
   }
 
-  // ── Pre-warm ───────────────────────────────────────────────────────────
+  // ── Pre-warm Fish Audio connection ───────────────────────────────────────
 
   Future<void> _preWarm() async {
     try {
@@ -92,58 +90,49 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       await _chunkPlayer.setVolume(1.0);
       final key = Env.fishAudioKey;
       if (key.isEmpty) return;
-      final req = http.Request('POST', Uri.parse('https://api.fish.audio/v1/tts'));
-      req.headers['Authorization'] = 'Bearer $key';
-      req.headers['Content-Type']  = 'application/json';
-      req.body = jsonEncode({
-        'text': 'hi',
-        'reference_id': LiveVoicePreferences.instance.activeVoiceId,
-        'format': 'mp3',
-        'latency': 'balanced',
-      });
-      final client = http.Client();
-      try {
-        final res = await client.send(req).timeout(const Duration(seconds: 8));
-        await res.stream.drain<void>();
-      } finally {
-        client.close();
-      }
+      await http.post(
+        Uri.parse('https://api.fish.audio/v1/tts'),
+        headers: {
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'text': 'hi',
+          'reference_id': LiveVoicePreferences.instance.activeVoiceId,
+          'format': 'mp3',
+          'latency': 'balanced',
+        }),
+      ).timeout(const Duration(seconds: 8));
     } catch (_) {}
   }
 
-  // ── Streaming TTS synthesis ────────────────────────────────────────────
+  // ── TTS synthesis ─────────────────────────────────────────────────────────
+  //
+  // Collects all bytes before playing. Proven reliable with just_audio.
+  // Streaming (client.send) was tried but caused silent failures due to
+  // just_audio not handling unknown-length streams correctly.
 
-  Future<_TtsSource?> _synthesise(String text) async {
+  Future<Uint8List?> _synthesise(String text) async {
     try {
       final key     = Env.fishAudioKey;
       final voiceId = LiveVoicePreferences.instance.activeVoiceId;
       if (key.isEmpty || text.trim().isEmpty) return null;
-      final req = http.Request('POST', Uri.parse('https://api.fish.audio/v1/tts'));
-      req.headers['Authorization'] = 'Bearer $key';
-      req.headers['Content-Type']  = 'application/json';
-      req.body = jsonEncode({
-        'text': text.trim(),
-        'reference_id': voiceId,
-        'format': 'mp3',
-        'latency': 'balanced',
-      });
-      _activeClient?.close();
-      final client = http.Client();
-      _activeClient = client;
-      final response = await client.send(req).timeout(const Duration(seconds: 12));
-      if (response.statusCode != 200) {
-        client.close();
-        _activeClient = null;
-        return null;
-      }
-      return _TtsSource(
-        stream: response.stream.map((b) => Uint8List.fromList(b)),
-        contentLength: response.contentLength,
-        client: client,
-      );
+      final res = await http.post(
+        Uri.parse('https://api.fish.audio/v1/tts'),
+        headers: {
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'text': text.trim(),
+          'reference_id': voiceId,
+          'format': 'mp3',
+          'latency': 'balanced',
+        }),
+      ).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return null;
+      return Uint8List.fromList(res.bodyBytes);
     } catch (_) {
-      _activeClient?.close();
-      _activeClient = null;
       return null;
     }
   }
@@ -152,6 +141,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   void _enqueueChunk(String text) {
     if (_cancelled) return;
+    // Flip to speaking immediately on first sentence
     if (mounted && _state == _VoiceState.thinking) {
       setState(() => _state = _VoiceState.speaking);
     }
@@ -164,14 +154,11 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _chunkPlaying = true;
     try {
       while (_synthesisQueue.isNotEmpty && !_cancelled && mounted) {
-        final source = await _synthesisQueue.removeFirst();
-        if (source == null || _cancelled || !mounted) {
-          source?.client.close();
-          continue;
-        }
+        final bytes = await _synthesisQueue.removeFirst();
+        if (bytes == null || _cancelled || !mounted) continue;
         try {
           await _chunkPlayer.setAudioSource(
-            _StreamingAudioSource(source.stream, source.contentLength),
+            _BytesSource(bytes, contentType: 'audio/mpeg'),
           );
           final completer = Completer<void>();
           final sub = _chunkPlayer.playerStateStream.listen((s) {
@@ -187,7 +174,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
               .catchError((_) {});
           await sub.cancel();
         } catch (_) {}
-        source.client.close();
       }
     } finally {
       _chunkPlaying = false;
@@ -198,8 +184,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   void _cancelAudio() {
     _cancelled = true;
     _coordinator.cancel();
-    _activeClient?.close();
-    _activeClient = null;
     _synthesisQueue.clear();
     _chunkPlayer.stop();
     _chunkPlaying = false;
@@ -237,9 +221,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     OpenAiTtsService.instance.stop();
     setState(() => _state = _VoiceState.listening);
     _startVoiceTimer();
-    // SpeechListenOptions v2.3: only listenMode and cancelOnError are supported.
-    // pauseFor / listenFor were added in later versions.
-    // STT stops when the user releases the button via _onRelease().
     await _stt.listen(
       onResult: (_) {},
       listenOptions: SpeechListenOptions(
@@ -321,7 +302,9 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
       _voiceMessageCount++;
       if (_voiceMessageCount % 5 == 0) {
-        unawaited(UserMemoryService.saveMemory(SharedChatSession.instance.historyForAI));
+        unawaited(UserMemoryService.saveMemory(
+          SharedChatSession.instance.historyForAI,
+        ));
       }
 
       _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
@@ -552,26 +535,24 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 }
 
-class _TtsSource {
-  final Stream<Uint8List> stream;
-  final int?        contentLength;
-  final http.Client client;
-  const _TtsSource({required this.stream, required this.client, this.contentLength});
-}
+// ── Bytes audio source ──────────────────────────────────────────────────────────
 
-class _StreamingAudioSource extends StreamAudioSource {
-  final Stream<Uint8List> _stream;
-  final int?              _contentLength;
-  _StreamingAudioSource(this._stream, this._contentLength);
+class _BytesSource extends StreamAudioSource {
+  final Uint8List _bytes;
+  final String    _contentType;
+  _BytesSource(this._bytes, {required String contentType})
+      : _contentType = contentType;
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
+    final s = start ?? 0;
+    final e = end   ?? _bytes.length;
     return StreamAudioResponse(
-      sourceLength:  _contentLength,
-      contentLength: _contentLength,
-      offset: 0,
-      stream: _stream,
-      contentType: 'audio/mpeg',
+      sourceLength:  _bytes.length,
+      contentLength: e - s,
+      offset: s,
+      stream: Stream.value(_bytes.sublist(s, e)),
+      contentType: _contentType,
     );
   }
 }
