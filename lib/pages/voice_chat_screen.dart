@@ -33,12 +33,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   final _stt  = SpeechToText();
   final _uuid = const Uuid();
 
-  _VoiceState _state          = _VoiceState.idle;
-  bool        _sttReady       = false;
-  String      _moodLabel      = 'calm';
+  _VoiceState _state             = _VoiceState.idle;
+  bool        _sttReady          = false;
+  String      _moodLabel         = 'calm';
   int         _voiceMessageCount = 0;
 
-  // ── Sentence-streaming TTS pipeline ──────────────────────────────────────
+  // ── TTS pipeline ─────────────────────────────────────────────────────────
   final TtsChunkCoordinator        _coordinator    = TtsChunkCoordinator();
   final AudioPlayer                _chunkPlayer    = AudioPlayer();
   final Queue<Future<_TtsSource?>> _synthesisQueue = Queue();
@@ -118,7 +118,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       final key     = Env.fishAudioKey;
       final voiceId = LiveVoicePreferences.instance.activeVoiceId;
       if (key.isEmpty || text.trim().isEmpty) return null;
-
       final req = http.Request('POST', Uri.parse('https://api.fish.audio/v1/tts'));
       req.headers['Authorization'] = 'Bearer $key';
       req.headers['Content-Type']  = 'application/json';
@@ -128,11 +127,9 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         'format': 'mp3',
         'latency': 'balanced',
       });
-
       _activeClient?.close();
       final client = http.Client();
       _activeClient = client;
-
       final response = await client.send(req).timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
         client.close();
@@ -194,9 +191,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       }
     } finally {
       _chunkPlaying = false;
-      if (mounted && !_cancelled) {
-        setState(() => _state = _VoiceState.idle);
-      }
+      if (mounted && !_cancelled) setState(() => _state = _VoiceState.idle);
     }
   }
 
@@ -242,14 +237,14 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     OpenAiTtsService.instance.stop();
     setState(() => _state = _VoiceState.listening);
     _startVoiceTimer();
+    // SpeechListenOptions v2.3: only listenMode and cancelOnError are supported.
+    // pauseFor / listenFor were added in later versions.
+    // STT stops when the user releases the button via _onRelease().
     await _stt.listen(
       onResult: (_) {},
       listenOptions: SpeechListenOptions(
         listenMode: ListenMode.dictation,
         cancelOnError: false,
-        // Note: pauseFor is not available in this version of speech_to_text.
-        // The STT stops when the user releases the button via _onRelease().
-        listenFor: const Duration(minutes: 3),
       ),
     );
   }
@@ -387,7 +382,10 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
             valueListenable: UsageService.instance.snapshot,
             builder: (_, __, ___) => Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Center(child: Text(_minutesLabel, style: const TextStyle(color: Colors.white38, fontSize: 12))),
+              child: Center(
+                child: Text(_minutesLabel,
+                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
             ),
           ),
         ],
@@ -444,7 +442,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                 border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
                 boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 8)],
               ),
-              child: Center(child: AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: _buildOrbIcon())),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _buildOrbIcon(),
+                ),
+              ),
             ),
           ],
         ),
@@ -470,13 +473,17 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   Widget _buildOrbIcon() {
     switch (_state) {
       case _VoiceState.idle:
-        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('idle')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png',
+            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('idle')));
       case _VoiceState.listening:
-        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png',
+            width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
       case _VoiceState.thinking:
-        return const SizedBox(key: ValueKey('thinking'), width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
+        return const SizedBox(key: ValueKey('thinking'), width: 28, height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
       case _VoiceState.speaking:
-        return ClipOval(child: Image.asset('assets/images/logo512.png', width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
+        return ClipOval(child: Image.asset('assets/images/logo512.png',
+            width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
     }
   }
 
