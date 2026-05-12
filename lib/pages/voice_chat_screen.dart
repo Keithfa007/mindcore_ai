@@ -82,7 +82,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     super.dispose();
   }
 
-  // ── Pre-warm Fish Audio connection ───────────────────────────────────────
+  // ── Pre-warm ───────────────────────────────────────────────────────────
 
   Future<void> _preWarm() async {
     try {
@@ -107,10 +107,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   }
 
   // ── TTS synthesis ─────────────────────────────────────────────────────────
-  //
-  // Collects all bytes before playing. Proven reliable with just_audio.
-  // Streaming (client.send) was tried but caused silent failures due to
-  // just_audio not handling unknown-length streams correctly.
 
   Future<Uint8List?> _synthesise(String text) async {
     try {
@@ -141,7 +137,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   void _enqueueChunk(String text) {
     if (_cancelled) return;
-    // Flip to speaking immediately on first sentence
     if (mounted && _state == _VoiceState.thinking) {
       setState(() => _state = _VoiceState.speaking);
     }
@@ -221,8 +216,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     OpenAiTtsService.instance.stop();
     setState(() => _state = _VoiceState.listening);
     _startVoiceTimer();
+    // pauseFor and listenFor are direct parameters on listen(), not on
+    // SpeechListenOptions. pauseFor=8s gives time to pause mid-sentence.
     await _stt.listen(
       onResult: (_) {},
+      pauseFor: const Duration(seconds: 8),
+      listenFor: const Duration(minutes: 3),
       listenOptions: SpeechListenOptions(
         listenMode: ListenMode.dictation,
         cancelOnError: false,
@@ -534,8 +533,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     );
   }
 }
-
-// ── Bytes audio source ──────────────────────────────────────────────────────────
 
 class _BytesSource extends StreamAudioSource {
   final Uint8List _bytes;
