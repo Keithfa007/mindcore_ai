@@ -1,5 +1,3 @@
-package com.mindcoreai.app
-
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity : FlutterActivity()
+// This file is intentionally left empty.
+// MainActivity is defined in com/mindcoreai/app/MainActivity.kt
+package com.mindcore.ai
