@@ -1,0 +1,70 @@
+name: Generate Product Hunt Video
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate HeyGen video
+        id: generate
+        env:
+          HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+        run: |
+          SCRIPT="My name is K.F. I spent years working long hours, coming home drained — and having nobody to really talk to. Not because I didn't have people around me. But because opening up felt impossible. Like there was something wrong with needing help. I built MindCore AI because I know that feeling — and I know I'm not the only one. MindCore AI is a private AI mental health companion. You hold a button and speak. It listens. It responds in a calm human voice. It remembers what you've shared. It tracks how you feel over time. No appointments. No judgment. No waiting rooms. It's there at three in the morning when everything feels heavy. It's there on your lunch break when you need five minutes to breathe. I built this because nobody should feel like they have no one to turn to. MindCore AI is live on Android now. Come and try it."
+
+          RESPONSE=$(curl -s -X POST "https://api.heygen.com/v2/video/generate" \
+            -H "X-Api-Key: $HEYGEN_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"video_inputs\": [{
+                \"character\": {
+                  \"type\": \"avatar\",
+                  \"avatar_id\": \"7f98b80999e74f2dbd15b7585c972ca1\",
+                  \"avatar_style\": \"normal\"
+                },
+                \"voice\": {
+                  \"type\": \"text\",
+                  \"input_text\": \"$SCRIPT\",
+                  \"voice_id\": \"6be73833ef9a4eb0aeee399b8fe9d62b\"
+                }
+              }],
+              \"dimension\": { \"width\": 1280, \"height\": 720 }
+            }")
+
+          echo "Generate response: $RESPONSE"
+          VIDEO_ID=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['video_id'])")
+          echo "VIDEO_ID=$VIDEO_ID" >> $GITHUB_ENV
+          echo "Video ID: $VIDEO_ID"
+
+      - name: Poll until complete
+        env:
+          HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+        run: |
+          VIDEO_ID=${{ env.VIDEO_ID }}
+          for i in $(seq 1 40); do
+            sleep 30
+            STATUS_RESP=$(curl -s "https://api.heygen.com/v1/video_status.get?video_id=$VIDEO_ID" \
+              -H "X-Api-Key: $HEYGEN_API_KEY")
+            STATUS=$(echo $STATUS_RESP | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])")
+            echo "Attempt $i — Status: $STATUS"
+            if [ "$STATUS" = "completed" ]; then
+              VIDEO_URL=$(echo $STATUS_RESP | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['video_url'])")
+              echo "\n✅ Video ready: $VIDEO_URL"
+              echo "VIDEO_URL=$VIDEO_URL" >> $GITHUB_ENV
+              break
+            elif [ "$STATUS" = "failed" ]; then
+              echo "❌ Video generation failed"
+              echo $STATUS_RESP
+              exit 1
+            fi
+          done
+
+      - name: Print download URL
+        run: |
+          echo "================================================"
+          echo "✅ Product Hunt video is ready — download here:"
+          echo ${{ env.VIDEO_URL }}
+          echo "================================================"
