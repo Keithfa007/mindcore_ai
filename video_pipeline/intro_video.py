@@ -13,7 +13,7 @@ Output:  video_pipeline/output/mindcore_intro.mp4
 Script format: INTERVIEW RESPONSE
   Written as if the founder was just asked "Why did you build MindCore AI?"
   Conversational, mid-answer tone. No prepared speech feel.
-  No name. No free trial.
+  No name. No free trial. Inclusive -- men and women.
 
 Subtitles:  Whisper (tiny, CPU) -> ASS word-by-word captions burned in.
 Crop:       cropdetect limit=200 to strip white letterbox padding.
@@ -60,79 +60,66 @@ SUBTITLE_MARGIN_V  = 500
 SUBTITLE_CHUNK     = 3
 
 # ---------------------------------------------------------------------------
-# Platform metadata -- fixed for this intro video, fully populated
-#
-# TikTok/Instagram: hook-first caption, 10 hashtags, under 2200 chars
-# Facebook:        title + full multi-sentence description + hashtags
-# YouTube:         keyword-optimised title + rich description + link + tags
+# Platform metadata -- fully populated, inclusive language
 # ---------------------------------------------------------------------------
 
-# TikTok + Instagram (shared field via Upload-Post "title")
 TIKTOK_CAPTION = (
-    "Why do millions of men suffer in silence? "
+    "Why do millions of people suffer in silence? "
     "I built MindCore AI because I was one of them. "
-    "A private AI companion built specifically for men — "
-    "available 24/7, no judgment, for anxiety, stress, recovery, "
-    "or whatever you're carrying alone. "
+    "A private AI companion available 24/7 -- no judgment, "
+    "for anxiety, stress, recovery, or whatever you're carrying alone. "
     "Find us on Google Play. "
-    "#mindcoreai #mensmentalhealth #mentalhealthformen "
+    "#mindcoreai #mensmentalhealth #womensmentalhealth #mentalhealthformen "
     "#anxiety #depression #recovery #sobriety "
-    "#AImentalhealth #mentalwellness #emotionalhealth"
+    "#AImentalhealth #mentalwellness"
 )
 
-# Facebook title
 FACEBOOK_TITLE = (
-    "Why I Built MindCore AI — A Private AI Companion for Men Who Carry It Alone"
+    "Why I Built MindCore AI — A Private AI Companion for Anyone Who Carries It Alone"
 )
 
-# Facebook description
 FACEBOOK_DESCRIPTION = (
-    "Most men would rather suffer in silence than admit they're struggling. "
+    "Most people would rather suffer in silence than admit they're struggling. "
     "I know, because that was me.\n\n"
-    "MindCore AI is a private AI mental wellness companion built specifically for men — "
+    "MindCore AI is a private AI mental wellness companion — "
     "available 24/7, no waiting lists, no judgment. "
     "Whether you're dealing with anxiety, stress, recovery, or just something you can't shake, "
     "MindCore AI is there for an honest conversation whenever you need one.\n\n"
     "Find us on Google Play: https://mindcoreai.eu\n\n"
     "You don't have to keep carrying this alone.\n\n"
-    "#mindcoreai #mensmentalhealth #mentalhealthformen "
+    "#mindcoreai #mensmentalhealth #womensmentalhealth #mentalhealthformen "
     "#anxiety #recovery #sobriety #AImentalhealth #mentalwellness"
 )
 
-# YouTube title -- keyword-optimised, under 100 chars
-YOUTUBE_TITLE = "Why I Built MindCore AI | AI Mental Health Companion for Men"
+YOUTUBE_TITLE = "Why I Built MindCore AI | AI Mental Health Companion"
 
-# YouTube description -- rich, multi-paragraph, includes link
 YOUTUBE_DESCRIPTION = (
-    "Most men would rather suffer in silence than admit they're struggling. "
+    "Most people would rather suffer in silence than admit they're struggling. "
     "I built MindCore AI because I was one of them — and nothing like it existed.\n\n"
-    "MindCore AI is a private AI mental wellness companion built specifically for men. "
+    "MindCore AI is a private AI mental wellness companion. "
     "Available any time, day or night — for anxiety, stress, recovery, "
     "or whatever you're carrying that you can't say out loud. "
     "No therapy. No hotline. Just an honest conversation, whenever you need one.\n\n"
-    "It's not for everyone. It's for the man at 3am with nobody to call.\n\n"
+    "It's not for everyone. It's for the person at 3am with nobody to call.\n\n"
     "📱 Find MindCore AI on Google Play:\n"
     "https://mindcoreai.eu\n\n"
-    "#mindcoreai #mensmentalhealth #mentalhealthformen "
+    "#mindcoreai #mensmentalhealth #womensmentalhealth #mentalhealthformen "
     "#AImentalhealth #anxiety #depression #recovery #sobriety "
     "#emotionalhealth #AIcompanion #mentalwellness #Shorts"
 )
 
-# YouTube tags -- no # symbols, comma-separated, 12 tags
 YOUTUBE_TAGS = (
-    "MindCore AI, men mental health, AI mental health app, mental health for men, "
-    "AI mental health coach, anxiety help for men, men depression, "
-    "recovery app, sobriety support, emotional health men, "
-    "AI companion men, mental wellness app"
+    "MindCore AI, mental health app, AI mental health, mental health for men, "
+    "mental health for women, AI mental health coach, anxiety help, "
+    "recovery app, sobriety support, emotional health, "
+    "AI companion, mental wellness app"
 )
 
 # ---------------------------------------------------------------------------
-# Introduction script -- interview format, no name, no free trial
+# Introduction script -- interview format, no name, no free trial, inclusive
 #
 # Written as a direct answer to: "Why did you build MindCore AI?"
-# Sounds like someone caught mid-conversation, not delivering a speech.
-#
-# ~135 words / ~62 seconds
+# ~130 words / ~60 seconds
 # ---------------------------------------------------------------------------
 
 INTRO_SCRIPT = (
@@ -142,12 +129,12 @@ INTRO_SCRIPT = (
     "No judgment-free space. Nobody to talk to without it turning into advice, "
     "or worry, or 'you should see someone.' "
     "And I know I'm not alone in that. "
-    "Millions of men go through the same thing every single day -- "
+    "Millions of men and women go through the same thing every single day -- "
     "quietly, pretending everything's fine.  "
 
     "So I built something. "
-    "A private AI companion, built specifically for men. "
-    "Available any time, day or night, for whatever you're carrying. "
+    "A private AI companion, available any time, day or night, "
+    "for whatever you're carrying. "
     "Anxiety. Stress. Recovery. "
     "The stuff you can't say out loud to anyone.  "
 
@@ -157,7 +144,6 @@ INTRO_SCRIPT = (
     "You don't have to keep carrying this alone."
 )
 
-# Motion prompt: interview-style delivery
 MOTION_PROMPT = (
     "Relaxed, natural posture as if in a podcast interview. "
     "Warm, direct eye contact with camera -- like answering someone you trust. "
@@ -405,12 +391,9 @@ def upload_to_platforms(video_path: str) -> dict:
         ("platform[]",           "facebook"),
         ("platform[]",           "instagram"),
         ("platform[]",           "youtube"),
-        # TikTok + Instagram caption (same field)
         ("title",                TIKTOK_CAPTION[:2200]),
-        # Facebook
         ("facebook_title",       FACEBOOK_TITLE[:255]),
         ("facebook_description", FACEBOOK_DESCRIPTION[:2000]),
-        # YouTube
         ("youtube_title",        YOUTUBE_TITLE[:100]),
         ("youtube_description",  YOUTUBE_DESCRIPTION[:5000]),
         ("youtube_tags",         YOUTUBE_TAGS),
@@ -462,13 +445,8 @@ def main():
     print(f"  Upload:    {'ENABLED -> TikTok + Facebook + Instagram + YouTube' if upload_ready else 'DISABLED (no API key)'}")
     print("=" * 55)
 
-    print("\n  [Platform metadata]")
-    print(f"  TikTok/IG: {TIKTOK_CAPTION[:80]}...")
-    print(f"  Facebook:  {FACEBOOK_TITLE}")
-    print(f"  YouTube:   {YOUTUBE_TITLE}")
-
-    print("\n  [Script preview]")
-    print(f"  {INTRO_SCRIPT[:120]}...")
+    print("\n  [Script]")
+    print(f"  {INTRO_SCRIPT}")
 
     print("\n  Submitting to HeyGen v3...")
     video_id = submit_video()
