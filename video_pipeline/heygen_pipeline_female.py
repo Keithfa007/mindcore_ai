@@ -4,7 +4,8 @@ MindCore AI Video Pipeline -- FEMALE v1.2
 ==========================================
 
 CHANGES (v1.2):
-  Cinematic TTS voice updated to 788cd5ac4afe4f88a88c86feafebf88e.
+  Reverted cinematic TTS voice back to 072bc615ad46485889e4eecc823985c5.
+  Will update when a better Fish Audio voice is found.
   Avatar voice unchanged (comes from heygen_config_female.json).
 
 CHANGES (v1.1):
@@ -50,8 +51,9 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-# Cinematic TTS voice (Fish Audio) -- different from avatar voice in config
-FISH_AUDIO_VOICE_ID = "788cd5ac4afe4f88a88c86feafebf88e"
+# Female cinematic TTS voice (Fish Audio)
+# Update this when a better voice is found on fish.audio
+FISH_AUDIO_VOICE_ID = "072bc615ad46485889e4eecc823985c5"
 
 OUTPUT_DIR         = Path("video_pipeline/output_female")
 PIPELINE_DIR       = Path("video_pipeline")
@@ -64,7 +66,6 @@ SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
 
 MUSIC_VOLUME = 0.05
 
-# Subtitle config -- same as male pipeline
 WHISPER_MODEL      = "tiny"
 SUBTITLE_FONT      = "Arial"
 SUBTITLE_FONT_SIZE = 75
@@ -374,7 +375,7 @@ def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic
     if topic_history: history_note = f"\nRECENT TOPICS (DO NOT REPEAT):\n" + "\n".join(f"  - {t}" for t in topic_history) + "\nPick something DIFFERENT.\n"
     sn = visual_style.get("name", "quiet_reflection"); sd = visual_style.get("description", "soft introspective")
     st = visual_style.get("query_templates", ["woman alone window", "woman journaling", "woman sitting alone"])
-    prompt = f"""Expert in SEO for women's mental health, anxiety, burnout on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep. Short emotional phrases.\n\nSCORING:\n1. Would a woman type this privately?\n2. Emotional resonance for women 25-45 struggling silently\n3. Low competition: under big-brand radar?\n4. Niche fit: women's mental health, anxiety, burnout, self-worth\n\nFORMAT: \"avatar\" (interview/Q&A) or \"cinematic\" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  "topic": "exact candidate text",\n  "question": "exact question a woman would ask",\n  "keyword": "primary 1-5 word SEO keyword",\n  "tail_type": "short_tail|mid_tail|long_tail",\n  "competition_signal": "low|medium|high",\n  "why": "one sentence",\n  "source": "autocomplete|people_also_ask|related_search|organic_title",\n  "format": "avatar|cinematic",\n  "visual_style": "{sn}",\n  "pexels_queries": ["q1", "q2", "q3", "q4"]\n}}"""
+    prompt = f"""Expert in SEO for women's mental health, anxiety, burnout on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep. Short emotional phrases.\n\nSCORING:\n1. Would a woman type this privately?\n2. Emotional resonance for women 25-45 struggling silently\n3. Low competition: under big-brand radar?\n4. Niche fit: women's mental health, anxiety, burnout, self-worth\n\nFORMAT: "avatar" (interview/Q&A) or "cinematic" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  "topic": "exact candidate text",\n  "question": "exact question a woman would ask",\n  "keyword": "primary 1-5 word SEO keyword",\n  "tail_type": "short_tail|mid_tail|long_tail",\n  "competition_signal": "low|medium|high",\n  "why": "one sentence",\n  "source": "autocomplete|people_also_ask|related_search|organic_title",\n  "format": "avatar|cinematic",\n  "visual_style": "{sn}",\n  "pexels_queries": ["q1", "q2", "q3", "q4"]\n}}"""
     result = _call_claude_raw(prompt, client, max_tokens=700)
     if FORCE_FORMAT in ("avatar", "cinematic"): result["format"] = FORCE_FORMAT; print(f"  Format: FORCED to {FORCE_FORMAT.upper()}")
     else: print(f"  Format: {result.get('format', 'avatar').upper()} (Claude's choice)")
@@ -804,7 +805,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Topic      : {topic} | SEO kw: {seo_kw}
   Subtitles  : {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold white | {SUBTITLE_CHUNK} words/group (AVATAR + CINEMATIC)
   Duration   : ~{est_duration}s ({total_words} words)
-  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}...
+  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)
 ================================================================================
 
 FULL SCRIPT\n-----------\n"""
@@ -835,7 +836,7 @@ def main():
     print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar looks: {len(all_looks)} female looks | shuffled deck rotation")
-    print(f"  Avatar voice:   {avatar_voice[:8]}... (from heygen_config_female.json)")
+    print(f"  Avatar voice:    {avatar_voice[:8]}... (HeyGen, from config)")
     print(f"  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)")
     print(f"  Script mode: INTERVIEW RESPONSE -- women's mental health")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | AVATAR + CINEMATIC")
