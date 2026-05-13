@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- FEMALE v1.2
+MindCore AI Video Pipeline -- FEMALE v1.3
 ==========================================
 
+CHANGES (v1.3):
+  Voice configuration finalised:
+  - Avatar:    HeyGen voice 788cd5ac4afe4f88a88c86feafebf88e (in heygen_config_female.json)
+  - Cinematic: Fish Audio voice 5dac3271d0f04c9186efd837e606d133 (FISH_AUDIO_VOICE_ID)
+
 CHANGES (v1.2):
-  Reverted cinematic TTS voice back to 072bc615ad46485889e4eecc823985c5.
-  Will update when a better Fish Audio voice is found.
-  Avatar voice unchanged (comes from heygen_config_female.json).
+  Cinematic TTS voice placeholder.
 
 CHANGES (v1.1):
   Whisper word-by-word subtitles added to CINEMATIC videos.
@@ -51,9 +54,10 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-# Female cinematic TTS voice (Fish Audio)
-# Update this when a better voice is found on fish.audio
-FISH_AUDIO_VOICE_ID = "072bc615ad46485889e4eecc823985c5"
+# Voice configuration
+# Avatar:    HeyGen voice 788cd5ac4afe4f88a88c86feafebf88e (set in heygen_config_female.json)
+# Cinematic: Fish Audio voice below
+FISH_AUDIO_VOICE_ID = "5dac3271d0f04c9186efd837e606d133"
 
 OUTPUT_DIR         = Path("video_pipeline/output_female")
 PIPELINE_DIR       = Path("video_pipeline")
@@ -437,7 +441,8 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
         "hard_fact": "Uncomfortable truth nobody says out loud.",
         "challenge_premise": "Push back on how this is usually framed.",
     }
-    prompt = f"""You are a warm, credible woman in her late 30s being interviewed on a podcast about women's mental health.\nThe interviewer just asked you: "{question}"\n\nANSWER IT.{cinematic_note}\n\nHOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}\n\n4 SCENES:\n1. hook: First thing out of your mouth. No preamble.\n2. problem: Why this is the way it is.\n3. story: Truth most women relate to but nobody says.\n4. solution_cta: Genuine takeaway.\n\nAUDIENCE: Women 25-45, exhausted, overwhelmed, often putting everyone else first.\nSEO KEYWORD: {keyword}. TONE: Warm, direct, trusted older sister. No MindCore AI. Pure value.\n\nBANNED OPENINGS:\n{banned_str}\n\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{\n  "video_type": "content",\n  "topic": "{topic['topic']}",\n  "seo_keyword": "{keyword}",\n  "render_format": "{fmt}",\n  "interview_question": "{question}",\n  "hook_style": "{hook_style}",\n  "hook": {{"voiceover": "..."}},\n  "problem": {{"voiceover": "..."}},\n  "story": {{"voiceover": "..."}},\n  "solution_cta": {{"voiceover": "..."}}\n}}"""
+    prompt = f"""You are a warm, credible woman in her late 30s being interviewed on a podcast about women's mental health.\nThe interviewer just asked you: "{question}"\n\nANSWER IT.{cinematic_note}\n\nHOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}\n\n4 SCENES:\n1. hook: First thing out of your mouth. No preamble.\n2. problem: Why this is the way it is.\n3. story: Truth most women relate to but nobody says.\n4. solution_cta: Genuine takeaway.\n\nAUDIENCE: Women 25-45, exhausted, overwhelmed, often putting everyone else first.\nSEO KEYWORD: {keyword}. TONE: Warm, direct, trusted older sister. No MindCore AI. Pure value.\n\nBANNED OPENINGS:\n{banned_str}\n\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{\n  "video_type": "content",\n  "topic": "{topic['topic']}",\n  "seo_keyword": "{keyword}",\n  "render_format": "{fmt}",\n  "interview_question": "{question}",\n  "hook_style": "{hook_style}",\n  "hook": {{"voiceover": "..."}},\n  "problem": {{"voiceover": "..."}},\n  "story": {{"voiceover": "..."}},\n  "solution_cta": {{"voiceover": "..."}}
+}}"""
     return _call_claude_raw(prompt, client, max_tokens=1200)
 
 
@@ -449,7 +454,8 @@ def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
     lo_story, hi_story = WORD_TARGETS_AD["story"]
     lo_cta, hi_cta     = WORD_TARGETS_AD["solution_cta"]
     banned_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
-    prompt = f"""Expert women's mental health content creator.\nWrite an informational video script for MindCore AI targeting women. Feel like content for first two scenes.\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\nSCENES: hook (no MindCore AI) -> problem (no MindCore AI) -> story (introduce MindCore AI) -> solution_cta ("Find MindCore AI on Google Play.")\nBANNED: "free trial", "first week free", "download now"\nBANNED OPENINGS:\n{banned_str}\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\nReturn ONLY valid JSON:\n{{\n  "video_type": "ad",\n  "topic": "{ad_topic['pain_point'][:55]}",\n  "seo_keyword": "AI mental health app for women",\n  "render_format": "avatar",\n  "hook_style": "{hook_style}",\n  "hook": {{"voiceover": "..."}},\n  "problem": {{"voiceover": "..."}},\n  "story": {{"voiceover": "..."}},\n  "solution_cta": {{"voiceover": "..."}}\n}}"""
+    prompt = f"""Expert women's mental health content creator.\nWrite an informational video script for MindCore AI targeting women.\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\nSCENES: hook -> problem -> story (introduce MindCore AI) -> solution_cta (\"Find MindCore AI on Google Play.\")\nBANNED: \"free trial\", \"first week free\", \"download now\"\nBANNED OPENINGS:\n{banned_str}\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\nReturn ONLY valid JSON:\n{{\n  "video_type": "ad",\n  "topic": "{ad_topic['pain_point'][:55]}",\n  "seo_keyword": "AI mental health app for women",\n  "render_format": "avatar",\n  "hook_style": "{hook_style}",\n  "hook": {{"voiceover": "..."}},\n  "problem": {{"voiceover": "..."}},\n  "story": {{"voiceover": "..."}},\n  "solution_cta": {{"voiceover": "..."}}
+}}"""
     return _call_claude_raw(prompt, client, max_tokens=1200)
 
 
@@ -474,7 +480,7 @@ def submit_heygen_video(script_text: str, avatar_id: str, voice_id: str) -> str:
         "expressiveness": "high", "dimension": {"width": 1080, "height": 1920}, "aspect_ratio": "9:16",
         "use_avatar_iv_model": True, "super_resolution": True, "talking_style": "expressive",
     }
-    print(f"  HeyGen: POST /v3/videos | avatar={avatar_id[:8]}...")
+    print(f"  HeyGen: POST /v3/videos | avatar={avatar_id[:8]}... | voice={voice_id[:8]}...")
     resp = requests.post(HEYGEN_V3_URL, headers=headers, json=payload, timeout=30)
     print(f"  Response [{resp.status_code}]: {resp.text[:200]}")
     if not resp.ok: raise RuntimeError(f"HeyGen v3/videos failed {resp.status_code}: {resp.text}")
@@ -583,7 +589,6 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
     audio_duration = get_audio_duration(audio_path)
     n = len(clip_paths); clip_duration = audio_duration / n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s")
-
     clips_dir = OUTPUT_DIR / "clips"; clips_dir.mkdir(exist_ok=True)
     processed = []
     for i, raw_path in enumerate(clip_paths):
@@ -591,17 +596,14 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
         try: process_clip_to_portrait(raw_path, out, clip_duration); processed.append(out)
         except Exception as e: print(f"  Clip {i+1} failed ({e}) -- skipping")
     if not processed: raise RuntimeError("No clips processed")
-
     concat_file = OUTPUT_DIR / "concat.txt"
     with open(concat_file, "w") as f:
         for p in processed: f.write(f"file '{Path(p).resolve()}'\n")
-
     concat_video = str(OUTPUT_DIR / "concat_video.mp4")
     result = subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", str(concat_file),
                              "-c:v", "libx264", "-crf", "16", "-preset", "slow",
                              "-t", str(audio_duration), "-y", concat_video], capture_output=True, text=True)
     if result.returncode != 0: raise RuntimeError(f"Concat failed: {result.stderr[-500:]}")
-
     if music_path:
         cmd = ["ffmpeg", "-i", concat_video, "-i", audio_path,
                "-stream_loop", "-1", "-i", music_path,
@@ -612,37 +614,30 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
         cmd = ["ffmpeg", "-i", concat_video, "-i", audio_path,
                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
                "-c:a", "aac", "-b:a", "192k", "-t", str(audio_duration), "-y", output_path]
-
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         if music_path:
             print("  WARNING: music mix failed -- retrying without music")
             assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None, ass_path=ass_path); return
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
-
     size_mb = Path(output_path).stat().st_size / (1024 * 1024)
     w, h    = get_video_dimensions(output_path)
     print(f"  Cinematic assembled: {output_path} ({w}x{h} | {size_mb:.1f} MB)")
-
     if ass_path:
         burn_subtitles_into_video(output_path, ass_path)
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
-    print("\n  [Cinematic] Generating voiceover via Fish Audio (female cinematic voice)...")
+    print("\n  [Cinematic] Generating voiceover via Fish Audio...")
     audio_path = str(OUTPUT_DIR / "voiceover_female.mp3")
     generate_fish_audio_tts(script_text, audio_path)
-
     print("\n  [Cinematic Subtitles] Transcribing TTS audio with Whisper...")
     ass_path = str(OUTPUT_DIR / "subtitles_cinematic_female.ass")
     words    = transcribe_audio_whisper(audio_path)
-    if not generate_ass_subtitles(words, ass_path):
-        ass_path = None
-
+    if not generate_ass_subtitles(words, ass_path): ass_path = None
     print(f"\n  [Cinematic] Searching Pexels B-roll: {pexels_queries}")
     clips = search_pexels_clips(pexels_queries, num_clips=PEXELS_CLIPS_PER_VIDEO)
     if not clips: raise RuntimeError("No Pexels clips found")
-
     print(f"\n  [Cinematic] Downloading {len(clips)} clips...")
     clips_dir = OUTPUT_DIR / "clips"; clips_dir.mkdir(exist_ok=True)
     raw_clip_paths = []
@@ -651,7 +646,6 @@ def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
         try: download_clip(clip["url"], clip_path); raw_clip_paths.append(clip_path)
         except Exception as e: print(f"  Clip {i+1} download failed ({e}) -- skipping")
     if not raw_clip_paths: raise RuntimeError("All clip downloads failed")
-
     music_path = pick_music_track()
     print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
     final_path = str(OUTPUT_DIR / "mindcore_female_video.mp4")
@@ -739,7 +733,7 @@ def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropi
     topic = script.get("topic", ""); seo_kw = script.get("seo_keyword", "")
     question = script.get("interview_question", topic); hook_vo = script.get("hook", {}).get("voiceover", "")
     video_type = script.get("video_type", mode).upper()
-    prompt = f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nVIDEO TYPE: {video_type} | QUESTION: {question} | SEO KEYWORD: {seo_kw} | OPENING LINE: {hook_vo}\nCRITICAL: ALL descriptions must be ORIGINAL sentences. Do NOT copy the video script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 original sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (women's mental health focused, no # symbols)\nReturn ONLY valid JSON:\n{{\n  "tiktok_caption": "...",\n  "facebook_title": "...",\n  "facebook_description": "...",\n  "youtube_title": "...",\n  "youtube_description": "S1. S2.\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #womensmentalhealth #Shorts",\n  "youtube_tags": "keyword1, keyword2"\n}}"""
+    prompt = f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nVIDEO TYPE: {video_type} | QUESTION: {question} | SEO KEYWORD: {seo_kw} | OPENING LINE: {hook_vo}\nCRITICAL: ALL descriptions must be ORIGINAL sentences. Do NOT copy the video script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 original sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. \"Try MindCore AI: https://mindcoreai.eu\". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (women's mental health focused, no # symbols)\nReturn ONLY valid JSON:\n{{\n  "tiktok_caption": "...",\n  "facebook_title": "...",\n  "facebook_description": "...",\n  "youtube_title": "...",\n  "youtube_description": "S1. S2.\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #womensmentalhealth #Shorts",\n  "youtube_tags": "keyword1, keyword2"\n}}"""
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(model="claude-sonnet-4-6", max_tokens=700, messages=[{"role": "user", "content": prompt}])
@@ -803,8 +797,9 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Video type : {video_type} | Format: {render_fmt.upper()} | Hook: {hook_style}
   Question   : {question}
   Topic      : {topic} | SEO kw: {seo_kw}
-  Subtitles  : {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold white | {SUBTITLE_CHUNK} words/group (AVATAR + CINEMATIC)
+  Subtitles  : {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold white | {SUBTITLE_CHUNK} words/group
   Duration   : ~{est_duration}s ({total_words} words)
+  Avatar voice:    788cd5ac... (HeyGen)
   Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)
 ================================================================================
 
@@ -833,10 +828,10 @@ def main():
     all_looks      = cfg.get("avatar_look_ids", [])
     avatar_voice   = cfg.get("voice_id", "N/A")
 
-    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.2")
+    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar looks: {len(all_looks)} female looks | shuffled deck rotation")
-    print(f"  Avatar voice:    {avatar_voice[:8]}... (HeyGen, from config)")
+    print(f"  Avatar looks:    {len(all_looks)} female looks | shuffled deck rotation")
+    print(f"  Avatar voice:    {avatar_voice[:8]}... (HeyGen)")
     print(f"  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)")
     print(f"  Script mode: INTERVIEW RESPONSE -- women's mental health")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | AVATAR + CINEMATIC")
@@ -878,14 +873,14 @@ def main():
 
     final_path = None
     if render_fmt == "cinematic":
-        print(f"\n  Rendering CINEMATIC video (female cinematic voice + Whisper captions)...")
+        print(f"\n  Rendering CINEMATIC video (Fish Audio {FISH_AUDIO_VOICE_ID[:8]}... + Whisper captions)...")
         try: final_path = render_cinematic_video(build_full_script(script), pexels_queries)
         except Exception as e:
             print(f"\n  CINEMATIC RENDER FAILED: {e}\n  Falling back to AVATAR render...")
             render_fmt = "avatar"; script["render_format"] = "avatar"
 
     if render_fmt == "avatar" or final_path is None:
-        print(f"\n  Rendering FEMALE AVATAR video (HeyGen + Whisper captions)...")
+        print(f"\n  Rendering FEMALE AVATAR video (HeyGen {avatar_voice[:8]}... + Whisper captions)...")
         final_path = render_avatar_video(build_full_script(script), cfg)
 
     print("\n  Generating upload guide...")
