@@ -5,66 +5,47 @@ on:
 
 jobs:
   generate:
+    name: Generate PH avatar video (1280x720)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
-      - name: Generate HeyGen video
-        id: generate
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Generate video
         env:
           HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+        run: python video_pipeline/ph_video.py
+
+      - name: Upload video artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: mindcore-ph-video
+          path: video_pipeline/output/ph_video.mp4
+          retention-days: 30
+
+      - name: Upload debug on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mindcore-ph-debug
+          path: video_pipeline/output/
+          retention-days: 7
+
+      - name: Summary
+        if: success()
         run: |
-          SCRIPT="My name is K.F. For a long time, I worked long hours, came home drained, and had nobody to really talk to. Not because I didn't have people around me. But because opening up felt impossible. So like a lot of people, I found other ways to cope. Alcohol. Substances. Anything to quiet the noise. The problem is those things don't actually help. They just delay the conversation you need to have with yourself. I built MindCore AI because I know that feeling. And I know I'm not the only one. MindCore AI is a private AI mental health companion. You hold a button and speak. It listens. It responds in a calm human voice. It remembers what you've shared. It tracks how you feel over time. No appointments. No judgment. No waiting rooms. Whether you're struggling with anxiety, addiction, low mood, or just the weight of every day life — it's there. At three in the morning when everything feels heavy. On your lunch break when you need five minutes to breathe. I built this because nobody should feel like the only way through is a bottle or a substance. MindCore AI is live on Android now. Come and try it."
-
-          RESPONSE=$(curl -s -X POST "https://api.heygen.com/v2/video/generate" \
-            -H "X-Api-Key: $HEYGEN_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"video_inputs\": [{
-                \"character\": {
-                  \"type\": \"avatar\",
-                  \"avatar_id\": \"7f98b80999e74f2dbd15b7585c972ca1\",
-                  \"avatar_style\": \"normal\"
-                },
-                \"voice\": {
-                  \"type\": \"text\",
-                  \"input_text\": \"$SCRIPT\",
-                  \"voice_id\": \"6be73833ef9a4eb0aeee399b8fe9d62b\"
-                }
-              }],
-              \"dimension\": { \"width\": 1280, \"height\": 720 }
-            }")
-
-          echo "Generate response: $RESPONSE"
-          VIDEO_ID=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['video_id'])")
-          echo "VIDEO_ID=$VIDEO_ID" >> $GITHUB_ENV
-          echo "Video ID: $VIDEO_ID"
-
-      - name: Poll until complete
-        env:
-          HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
-        run: |
-          VIDEO_ID=${{ env.VIDEO_ID }}
-          for i in $(seq 1 40); do
-            sleep 30
-            STATUS_RESP=$(curl -s "https://api.heygen.com/v1/video_status.get?video_id=$VIDEO_ID" \
-              -H "X-Api-Key: $HEYGEN_API_KEY")
-            STATUS=$(echo $STATUS_RESP | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])")
-            echo "Attempt $i — Status: $STATUS"
-            if [ "$STATUS" = "completed" ]; then
-              VIDEO_URL=$(echo $STATUS_RESP | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['video_url'])")
-              echo "\n✅ Video ready: $VIDEO_URL"
-              echo "VIDEO_URL=$VIDEO_URL" >> $GITHUB_ENV
-              break
-            elif [ "$STATUS" = "failed" ]; then
-              echo "❌ Video generation failed"
-              echo $STATUS_RESP
-              exit 1
-            fi
-          done
-
-      - name: Print download URL
-        run: |
-          echo "================================================"
-          echo "✅ Product Hunt video is ready — download here:"
-          echo ${{ env.VIDEO_URL }}
-          echo "================================================"
+          echo "## \U0001f3a5 Product Hunt Video" >> $GITHUB_STEP_SUMMARY
+          echo "Download the MP4 from the **Artifacts** section below." >> $GITHUB_STEP_SUMMARY
+          SIZE=$(du -sh video_pipeline/output/ph_video.mp4 | cut -f1)
+          echo "File size: $SIZE" >> $GITHUB_STEP_SUMMARY
