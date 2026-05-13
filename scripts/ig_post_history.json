@@ -99,5 +99,16 @@
     "image_sources": {
       "dalle": 7
     }
+  },
+  {
+    "timestamp": "2026-05-13T08:43:15.683602+00:00",
+    "keyword": "nutrition and mental health",
+    "audience": "neutral",
+    "format": "signs_of",
+    "hook": "6 Signs Your Diet Is Sabotaging Your Mind",
+    "job_id": "addf8fb68807405ab1f9a34f9a1af376",
+    "image_sources": {
+      "fallback_solid": 7
+    }
   }
 ]
