@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- FEMALE v1.1
+MindCore AI Video Pipeline -- FEMALE v1.2
 ==========================================
+
+CHANGES (v1.2):
+  Cinematic TTS voice updated to 788cd5ac4afe4f88a88c86feafebf88e.
+  Avatar voice unchanged (comes from heygen_config_female.json).
 
 CHANGES (v1.1):
   Whisper word-by-word subtitles added to CINEMATIC videos.
-  TTS audio transcribed immediately after Fish Audio generation.
-  Subtitles burned into cinematic video as a second FFmpeg pass.
-  Same style as avatar: 75px Arial bold white, 3 words/group.
 
 CHANGES (v1.0):
   Initial female pipeline. Mirrors male v5.14.
-  Female avatar looks (13 in shuffled deck), female Fish Audio voice,
-  female-specific SERP seeds, content angles, visual styles, ad topics.
-  Script persona: credible woman in her late 30s, podcast interview format.
-  Audience: Women 25-45, overwhelmed, overthinking, people pleasing.
 
 Schedule: Mon/Wed/Fri 13:00 UTC avatar | Tue/Thu 13:00 UTC cinematic
 """
@@ -53,7 +50,8 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-FISH_AUDIO_VOICE_ID = "072bc615ad46485889e4eecc823985c5"
+# Cinematic TTS voice (Fish Audio) -- different from avatar voice in config
+FISH_AUDIO_VOICE_ID = "788cd5ac4afe4f88a88c86feafebf88e"
 
 OUTPUT_DIR         = Path("video_pipeline/output_female")
 PIPELINE_DIR       = Path("video_pipeline")
@@ -175,10 +173,6 @@ def pick_music_track() -> str | None:
 # ---------------------------------------------------------------------------
 
 def transcribe_audio_whisper(media_path: str) -> list:
-    """
-    Transcribe audio/video with Whisper. Works on .mp4 (avatar) and .mp3 (cinematic TTS).
-    Returns [] on failure so pipeline continues without subtitles.
-    """
     try:
         import whisper
         print(f"  Whisper: loading '{WHISPER_MODEL}' model (CPU)...")
@@ -227,7 +221,6 @@ def generate_ass_subtitles(words: list, output_path: str) -> bool:
 
 
 def burn_subtitles_into_video(video_path: str, ass_path: str) -> bool:
-    """Burn ASS subtitles into an existing video via a second FFmpeg pass."""
     if not ass_path or not Path(ass_path).exists(): return False
     safe_ass  = str(Path(ass_path).resolve()).replace("\\", "/")
     burnt_tmp = video_path.replace(".mp4", "_subtitled.mp4")
@@ -381,7 +374,7 @@ def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic
     if topic_history: history_note = f"\nRECENT TOPICS (DO NOT REPEAT):\n" + "\n".join(f"  - {t}" for t in topic_history) + "\nPick something DIFFERENT.\n"
     sn = visual_style.get("name", "quiet_reflection"); sd = visual_style.get("description", "soft introspective")
     st = visual_style.get("query_templates", ["woman alone window", "woman journaling", "woman sitting alone"])
-    prompt = f"""Expert in SEO for women's mental health, anxiety, burnout on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep. Short emotional phrases.\n\nSCORING:\n1. Would a woman type this privately?\n2. Emotional resonance for women 25-45 struggling silently\n3. Low competition: under big-brand radar?\n4. Niche fit: women's mental health, anxiety, burnout, self-worth\n\nFORMAT: \"avatar\" (interview/Q&A) or \"cinematic\" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  \"topic\": \"exact candidate text\",\n  \"question\": \"exact question a woman would ask\",\n  \"keyword\": \"primary 1-5 word SEO keyword\",\n  \"tail_type\": \"short_tail|mid_tail|long_tail\",\n  \"competition_signal\": \"low|medium|high\",\n  \"why\": \"one sentence\",\n  \"source\": \"autocomplete|people_also_ask|related_search|organic_title\",\n  \"format\": \"avatar|cinematic\",\n  \"visual_style\": \"{sn}\",\n  \"pexels_queries\": [\"q1\", \"q2\", \"q3\", \"q4\"]\n}}"""
+    prompt = f"""Expert in SEO for women's mental health, anxiety, burnout on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep. Short emotional phrases.\n\nSCORING:\n1. Would a woman type this privately?\n2. Emotional resonance for women 25-45 struggling silently\n3. Low competition: under big-brand radar?\n4. Niche fit: women's mental health, anxiety, burnout, self-worth\n\nFORMAT: \"avatar\" (interview/Q&A) or \"cinematic\" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  "topic": "exact candidate text",\n  "question": "exact question a woman would ask",\n  "keyword": "primary 1-5 word SEO keyword",\n  "tail_type": "short_tail|mid_tail|long_tail",\n  "competition_signal": "low|medium|high",\n  "why": "one sentence",\n  "source": "autocomplete|people_also_ask|related_search|organic_title",\n  "format": "avatar|cinematic",\n  "visual_style": "{sn}",\n  "pexels_queries": ["q1", "q2", "q3", "q4"]\n}}"""
     result = _call_claude_raw(prompt, client, max_tokens=700)
     if FORCE_FORMAT in ("avatar", "cinematic"): result["format"] = FORCE_FORMAT; print(f"  Format: FORCED to {FORCE_FORMAT.upper()}")
     else: print(f"  Format: {result.get('format', 'avatar').upper()} (Claude's choice)")
@@ -393,7 +386,7 @@ def rank_and_select_keyword_claude(candidates: list, client: anthropic.Anthropic
 def fetch_trending_topic_claude_fallback(seeds, topic_history, visual_style, client) -> dict:
     seed = random.choice(seeds); hist = f"AVOID: {', '.join(topic_history)}. " if topic_history else ""
     sn = visual_style.get("name", "quiet_reflection")
-    prompt = f"""SEO expert for women's mental health.\nGenerate ONE question for a short interview video. Related to: \"{seed}\"\n{hist}Return ONLY valid JSON:\n{{\n  \"topic\": \"question or keyword\",\n  \"question\": \"exact question a woman would ask\",\n  \"keyword\": \"primary 1-5 word SEO keyword\",\n  \"tail_type\": \"short_tail|mid_tail|long_tail\",\n  \"competition_signal\": \"low|medium|high\",\n  \"why\": \"one sentence\",\n  \"source\": \"claude_generated\",\n  \"format\": \"avatar\",\n  \"visual_style\": \"{sn}\",\n  \"pexels_queries\": [\"woman alone window\", \"woman journaling morning\", \"woman walking forest\", \"soft light woman thinking\"]\n}}"""
+    prompt = f"""SEO expert for women's mental health.\nGenerate ONE question for a short interview video. Related to: "{seed}"\n{hist}Return ONLY valid JSON:\n{{\n  "topic": "question or keyword",\n  "question": "exact question a woman would ask",\n  "keyword": "primary 1-5 word SEO keyword",\n  "tail_type": "short_tail|mid_tail|long_tail",\n  "competition_signal": "low|medium|high",\n  "why": "one sentence",\n  "source": "claude_generated",\n  "format": "avatar",\n  "visual_style": "{sn}",\n  "pexels_queries": ["woman alone window", "woman journaling morning", "woman walking forest", "soft light woman thinking"]\n}}"""
     result = _call_claude_raw(prompt, client, max_tokens=400)
     if FORCE_FORMAT in ("avatar", "cinematic"): result["format"] = FORCE_FORMAT
     return result
@@ -443,7 +436,7 @@ def generate_content_script(topic: dict, client: anthropic.Anthropic) -> dict:
         "hard_fact": "Uncomfortable truth nobody says out loud.",
         "challenge_premise": "Push back on how this is usually framed.",
     }
-    prompt = f"""You are a warm, credible woman in her late 30s being interviewed on a podcast about women's mental health.\nThe interviewer just asked you: \"{question}\"\n\nANSWER IT.{cinematic_note}\n\nHOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}\n\n4 SCENES:\n1. hook: First thing out of your mouth. No preamble.\n2. problem: Why this is the way it is.\n3. story: Truth most women relate to but nobody says.\n4. solution_cta: Genuine takeaway.\n\nAUDIENCE: Women 25-45, exhausted, overwhelmed, often putting everyone else first.\nSEO KEYWORD: {keyword}. TONE: Warm, direct, trusted older sister. No MindCore AI. Pure value.\n\nBANNED OPENINGS:\n{banned_str}\n\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{\n  \"video_type\": \"content\",\n  \"topic\": \"{topic['topic']}\",\n  \"seo_keyword\": \"{keyword}\",\n  \"render_format\": \"{fmt}\",\n  \"interview_question\": \"{question}\",\n  \"hook_style\": \"{hook_style}\",\n  \"hook\": {{\"voiceover\": \"...\"}},\n  \"problem\": {{\"voiceover\": \"...\"}},\n  \"story\": {{\"voiceover\": \"...\"}},\n  \"solution_cta\": {{\"voiceover\": \"...\"}}\n}}"""
+    prompt = f"""You are a warm, credible woman in her late 30s being interviewed on a podcast about women's mental health.\nThe interviewer just asked you: "{question}"\n\nANSWER IT.{cinematic_note}\n\nHOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}\n\n4 SCENES:\n1. hook: First thing out of your mouth. No preamble.\n2. problem: Why this is the way it is.\n3. story: Truth most women relate to but nobody says.\n4. solution_cta: Genuine takeaway.\n\nAUDIENCE: Women 25-45, exhausted, overwhelmed, often putting everyone else first.\nSEO KEYWORD: {keyword}. TONE: Warm, direct, trusted older sister. No MindCore AI. Pure value.\n\nBANNED OPENINGS:\n{banned_str}\n\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{\n  "video_type": "content",\n  "topic": "{topic['topic']}",\n  "seo_keyword": "{keyword}",\n  "render_format": "{fmt}",\n  "interview_question": "{question}",\n  "hook_style": "{hook_style}",\n  "hook": {{"voiceover": "..."}},\n  "problem": {{"voiceover": "..."}},\n  "story": {{"voiceover": "..."}},\n  "solution_cta": {{"voiceover": "..."}}\n}}"""
     return _call_claude_raw(prompt, client, max_tokens=1200)
 
 
@@ -455,7 +448,7 @@ def generate_ad_script(app_facts: dict, client: anthropic.Anthropic) -> dict:
     lo_story, hi_story = WORD_TARGETS_AD["story"]
     lo_cta, hi_cta     = WORD_TARGETS_AD["solution_cta"]
     banned_str = "\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
-    prompt = f"""Expert women's mental health content creator.\nWrite an informational video script for MindCore AI targeting women. Feel like content for first two scenes.\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\nSCENES: hook (no MindCore AI) -> problem (no MindCore AI) -> story (introduce MindCore AI) -> solution_cta (\"Find MindCore AI on Google Play.\")\nBANNED: \"free trial\", \"first week free\", \"download now\"\nBANNED OPENINGS:\n{banned_str}\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\nReturn ONLY valid JSON:\n{{\n  \"video_type\": \"ad\",\n  \"topic\": \"{ad_topic['pain_point'][:55]}\",\n  \"seo_keyword\": \"AI mental health app for women\",\n  \"render_format\": \"avatar\",\n  \"hook_style\": \"{hook_style}\",\n  \"hook\": {{\"voiceover\": \"...\"}},\n  \"problem\": {{\"voiceover\": \"...\"}},\n  \"story\": {{\"voiceover\": \"...\"}},\n  \"solution_cta\": {{\"voiceover\": \"...\"}}\n}}"""
+    prompt = f"""Expert women's mental health content creator.\nWrite an informational video script for MindCore AI targeting women. Feel like content for first two scenes.\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\nSCENES: hook (no MindCore AI) -> problem (no MindCore AI) -> story (introduce MindCore AI) -> solution_cta ("Find MindCore AI on Google Play.")\nBANNED: "free trial", "first week free", "download now"\nBANNED OPENINGS:\n{banned_str}\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\nReturn ONLY valid JSON:\n{{\n  "video_type": "ad",\n  "topic": "{ad_topic['pain_point'][:55]}",\n  "seo_keyword": "AI mental health app for women",\n  "render_format": "avatar",\n  "hook_style": "{hook_style}",\n  "hook": {{"voiceover": "..."}},\n  "problem": {{"voiceover": "..."}},\n  "story": {{"voiceover": "..."}},\n  "solution_cta": {{"voiceover": "..."}}\n}}"""
     return _call_claude_raw(prompt, client, max_tokens=1200)
 
 
@@ -527,7 +520,7 @@ def generate_fish_audio_tts(script_text: str, output_path: str) -> str:
     if not FISH_AUDIO_API_KEY: raise RuntimeError("FISH_AUDIO_API_KEY not set")
     headers = {"Authorization": f"Bearer {FISH_AUDIO_API_KEY}", "Content-Type": "application/json"}
     payload = {"text": script_text, "reference_id": FISH_AUDIO_VOICE_ID, "format": "mp3", "mp3_bitrate": 192, "latency": "normal"}
-    print(f"  Fish Audio TTS (female): {FISH_AUDIO_VOICE_ID[:8]}... | {len(script_text)} chars")
+    print(f"  Fish Audio TTS (female cinematic): {FISH_AUDIO_VOICE_ID[:8]}... | {len(script_text)} chars")
     resp = requests.post(FISH_AUDIO_TTS_URL, headers=headers, json=payload, stream=True, timeout=120)
     if not resp.ok: raise RuntimeError(f"Fish Audio TTS failed {resp.status_code}: {resp.text[:300]}")
     with open(output_path, "wb") as f:
@@ -586,10 +579,6 @@ def process_clip_to_portrait(clip_path: str, output_path: str, duration: float) 
 
 def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str,
                               music_path: str = None, ass_path: str = None):
-    """
-    Assemble Pexels clips + TTS audio (+ optional music) into the final cinematic video.
-    If ass_path is provided, burns word-by-word subtitles in a second FFmpeg pass.
-    """
     audio_duration = get_audio_duration(audio_path)
     n = len(clip_paths); clip_duration = audio_duration / n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s")
@@ -634,17 +623,15 @@ def assemble_cinematic_video(clip_paths: list, audio_path: str, output_path: str
     w, h    = get_video_dimensions(output_path)
     print(f"  Cinematic assembled: {output_path} ({w}x{h} | {size_mb:.1f} MB)")
 
-    # Burn subtitles as a second pass
     if ass_path:
         burn_subtitles_into_video(output_path, ass_path)
 
 
 def render_cinematic_video(script_text: str, pexels_queries: list) -> str:
-    print("\n  [Cinematic] Generating voiceover via Fish Audio (female voice)...")
+    print("\n  [Cinematic] Generating voiceover via Fish Audio (female cinematic voice)...")
     audio_path = str(OUTPUT_DIR / "voiceover_female.mp3")
     generate_fish_audio_tts(script_text, audio_path)
 
-    # Generate word-by-word subtitles from TTS audio BEFORE clip download
     print("\n  [Cinematic Subtitles] Transcribing TTS audio with Whisper...")
     ass_path = str(OUTPUT_DIR / "subtitles_cinematic_female.ass")
     words    = transcribe_audio_whisper(audio_path)
@@ -687,7 +674,6 @@ def get_video_dimensions(path: str) -> tuple:
     return int(parts[0]), int(parts[1])
 
 def detect_content_crop(video_path: str) -> tuple:
-    """limit=200 catches white/near-white letterbox padding from HeyGen."""
     cmd = ["ffmpeg", "-i", video_path, "-vf", "cropdetect=limit=200:round=2:reset=0", "-frames:v", "90", "-f", "null", "-"]
     result  = subprocess.run(cmd, capture_output=True, text=True)
     matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", result.stderr)
@@ -752,7 +738,7 @@ def generate_upload_metadata(script: dict, mode: str, client: anthropic.Anthropi
     topic = script.get("topic", ""); seo_kw = script.get("seo_keyword", "")
     question = script.get("interview_question", topic); hook_vo = script.get("hook", {}).get("voiceover", "")
     video_type = script.get("video_type", mode).upper()
-    prompt = f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nVIDEO TYPE: {video_type} | QUESTION: {question} | SEO KEYWORD: {seo_kw} | OPENING LINE: {hook_vo}\nCRITICAL: ALL descriptions must be ORIGINAL sentences. Do NOT copy the video script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 original sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. \"Try MindCore AI: https://mindcoreai.eu\". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (women's mental health focused, no # symbols)\nReturn ONLY valid JSON:\n{{\n  \"tiktok_caption\": \"...\",\n  \"facebook_title\": \"...\",\n  \"facebook_description\": \"...\",\n  \"youtube_title\": \"...\",\n  \"youtube_description\": \"S1. S2.\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #womensmentalhealth #Shorts\",\n  \"youtube_tags\": \"keyword1, keyword2\"\n}}"""
+    prompt = f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nVIDEO TYPE: {video_type} | QUESTION: {question} | SEO KEYWORD: {seo_kw} | OPENING LINE: {hook_vo}\nCRITICAL: ALL descriptions must be ORIGINAL sentences. Do NOT copy the video script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 original sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (women's mental health focused, no # symbols)\nReturn ONLY valid JSON:\n{{\n  "tiktok_caption": "...",\n  "facebook_title": "...",\n  "facebook_description": "...",\n  "youtube_title": "...",\n  "youtube_description": "S1. S2.\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #womensmentalhealth #Shorts",\n  "youtube_tags": "keyword1, keyword2"\n}}"""
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(model="claude-sonnet-4-6", max_tokens=700, messages=[{"role": "user", "content": prompt}])
@@ -818,6 +804,7 @@ def save_upload_guide(guide_text: str, script: dict, mode: str, run_number: int,
   Topic      : {topic} | SEO kw: {seo_kw}
   Subtitles  : {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold white | {SUBTITLE_CHUNK} words/group (AVATAR + CINEMATIC)
   Duration   : ~{est_duration}s ({total_words} words)
+  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}...
 ================================================================================
 
 FULL SCRIPT\n-----------\n"""
@@ -843,11 +830,13 @@ def main():
     topic_history  = load_topic_history()
     music_tracks   = list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks      = cfg.get("avatar_look_ids", [])
+    avatar_voice   = cfg.get("voice_id", "N/A")
 
-    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.1")
+    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar looks: {len(all_looks)} female looks | shuffled deck rotation")
-    print(f"  Voice: Fish Audio female {FISH_AUDIO_VOICE_ID[:8]}...")
+    print(f"  Avatar voice:   {avatar_voice[:8]}... (from heygen_config_female.json)")
+    print(f"  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)")
     print(f"  Script mode: INTERVIEW RESPONSE -- women's mental health")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | AVATAR + CINEMATIC")
     print(f"  Crop: cropdetect limit=200 (strips white letterbox)")
@@ -888,7 +877,7 @@ def main():
 
     final_path = None
     if render_fmt == "cinematic":
-        print(f"\n  Rendering CINEMATIC video (female voice + Whisper captions)...")
+        print(f"\n  Rendering CINEMATIC video (female cinematic voice + Whisper captions)...")
         try: final_path = render_cinematic_video(build_full_script(script), pexels_queries)
         except Exception as e:
             print(f"\n  CINEMATIC RENDER FAILED: {e}\n  Falling back to AVATAR render...")
