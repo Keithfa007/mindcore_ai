@@ -5,20 +5,17 @@ on:
 
 jobs:
   generate:
-    name: Generate PH avatar video (1280x720)
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install deps
         run: pip install requests
 
       - name: Generate video
@@ -26,7 +23,7 @@ jobs:
           HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
         run: python video_pipeline/ph_video.py
 
-      - name: Upload video artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -41,11 +38,3 @@ jobs:
           name: mindcore-ph-debug
           path: video_pipeline/output/
           retention-days: 7
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## \U0001f3a5 Product Hunt Video" >> $GITHUB_STEP_SUMMARY
-          echo "Download the MP4 from the **Artifacts** section below." >> $GITHUB_STEP_SUMMARY
-          SIZE=$(du -sh video_pipeline/output/ph_video.mp4 | cut -f1)
-          echo "File size: $SIZE" >> $GITHUB_STEP_SUMMARY
