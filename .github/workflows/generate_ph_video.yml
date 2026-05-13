@@ -23,18 +23,18 @@ jobs:
           HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
         run: python video_pipeline/ph_video.py
 
-      - name: Upload artifact
+      - name: Upload link file
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: mindcore-ph-video
-          path: video_pipeline/output/ph_video.mp4
-          retention-days: 30
+          name: ph-video-link
+          path: video_pipeline/output/ph_video_link.txt
+          retention-days: 7
 
       - name: Upload debug on failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: mindcore-ph-debug
+          name: ph-video-debug
           path: video_pipeline/output/
           retention-days: 7
