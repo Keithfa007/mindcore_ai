@@ -60,20 +60,23 @@ SUBTITLE_MARGIN_V  = 500
 SUBTITLE_CHUNK     = 3
 
 # ---------------------------------------------------------------------------
-# Platform metadata -- fully populated, inclusive language
+# Platform metadata -- fully inclusive, targeting men AND women
 # ---------------------------------------------------------------------------
 
+# TikTok + Instagram
 TIKTOK_CAPTION = (
     "Why do millions of people suffer in silence? "
     "I built MindCore AI because I was one of them. "
-    "A private AI companion available 24/7 -- no judgment, "
+    "A private AI companion available 24/7 — no judgment, "
     "for anxiety, stress, recovery, or whatever you're carrying alone. "
     "Find us on Google Play. "
-    "#mindcoreai #mensmentalhealth #womensmentalhealth #mentalhealthformen "
+    "#mindcoreai #mensmentalhealth #womensmentalhealth "
+    "#mentalhealthformen #mentalhealthforwomen #mentalhealth "
     "#anxiety #depression #recovery #sobriety "
-    "#AImentalhealth #mentalwellness"
+    "#AImentalhealth #mentalwellness #emotionalhealth"
 )
 
+# Facebook
 FACEBOOK_TITLE = (
     "Why I Built MindCore AI — A Private AI Companion for Anyone Who Carries It Alone"
 )
@@ -87,32 +90,37 @@ FACEBOOK_DESCRIPTION = (
     "MindCore AI is there for an honest conversation whenever you need one.\n\n"
     "Find us on Google Play: https://mindcoreai.eu\n\n"
     "You don't have to keep carrying this alone.\n\n"
-    "#mindcoreai #mensmentalhealth #womensmentalhealth #mentalhealthformen "
-    "#anxiety #recovery #sobriety #AImentalhealth #mentalwellness"
+    "#mindcoreai #mensmentalhealth #womensmentalhealth "
+    "#mentalhealthformen #mentalhealthforwomen #mentalhealth "
+    "#anxiety #depression #recovery #sobriety #AImentalhealth #mentalwellness"
 )
 
-YOUTUBE_TITLE = "Why I Built MindCore AI | AI Mental Health Companion"
+# YouTube
+YOUTUBE_TITLE = "Why I Built MindCore AI | AI Mental Health Companion for Men & Women"
 
 YOUTUBE_DESCRIPTION = (
     "Most people would rather suffer in silence than admit they're struggling. "
     "I built MindCore AI because I was one of them — and nothing like it existed.\n\n"
-    "MindCore AI is a private AI mental wellness companion. "
-    "Available any time, day or night — for anxiety, stress, recovery, "
-    "or whatever you're carrying that you can't say out loud. "
+    "MindCore AI is a private AI mental wellness companion available any time, day or night — "
+    "for anxiety, stress, recovery, or whatever you're carrying that you can't say out loud. "
     "No therapy. No hotline. Just an honest conversation, whenever you need one.\n\n"
     "It's not for everyone. It's for the person at 3am with nobody to call.\n\n"
     "📱 Find MindCore AI on Google Play:\n"
     "https://mindcoreai.eu\n\n"
-    "#mindcoreai #mensmentalhealth #womensmentalhealth #mentalhealthformen "
+    "#mindcoreai #mensmentalhealth #womensmentalhealth "
+    "#mentalhealthformen #mentalhealthforwomen #mentalhealth "
     "#AImentalhealth #anxiety #depression #recovery #sobriety "
     "#emotionalhealth #AIcompanion #mentalwellness #Shorts"
 )
 
+# YouTube tags -- balanced men + women keywords, no # symbols
 YOUTUBE_TAGS = (
-    "MindCore AI, mental health app, AI mental health, mental health for men, "
-    "mental health for women, AI mental health coach, anxiety help, "
-    "recovery app, sobriety support, emotional health, "
-    "AI companion, mental wellness app"
+    "MindCore AI, mental health app, AI mental health, "
+    "mental health for men, mental health for women, "
+    "AI mental health coach, anxiety help for men, anxiety help for women, "
+    "mens mental health, womens mental health, "
+    "depression support, recovery app, sobriety support, "
+    "emotional health, AI companion, mental wellness app"
 )
 
 # ---------------------------------------------------------------------------
