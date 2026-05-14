@@ -1,33 +1,34 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Instagram Daily Carousel Automation
+MindCore AI — Instagram Daily Carousel — MANUAL UPLOAD MODE (v3.0)
 
-Generates a 7-slide educational carousel each day at the optimal IG time and
-publishes it via Upload-Post (which handles the Meta Graph API plumbing).
+CHANGES (v3.0 — 14 May 2026):
+  Switched to manual-upload mode while @mind_core_ai cools down from
+  Instagram's automation flag. Pipeline still generates the full daily
+  carousel + caption on schedule, but instead of posting via Upload-Post,
+  it saves a complete "upload package" to manual_upload_packages/YYYY-MM-DD/
+  for Keith to post manually from his phone.
 
-Format is rotated through 6 proven IG carousel archetypes (signs/reframe/
-myth-bust/how-to/truth-bomb/comparison). Reads the format bank from
-scripts/ig_formats.json and merges keyword pools from BOTH scripts/fb_keywords.json
-(men's topics) and scripts/neutral_keywords.json (audience-agnostic topics).
+  Each package contains:
+    - 7 numbered slide JPEGs (slide_01.jpg ... slide_07.jpg)
+    - README.txt — copy-paste-ready post details (caption, hashtags,
+      slide-by-slide reference, posting instructions)
+    - package.json — machine-readable metadata
+
+  Restore automated posting later by reverting to v2.x or setting
+  ENABLE_AUTO_UPLOAD="true" in the workflow env.
+
 
 PHASE 1 AUDIENCE STRATEGY:
   70% men's content (preserves men 35+ wedge positioning)
   30% neutral content (broadens reach without losing focus)
-  No women-specific content on social yet (blog only).
-  Revisit ratio after first 100 app installs.
-
-Design: warm calm minimal illustrations (DALL-E 3 with brand-locked style anchor)
-overlaid with text rendered server-side via Pillow.
-
-Resilience: DALL-E's content filter routinely blocks mental-health imagery, so
-the script (a) sanitizes scene prompts to avoid trigger words, (b) retries with
-a softer prompt if filtered, and (c) falls back to a solid warm background.
 
 Required env vars:
   ANTHROPIC_API_KEY      - content & format selection
   OPENAI_API_KEY         - DALL-E 3 backgrounds
-  UPLOAD_POST_API_KEY    - Upload-Post account API key (shared with video pipeline)
-  UPLOADPOST_USER        - the IG profile name configured in Upload-Post
+  UPLOAD_POST_API_KEY    - (optional in manual mode) Upload-Post account API key
+  UPLOADPOST_USER        - (optional in manual mode) the IG profile name in Upload-Post
+  ENABLE_AUTO_UPLOAD     - "true" to attempt Upload-Post (default: "false" = manual mode)
 """
 
 import os
@@ -47,21 +48,22 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 # ── Config ──────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
-UPLOADPOST_API_KEY = os.environ["UPLOAD_POST_API_KEY"].strip()
-UPLOADPOST_USER    = os.environ.get("UPLOADPOST_USER", "MindCoreAI").strip()
+UPLOADPOST_API_KEY = (os.environ.get("UPLOAD_POST_API_KEY") or "").strip()
+UPLOADPOST_USER    = (os.environ.get("UPLOADPOST_USER") or "MindCoreAI").strip()
+ENABLE_AUTO_UPLOAD = (os.environ.get("ENABLE_AUTO_UPLOAD") or "false").strip().lower() == "true"
 
 MENS_KEYWORDS_FILE    = Path("scripts/fb_keywords.json")
 NEUTRAL_KEYWORDS_FILE = Path("scripts/neutral_keywords.json")
 FORMATS_FILE          = Path("scripts/ig_formats.json")
 HISTORY_FILE          = Path("scripts/ig_post_history.json")
 WORK_DIR              = Path("/tmp/ig_carousel")
+PACKAGES_DIR          = Path("manual_upload_packages")  # committed back to repo
 
 SLIDE_COUNT          = 7
 SLIDE_SIZE           = 1080
 HISTORY_LIMIT        = 25
 FORMAT_HISTORY_LIMIT = 4
 
-# Phase 1 audience mix — adjust here when ready to evolve
 MENS_WEIGHT    = 0.70
 NEUTRAL_WEIGHT = 0.30
 
@@ -176,7 +178,6 @@ def _load_topic_file(path: Path, audience_tag: str) -> list:
 
 
 def load_topic_pools() -> dict:
-    """Returns {'men': [...], 'neutral': [...]}."""
     pools = {
         "men":     _load_topic_file(MENS_KEYWORDS_FILE,    "men"),
         "neutral": _load_topic_file(NEUTRAL_KEYWORDS_FILE, "neutral"),
@@ -193,13 +194,13 @@ def load_history() -> list:
             return []
     return []
 
+
 def save_history(history: list) -> None:
     HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
     HISTORY_FILE.write_text(json.dumps(history[-200:], indent=2))
 
 
 def pick_topic(pools: dict, history: list) -> dict:
-    """Weighted pick: 70% men / 30% neutral. Avoid recent topics. Fall back if pool exhausted."""
     audience = random.choices(
         ["men", "neutral"],
         weights=[MENS_WEIGHT, NEUTRAL_WEIGHT],
@@ -236,7 +237,7 @@ def generate_carousel_content(topic: dict, fmt: dict) -> dict:
         )
         brand_position = "AI mental health companion app primarily for men 35+"
         always_hashtags = "#mindcoreai #MensMentalHealth #MentalHealthMatters"
-    else:  # neutral
+    else:
         voice_guidance = (
             "Warm, plain, direct, second-person. Universal — speaks to anyone navigating this. "
             "Not gendered. Not therapy-speak. Just honest."
@@ -323,7 +324,6 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
     if len(data.get("slides", [])) != SLIDE_COUNT - 2:
         raise ValueError(f"Expected {SLIDE_COUNT-2} middle slides, got {len(data.get('slides', []))}")
 
-    # Belt-and-braces: ensure #mindcoreai always appears
     data["caption"] = ensure_brand_hashtag(data["caption"])
     return data
 
@@ -564,7 +564,200 @@ def compose_slide(bg_bytes: bytes, title: str, body: str = "",
     return out.getvalue()
 
 
-# ── Step 5: Upload-Post ─────────────────────────────────────────────────────
+# ── Step 5: manual upload package builder ──────────────────────────────────
+def _split_caption_and_hashtags(caption: str) -> tuple:
+    """
+    Splits the full caption into (body_text, hashtag_line).
+    Claude's prompt instructs hashtags to be on a final separate line, so
+    we look for the last line that is mostly hashtags.
+    """
+    lines = caption.rstrip().split("\n")
+    body_lines = []
+    hashtag_line = ""
+    # Scan from bottom: the first line we hit that's hashtag-heavy is the tag line
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip()
+        # heuristic: line that's >= 50% hashtags by token count
+        if stripped and stripped.startswith("#"):
+            hashtag_line = stripped
+            body_lines = lines[:i]
+            break
+        # tolerate a trailing empty line below the hashtags
+        if not stripped:
+            continue
+        # not a hashtag line — body extends to here
+        body_lines = lines[:i+1]
+        break
+    body_text = "\n".join(body_lines).rstrip()
+    return body_text, hashtag_line
+
+
+def build_readme(
+    *,
+    run_date: str,
+    topic: dict,
+    fmt: dict,
+    content: dict,
+    audience: str,
+    body_text: str,
+    hashtag_line: str,
+    posting_time_hint: str,
+) -> str:
+    """Returns the copy-paste-ready README.txt content for this package."""
+    # Friendly title for the post (used for filename labelling, not posted to IG)
+    post_title = content["hook"].strip()
+
+    slide_lines = []
+    slide_lines.append(f"  Slide 1 (cover) : {content['hook']}")
+    for i, s in enumerate(content["slides"]):
+        slide_lines.append(f"  Slide {i+2}         : {s['title']}")
+        slide_lines.append(f"                    {s['body']}")
+    slide_lines.append(f"  Slide {SLIDE_COUNT} (CTA)   : {content['cta_title']}")
+    slide_lines.append(f"                    {content['cta_body']}")
+    slides_block = "\n".join(slide_lines)
+
+    return f"""================================================================================
+  MINDCORE AI — INSTAGRAM CAROUSEL UPLOAD PACKAGE
+  Generated: {run_date}
+================================================================================
+
+POST OVERVIEW
+-------------
+  Audience    : {audience}
+  Format      : {fmt['name']} ({fmt['id']})
+  Topic       : {topic['keyword']}
+  Angle       : {topic['angle']}
+  Post title  : {post_title}
+  Suggested
+  posting time: {posting_time_hint}
+
+--------------------------------------------------------------------------------
+HOW TO POST (manual upload from your phone)
+--------------------------------------------------------------------------------
+  1. Open the Instagram app on your phone
+  2. Tap the [+] icon → POST
+  3. Tap the "Select multiple" icon (stacked squares) — top right of camera roll
+  4. Select slide_01.jpg through slide_07.jpg IN ORDER
+     (very important: 01, 02, 03, 04, 05, 06, 07 — the order matters for the swipe)
+  5. Tap NEXT → NEXT (skip filters & edits unless you want to add anything)
+  6. In the caption field: copy-paste the CAPTION BODY below
+  7. Then add 2 line breaks and paste the HASHTAGS line
+  8. Leave Location empty (or set to Malta if you like)
+  9. Tap SHARE
+
+  Tip: To get the files onto your phone:
+    • From a phone browser, go to your GitHub repo → manual_upload_packages
+      → {run_date} → open each slide → press & hold → "Download image"
+    • OR use the GitHub mobile app and share files to Photos
+    • OR AirDrop / Google Photos sync from your computer
+
+--------------------------------------------------------------------------------
+CAPTION BODY (copy-paste this into Instagram first)
+--------------------------------------------------------------------------------
+{body_text}
+
+--------------------------------------------------------------------------------
+HASHTAGS (paste these AFTER the caption body, separated by 2 blank lines)
+--------------------------------------------------------------------------------
+{hashtag_line}
+
+--------------------------------------------------------------------------------
+SLIDE-BY-SLIDE CONTENT REFERENCE
+--------------------------------------------------------------------------------
+{slides_block}
+
+--------------------------------------------------------------------------------
+FULL CAPTION (for reference / copy as one piece if preferred)
+--------------------------------------------------------------------------------
+{body_text}
+
+{hashtag_line}
+
+================================================================================
+  End of upload package.
+  After posting: nothing else to do. Pipeline keeps generating one per day.
+================================================================================
+"""
+
+
+def save_package(
+    *,
+    image_paths: list,
+    image_bytes_list: list,
+    topic: dict,
+    fmt: dict,
+    content: dict,
+    audience: str,
+    image_sources: dict,
+) -> Path:
+    """
+    Writes the carousel package to manual_upload_packages/YYYY-MM-DD/
+    Returns the package directory path.
+    """
+    now      = datetime.now(timezone.utc)
+    date_str = now.strftime("%Y-%m-%d")
+    pkg_dir  = PACKAGES_DIR / date_str
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write each slide JPEG into the package dir
+    final_image_filenames = []
+    for i, img_bytes in enumerate(image_bytes_list):
+        fname = f"slide_{i+1:02d}.jpg"
+        (pkg_dir / fname).write_bytes(img_bytes)
+        final_image_filenames.append(fname)
+
+    # Split caption into body + hashtags for the README
+    body_text, hashtag_line = _split_caption_and_hashtags(content["caption"])
+
+    # Pick a sensible posting-time hint based on the day of week (Malta CEST)
+    weekday = now.weekday()  # 0 = Monday
+    posting_time_hint = {
+        0: "Monday morning — 08:00–09:00 Malta (commute scroll)",
+        1: "Tuesday morning — 08:00–09:00 Malta",
+        2: "Wednesday morning — 08:00–09:00 Malta",
+        3: "Thursday morning — 08:00–09:00 Malta",
+        4: "Friday morning — 08:00–09:00 Malta",
+        5: "Saturday late morning — 11:00–12:00 Malta (leisure scroll)",
+        6: "Sunday late morning — 11:00–12:00 Malta (leisure scroll)",
+    }[weekday]
+
+    readme = build_readme(
+        run_date=date_str,
+        topic=topic,
+        fmt=fmt,
+        content=content,
+        audience=audience,
+        body_text=body_text,
+        hashtag_line=hashtag_line,
+        posting_time_hint=posting_time_hint,
+    )
+    (pkg_dir / "README.txt").write_text(readme, encoding="utf-8")
+
+    # Machine-readable metadata for future automation revival
+    package_json = {
+        "version"        : "3.0",
+        "generated_at"   : now.isoformat(),
+        "date"           : date_str,
+        "audience"       : audience,
+        "format"         : {"id": fmt["id"], "name": fmt["name"]},
+        "topic"          : {"keyword": topic["keyword"], "angle": topic["angle"]},
+        "hook"           : content["hook"],
+        "slides"         : content["slides"],
+        "cta"            : {"title": content["cta_title"], "body": content["cta_body"]},
+        "caption_body"   : body_text,
+        "caption_tags"   : hashtag_line,
+        "full_caption"   : content["caption"],
+        "image_files"    : final_image_filenames,
+        "image_sources"  : image_sources,
+        "posted_manually": False,  # Keith updates this manually if/when he wants to track
+        "notes"          : "Upload manually from phone via IG app. See README.txt for instructions.",
+    }
+    (pkg_dir / "package.json").write_text(json.dumps(package_json, indent=2))
+
+    return pkg_dir
+
+
+# ── (kept for optional auto-upload toggle) Upload-Post ─────────────────────
 def _mask_key(k: str) -> str:
     if not k:
         return "<empty>"
@@ -573,9 +766,16 @@ def _mask_key(k: str) -> str:
     return f"{k[:4]}...{k[-4:]} (len={len(k)})"
 
 
-def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> requests.Response:
+def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
+    """
+    Currently disabled by default (manual-upload mode).
+    Re-enable by setting ENABLE_AUTO_UPLOAD="true" in the workflow env
+    AFTER the @mind_core_ai automation flag has cleared.
+    """
+    print(f"  Auth key  : {_mask_key(UPLOADPOST_API_KEY)}")
+    print(f"  Profile   : {UPLOADPOST_USER!r}")
     url = "https://api.upload-post.com/api/upload_photos"
-    headers = {"Authorization": auth_header}
+    headers = {"Authorization": f"Apikey {UPLOADPOST_API_KEY}"}
 
     files = []
     open_files = []
@@ -591,7 +791,7 @@ def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> re
     ]
 
     try:
-        return requests.post(url, headers=headers, data=data, files=files, timeout=180)
+        r = requests.post(url, headers=headers, data=data, files=files, timeout=180)
     finally:
         for fh in open_files:
             try:
@@ -599,49 +799,22 @@ def _attempt_uploadpost(image_paths: list, caption: str, auth_header: str) -> re
             except Exception:
                 pass
 
-
-def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
-    print(f"  Auth key  : {_mask_key(UPLOADPOST_API_KEY)}")
-    print(f"  Profile   : {UPLOADPOST_USER!r}")
-
-    auth_formats = [
-        f"Apikey {UPLOADPOST_API_KEY}",
-        f"Bearer {UPLOADPOST_API_KEY}",
-    ]
-
-    last_error = None
-    for auth_header in auth_formats:
-        format_name = auth_header.split()[0]
-        print(f"  Trying Authorization: {format_name}…")
-        r = _attempt_uploadpost(image_paths, caption, auth_header)
-
-        if r.ok:
-            print(f"  ✓ Authenticated with {format_name}")
-            return r.json()
-
+    if not r.ok:
         try:
             err_body = r.json()
         except Exception:
             err_body = {"raw": r.text[:300]}
-
-        last_error = (r.status_code, err_body)
-        is_auth_error = r.status_code in (401, 403) or "key" in str(err_body).lower()
-
-        if is_auth_error and auth_header is not auth_formats[-1]:
-            print(f"  ✗ {format_name} rejected ({r.status_code}): {err_body}")
-            continue
-        else:
-            print(f"  ✗ Upload-Post error ({r.status_code}): {err_body}")
-            r.raise_for_status()
-
-    raise RuntimeError(f"Upload-Post auth failed with all formats. Last: {last_error}")
+        print(f"  ✗ Upload-Post error ({r.status_code}): {err_body}")
+        r.raise_for_status()
+    return r.json()
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("  MindCore AI — Instagram Daily Carousel")
+    print("  MindCore AI — Instagram Daily Carousel (MANUAL UPLOAD MODE)")
     print(f"  Run at: {datetime.now(timezone.utc).isoformat()}")
+    print(f"  Auto-upload via Upload-Post: {'ENABLED' if ENABLE_AUTO_UPLOAD else 'DISABLED (manual mode)'}")
     print("=" * 60)
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -653,11 +826,12 @@ def main():
     if not formats:
         raise RuntimeError("Formats file empty")
 
-    topic = pick_topic(pools, history)
-    fmt   = pick_format(formats, history)
+    topic    = pick_topic(pools, history)
+    fmt      = pick_format(formats, history)
+    audience = topic.get("audience", "unknown")
     print(f"\n  Topic    : {topic['keyword']}")
     print(f"  Angle    : {topic['angle']}")
-    print(f"  Audience : {topic.get('audience', 'unknown')}")
+    print(f"  Audience : {audience}")
     print(f"  Format   : {fmt['name']} ({fmt['id']})\n")
 
     print("  Generating carousel content with Claude…")
@@ -670,8 +844,9 @@ def main():
     print(f"  ✓ {len(scene_prompts)} scene prompts ready\n")
 
     print(f"  Generating {SLIDE_COUNT} backgrounds (~60s, with retry & fallback)…")
-    image_paths = []
-    sources = []
+    image_paths        = []
+    image_bytes_list   = []
+    sources            = []
     for i, sp in enumerate(scene_prompts):
         print(f"    Slide {i+1}/{SLIDE_COUNT}…")
         bg, source = generate_dalle_image_resilient(sp)
@@ -693,25 +868,47 @@ def main():
         path = WORK_DIR / f"slide_{i+1:02d}.jpg"
         path.write_bytes(jpg)
         image_paths.append(str(path))
+        image_bytes_list.append(jpg)
 
     src_summary = {s: sources.count(s) for s in set(sources)}
     print(f"  ✓ All {SLIDE_COUNT} slides composed (sources: {src_summary})\n")
 
-    print("  Posting carousel to Instagram via Upload-Post…")
-    print(f"  Caption preview: {content['caption'][:140]}…\n")
-    result = post_carousel_via_uploadpost(image_paths, content["caption"])
+    # ── Manual-upload mode (default) ────────────────────────────────────────
+    if not ENABLE_AUTO_UPLOAD:
+        print("  Saving manual upload package to repo…")
+        pkg_dir = save_package(
+            image_paths=image_paths,
+            image_bytes_list=image_bytes_list,
+            topic=topic,
+            fmt=fmt,
+            content=content,
+            audience=audience,
+            image_sources=src_summary,
+        )
+        print(f"  ✓ Package saved to {pkg_dir}")
+        print(f"  → Open the README.txt in that folder for copy-paste-ready post details.")
 
-    job_id = result.get("job_id") or result.get("id") or "unknown"
-    print(f"  Published ✓  Upload-Post job: {job_id}\n")
+        job_id = f"manual-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+
+    # ── Auto-upload mode (legacy / opt-in) ──────────────────────────────────
+    else:
+        print("  Posting carousel to Instagram via Upload-Post…")
+        print(f"  Caption preview: {content['caption'][:140]}…\n")
+        if not UPLOADPOST_API_KEY:
+            raise RuntimeError("ENABLE_AUTO_UPLOAD=true but UPLOAD_POST_API_KEY is missing")
+        result = post_carousel_via_uploadpost(image_paths, content["caption"])
+        job_id = result.get("job_id") or result.get("id") or "unknown"
+        print(f"  Published ✓  Upload-Post job: {job_id}\n")
 
     history.append({
         "timestamp"     : datetime.now(timezone.utc).isoformat(),
         "keyword"       : topic["keyword"],
-        "audience"      : topic.get("audience", "unknown"),
+        "audience"      : audience,
         "format"        : fmt["id"],
         "hook"          : content["hook"],
         "job_id"        : job_id,
         "image_sources" : src_summary,
+        "mode"          : "auto" if ENABLE_AUTO_UPLOAD else "manual_package",
     })
     save_history(history)
     print(f"  History updated ({len(history)} total carousels)\n")

@@ -1,31 +1,33 @@
 name: Instagram Daily Carousel
 
-# TEMPORARILY PAUSED — 14 May 2026
-# Reason: Instagram flagged @mind_core_ai for suspected spam activity.
-# Upload-Post returned: "Action suspected as spam. Activity is restricted."
-# Action needed: complete IG account verification (Settings → Account Status),
-# wait 24-48h for restriction to clear, then UN-COMMENT the schedule block
-# below and reduce cadence (see Phase 2 plan in chat).
-#
-# Original schedule (preserved for re-enabling):
-#   schedule:
-#     - cron: "0 6 * * 1"   # Monday    08:00 Malta
-#     - cron: "0 6 * * 2"   # Tuesday   08:00 Malta
-#     - cron: "0 6 * * 3"   # Wednesday 08:00 Malta
-#     - cron: "0 6 * * 4"   # Thursday  08:00 Malta
-#     - cron: "0 6 * * 5"   # Friday    08:00 Malta
-#     - cron: "0 9 * * 6"   # Saturday  11:00 Malta
-#     - cron: "0 9 * * 0"   # Sunday    11:00 Malta
-
 on:
-  # No automated triggers while paused — only manual runs via "Run workflow" button.
+  # MANUAL UPLOAD MODE (v3.0, 14 May 2026):
+  # @mind_core_ai is currently flagged by Instagram for suspected automation.
+  # The cron is RE-ENABLED on the original schedule, but the script now
+  # generates a manual-upload package (saved to manual_upload_packages/<date>/)
+  # instead of calling Upload-Post. Keith uploads from his phone for 2 weeks.
+  #
+  # To restore automated posting after the IG flag clears:
+  #   1. Confirm @mind_core_ai is no longer flagged (try one manual reconnect)
+  #   2. In the 'env:' section below, set ENABLE_AUTO_UPLOAD to 'true'
+  #   3. Recommend ALSO lowering cadence to 3-4 crons/week initially
+  schedule:
+    - cron: "0 6 * * 1"   # Monday    08:00 Malta
+    - cron: "0 6 * * 2"   # Tuesday   08:00 Malta
+    - cron: "0 6 * * 3"   # Wednesday 08:00 Malta
+    - cron: "0 6 * * 4"   # Thursday  08:00 Malta
+    - cron: "0 6 * * 5"   # Friday    08:00 Malta
+    - cron: "0 9 * * 6"   # Saturday  11:00 Malta
+    - cron: "0 9 * * 0"   # Sunday    11:00 Malta
   workflow_dispatch:
 
 jobs:
   post-to-instagram:
-    name: Generate carousel & publish
+    name: Generate carousel package (manual upload mode)
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    permissions:
+      contents: write   # needed to commit the package back to the repo
 
     steps:
       - name: Checkout repository
@@ -41,19 +43,21 @@ jobs:
           pip install --upgrade pip
           pip install anthropic requests Pillow
 
-      - name: Run Instagram automation
+      - name: Run Instagram automation (manual-package mode)
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           UPLOADPOST_USER:     ${{ secrets.UPLOADPOST_USER }}
+          # Set to "true" to restore Upload-Post auto-posting. Default "false" = manual mode.
+          ENABLE_AUTO_UPLOAD:  "false"
         run: python scripts/instagram_automation.py
 
-      - name: Commit post history
+      - name: Commit post history & manual upload package
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name  "GitHub Action"
-          git add scripts/ig_post_history.json
-          git diff --staged --quiet || git commit -m "chore: update IG post history [skip ci]"
+          git add scripts/ig_post_history.json manual_upload_packages/
+          git diff --staged --quiet || git commit -m "chore: IG carousel package for $(date -u +%Y-%m-%d) [skip ci]"
           git push
         continue-on-error: true

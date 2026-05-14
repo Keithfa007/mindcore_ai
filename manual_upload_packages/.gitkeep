@@ -1,0 +1,7 @@
+# Daily Instagram carousel upload packages live here.
+# Each subfolder is one day's package: YYYY-MM-DD/
+#   - slide_01.jpg ... slide_07.jpg   (the 7 carousel images, in swipe order)
+#   - README.txt                       (copy-paste-ready caption + hashtags + instructions)
+#   - package.json                     (machine-readable metadata)
+#
+# Open the README.txt for everything you need to post manually from the IG app.
