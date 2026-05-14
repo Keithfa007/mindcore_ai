@@ -1,17 +1,24 @@
 name: Instagram Daily Carousel
 
+# TEMPORARILY PAUSED — 14 May 2026
+# Reason: Instagram flagged @mind_core_ai for suspected spam activity.
+# Upload-Post returned: "Action suspected as spam. Activity is restricted."
+# Action needed: complete IG account verification (Settings → Account Status),
+# wait 24-48h for restriction to clear, then UN-COMMENT the schedule block
+# below and reduce cadence (see Phase 2 plan in chat).
+#
+# Original schedule (preserved for re-enabling):
+#   schedule:
+#     - cron: "0 6 * * 1"   # Monday    08:00 Malta
+#     - cron: "0 6 * * 2"   # Tuesday   08:00 Malta
+#     - cron: "0 6 * * 3"   # Wednesday 08:00 Malta
+#     - cron: "0 6 * * 4"   # Thursday  08:00 Malta
+#     - cron: "0 6 * * 5"   # Friday    08:00 Malta
+#     - cron: "0 9 * * 6"   # Saturday  11:00 Malta
+#     - cron: "0 9 * * 0"   # Sunday    11:00 Malta
+
 on:
-  # Daily IG carousels at the optimal IG time per day in Malta (CEST = UTC+2 summer).
-  # IG peaks earlier than FB (commute scroll) — set 1 hour before FB on most days
-  # so the same person doesn't see both posts back-to-back.
-  schedule:
-    - cron: "0 6 * * 1"   # Monday    08:00 Malta
-    - cron: "0 6 * * 2"   # Tuesday   08:00 Malta
-    - cron: "0 6 * * 3"   # Wednesday 08:00 Malta
-    - cron: "0 6 * * 4"   # Thursday  08:00 Malta
-    - cron: "0 6 * * 5"   # Friday    08:00 Malta
-    - cron: "0 9 * * 6"   # Saturday  11:00 Malta (weekend leisure scroll)
-    - cron: "0 9 * * 0"   # Sunday    11:00 Malta (weekend leisure scroll, before FB at 11)
+  # No automated triggers while paused — only manual runs via "Run workflow" button.
   workflow_dispatch:
 
 jobs:
