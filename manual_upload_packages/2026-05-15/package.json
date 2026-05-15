@@ -1,0 +1,58 @@
+{
+  "version": "3.0",
+  "generated_at": "2026-05-15T08:52:51.767032+00:00",
+  "date": "2026-05-15",
+  "audience": "neutral",
+  "format": {
+    "id": "myth_bust",
+    "name": "Myth-busting"
+  },
+  "topic": {
+    "keyword": "high-functioning depression",
+    "angle": "Going through the motions isn't the same as being okay. Here's how to tell."
+  },
+  "hook": "5 Myths About High-Functioning Depression",
+  "slides": [
+    {
+      "title": "Myth: You'd know if you were depressed",
+      "body": "Truth: You can check every box and still feel empty. Depression doesn't always announce itself."
+    },
+    {
+      "title": "Myth: You're just tired or stressed",
+      "body": "Truth: Exhaustion that sleep doesn't fix isn't normal. Your body is trying to tell you something."
+    },
+    {
+      "title": "Myth: Successful people don't get depressed",
+      "body": "Truth: You can nail the presentation and cry in the car after. Achievement doesn't equal okay."
+    },
+    {
+      "title": "Myth: If you're functioning, you're fine",
+      "body": "Truth: Going through the motions isn't the same as living. Autopilot has an expiration date."
+    },
+    {
+      "title": "Myth: You don't need help yet",
+      "body": "Truth: Waiting until you can't function is like waiting for a broken bone to heal itself."
+    }
+  ],
+  "cta": {
+    "title": "Save this. Send to a friend who needs it.",
+    "body": "24/7 voice-first mental health support \u2014 link in bio. \ud83d\udd17"
+  },
+  "caption_body": "High-functioning depression is the art of looking fine while everything inside feels muted. You show up. You deliver. You smile at the right moments. But at 3am, or in the silence after everyone leaves, you know something's off. The hardest part? Everyone around you thinks you've got it together. So you keep the mask on. But here's what nobody tells you: being able to function doesn't mean you're okay. It just means you've gotten really good at pushing through. You deserve more than just getting by.\n\n\u2192 Link in bio for MindCore AI. 7-day trial \u20ac1.99.",
+  "caption_tags": "#mindcoreai #MentalHealthMatters #MentalHealthAwareness #HighFunctioningDepression #BurnoutRecovery #MentalHealthSupport #DepressionAwareness #MentalWellness #EmotionalHealth #YouAreNotAlone",
+  "full_caption": "High-functioning depression is the art of looking fine while everything inside feels muted. You show up. You deliver. You smile at the right moments. But at 3am, or in the silence after everyone leaves, you know something's off. The hardest part? Everyone around you thinks you've got it together. So you keep the mask on. But here's what nobody tells you: being able to function doesn't mean you're okay. It just means you've gotten really good at pushing through. You deserve more than just getting by.\n\n\u2192 Link in bio for MindCore AI. 7-day trial \u20ac1.99.\n\n#mindcoreai #MentalHealthMatters #MentalHealthAwareness #HighFunctioningDepression #BurnoutRecovery #MentalHealthSupport #DepressionAwareness #MentalWellness #EmotionalHealth #YouAreNotAlone",
+  "image_files": [
+    "slide_01.jpg",
+    "slide_02.jpg",
+    "slide_03.jpg",
+    "slide_04.jpg",
+    "slide_05.jpg",
+    "slide_06.jpg",
+    "slide_07.jpg"
+  ],
+  "image_sources": {
+    "fallback_solid": 7
+  },
+  "posted_manually": false,
+  "notes": "Upload manually from phone via IG app. See README.txt for instructions."
+}
