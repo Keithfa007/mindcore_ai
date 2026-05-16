@@ -133,5 +133,17 @@
       "fallback_solid": 7
     },
     "mode": "manual_package"
+  },
+  {
+    "timestamp": "2026-05-16T10:12:48.886390+00:00",
+    "keyword": "panic attacks at night",
+    "audience": "neutral",
+    "format": "comparison",
+    "hook": "Daytime Panic vs. 3am Panic: The Difference",
+    "job_id": "manual-20260516-101248",
+    "image_sources": {
+      "fallback_solid": 7
+    },
+    "mode": "manual_package"
   }
 ]
