@@ -2,23 +2,15 @@
 """
 MindCore AI -- Introduction Video (ONE-TIME / MANUAL RUN)
 =========================================================
-Fixed avatar, fixed script, triggered manually via GitHub Actions.
-No name is used anywhere. Founder remains anonymous.
-
 Avatar:  c25c06ac64c3480bba0f700c1864b7cb
 Voice:   6be73833ef9a4eb0aeee399b8fe9d62b
-API:     HeyGen v3 /v3/videos  (same as main pipeline)
-Output:  video_pipeline/output/mindcore_intro.mp4
 
-CHANGE: Removed `dimension` param -- HeyGen v3 API no longer accepts it.
+HeyGen v3 params: aspect_ratio=9:16, super_resolution, talking_style
+Removed: dimension, use_avatar_iv_model (API no longer accepts these)
 
-Script format: INTERVIEW RESPONSE
-  Written as if the founder was just asked "Why did you build MindCore AI?"
-  No name. No free trial. Inclusive -- men and women.
-
-Subtitles:  Whisper (tiny, CPU) -> ASS word-by-word captions burned in.
-Crop:       cropdetect limit=200 to strip white letterbox padding.
-Upload:     Upload-Post API -> TikTok + Facebook + Instagram + YouTube.
+Subtitles: Whisper tiny -> ASS word-by-word captions burned in.
+Crop:      cropdetect limit=200.
+Upload:    Upload-Post -> TikTok + Facebook + Instagram + YouTube.
 """
 
 import json
@@ -44,7 +36,6 @@ VIDEO_TIMEOUT = 1800
 
 AVATAR_ID        = "c25c06ac64c3480bba0f700c1864b7cb"
 VOICE_ID         = "6be73833ef9a4eb0aeee399b8fe9d62b"
-BACKGROUND_COLOR = "#07071a"
 UPLOAD_POST_USER = "MindCoreAI"
 
 WHISPER_MODEL      = "tiny"
@@ -71,9 +62,7 @@ FACEBOOK_DESCRIPTION = (
     "Most people would rather suffer in silence than admit they're struggling. "
     "I know, because that was me.\n\n"
     "MindCore AI is a private AI mental wellness companion — "
-    "available 24/7, no waiting lists, no judgment. "
-    "Whether you're dealing with anxiety, stress, recovery, or just something you can't shake, "
-    "MindCore AI is there for an honest conversation whenever you need one.\n\n"
+    "available 24/7, no waiting lists, no judgment.\n\n"
     "Find us on Google Play: https://mindcoreai.eu\n\n"
     "You don't have to keep carrying this alone.\n\n"
     "#mindcoreai #mensmentalhealth #womensmentalhealth "
@@ -86,12 +75,11 @@ YOUTUBE_TITLE = "Why I Built MindCore AI | AI Mental Health Companion for Men & 
 YOUTUBE_DESCRIPTION = (
     "Most people would rather suffer in silence than admit they're struggling. "
     "I built MindCore AI because I was one of them — and nothing like it existed.\n\n"
-    "MindCore AI is a private AI mental wellness companion available any time, day or night — "
+    "MindCore AI is a private AI mental wellness companion available any time — "
     "for anxiety, stress, recovery, or whatever you're carrying that you can't say out loud.\n\n"
-    "It's not for everyone. It's for the person at 3am with nobody to call.\n\n"
     "📱 Find MindCore AI on Google Play:\nhttps://mindcoreai.eu\n\n"
     "#mindcoreai #mensmentalhealth #womensmentalhealth "
-    "#mentalhealthformen #mentalhealthforwomen #mentalhealth "
+    "#mentalhealthformen #mentalhealthforwomen "
     "#AImentalhealth #anxiety #depression #recovery #sobriety "
     "#emotionalhealth #AIcompanion #mentalwellness #Shorts"
 )
@@ -126,30 +114,24 @@ INTRO_SCRIPT = (
 
 MOTION_PROMPT = (
     "Relaxed, natural posture as if in a podcast interview. "
-    "Warm, direct eye contact with camera -- like answering someone you trust. "
+    "Warm, direct eye contact with camera. "
     "Genuine hand gestures when making a point. "
-    "Slight pause and nod before the emotional moments. "
     "Unhurried. Real. Not rehearsed."
 )
 
 
-# ---------------------------------------------------------------------------
-# HeyGen v3  (dimension param removed -- API no longer accepts it)
-# ---------------------------------------------------------------------------
-
 def submit_video() -> str:
     headers = {"X-Api-Key": HEYGEN_API_KEY, "Content-Type": "application/json"}
     payload = {
-        "type":                "avatar",
-        "avatar_id":           AVATAR_ID,
-        "voice_id":            VOICE_ID,
-        "script":              INTRO_SCRIPT,
-        "motion_prompt":       MOTION_PROMPT,
-        "expressiveness":      "high",
-        "aspect_ratio":        "9:16",
-        "use_avatar_iv_model": True,
-        "super_resolution":    True,
-        "talking_style":       "expressive",
+        "type":             "avatar",
+        "avatar_id":        AVATAR_ID,
+        "voice_id":         VOICE_ID,
+        "script":           INTRO_SCRIPT,
+        "motion_prompt":    MOTION_PROMPT,
+        "expressiveness":   "high",
+        "aspect_ratio":     "9:16",
+        "super_resolution": True,
+        "talking_style":    "expressive",
     }
     print(f"  HeyGen: POST /v3/videos | avatar={AVATAR_ID[:8]}...")
     resp = requests.post(HEYGEN_V3_URL, headers=headers, json=payload, timeout=30)
@@ -242,7 +224,7 @@ def generate_ass_subtitles(words: list, output_path: str) -> bool:
         i+=SUBTITLE_CHUNK
     events="".join(f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n" for c in chunks)
     Path(output_path).write_text(header+events,encoding="utf-8")
-    print(f"  Subtitles: {len(chunks)} groups | {SUBTITLE_FONT} {SUBTITLE_FONT_SIZE}px | MarginV {SUBTITLE_MARGIN_V}px")
+    print(f"  Subtitles: {len(chunks)} groups | {SUBTITLE_FONT} {SUBTITLE_FONT_SIZE}px")
     return True
 
 
@@ -292,10 +274,7 @@ def upload_to_platforms(video_path: str) -> dict:
     if not UPLOAD_POST_API_KEY:
         print("  UPLOAD_POST_API_KEY not set -- skipping upload")
         return {"skipped": True, "reason": "no API key"}
-    print(f"  Uploading to TikTok + Facebook + Instagram + YouTube as '{UPLOAD_POST_USER}'...")
-    print(f"  TikTok/IG: {TIKTOK_CAPTION[:80]}...")
-    print(f"  Facebook:  {FACEBOOK_TITLE}")
-    print(f"  YouTube:   {YOUTUBE_TITLE}")
+    print(f"  Uploading to TikTok + Facebook + Instagram + YouTube...")
     headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"}
     data=[
         ("user",UPLOAD_POST_USER),("platform[]","tiktok"),("platform[]","facebook"),
@@ -327,11 +306,10 @@ def main():
     est_secs=round(word_count/130*60)
     upload_ready=bool(UPLOAD_POST_API_KEY)
     print("\n  MindCore AI -- Introduction Video")
-    print(f"  Avatar:    {AVATAR_ID[:8]}... | Voice: {VOICE_ID[:8]}...")
-    print(f"  Script:    {word_count} words (~{est_secs}s) -- INTERVIEW FORMAT")
-    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold")
-    print(f"  Crop:      cropdetect limit=200 | HeyGen: dimension param removed")
-    print(f"  Upload:    {'ENABLED -> TikTok + Facebook + Instagram + YouTube' if upload_ready else 'DISABLED (no API key)'}")
+    print(f"  Avatar: {AVATAR_ID[:8]}... | Voice: {VOICE_ID[:8]}...")
+    print(f"  Script: {word_count} words (~{est_secs}s)")
+    print(f"  HeyGen params: aspect_ratio=9:16, super_resolution, talking_style")
+    print(f"  Upload: {'ENABLED' if upload_ready else 'DISABLED'}")
     print("="*55)
     print("\n  Submitting to HeyGen v3...")
     video_id=submit_video()
@@ -349,7 +327,7 @@ def main():
         result=upload_to_platforms(final)
         (OUTPUT_DIR/"intro_upload_result.json").write_text(json.dumps(result,indent=2))
     else:
-        print("\n  Auto-upload disabled -- video saved for manual download from Artifacts")
+        print("\n  Auto-upload disabled")
     print(f"\n  DONE | File: {final}")
     if upload_ready: print("  Posted: TikTok + Facebook + Instagram + YouTube")
 

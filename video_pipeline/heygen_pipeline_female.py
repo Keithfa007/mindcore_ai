@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- FEMALE v1.4
+MindCore AI Video Pipeline -- FEMALE v1.5
 ==========================================
 
+CHANGES (v1.5):
+  Remove `use_avatar_iv_model` param -- HeyGen v3 API no longer accepts it.
+
 CHANGES (v1.4):
-  Remove `dimension` param from HeyGen v3 payload -- API no longer accepts it.
-  `aspect_ratio: 9:16` handles format; `dimension` caused 400 invalid_parameter.
+  Remove `dimension` param -- HeyGen v3 API no longer accepts it.
 
 CHANGES (v1.3):
   Voice configuration finalised:
-  - Avatar:    HeyGen voice 788cd5ac4afe4f88a88c86feafebf88e (in heygen_config_female.json)
-  - Cinematic: Fish Audio voice 5dac3271d0f04c9186efd837e606d133 (FISH_AUDIO_VOICE_ID)
-
-CHANGES (v1.1):
-  Whisper word-by-word subtitles added to CINEMATIC videos.
-
-CHANGES (v1.0):
-  Initial female pipeline.
+  - Avatar:    HeyGen voice 788cd5ac (in heygen_config_female.json)
+  - Cinematic: Fish Audio voice 5dac3271 (FISH_AUDIO_VOICE_ID)
 
 Schedule: Mon/Wed/Fri 13:00 UTC avatar | Tue/Thu 13:00 UTC cinematic
 """
@@ -50,9 +46,6 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-# Voice configuration
-# Avatar:    HeyGen voice 788cd5ac (set in heygen_config_female.json)
-# Cinematic: Fish Audio voice below
 FISH_AUDIO_VOICE_ID = "5dac3271d0f04c9186efd837e606d133"
 
 OUTPUT_DIR         = Path("video_pipeline/output_female")
@@ -94,29 +87,29 @@ BANNED_OPENINGS = [
 
 AD_TOPICS = [
     {"pain_point":"the 3am overthinking spiral that just won't stop",
-     "insight":"Most women don't have a place to put their thoughts that isn't someone else's problem. So they lie awake processing everything alone.",
-     "feature":"MindCore AI gives you a private, calm space to untangle what's going through your head -- no judgment, no advice you didn't ask for, available any time."},
+     "insight":"Most women don't have a place to put their thoughts that isn't someone else's problem.",
+     "feature":"MindCore AI gives you a private, calm space to untangle what's going through your head -- no judgment, available any time."},
     {"pain_point":"carrying everyone else's emotions while your own go unnoticed",
-     "insight":"Women are often the emotional caretakers -- for their partners, their kids, their friends. And somewhere in all of that, their own needs disappear.",
-     "feature":"MindCore AI is a space that's entirely yours. No one else's feelings to manage. Just an honest conversation about what you're actually going through."},
+     "insight":"Women are often the emotional caretakers. And somewhere in all of that, their own needs disappear.",
+     "feature":"MindCore AI is a space that's entirely yours. No one else's feelings to manage."},
     {"pain_point":"feeling like you've completely lost yourself",
-     "insight":"It happens gradually. You spend so long being everything to everyone that one day you realise you don't know what you actually feel anymore.",
-     "feature":"MindCore AI helps you reconnect with yourself -- privately, without pressure, on your own terms. It's on Google Play."},
+     "insight":"You spend so long being everything to everyone that one day you don't know what you actually feel anymore.",
+     "feature":"MindCore AI helps you reconnect with yourself -- privately, without pressure. It's on Google Play."},
     {"pain_point":"anxiety that gets dismissed as being too emotional",
-     "insight":"Women's anxiety often gets minimised -- by others and by themselves. 'I'm just overthinking.' But it's real, and it deserves real support.",
-     "feature":"MindCore AI takes what you're feeling seriously. No dismissal. No labels. Just a private space to actually process it."},
+     "insight":"Women's anxiety often gets minimised. 'I'm just overthinking.' But it's real, and it deserves real support.",
+     "feature":"MindCore AI takes what you're feeling seriously. No dismissal. No labels."},
     {"pain_point":"feeling completely alone even when surrounded by people",
-     "insight":"You can be in a room full of people who love you and still feel like nobody actually sees you. That loneliness is one of the quietest kinds of pain.",
-     "feature":"MindCore AI is there for the moments when you need to be heard and there's nobody to call. Private, available 24/7."},
+     "insight":"You can be in a room full of people who love you and still feel like nobody actually sees you.",
+     "feature":"MindCore AI is there for the moments when you need to be heard. Private, available 24/7."},
     {"pain_point":"the guilt that comes with finally putting yourself first",
-     "insight":"Women are often conditioned to feel selfish for having needs. So they help everyone else first, and the guilt of doing anything for themselves becomes its own burden.",
-     "feature":"MindCore AI is a judgment-free space where putting yourself first isn't selfish -- it's the whole point. Find it on Google Play."},
+     "insight":"Women are often conditioned to feel selfish for having needs.",
+     "feature":"MindCore AI is a judgment-free space where putting yourself first isn't selfish. Find it on Google Play."},
     {"pain_point":"the pressure to appear like everything is fine",
-     "insight":"Most women are experts at looking okay when they're not. The performance becomes exhausting -- and isolating.",
-     "feature":"MindCore AI is the place you don't have to perform. Whatever is actually going on, you can say it -- privately, without consequences."},
+     "insight":"Most women are experts at looking okay when they're not. The performance becomes exhausting.",
+     "feature":"MindCore AI is the place you don't have to perform. Say exactly what's going on, privately."},
     {"pain_point":"emotional exhaustion from years of people pleasing",
-     "insight":"People pleasing isn't a personality trait -- it's a survival strategy that stops working. And by the time you notice it, you're completely empty.",
-     "feature":"MindCore AI helps you understand the patterns underneath and find a way back to yourself. Available any time, on Google Play."},
+     "insight":"People pleasing isn't a personality trait -- it's a survival strategy that stops working.",
+     "feature":"MindCore AI helps you find a way back to yourself. Available any time, on Google Play."},
 ]
 
 WORD_TARGETS_AD      = {"hook":(10,15),"problem":(30,40),"story":(40,55),"solution_cta":(20,30)}
@@ -222,7 +215,7 @@ def load_config():
     with open(CONFIG_PATH) as f: return json.load(f)
 def pick_avatar_look(cfg):
     all_looks=cfg.get("avatar_look_ids",[])
-    if not all_looks: raise RuntimeError("No avatar_look_ids found in heygen_config_female.json")
+    if not all_looks: raise RuntimeError("No avatar_look_ids")
     queue=load_look_queue(all_looks);chosen=queue.pop(0);save_look_queue(queue)
     remaining=len(queue)
     if remaining==0: print(f"  Avatar look: {chosen[:8]}... (deck exhausted | {len(all_looks)} total)")
@@ -333,12 +326,11 @@ def rank_and_select_keyword_claude(candidates,client,topic_history,visual_style)
     if topic_history: history_note=f"\nRECENT TOPICS (DO NOT REPEAT):\n"+"\n".join(f"  - {t}" for t in topic_history)+"\nPick something DIFFERENT.\n"
     sn=visual_style.get("name","quiet_reflection");sd=visual_style.get("description","soft introspective")
     st=visual_style.get("query_templates",["woman alone window","woman journaling","woman sitting alone"])
-    prompt=f"""Expert in SEO for women's mental health on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep.\n\nSCORING:\n1. Would a woman type this privately?\n2. Emotional resonance for women 25-45 struggling silently\n3. Low competition: under big-brand radar?\n4. Niche fit: women's mental health, anxiety, burnout, self-worth\n\nFORMAT: \"avatar\" (interview) or \"cinematic\" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  \"topic\": \"exact candidate text\",\n  \"question\": \"exact question a woman would ask\",\n  \"keyword\": \"primary 1-5 word SEO keyword\",\n  \"tail_type\": \"short_tail|mid_tail|long_tail\",\n  \"competition_signal\": \"low|medium|high\",\n  \"why\": \"one sentence\",\n  \"source\": \"autocomplete|people_also_ask|related_search|organic_title\",\n  \"format\": \"avatar|cinematic\",\n  \"visual_style\": \"{sn}\",\n  \"pexels_queries\": [\"q1\",\"q2\",\"q3\",\"q4\"]\n}}"""
+    prompt=f"""Expert in SEO for women's mental health on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep.\n\nSCORING:\n1. Would a woman type this privately?\n2. Emotional resonance for women 25-45\n3. Low competition: under big-brand radar?\n4. Niche fit: women's mental health, anxiety, burnout\n\nFORMAT: \"avatar\" (interview) or \"cinematic\" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  \"topic\": \"exact candidate text\",\n  \"question\": \"exact question a woman would ask\",\n  \"keyword\": \"primary 1-5 word SEO keyword\",\n  \"tail_type\": \"short_tail|mid_tail|long_tail\",\n  \"competition_signal\": \"low|medium|high\",\n  \"why\": \"one sentence\",\n  \"source\": \"autocomplete|people_also_ask|related_search|organic_title\",\n  \"format\": \"avatar|cinematic\",\n  \"visual_style\": \"{sn}\",\n  \"pexels_queries\": [\"q1\",\"q2\",\"q3\",\"q4\"]\n}}"""
     result=_call_claude_raw(prompt,client,max_tokens=700)
     if FORCE_FORMAT in ("avatar","cinematic"): result["format"]=FORCE_FORMAT;print(f"  Format: FORCED to {FORCE_FORMAT.upper()}")
     else: print(f"  Format: {result.get('format','avatar').upper()} (Claude's choice)")
     print(f"  Winner: '{result.get('keyword')}' [{result.get('tail_type','?')} | {result.get('competition_signal','?')} competition]")
-    print(f"  Question: {result.get('question','')}")
     return result
 
 def fetch_trending_topic_claude_fallback(seeds,topic_history,visual_style,client):
@@ -352,10 +344,9 @@ def fetch_trending_topic_claude_fallback(seeds,topic_history,visual_style,client
 def fetch_trending_topic(client):
     keywords=load_niche_keywords();seeds=keywords["seed_queries"]
     topic_history=load_topic_history();visual_style=pick_visual_style(keywords)
-    print(f"  Visual style: {visual_style.get('name')} ({visual_style.get('description')})")
+    print(f"  Visual style: {visual_style.get('name')}")
     if topic_history: print(f"  Avoiding recent topics: {topic_history}")
     if SERP_API_KEY:
-        print(f"  Keyword research: {SERP_SEEDS_PER_RUN} Google + {AUTOCOMPLETE_SEEDS_PER_RUN} autocomplete...")
         try:
             candidates=research_keyword_candidates_from_serp(seeds)
             if candidates:
@@ -363,11 +354,9 @@ def fetch_trending_topic(client):
                 topic["source"]=f"serp_{topic.get('source','research')}"
                 (OUTPUT_DIR/"keyword_research.json").write_text(json.dumps({"run":GITHUB_RUN_NUMBER,"candidates":candidates,"winner":topic},indent=2))
                 return topic
-            print("  No candidates -- falling back to Claude")
         except Exception as e: print(f"  SERP research failed ({e}) -- falling back to Claude")
-    print("  Generating topic with Claude (no SERP)...")
     topic=fetch_trending_topic_claude_fallback(seeds,topic_history,visual_style,client)
-    print(f"  Topic: {topic.get('topic')} [{topic.get('tail_type','?')} | {topic.get('competition_signal','?')}]")
+    print(f"  Topic: {topic.get('topic')}")
     return topic
 
 
@@ -379,8 +368,8 @@ def generate_content_script(topic,client):
     lo_story,hi_story=WORD_TARGETS_CONTENT["story"];lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
     cinematic_note="\nNOTE: Voiceover for cinematic B-roll. Write for the ear only." if fmt=="cinematic" else ""
     banned_str="\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
-    hook_instructions={"direct_answer":"Start mid-answer, launched straight in.","reframe_first":"Reframe what the question is really about.","counter_intuitive":"Start with what most people get wrong.","personal_truth":"Raw, honest admission. First person.","hard_fact":"Uncomfortable truth nobody says out loud.","challenge_premise":"Push back on how this is usually framed."}
-    prompt=f"""You are a warm, credible woman in her late 30s being interviewed on a podcast about women's mental health.\nThe interviewer just asked you: \"{question}\"\n\nANSWER IT.{cinematic_note}\n\nHOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}\n\n4 SCENES:\n1. hook: First thing out of your mouth.\n2. problem: Why this is the way it is.\n3. story: Truth most women relate to but nobody says.\n4. solution_cta: Genuine takeaway.\n\nAUDIENCE: Women 25-45, exhausted, overwhelmed. SEO KEYWORD: {keyword}.\nTONE: Warm, direct, trusted older sister. No MindCore AI. Pure value.\n\nBANNED OPENINGS:\n{banned_str}\n\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{\n  \"video_type\": \"content\",\n  \"topic\": \"{topic['topic']}\",\n  \"seo_keyword\": \"{keyword}\",\n  \"render_format\": \"{fmt}\",\n  \"interview_question\": \"{question}\",\n  \"hook_style\": \"{hook_style}\",\n  \"hook\": {{\"voiceover\": \"...\"}},\n  \"problem\": {{\"voiceover\": \"...\"}},\n  \"story\": {{\"voiceover\": \"...\"}},\n  \"solution_cta\": {{\"voiceover\": \"...\"}}\n}}"""
+    hook_instructions={"direct_answer":"Start mid-answer.","reframe_first":"Reframe what the question is really about.","counter_intuitive":"Start with what most people get wrong.","personal_truth":"Raw, honest admission.","hard_fact":"Uncomfortable truth nobody says.","challenge_premise":"Push back on how this is usually framed."}
+    prompt=f"""You are a warm, credible woman in her late 30s being interviewed about women's mental health.\nQuestion: \"{question}\"\n\nANSWER IT.{cinematic_note}\nHOOK STYLE: {hook_style} -- {hook_instructions[hook_style]}\n4 SCENES: hook | problem | story | solution_cta\nAUDIENCE: Women 25-45. SEO KEYWORD: {keyword}. No MindCore AI. Pure value.\nBANNED OPENINGS:\n{banned_str}\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\nReturn ONLY valid JSON:\n{{\n  \"video_type\": \"content\",\n  \"topic\": \"{topic['topic']}\",\n  \"seo_keyword\": \"{keyword}\",\n  \"render_format\": \"{fmt}\",\n  \"interview_question\": \"{question}\",\n  \"hook_style\": \"{hook_style}\",\n  \"hook\": {{\"voiceover\": \"...\"}},\n  \"problem\": {{\"voiceover\": \"...\"}},\n  \"story\": {{\"voiceover\": \"...\"}},\n  \"solution_cta\": {{\"voiceover\": \"...\"}}\n}}"""
     return _call_claude_raw(prompt,client,max_tokens=1200)
 
 def generate_ad_script(app_facts,client):
@@ -389,7 +378,7 @@ def generate_ad_script(app_facts,client):
     lo_hook,hi_hook=WORD_TARGETS_AD["hook"];lo_prob,hi_prob=WORD_TARGETS_AD["problem"]
     lo_story,hi_story=WORD_TARGETS_AD["story"];lo_cta,hi_cta=WORD_TARGETS_AD["solution_cta"]
     banned_str="\n".join(f'  - "{p}..."' for p in BANNED_OPENINGS)
-    prompt=f"""Expert women's mental health content creator.\nWrite an informational video script for MindCore AI targeting women.\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\nSCENES: hook -> problem -> story (introduce MindCore AI) -> solution_cta (\"Find MindCore AI on Google Play.\")\nBANNED: \"free trial\", \"first week free\", \"download now\"\nBANNED OPENINGS:\n{banned_str}\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\nReturn ONLY valid JSON:\n{{\n  \"video_type\": \"ad\",\n  \"topic\": \"{ad_topic['pain_point'][:55]}\",\n  \"seo_keyword\": \"AI mental health app for women\",\n  \"render_format\": \"avatar\",\n  \"hook_style\": \"{hook_style}\",\n  \"hook\": {{\"voiceover\": \"...\"}},\n  \"problem\": {{\"voiceover\": \"...\"}},\n  \"story\": {{\"voiceover\": \"...\"}},\n  \"solution_cta\": {{\"voiceover\": \"...\"}}\n}}"""
+    prompt=f"""Expert women's mental health content creator.\nWrite a video script for MindCore AI targeting women.\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\nSCENES: hook -> problem -> story (introduce MindCore AI) -> solution_cta (\"Find MindCore AI on Google Play.\")\nBANNED: \"free trial\", \"first week free\", \"download now\"\nBANNED OPENINGS:\n{banned_str}\nWORD COUNTS: hook {lo_hook}-{hi_hook} | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\nReturn ONLY valid JSON:\n{{\n  \"video_type\": \"ad\",\n  \"topic\": \"{ad_topic['pain_point'][:55]}\",\n  \"seo_keyword\": \"AI mental health app for women\",\n  \"render_format\": \"avatar\",\n  \"hook_style\": \"{hook_style}\",\n  \"hook\": {{\"voiceover\": \"...\"}},\n  \"problem\": {{\"voiceover\": \"...\"}},\n  \"story\": {{\"voiceover\": \"...\"}},\n  \"solution_cta\": {{\"voiceover\": \"...\"}}\n}}"""
     return _call_claude_raw(prompt,client,max_tokens=1200)
 
 def build_full_script(script):
@@ -402,16 +391,22 @@ def build_full_script(script):
 
 
 # ---------------------------------------------------------------------------
-# AVATAR PATH  (dimension param removed -- HeyGen v3 no longer accepts it)
+# AVATAR PATH
+# Removed params: dimension, use_avatar_iv_model (HeyGen v3 no longer accepts)
 # ---------------------------------------------------------------------------
 
 def submit_heygen_video(script_text,avatar_id,voice_id):
     headers={"X-Api-Key":HEYGEN_API_KEY,"Content-Type":"application/json"}
     payload={
-        "type":"avatar","avatar_id":avatar_id,"voice_id":voice_id,"script":script_text,
+        "type":"avatar",
+        "avatar_id":avatar_id,
+        "voice_id":voice_id,
+        "script":script_text,
         "motion_prompt":"Gesturing naturally with hands while speaking. Warm, direct eye contact. Nodding gently on emotional points. Open, welcoming gestures. Natural, conversational energy throughout.",
-        "expressiveness":"high","aspect_ratio":"9:16",
-        "use_avatar_iv_model":True,"super_resolution":True,"talking_style":"expressive",
+        "expressiveness":"high",
+        "aspect_ratio":"9:16",
+        "super_resolution":True,
+        "talking_style":"expressive",
     }
     print(f"  HeyGen: POST /v3/videos | avatar={avatar_id[:8]}... | voice={voice_id[:8]}...")
     resp=requests.post(HEYGEN_V3_URL,headers=headers,json=payload,timeout=30)
@@ -459,7 +454,7 @@ def generate_fish_audio_tts(script_text,output_path):
     if not FISH_AUDIO_API_KEY: raise RuntimeError("FISH_AUDIO_API_KEY not set")
     headers={"Authorization":f"Bearer {FISH_AUDIO_API_KEY}","Content-Type":"application/json"}
     payload={"text":script_text,"reference_id":FISH_AUDIO_VOICE_ID,"format":"mp3","mp3_bitrate":192,"latency":"normal"}
-    print(f"  Fish Audio TTS (female cinematic): {FISH_AUDIO_VOICE_ID[:8]}... | {len(script_text)} chars")
+    print(f"  Fish Audio TTS: {FISH_AUDIO_VOICE_ID[:8]}... | {len(script_text)} chars")
     resp=requests.post(FISH_AUDIO_TTS_URL,headers=headers,json=payload,stream=True,timeout=120)
     if not resp.ok: raise RuntimeError(f"Fish Audio TTS failed {resp.status_code}: {resp.text[:300]}")
     with open(output_path,"wb") as f:
@@ -565,7 +560,6 @@ def render_cinematic_video(script_text,pexels_queries):
         except Exception as e: print(f"  Clip {i+1} download failed ({e}) -- skipping")
     if not raw_clip_paths: raise RuntimeError("All clip downloads failed")
     music_path=pick_music_track()
-    print(f"\n  [Cinematic] Assembling video ({len(raw_clip_paths)} clips)...")
     final_path=str(OUTPUT_DIR/"mindcore_female_video.mp4")
     assemble_cinematic_video(raw_clip_paths,audio_path,final_path,music_path,ass_path=ass_path)
     return final_path
@@ -618,11 +612,14 @@ def crop_to_portrait(raw_path,final_path,ass_path=None):
 
 
 def generate_upload_guide(script,mode,render_fmt,client):
-    print("  Generating upload guide...")
     topic=script.get("topic","");seo_kw=script.get("seo_keyword","")
     question=script.get("interview_question",topic);hook_vo=script.get("hook",{}).get("voiceover","")
     video_type=script.get("video_type",mode)
-    prompt=f"""Social media expert for TikTok, Instagram, Facebook, YouTube Shorts. Women's mental health niche.\nVIDEO TYPE: {video_type.upper()} | FORMAT: {render_fmt.upper()}\nQUESTION ANSWERED: {question} | SEO KEYWORD: {seo_kw} | HOOK LINE: {hook_vo}\nGenerate upload copy for all 4 platforms. Include {REQUIRED_BRAND_HASHTAG} everywhere.\nHashtags: women's mental health focused (#womensmentalhealth #anxietywomen #burnout etc.)\nCRITICAL: Write ALL descriptions in your own words. Do NOT copy the video script."""
+    prompt=f"""Social media expert for TikTok, Instagram, Facebook, YouTube Shorts. Women's mental health.
+VIDEO TYPE: {video_type.upper()} | FORMAT: {render_fmt.upper()}
+QUESTION: {question} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}
+Generate upload copy for all 4 platforms. Include {REQUIRED_BRAND_HASHTAG} everywhere.
+Hashtags: women's mental health focused. CRITICAL: Original sentences only, never copy script."""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1500,messages=[{"role":"user","content":prompt}])
@@ -633,11 +630,27 @@ def generate_upload_guide(script,mode,render_fmt,client):
     raise RuntimeError("Could not generate upload guide")
 
 def generate_upload_metadata(script,mode,client):
-    print("  Generating platform metadata...")
     topic=script.get("topic","");seo_kw=script.get("seo_keyword","")
     question=script.get("interview_question",topic);hook_vo=script.get("hook",{}).get("voiceover","")
     video_type=script.get("video_type",mode).upper()
-    prompt=f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nVIDEO TYPE: {video_type} | QUESTION: {question} | SEO KEYWORD: {seo_kw} | OPENING LINE: {hook_vo}\nCRITICAL: ALL descriptions must be ORIGINAL sentences. Do NOT copy the video script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 original sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. \"Try MindCore AI: https://mindcoreai.eu\". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (women's mental health focused, no # symbols)\nReturn ONLY valid JSON:\n{{\n  \"tiktok_caption\": \"...\",\n  \"facebook_title\": \"...\",\n  \"facebook_description\": \"...\",\n  \"youtube_title\": \"...\",\n  \"youtube_description\": \"S1. S2.\\n\\nTry MindCore AI: https://mindcoreai.eu\\n\\n{REQUIRED_BRAND_HASHTAG} #womensmentalhealth #Shorts\",\n  \"youtube_tags\": \"keyword1, keyword2\"\n}}"""
+    prompt=f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.
+VIDEO TYPE: {video_type} | QUESTION: {question} | SEO KEYWORD: {seo_kw} | OPENING: {hook_vo}
+CRITICAL: ORIGINAL sentences only. Do NOT copy the script.
+- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth
+- facebook_title: max 255 chars
+- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}
+- youtube_title: max 100 chars
+- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}
+- youtube_tags: comma-separated 8-12 keywords (no # symbols)
+Return ONLY valid JSON:
+{{
+  "tiktok_caption": "...",
+  "facebook_title": "...",
+  "facebook_description": "...",
+  "youtube_title": "...",
+  "youtube_description": "...",
+  "youtube_tags": "..."
+}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=700,messages=[{"role":"user","content":prompt}])
@@ -647,9 +660,8 @@ def generate_upload_metadata(script,mode,client):
             for key in ("tiktok_caption","facebook_description","youtube_description"):
                 metadata[key]=ensure_brand_hashtag(metadata.get(key,""))
             metadata["youtube_title"]=metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]
-            print(f"  TikTok+IG: {metadata.get('tiktok_caption','')[:80]}...")
-            print(f"  Facebook:  {metadata.get('facebook_title','')[:60]}...")
-            print(f"  YouTube:   {metadata.get('youtube_title','')[:60]}...")
+            print(f"  TikTok: {metadata.get('tiktok_caption','')[:80]}...")
+            print(f"  YouTube: {metadata.get('youtube_title','')[:60]}...")
             return metadata
         except (anthropic.APIStatusError,json.JSONDecodeError) as e:
             if attempt==CLAUDE_MAX_RETRIES: raise RuntimeError(f"Could not generate metadata: {e}")
@@ -684,28 +696,13 @@ def upload_to_platforms(video_path,metadata,cfg):
 
 def save_upload_guide(guide_text,script,mode,run_number,render_fmt):
     generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    topic=script.get("topic","N/A");seo_kw=script.get("seo_keyword","N/A")
-    question=script.get("interview_question",topic);video_type=script.get("video_type",mode).upper()
-    hook_style=script.get("hook_style","unknown")
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration=round(total_words/130*60)
-    header=f"""================================================================================
-  MINDCORE AI -- FEMALE VIDEO UPLOAD GUIDE  (Run #{run_number} | {generated_at})
-================================================================================
-  Video type : {video_type} | Format: {render_fmt.upper()} | Hook: {hook_style}
-  Question   : {question}
-  Topic      : {topic} | SEO kw: {seo_kw}
-  Subtitles  : {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold white | {SUBTITLE_CHUNK} words/group
-  Duration   : ~{est_duration}s ({total_words} words)
-  Avatar voice:    788cd5ac... (HeyGen) | Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)
-================================================================================
-
-FULL SCRIPT\n-----------\n"""
+    header=f"MINDCORE AI FEMALE UPLOAD GUIDE -- Run #{run_number} | {generated_at}\n"
+    header+=f"Format: {render_fmt.upper()} | ~{est_duration}s | {total_words} words\n\nFULL SCRIPT\n"
     for scene in SCENE_ORDER:
-        wc=len(script[scene]["voiceover"].split())
-        header+=f"[{scene.upper()}]  ({wc} words)\n{script[scene]['voiceover']}\n\n"
-    header+="================================================================================\n  PLATFORM UPLOAD DETAILS\n================================================================================\n\n"
-    (OUTPUT_DIR/"upload_guide_female.txt").write_text(header+guide_text+"\n\n================================================================================\n",encoding="utf-8")
+        header+=f"[{scene.upper()}] {script[scene]['voiceover']}\n\n"
+    (OUTPUT_DIR/"upload_guide_female.txt").write_text(header+guide_text,encoding="utf-8")
     print(f"  Upload guide saved")
 
 
@@ -719,15 +716,13 @@ def main():
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks=cfg.get("avatar_look_ids",[])
     avatar_voice=cfg.get("voice_id","N/A")
-    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.4")
+    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar looks:    {len(all_looks)} female looks | shuffled deck rotation")
-    print(f"  Avatar voice:    {avatar_voice[:8]}... (HeyGen) | dimension param removed")
+    print(f"  Avatar looks: {len(all_looks)} | Avatar voice: {avatar_voice[:8]}... (HeyGen)")
     print(f"  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)")
-    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold | AVATAR + CINEMATIC")
-    print(f"  Crop: cropdetect limit=200")
-    print(f"  Music: {len(music_tracks)} tracks @ {int(MUSIC_VOLUME*100)}%")
-    print(f"  Auto-upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
+    print(f"  HeyGen params: aspect_ratio=9:16, super_resolution, talking_style (dimension+use_avatar_iv_model removed)")
+    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold")
+    print(f"  Music: {len(music_tracks)} tracks @ {int(MUSIC_VOLUME*100)}% | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT: print(f"  Format override: {FORCE_FORMAT.upper()}")
     print("="*60)
     print("\n  Generating script...")
@@ -745,43 +740,28 @@ def main():
     (OUTPUT_DIR/"script_female.json").write_text(json.dumps(script,indent=2))
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER)
     est_duration=round(total_words/130*60)
-    print(f"\n  Video type:        {script.get('video_type',mode)}")
-    print(f"  Question answered: {script.get('interview_question',script.get('topic','N/A'))}")
-    print(f"  Hook style:        {script.get('hook_style','N/A')}")
-    print(f"  SEO kw:            {script.get('seo_keyword','N/A')}")
-    print(f"  Render format:     {render_fmt.upper()} | ~{est_duration}s ({total_words} words)")
-    if est_duration>60: print(f"  NOTE: >{est_duration}s -- YouTube posts as regular video, not Short.")
-    print()
+    print(f"\n  Format: {render_fmt.upper()} | ~{est_duration}s | Hook: {script.get('hook_style','?')}")
     for scene in SCENE_ORDER:
-        wc=len(script[scene]["voiceover"].split())
-        print(f"  [{scene:15s}]  {wc:2d} words  |  {script[scene]['voiceover']}")
-    print(f"\n  Full script:\n  {build_full_script(script)}")
+        print(f"  [{scene:15s}] {script[scene]['voiceover'][:80]}...")
     final_path=None
     if render_fmt=="cinematic":
-        print(f"\n  Rendering CINEMATIC video (Fish Audio + Whisper captions)...")
         try: final_path=render_cinematic_video(build_full_script(script),pexels_queries)
         except Exception as e:
-            print(f"\n  CINEMATIC RENDER FAILED: {e}\n  Falling back to AVATAR render...")
-            render_fmt="avatar";script["render_format"]="avatar"
+            print(f"  CINEMATIC FAILED: {e} -- falling back to AVATAR")
+            render_fmt="avatar"
     if render_fmt=="avatar" or final_path is None:
-        print(f"\n  Rendering FEMALE AVATAR video (HeyGen + Whisper captions)...")
         final_path=render_avatar_video(build_full_script(script),cfg)
-    print("\n  Generating upload guide...")
     guide_text=generate_upload_guide(script,mode,render_fmt,client)
     save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,render_fmt)
     upload_metadata=generate_upload_metadata(script,mode,client)
     (OUTPUT_DIR/"upload_metadata_female.json").write_text(json.dumps(upload_metadata,indent=2))
     if upload_enabled:
-        print("\n  Uploading to all platforms...")
         upload_result=upload_to_platforms(final_path,upload_metadata,cfg)
         (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps(upload_result,indent=2))
     else:
-        print("\n  Auto-upload disabled")
         (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps({"skipped":True},indent=2))
-    print(f"\n  DONE | Format: {render_fmt.upper()} | ~{est_duration}s")
-    print(f"  Video: {final_path}")
+    print(f"\n  DONE | {render_fmt.upper()} | ~{est_duration}s | Video: {final_path}")
     if upload_enabled: print("  Posted: TikTok + Facebook + Instagram + YouTube")
-    print("\n  Female pipeline complete!")
 
 
 if __name__=="__main__":
