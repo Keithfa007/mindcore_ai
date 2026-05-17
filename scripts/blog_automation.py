@@ -33,7 +33,6 @@ CATEGORY_IDS = {
 }
 CATEGORIES = list(CATEGORY_IDS.keys())
 
-# Library keyword -> best WordPress category mapping
 LIBRARY_CATEGORY_MAP = {
     "mental health app":           "AI & Wellness",
     "mental wellness apps":        "AI & Wellness",
@@ -243,20 +242,13 @@ def load_library():
         return json.load(f)
 
 def pick_from_library(library, audience, history):
-    """Return the highest-priority unused keyword for this audience.
-    Falls back to any unused keyword if none match the exact audience.
-    Returns None if all library keywords are exhausted."""
     used_keywords = {e["primary_keyword"].lower() for e in history}
-
-    # First pass: exact audience match
     candidates = [
         kw for kw in library
         if not kw["used"]
         and kw["keyword"].lower() not in used_keywords
         and kw["audience"] == audience
     ]
-
-    # Second pass: neutral keywords work for any audience
     if not candidates and audience != "neutral":
         candidates = [
             kw for kw in library
@@ -264,27 +256,21 @@ def pick_from_library(library, audience, history):
             and kw["keyword"].lower() not in used_keywords
             and kw["audience"] == "neutral"
         ]
-
     if not candidates:
         return None
-
-    # Sort by priority rank (1 = best) then by trend (prefer +900% YoY)
     candidates.sort(key=lambda x: (x["priority_rank"], 0 if "+900%" in x.get("trend", "") else 1))
     return candidates[0]
 
 def update_library_on_github(library, used_keyword):
-    """Mark keyword as used and commit updated library back to repo."""
     for entry in library:
         if entry["keyword"].lower() == used_keyword.lower():
             entry["used"] = True
             break
-
     token = os.environ.get("GITHUB_TOKEN", "")
     repo  = os.environ.get("GITHUB_REPOSITORY", "")
     if not token or not repo:
         print("   Skipping library update - GITHUB_TOKEN not set")
         return
-
     api_url = f"https://api.github.com/repos/{repo}/contents/{LIBRARY_FILE}"
     hdrs    = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     get_r   = requests.get(api_url, headers=hdrs, timeout=15)
@@ -306,7 +292,6 @@ def research_topic(history):
     profile  = AUDIENCE_PROFILES[audience]
     print(f"Researching topic... (Audience: {profile['label']})")
 
-    # Try keyword library first
     library = load_library()
     picked  = pick_from_library(library, audience, history)
 
@@ -320,10 +305,7 @@ def research_topic(history):
 
 
 def research_from_library(picked, audience, profile, history, library):
-    """Build full topic data from a verified library keyword using Claude."""
     history_txt = format_history_for_prompt(history)
-    all_cats    = "\n".join(f"  - {c}" for c in CATEGORIES)
-    pref_cats   = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
     category    = LIBRARY_CATEGORY_MAP.get(picked["keyword"].lower(), profile["preferred_categories"][0])
 
     response = anthropic_client.messages.create(
@@ -331,7 +313,7 @@ def research_from_library(picked, audience, profile, history, library):
         messages=[{"role": "user", "content": f"""You are an expert SEO content strategist for mindcoreai.eu.
 
 You have been given a verified high-demand, low-competition keyword from keyword research.
-Your job is to build the perfect blog post brief around it.
+Build the perfect blog post brief around it.
 
 VERIFIED KEYWORD: {picked['keyword']}
 MONTHLY SEARCHES: {picked['monthly_searches']}
@@ -347,24 +329,23 @@ AUDIENCE CONTEXT:
 ALREADY PUBLISHED (avoid repeating these angles):
 {history_txt}
 
-Your tasks:
-1. Use the verified keyword as the primary keyword — do not change it
-2. Refine or improve the suggested title if needed (must contain the keyword)
-3. Choose the best secondary keywords to support it
+Tasks:
+1. Use the verified keyword as primary keyword — do not change it
+2. Refine or improve the suggested title (must contain the keyword)
+3. Choose the best secondary keywords
 4. Write a compelling meta description (150-160 chars, must include primary keyword)
-5. Write a DALL-E image prompt for a warm, hopeful mental wellness illustration
+5. Write a DALL-E image prompt for a cinematic-warm mental wellness scene
 
 Respond ONLY in this exact JSON — no markdown:
-{{"topic":"final blog title","primary_keyword":"{picked['keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta with keyword","image_prompt":"DALL-E: warm soft hopeful mental wellness illustration, human, approachable, no text","rationale":"why this keyword will rank","category":"{category}","audience":"{audience}"}}"""}]
+{{"topic":"final blog title","primary_keyword":"{picked['keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta with keyword","image_prompt":"describe a specific cinematic-warm scene related to the topic: what is happening, where, what time of day, what light","rationale":"why this keyword will rank","category":"{category}","audience":"{audience}"}}"""}]
     )
 
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
     data = json.loads(raw)
-    data["primary_keyword"] = picked["keyword"]  # ensure keyword is never changed
+    data["primary_keyword"] = picked["keyword"]
     data["audience"]        = audience
-    data["_library_entry"]  = picked  # store for later update
+    data["_library_entry"]  = picked
     data["_library"]        = library
-
     print(f"   Topic    : {data['topic']}")
     print(f"   Keyword  : {data['primary_keyword']}")
     print(f"   Category : {data.get('category', 'N/A')}")
@@ -372,7 +353,6 @@ Respond ONLY in this exact JSON — no markdown:
 
 
 def research_from_claude(audience, profile, history):
-    """Full Claude research mode — used when library has no matching keyword."""
     history_txt = format_history_for_prompt(history)
     all_cats    = "\n".join(f"  - {c}" for c in CATEGORIES)
     pref_cats   = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
@@ -401,7 +381,7 @@ ALL CATEGORIES:
 {all_cats}
 
 Respond ONLY in this exact JSON:
-{{"topic":"title","primary_keyword":"keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char meta","image_prompt":"DALL-E: warm hopeful wellness illustration, no text","rationale":"SERP insight","category":"exact category","audience":"{audience}"}}"""}]
+{{"topic":"title","primary_keyword":"keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char meta","image_prompt":"describe a specific cinematic-warm scene related to the topic: what is happening, where, what time of day, what light","rationale":"SERP insight","category":"exact category","audience":"{audience}"}}"""}]
     )
 
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
@@ -475,20 +455,34 @@ def expand_blog_post(content, topic_data, current_words):
     return expanded
 
 
-# -- Step 3: Illustration -----------------------------------------------------
+# -- Step 3: Image generation -------------------------------------------------
 def generate_illustration(image_prompt):
-    print("Generating DALL-E illustration...")
+    """Generate a cinematic-warm photograph style image for the blog post."""
+    print("Generating cinematic image...")
+
+    cinematic_prompt = (
+        f"{image_prompt}. "
+        "Style: cinematic photography, warm golden-hour lighting, "
+        "soft focus background with shallow depth of field, "
+        "peaceful and hopeful atmosphere, no faces shown — shoot from behind or hands/objects only, "
+        "warm amber and soft teal colour grading, professional camera lens quality, "
+        "subtle lens flare, photorealistic. "
+        "No text, no words, no letters in the image."
+    )
+
     resp = openai_client.images.generate(
         model="dall-e-3",
-        prompt=f"{image_prompt} Style: soft watercolour, warm gentle colours, hopeful and human. No text or letters.",
-        size="1792x1024", quality="standard", n=1,
+        prompt=cinematic_prompt,
+        size="1792x1024",
+        quality="hd",        # upgraded to HD for cinematic quality
+        n=1,
     )
     img = requests.get(resp.data[0].url, timeout=30).content
-    print("   Illustration generated")
+    print("   Cinematic image generated")
     return img
 
 def upload_image_to_wordpress(image_data):
-    print("Uploading illustration...")
+    print("Uploading image...")
     filename = f"mindcore-blog-{datetime.now().strftime('%Y%m%d')}.png"
     headers  = get_wp_auth()
     headers["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -596,7 +590,7 @@ def update_history_on_github(history, new_entry):
 
 # -- Main ---------------------------------------------------------------------
 def main():
-    print("\n== MindCore AI - Weekly Blog Automation Pipeline ==")
+    print("\n== MindCore AI - Blog Automation Pipeline ==")
     history    = load_history()
     print(f"History: {len(history)} posts published")
 
@@ -607,12 +601,11 @@ def main():
         image_data = generate_illustration(topic_data["image_prompt"])
         image_id   = upload_image_to_wordpress(image_data)
     except Exception as exc:
-        print(f"   Illustration failed: {exc}")
+        print(f"   Image failed: {exc}")
         image_id = None
 
     post = publish_to_wordpress(topic_data, content, image_id)
 
-    # Update keyword library if a library keyword was used
     if topic_data.get("_library_entry") and topic_data.get("_library") is not None:
         update_library_on_github(topic_data["_library"], topic_data["primary_keyword"])
 
