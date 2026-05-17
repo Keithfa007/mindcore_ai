@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline v5.17
+MindCore AI Video Pipeline v5.18
 =================================
-CHANGES (v5.17): Remove `use_avatar_iv_model` -- HeyGen v3 no longer accepts it.
-CHANGES (v5.16): Remove `dimension` -- HeyGen v3 no longer accepts it.
-CHANGES (v5.15): Whisper subtitles on cinematic videos.
-CHANGES (v5.14): cropdetect limit=200.
+CHANGES (v5.18):
+  HeyGen v3/videos payload stripped to confirmed-safe params only:
+    avatar_id, voice_id, script, aspect_ratio
+  Removed: type, motion_prompt, expressiveness, super_resolution,
+           talking_style, dimension, use_avatar_iv_model
+  These are all v2/Avatar-IV params not accepted by v3/videos.
+  Source: HeyGen official SKILL.md + observed API rejections.
 """
 
 import json
@@ -191,9 +194,9 @@ def burn_subtitles_into_video(video_path,ass_path):
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode==0:
         Path(burnt_tmp).replace(Path(video_path))
-        print(f"  Cinematic captions burned: {Path(video_path).stat().st_size/(1024*1024):.1f} MB")
+        print(f"  Captions burned: {Path(video_path).stat().st_size/(1024*1024):.1f} MB")
         return True
-    print(f"  WARNING: cinematic subtitle burn failed")
+    print(f"  WARNING: subtitle burn failed")
     if Path(burnt_tmp).exists(): Path(burnt_tmp).unlink()
     return False
 
@@ -378,21 +381,16 @@ def build_full_script(script):
 
 # ---------------------------------------------------------------------------
 # AVATAR PATH
-# Removed: dimension, use_avatar_iv_model (HeyGen v3 no longer accepts them)
+# v3/videos confirmed-safe payload: avatar_id, voice_id, script, aspect_ratio
 # ---------------------------------------------------------------------------
 
 def submit_heygen_video(script_text,avatar_id,voice_id):
     headers={"X-Api-Key":HEYGEN_API_KEY,"Content-Type":"application/json"}
     payload={
-        "type":"avatar",
-        "avatar_id":avatar_id,
-        "voice_id":voice_id,
-        "script":script_text,
-        "motion_prompt":"Gesturing naturally with hands while presenting. Warm eye contact. Nodding gently on emotional points. Open palm gestures. Grounded upper body movement throughout.",
-        "expressiveness":"high",
-        "aspect_ratio":"9:16",
-        "super_resolution":True,
-        "talking_style":"expressive",
+        "avatar_id":    avatar_id,
+        "voice_id":     voice_id,
+        "script":       script_text,
+        "aspect_ratio": "9:16",
     }
     print(f"  HeyGen: POST /v3/videos | avatar={avatar_id[:8]}...")
     resp=requests.post(HEYGEN_V3_URL,headers=headers,json=payload,timeout=30)
@@ -561,7 +559,7 @@ def get_video_dimensions(path):
     return int(parts[0]),int(parts[1])
 
 def detect_content_crop(video_path):
-    cmd=["ffmpeg","-i",video_path,"-vf","cropdetect=limit=200:round=2:reset=0","-frames:v","90","-f","null","-"]
+    cmd=["ffmpeg","-i",video_path,"-vf","cropdetect=limit=200:round=2:reset=0","-frames:v","90","-f","null","-")
     result=subprocess.run(cmd,capture_output=True,text=True)
     matches=re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)",result.stderr)
     if not matches: return None
@@ -699,10 +697,9 @@ def main():
     topic_history=load_topic_history()
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks=cfg.get("avatar_look_ids",[])
-    print(f"\n  MindCore AI Video Pipeline v5.17")
+    print(f"\n  MindCore AI Video Pipeline v5.18")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Avatar looks: {len(all_looks)} | HeyGen params: aspect_ratio, super_resolution, talking_style")
-    print(f"  Removed: dimension, use_avatar_iv_model")
+    print(f"  Avatar looks: {len(all_looks)} | HeyGen v3/videos payload: avatar_id, voice_id, script, aspect_ratio ONLY")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold")
     print(f"  Music: {len(music_tracks)} tracks @ {int(MUSIC_VOLUME*100)}% | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT: print(f"  Format override: {FORCE_FORMAT.upper()}")

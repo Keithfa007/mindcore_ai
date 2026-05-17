@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-MindCore AI Video Pipeline -- FEMALE v1.5
+MindCore AI Video Pipeline -- FEMALE v1.6
 ==========================================
+CHANGES (v1.6):
+  HeyGen v3/videos payload stripped to confirmed-safe params only:
+    avatar_id, voice_id, script, aspect_ratio
+  Removed: type, motion_prompt, expressiveness, super_resolution,
+           talking_style, dimension, use_avatar_iv_model
+  These are all v2/Avatar-IV params not accepted by v3/videos.
 
-CHANGES (v1.5):
-  Remove `use_avatar_iv_model` param -- HeyGen v3 API no longer accepts it.
-
-CHANGES (v1.4):
-  Remove `dimension` param -- HeyGen v3 API no longer accepts it.
-
-CHANGES (v1.3):
-  Voice configuration finalised:
-  - Avatar:    HeyGen voice 788cd5ac (in heygen_config_female.json)
-  - Cinematic: Fish Audio voice 5dac3271 (FISH_AUDIO_VOICE_ID)
+Voice config:
+  Avatar:    HeyGen voice 788cd5ac (heygen_config_female.json)
+  Cinematic: Fish Audio voice 5dac3271 (FISH_AUDIO_VOICE_ID)
 
 Schedule: Mon/Wed/Fri 13:00 UTC avatar | Tue/Thu 13:00 UTC cinematic
 """
@@ -96,7 +95,7 @@ AD_TOPICS = [
      "insight":"You spend so long being everything to everyone that one day you don't know what you actually feel anymore.",
      "feature":"MindCore AI helps you reconnect with yourself -- privately, without pressure. It's on Google Play."},
     {"pain_point":"anxiety that gets dismissed as being too emotional",
-     "insight":"Women's anxiety often gets minimised. 'I'm just overthinking.' But it's real, and it deserves real support.",
+     "insight":"Women's anxiety often gets minimised. 'I'm just overthinking.' But it's real.",
      "feature":"MindCore AI takes what you're feeling seriously. No dismissal. No labels."},
     {"pain_point":"feeling completely alone even when surrounded by people",
      "insight":"You can be in a room full of people who love you and still feel like nobody actually sees you.",
@@ -114,7 +113,6 @@ AD_TOPICS = [
 
 WORD_TARGETS_AD      = {"hook":(10,15),"problem":(30,40),"story":(40,55),"solution_cta":(20,30)}
 WORD_TARGETS_CONTENT = {"hook":(10,18),"problem":(30,45),"story":(45,65),"solution_cta":(20,35)}
-
 BANNED_PHRASE_REPLACEMENTS = [
     (r"try\s+it\s+for\s+free","try it"),
     (r"download\s+now","find MindCore AI on Google Play"),
@@ -203,9 +201,9 @@ def burn_subtitles_into_video(video_path,ass_path):
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode==0:
         Path(burnt_tmp).replace(Path(video_path))
-        print(f"  Cinematic captions burned: {Path(video_path).stat().st_size/(1024*1024):.1f} MB")
+        print(f"  Captions burned: {Path(video_path).stat().st_size/(1024*1024):.1f} MB")
         return True
-    print(f"  WARNING: cinematic subtitle burn failed")
+    print(f"  WARNING: subtitle burn failed")
     if Path(burnt_tmp).exists(): Path(burnt_tmp).unlink()
     return False
 
@@ -326,7 +324,7 @@ def rank_and_select_keyword_claude(candidates,client,topic_history,visual_style)
     if topic_history: history_note=f"\nRECENT TOPICS (DO NOT REPEAT):\n"+"\n".join(f"  - {t}" for t in topic_history)+"\nPick something DIFFERENT.\n"
     sn=visual_style.get("name","quiet_reflection");sd=visual_style.get("description","soft introspective")
     st=visual_style.get("query_templates",["woman alone window","woman journaling","woman sitting alone"])
-    prompt=f"""Expert in SEO for women's mental health on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep.\n\nSCORING:\n1. Would a woman type this privately?\n2. Emotional resonance for women 25-45\n3. Low competition: under big-brand radar?\n4. Niche fit: women's mental health, anxiety, burnout\n\nFORMAT: \"avatar\" (interview) or \"cinematic\" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  \"topic\": \"exact candidate text\",\n  \"question\": \"exact question a woman would ask\",\n  \"keyword\": \"primary 1-5 word SEO keyword\",\n  \"tail_type\": \"short_tail|mid_tail|long_tail\",\n  \"competition_signal\": \"low|medium|high\",\n  \"why\": \"one sentence\",\n  \"source\": \"autocomplete|people_also_ask|related_search|organic_title\",\n  \"format\": \"avatar|cinematic\",\n  \"visual_style\": \"{sn}\",\n  \"pexels_queries\": [\"q1\",\"q2\",\"q3\",\"q4\"]\n}}"""
+    prompt=f"""Expert in SEO for women's mental health on TikTok/Reels/YouTube Shorts.\n\nBelow are REAL Google search queries. Choose the SINGLE BEST keyword for a short video today.\n{history_note}\nFAVOUR: questions women type at 11pm when they can't sleep.\n\nFORMAT: \"avatar\" (interview) or \"cinematic\" (atmospheric)\nVISUAL STYLE: {sn} ({sd}) | If cinematic, 4 Pexels queries: {st}\n\nCANDIDATES (short-tail first):\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{\n  \"topic\": \"exact candidate text\",\n  \"question\": \"exact question a woman would ask\",\n  \"keyword\": \"primary 1-5 word SEO keyword\",\n  \"tail_type\": \"short_tail|mid_tail|long_tail\",\n  \"competition_signal\": \"low|medium|high\",\n  \"why\": \"one sentence\",\n  \"source\": \"autocomplete|people_also_ask|related_search|organic_title\",\n  \"format\": \"avatar|cinematic\",\n  \"visual_style\": \"{sn}\",\n  \"pexels_queries\": [\"q1\",\"q2\",\"q3\",\"q4\"]\n}}"""
     result=_call_claude_raw(prompt,client,max_tokens=700)
     if FORCE_FORMAT in ("avatar","cinematic"): result["format"]=FORCE_FORMAT;print(f"  Format: FORCED to {FORCE_FORMAT.upper()}")
     else: print(f"  Format: {result.get('format','avatar').upper()} (Claude's choice)")
@@ -392,21 +390,18 @@ def build_full_script(script):
 
 # ---------------------------------------------------------------------------
 # AVATAR PATH
-# Removed params: dimension, use_avatar_iv_model (HeyGen v3 no longer accepts)
+# v3/videos confirmed-safe payload: avatar_id, voice_id, script, aspect_ratio
+# All other params (type, motion_prompt, expressiveness, super_resolution,
+# talking_style, dimension, use_avatar_iv_model) are v2/Avatar-IV only.
 # ---------------------------------------------------------------------------
 
 def submit_heygen_video(script_text,avatar_id,voice_id):
     headers={"X-Api-Key":HEYGEN_API_KEY,"Content-Type":"application/json"}
     payload={
-        "type":"avatar",
-        "avatar_id":avatar_id,
-        "voice_id":voice_id,
-        "script":script_text,
-        "motion_prompt":"Gesturing naturally with hands while speaking. Warm, direct eye contact. Nodding gently on emotional points. Open, welcoming gestures. Natural, conversational energy throughout.",
-        "expressiveness":"high",
-        "aspect_ratio":"9:16",
-        "super_resolution":True,
-        "talking_style":"expressive",
+        "avatar_id":  avatar_id,
+        "voice_id":   voice_id,
+        "script":     script_text,
+        "aspect_ratio": "9:16",
     }
     print(f"  HeyGen: POST /v3/videos | avatar={avatar_id[:8]}... | voice={voice_id[:8]}...")
     resp=requests.post(HEYGEN_V3_URL,headers=headers,json=payload,timeout=30)
@@ -716,11 +711,11 @@ def main():
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     all_looks=cfg.get("avatar_look_ids",[])
     avatar_voice=cfg.get("voice_id","N/A")
-    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.5")
+    print(f"\n  MindCore AI -- FEMALE Video Pipeline v1.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Avatar looks: {len(all_looks)} | Avatar voice: {avatar_voice[:8]}... (HeyGen)")
     print(f"  Cinematic voice: {FISH_AUDIO_VOICE_ID[:8]}... (Fish Audio)")
-    print(f"  HeyGen params: aspect_ratio=9:16, super_resolution, talking_style (dimension+use_avatar_iv_model removed)")
+    print(f"  HeyGen v3/videos payload: avatar_id, voice_id, script, aspect_ratio ONLY")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT} bold")
     print(f"  Music: {len(music_tracks)} tracks @ {int(MUSIC_VOLUME*100)}% | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     if FORCE_FORMAT: print(f"  Format override: {FORCE_FORMAT.upper()}")

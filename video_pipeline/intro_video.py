@@ -5,8 +5,9 @@ MindCore AI -- Introduction Video (ONE-TIME / MANUAL RUN)
 Avatar:  c25c06ac64c3480bba0f700c1864b7cb
 Voice:   6be73833ef9a4eb0aeee399b8fe9d62b
 
-HeyGen v3 params: aspect_ratio=9:16, super_resolution, talking_style
-Removed: dimension, use_avatar_iv_model (API no longer accepts these)
+HeyGen v3/videos confirmed-safe payload: avatar_id, voice_id, script, aspect_ratio
+All other params (type, motion_prompt, expressiveness, super_resolution,
+talking_style, dimension, use_avatar_iv_model) removed -- v2/Avatar-IV only.
 
 Subtitles: Whisper tiny -> ASS word-by-word captions burned in.
 Crop:      cropdetect limit=200.
@@ -112,26 +113,18 @@ INTRO_SCRIPT = (
     "You don't have to keep carrying this alone."
 )
 
-MOTION_PROMPT = (
-    "Relaxed, natural posture as if in a podcast interview. "
-    "Warm, direct eye contact with camera. "
-    "Genuine hand gestures when making a point. "
-    "Unhurried. Real. Not rehearsed."
-)
 
+# ---------------------------------------------------------------------------
+# HeyGen v3/videos -- confirmed-safe payload only
+# ---------------------------------------------------------------------------
 
 def submit_video() -> str:
     headers = {"X-Api-Key": HEYGEN_API_KEY, "Content-Type": "application/json"}
     payload = {
-        "type":             "avatar",
-        "avatar_id":        AVATAR_ID,
-        "voice_id":         VOICE_ID,
-        "script":           INTRO_SCRIPT,
-        "motion_prompt":    MOTION_PROMPT,
-        "expressiveness":   "high",
-        "aspect_ratio":     "9:16",
-        "super_resolution": True,
-        "talking_style":    "expressive",
+        "avatar_id":    AVATAR_ID,
+        "voice_id":     VOICE_ID,
+        "script":       INTRO_SCRIPT,
+        "aspect_ratio": "9:16",
     }
     print(f"  HeyGen: POST /v3/videos | avatar={AVATAR_ID[:8]}...")
     resp = requests.post(HEYGEN_V3_URL, headers=headers, json=payload, timeout=30)
@@ -308,7 +301,7 @@ def main():
     print("\n  MindCore AI -- Introduction Video")
     print(f"  Avatar: {AVATAR_ID[:8]}... | Voice: {VOICE_ID[:8]}...")
     print(f"  Script: {word_count} words (~{est_secs}s)")
-    print(f"  HeyGen params: aspect_ratio=9:16, super_resolution, talking_style")
+    print(f"  HeyGen v3/videos payload: avatar_id, voice_id, script, aspect_ratio ONLY")
     print(f"  Upload: {'ENABLED' if upload_ready else 'DISABLED'}")
     print("="*55)
     print("\n  Submitting to HeyGen v3...")
