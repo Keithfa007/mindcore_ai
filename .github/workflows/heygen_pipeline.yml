@@ -1,10 +1,8 @@
-name: MindCore AI -- Video Pipeline
+name: MindCore AI -- Male Cinematic Pipeline
 
-# Schedule: 6 days/week at 17:00 UTC (19:00 Malta)
-# Mon/Fri/Sun = Cinematic (Fish Audio + Pexels B-roll)
-# Tue/Wed/Thu = Avatar (HeyGen full body motion)
-# Ad rule: every OTHER Sunday is an ad video (even ISO week number)
-# All other runs = content
+# Cinematic-only. Mon-Fri 17:00 UTC (19:00 Malta summer).
+# No avatar. No HeyGen. Fish Audio TTS + Pexels B-roll.
+# Ad mode: every 10th run number.
 on:
   workflow_dispatch:
     inputs:
@@ -16,20 +14,15 @@ on:
         description: "Force mode: 'content' or 'ad' (blank = automatic)"
         required: false
         default: ""
-      force_format:
-        description: "Force format: 'avatar' or 'cinematic' (blank = automatic)"
-        required: false
-        default: ""
 
   schedule:
-    - cron: "0 17 * * 2,3,4"   # Tue/Wed/Thu -- avatar
-    - cron: "0 17 * * 1,5,0"   # Mon/Fri/Sun -- cinematic
+    - cron: "0 17 * * 1-5"   # Mon-Fri 17:00 UTC
 
 jobs:
   generate-video:
-    name: Generate + Upload Video (Avatar or Cinematic | 9:16)
+    name: Generate + Upload Male Cinematic Video (9:16)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repo
@@ -50,69 +43,35 @@ jobs:
 
       - name: Show run info
         run: |
-          DAY=$(date +%u)   # 1=Mon 2=Tue ... 7=Sun
-          WEEK=$(date +%V)  # ISO week number
           FORCE="${{ github.event.inputs.force_mode }}"
-          FORMAT="${{ github.event.inputs.force_format }}"
-
-          if [ -n "$FORCE" ]; then
-            echo "Mode: FORCED to $FORCE"
-          elif [ "$DAY" = "7" ] && [ $((WEEK % 2)) -eq 0 ]; then
-            echo "Mode: AD (even-week Sunday -- week $WEEK)"
+          if [ "$FORCE" = "ad" ]; then
+            echo "Mode: FORCED AD"
+          elif [ "$FORCE" = "content" ]; then
+            echo "Mode: FORCED CONTENT"
           else
-            echo "Mode: CONTENT"
+            echo "Mode: AUTO (ad every 10th run)"
           fi
+          echo "Format: CINEMATIC (always)"
+          echo "Ken Burns: 6 directions rotating per clip"
+          echo "Colour grade: MALE -- dark, desaturated, cool"
+          echo "Subtitles: Whisper tiny -> 75px Arial, MarginV 500px"
+          echo "Schedule: Mon-Fri 17:00 UTC"
 
-          if [ -n "$FORMAT" ]; then
-            echo "Format: FORCED to $FORMAT"
-          elif [ "$DAY" = "1" ] || [ "$DAY" = "5" ] || [ "$DAY" = "7" ]; then
-            echo "Format: CINEMATIC (Mon/Fri/Sun)"
-          else
-            echo "Format: AVATAR (Tue/Wed/Thu)"
-          fi
-
-          echo "Platforms: TikTok + Facebook + Instagram + YouTube"
-          echo "Schedule: 6 days/week | 17:00 UTC"
-
-      - name: Run Video Pipeline
+      - name: Run Male Cinematic Pipeline
         env:
           ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
-          HEYGEN_API_KEY:       ${{ secrets.HEYGEN_API_KEY }}
           FISH_AUDIO_API_KEY:   ${{ secrets.FISH_AUDIO_API_KEY }}
           PEXELS_API_KEY:       ${{ secrets.PEXELS_API_KEY }}
           SERP_API_KEY:         ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
-          FORCE_FORMAT:         ${{ github.event.inputs.force_format }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
-          FORMAT="${{ github.event.inputs.force_format }}"
-          DAY=$(date +%u)
-          WEEK=$(date +%V)
 
-          # --- Mode (content vs ad) ---
           if [ "$FORCE" = "ad" ]; then
             export GITHUB_RUN_NUMBER=10
           elif [ "$FORCE" = "content" ]; then
             export GITHUB_RUN_NUMBER=1
-          elif [ "$DAY" = "7" ] && [ $((WEEK % 2)) -eq 0 ]; then
-            export GITHUB_RUN_NUMBER=10
-            echo "  Auto-set: AD (even-week Sunday, week $WEEK)"
-          else
-            export GITHUB_RUN_NUMBER=1
-          fi
-
-          # --- Format (cinematic vs avatar) ---
-          if [ "$FORMAT" = "cinematic" ]; then
-            export FORCE_FORMAT=cinematic
-            export GITHUB_RUN_NUMBER=1
-          elif [ -z "$FORMAT" ]; then
-            if { [ "$DAY" = "1" ] || [ "$DAY" = "5" ]; } || \
-               { [ "$DAY" = "7" ] && [ $((WEEK % 2)) -ne 0 ]; }; then
-              export FORCE_FORMAT=cinematic
-              export GITHUB_RUN_NUMBER=1
-              echo "  Auto-set: FORCE_FORMAT=cinematic (Mon/Fri or content Sunday)"
-            fi
           fi
 
           python video_pipeline/heygen_pipeline.py
@@ -121,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: mindcore-video-run-${{ github.run_number }}
+          name: mindcore-male-run-${{ github.run_number }}
           path: |
             video_pipeline/output/mindcore_ai_video.mp4
             video_pipeline/output/upload_guide.txt
@@ -135,26 +94,22 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: mindcore-debug-run-${{ github.run_number }}
+          name: mindcore-male-debug-${{ github.run_number }}
           path: video_pipeline/output/
           retention-days: 7
 
       - name: Write job summary
         if: always()
         run: |
-          DAY=$(date +%u)
-          WEEK=$(date +%V)
-          echo "## MindCore AI Video Pipeline v5.12" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
-          echo "**Formats:** Avatar (Tue/Wed/Thu + ad Sundays) | Cinematic (Mon/Fri + content Sundays)" >> $GITHUB_STEP_SUMMARY
-          echo "**Subtitles:** Word-by-word captions burned into avatar videos via Whisper + FFmpeg" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI -- Male Cinematic Pipeline v6.0" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | **Format:** CINEMATIC | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
+          echo "**Colour grade:** Dark, desaturated, cool | **Ken Burns:** 6-direction rotation" >> $GITHUB_STEP_SUMMARY
+          echo "**Subtitles:** Whisper tiny -> 75px Arial, MarginV 500px" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
-            FMT=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('render_format','avatar').upper())" 2>/dev/null || echo "AVATAR")
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
-            echo "**Type:** $TYPE | **Format:** $FMT | **Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
+            echo "**Type:** $TYPE | **Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
             echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output/upload_result.json" ]; then
@@ -166,6 +121,5 @@ jobs:
           fi
           if [ -f "video_pipeline/output/mindcore_ai_video.mp4" ]; then
             SIZE=$(du -sh video_pipeline/output/mindcore_ai_video.mp4 | cut -f1)
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Video: $SIZE" >> $GITHUB_STEP_SUMMARY
+            echo "**Video size:** $SIZE" >> $GITHUB_STEP_SUMMARY
           fi
