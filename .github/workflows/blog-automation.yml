@@ -1,12 +1,13 @@
-name: MindCore AI — Weekly Blog Automation
+name: MindCore AI — Twice-Weekly Blog Automation
 
 on:
   schedule:
     - cron: '0 8 * * 1'   # Every Monday at 8:00 AM UTC
-  workflow_dispatch:
+    - cron: '0 8 * * 4'   # Every Thursday at 8:00 AM UTC
+  workflow_dispatch:        # Manual trigger from GitHub UI
 
 permissions:
-  contents: write
+  contents: write           # Needed to commit history and library updates
 
 jobs:
   publish-blog:
@@ -31,7 +32,6 @@ jobs:
           OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
           WP_USERNAME:         ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD:     ${{ secrets.WP_APP_PASSWORD }}
-          SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY:   ${{ github.repository }}
         run: |
