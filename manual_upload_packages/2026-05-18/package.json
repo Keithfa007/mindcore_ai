@@ -1,0 +1,58 @@
+{
+  "version": "3.0",
+  "generated_at": "2026-05-18T09:52:23.058126+00:00",
+  "date": "2026-05-18",
+  "audience": "neutral",
+  "format": {
+    "id": "reframe",
+    "name": "Reframe"
+  },
+  "topic": {
+    "keyword": "exercise and mental health",
+    "angle": "You don't need a gym membership. A 20-minute walk genuinely outperforms most antidepressants for mild depression."
+  },
+  "hook": "Stop Saying Exercise Doesn't Help Depression",
+  "slides": [
+    {
+      "title": "I need the gym",
+      "body": "Reframe: A 20-minute walk works. Research shows it matches antidepressants for mild depression\u2014no membership needed."
+    },
+    {
+      "title": "I'm too tired",
+      "body": "Reframe: Movement creates energy. Even 10 minutes outside breaks the fatigue cycle better than scrolling in bed."
+    },
+    {
+      "title": "It has to be intense",
+      "body": "Reframe: Gentle movement counts. Walking to the corner shop, stretching at your desk\u2014it all shifts your brain chemistry."
+    },
+    {
+      "title": "I don't have time",
+      "body": "Reframe: You have 15 minutes. Park further away. Take the stairs. Mental health doesn't need an hour."
+    },
+    {
+      "title": "Exercise is punishment",
+      "body": "Reframe: Movement is medicine. It's not about fixing your body. It's about calming your mind when nothing else will."
+    }
+  ],
+  "cta": {
+    "title": "Save this. Send to a friend who needs it.",
+    "body": "24/7 voice-first mental health support \u2014 link in bio. \ud83d\udd17"
+  },
+  "caption_body": "You don't need to run marathons or lift heavy. A 20-minute walk around your block genuinely outperforms most antidepressants for mild depression\u2014that's not motivation talk, that's peer-reviewed research. The problem isn't that movement doesn't work. It's that we've been sold the idea it needs to hurt, cost money, or take an hour. It doesn't. Start smaller than feels worth it. Walk to the end of your street. Stretch while the kettle boils. Your brain doesn't care if it's optimised\u2014it just needs you to move. \u2192 Link in bio for MindCore AI. 7-day trial \u20ac1.99.",
+  "caption_tags": "#mindcoreai #MentalHealthMatters #MentalHealthAwareness #ExerciseForMentalHealth #DepressionHelp #AnxietyRelief #MentalWellness #WalkingForMentalHealth #MentalHealthSupport #BurnoutRecovery",
+  "full_caption": "You don't need to run marathons or lift heavy. A 20-minute walk around your block genuinely outperforms most antidepressants for mild depression\u2014that's not motivation talk, that's peer-reviewed research. The problem isn't that movement doesn't work. It's that we've been sold the idea it needs to hurt, cost money, or take an hour. It doesn't. Start smaller than feels worth it. Walk to the end of your street. Stretch while the kettle boils. Your brain doesn't care if it's optimised\u2014it just needs you to move. \u2192 Link in bio for MindCore AI. 7-day trial \u20ac1.99.\n#mindcoreai #MentalHealthMatters #MentalHealthAwareness #ExerciseForMentalHealth #DepressionHelp #AnxietyRelief #MentalWellness #WalkingForMentalHealth #MentalHealthSupport #BurnoutRecovery",
+  "image_files": [
+    "slide_01.jpg",
+    "slide_02.jpg",
+    "slide_03.jpg",
+    "slide_04.jpg",
+    "slide_05.jpg",
+    "slide_06.jpg",
+    "slide_07.jpg"
+  ],
+  "image_sources": {
+    "fallback_solid": 7
+  },
+  "posted_manually": false,
+  "notes": "Upload manually from phone via IG app. See README.txt for instructions."
+}

@@ -157,5 +157,17 @@
       "fallback_solid": 7
     },
     "mode": "manual_package"
+  },
+  {
+    "timestamp": "2026-05-18T09:52:23.059003+00:00",
+    "keyword": "exercise and mental health",
+    "audience": "neutral",
+    "format": "reframe",
+    "hook": "Stop Saying Exercise Doesn't Help Depression",
+    "job_id": "manual-20260518-095223",
+    "image_sources": {
+      "fallback_solid": 7
+    },
+    "mode": "manual_package"
   }
 ]
