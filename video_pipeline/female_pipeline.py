@@ -13,6 +13,7 @@ CHANGES (v2.1):
   - Pexels: 8-query mood pool, random 5 sampled per run
   - Pexels: random page 1-3 per search query for clip variety
   - Visual mood cycles through 4 moods per niche by run number
+  - Instagram caption field added to upload (fix)
 
 SUBTITLES: Whisper 'tiny' -> 75px Arial bold, MarginV 500px
 """
@@ -469,14 +470,14 @@ def generate_upload_guide(script, mode, niche, client):
 
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
-    prompt=f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"..."}}"""
+    prompt=f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- instagram_caption: 1-2 punchy sentences + 10-15 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","instagram_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
-            msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=700,messages=[{"role":"user","content":prompt}])
+            msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=900,messages=[{"role":"user","content":prompt}])
             raw=msg.content[0].text.strip()
             if raw.startswith("```"): parts=raw.split("```"); raw=parts[1].lstrip("json").strip() if len(parts)>1 else raw
             metadata=json.loads(raw)
-            for key in ("tiktok_caption","facebook_description","youtube_description"): metadata[key]=ensure_brand_hashtag(metadata.get(key,""))
+            for key in ("tiktok_caption","instagram_caption","facebook_description","youtube_description"): metadata[key]=ensure_brand_hashtag(metadata.get(key,""))
             metadata["youtube_title"]=metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]
             print(f"  TikTok:  {metadata.get('tiktok_caption','')[:80]}..."); print(f"  YouTube: {metadata.get('youtube_title','')[:60]}...")
             return metadata
@@ -491,9 +492,13 @@ def upload_to_platforms(video_path, metadata, cfg):
     if not user: return {"skipped":True,"reason":"no user configured"}
     headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"}
     data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","instagram"),("platform[]","youtube"),
-          ("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),("facebook_title",metadata.get("facebook_title","")[:255]),
-          ("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),
-          ("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),("youtube_tags",metadata.get("youtube_tags",""))]
+          ("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),
+          ("instagram_caption",metadata.get("instagram_caption",metadata.get("tiktok_caption",""))[:TIKTOK_CAPTION_LIMIT]),
+          ("facebook_title",metadata.get("facebook_title","")[:255]),
+          ("facebook_description",metadata.get("facebook_description","")),
+          ("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),
+          ("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),
+          ("youtube_tags",metadata.get("youtube_tags",""))]
     try:
         with open(video_path,"rb") as f:
             files=[("video",("mindcore_female_video.mp4",f,"video/mp4"))]
