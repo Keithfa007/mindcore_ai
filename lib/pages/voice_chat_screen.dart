@@ -10,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:mindcore_ai/ai/agent_prompts.dart';
 import 'package:mindcore_ai/env/env.dart';
 import 'package:mindcore_ai/services/chat_stream_service.dart';
 import 'package:mindcore_ai/services/live_voice_preferences.dart';
@@ -50,6 +51,14 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
   late AnimationController _waveController;
   late Animation<double>   _pulseAnim;
   Timer? _voiceTimer;
+
+  // ── 3am Protocol ──────────────────────────────────────────────────────
+  bool get _isThreeAm => AgentPrompts.isThreeAmMode(DateTime.now());
+
+  // Warm amber palette for 3am mode
+  static const _amberOrb    = Color(0xFFE8A265);
+  static const _amberGlow   = Color(0xFFD4874A);
+  static const _amberBorder = Color(0xFFF0B97A);
 
   @override
   void initState() {
@@ -92,10 +101,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       if (key.isEmpty) return;
       await http.post(
         Uri.parse('https://api.fish.audio/v1/tts'),
-        headers: {
-          'Authorization': 'Bearer $key',
-          'Content-Type': 'application/json',
-        },
+        headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
         body: jsonEncode({
           'text': 'hi',
           'reference_id': LiveVoicePreferences.instance.activeVoiceId,
@@ -115,10 +121,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       if (key.isEmpty || text.trim().isEmpty) return null;
       final res = await http.post(
         Uri.parse('https://api.fish.audio/v1/tts'),
-        headers: {
-          'Authorization': 'Bearer $key',
-          'Content-Type': 'application/json',
-        },
+        headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
         body: jsonEncode({
           'text': text.trim(),
           'reference_id': voiceId,
@@ -216,8 +219,6 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     OpenAiTtsService.instance.stop();
     setState(() => _state = _VoiceState.listening);
     _startVoiceTimer();
-    // pauseFor and listenFor are direct parameters on listen(), not on
-    // SpeechListenOptions. pauseFor=8s gives time to pause mid-sentence.
     await _stt.listen(
       onResult: (_) {},
       pauseFor: const Duration(seconds: 8),
@@ -301,9 +302,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
       _voiceMessageCount++;
       if (_voiceMessageCount % 5 == 0) {
-        unawaited(UserMemoryService.saveMemory(
-          SharedChatSession.instance.historyForAI,
-        ));
+        unawaited(UserMemoryService.saveMemory(SharedChatSession.instance.historyForAI));
       }
 
       _moodLabel = result.supportModeLabel.toLowerCase().contains('reset')
@@ -346,12 +345,27 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     return '${snap.voiceMinutesRemaining} min left';
   }
 
+  // ── 3am colours ──────────────────────────────────────────────────────────
+
+  Color _stateColor() {
+    if (_isThreeAm) return _amberOrb;
+    switch (_state) {
+      case _VoiceState.idle:      return const Color(0xFF4D7CFF);
+      case _VoiceState.listening: return const Color(0xFF32D0BE);
+      case _VoiceState.thinking:  return const Color(0xFF9B7FFF);
+      case _VoiceState.speaking:  return const Color(0xFF4D7CFF);
+    }
+  }
+
   // ── UI ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final threeAm = _isThreeAm;
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E1A),
+      backgroundColor: threeAm
+          ? const Color(0xFF0D0A07)  // warmer dark for 3am
+          : const Color(0xFF0A0E1A),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -360,6 +374,17 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          // Moon icon — visible only in 3am mode
+          if (threeAm)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Center(
+                child: Text('🌙',
+                    style: TextStyle(
+                        fontSize: 18,
+                        color: _amberOrb.withValues(alpha: 0.85))),
+              ),
+            ),
           ValueListenableBuilder(
             valueListenable: UsageService.instance.snapshot,
             builder: (_, __, ___) => Padding(
@@ -461,41 +486,49 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         return ClipOval(child: Image.asset('assets/images/logo512.png',
             width: 58, height: 58, fit: BoxFit.cover, key: const ValueKey('listening')));
       case _VoiceState.thinking:
-        return const SizedBox(key: ValueKey('thinking'), width: 28, height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
+        return SizedBox(
+            key: const ValueKey('thinking'), width: 28, height: 28,
+            child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _isThreeAm ? _amberOrb : Colors.white70));
       case _VoiceState.speaking:
         return ClipOval(child: Image.asset('assets/images/logo512.png',
             width: 52, height: 52, fit: BoxFit.cover, key: const ValueKey('speaking')));
     }
   }
 
-  Color _stateColor() {
-    switch (_state) {
-      case _VoiceState.idle:      return const Color(0xFF4D7CFF);
-      case _VoiceState.listening: return const Color(0xFF32D0BE);
-      case _VoiceState.thinking:  return const Color(0xFF9B7FFF);
-      case _VoiceState.speaking:  return const Color(0xFF4D7CFF);
-    }
-  }
-
   Widget _buildStateLabel() {
+    final threeAm = _isThreeAm;
     String label;
     switch (_state) {
-      case _VoiceState.idle:      label = 'Hold to speak'; break;
-      case _VoiceState.listening: label = 'Listening…';    break;
-      case _VoiceState.thinking:  label = 'Thinking…';     break;
-      case _VoiceState.speaking:  label = 'Tap to stop';   break;
+      // In 3am mode idle label is warmer
+      case _VoiceState.idle:
+        label = threeAm ? 'I\'m here… hold to speak' : 'Hold to speak';
+        break;
+      case _VoiceState.listening: label = 'Listening…';  break;
+      case _VoiceState.thinking:  label = 'Thinking…';   break;
+      case _VoiceState.speaking:  label = 'Tap to stop';  break;
     }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       child: Text(label, key: ValueKey(label),
-          style: const TextStyle(color: Colors.white38, fontSize: 15, letterSpacing: 0.5)),
+          style: TextStyle(
+              color: threeAm
+                  ? _amberOrb.withValues(alpha: 0.70)
+                  : Colors.white38,
+              fontSize: 15,
+              letterSpacing: 0.5)),
     );
   }
 
   Widget _buildHoldButton() {
     final isListening = _state == _VoiceState.listening;
     final isSpeaking  = _state == _VoiceState.speaking;
+    final threeAm     = _isThreeAm;
+
+    final activeColor = threeAm ? _amberBorder : const Color(0xFF32D0BE);
+    final stopColor   = threeAm ? _amberGlow   : const Color(0xFFFF6B6B);
+
     return GestureDetector(
       onTapDown:   (_) => _onHold(),
       onTapUp:     (_) => _onRelease(),
@@ -507,15 +540,15 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: isListening
-              ? const Color(0xFF32D0BE).withValues(alpha: 0.2)
+              ? activeColor.withValues(alpha: 0.2)
               : isSpeaking
-                  ? const Color(0xFFFF6B6B).withValues(alpha: 0.15)
+                  ? stopColor.withValues(alpha: 0.15)
                   : Colors.white.withValues(alpha: 0.06),
           border: Border.all(
             color: isListening
-                ? const Color(0xFF32D0BE).withValues(alpha: 0.8)
+                ? activeColor.withValues(alpha: 0.8)
                 : isSpeaking
-                    ? const Color(0xFFFF6B6B).withValues(alpha: 0.60)
+                    ? stopColor.withValues(alpha: 0.60)
                     : Colors.white.withValues(alpha: 0.15),
             width: isListening || isSpeaking ? 2 : 1,
           ),
@@ -523,9 +556,9 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         child: Icon(
           isListening || isSpeaking ? Icons.stop_rounded : Icons.mic_rounded,
           color: isListening
-              ? const Color(0xFF32D0BE)
+              ? activeColor
               : isSpeaking
-                  ? const Color(0xFFFF6B6B)
+                  ? stopColor
                   : Colors.white.withValues(alpha: 0.6),
           size: 30,
         ),
