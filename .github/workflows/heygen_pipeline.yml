@@ -1,125 +1,14 @@
-name: MindCore AI -- Male Cinematic Pipeline
-
-# Cinematic-only. Mon-Fri 17:00 UTC (19:00 Malta summer).
-# No avatar. No HeyGen. Fish Audio TTS + Pexels B-roll.
-# Ad mode: every 10th run number.
+# RENAMED -- this workflow is now .github/workflows/male_pipeline.yml
+# Schedule removed. Manual trigger only, for reference.
+name: DEPRECATED - Male Pipeline (see male_pipeline.yml)
 on:
   workflow_dispatch:
     inputs:
-      run_note:
-        description: "Optional note for this run"
+      note:
+        description: "This workflow is deprecated. Use male_pipeline.yml instead."
         required: false
-        default: "manual"
-      force_mode:
-        description: "Force mode: 'content' or 'ad' (blank = automatic)"
-        required: false
-        default: ""
-
-  schedule:
-    - cron: "0 17 * * 1-5"   # Mon-Fri 17:00 UTC
-
 jobs:
-  generate-video:
-    name: Generate + Upload Male Cinematic Video (9:16)
+  deprecated:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install FFmpeg + fonts
-        run: |
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
-          ffmpeg -version | head -1
-
-      - name: Install Python dependencies
-        run: pip install anthropic requests openai-whisper
-
-      - name: Show run info
-        run: |
-          FORCE="${{ github.event.inputs.force_mode }}"
-          if [ "$FORCE" = "ad" ]; then
-            echo "Mode: FORCED AD"
-          elif [ "$FORCE" = "content" ]; then
-            echo "Mode: FORCED CONTENT"
-          else
-            echo "Mode: AUTO (ad every 10th run)"
-          fi
-          echo "Format: CINEMATIC (always)"
-          echo "Ken Burns: 6 directions rotating per clip"
-          echo "Colour grade: MALE -- dark, desaturated, cool"
-          echo "Subtitles: Whisper tiny -> 75px Arial, MarginV 500px"
-          echo "Schedule: Mon-Fri 17:00 UTC"
-
-      - name: Run Male Cinematic Pipeline
-        env:
-          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
-          FISH_AUDIO_API_KEY:   ${{ secrets.FISH_AUDIO_API_KEY }}
-          PEXELS_API_KEY:       ${{ secrets.PEXELS_API_KEY }}
-          SERP_API_KEY:         ${{ secrets.SERP_API_KEY }}
-          UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
-          GITHUB_RUN_NUMBER:    ${{ github.run_number }}
-        run: |
-          FORCE="${{ github.event.inputs.force_mode }}"
-
-          if [ "$FORCE" = "ad" ]; then
-            export GITHUB_RUN_NUMBER=10
-          elif [ "$FORCE" = "content" ]; then
-            export GITHUB_RUN_NUMBER=1
-          fi
-
-          python video_pipeline/heygen_pipeline.py
-
-      - name: Upload post bundle
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: mindcore-male-run-${{ github.run_number }}
-          path: |
-            video_pipeline/output/mindcore_ai_video.mp4
-            video_pipeline/output/upload_guide.txt
-            video_pipeline/output/script.json
-            video_pipeline/output/upload_metadata.json
-            video_pipeline/output/upload_result.json
-            video_pipeline/output/keyword_research.json
-          retention-days: 30
-
-      - name: Upload debug on failure
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: mindcore-male-debug-${{ github.run_number }}
-          path: video_pipeline/output/
-          retention-days: 7
-
-      - name: Write job summary
-        if: always()
-        run: |
-          echo "## MindCore AI -- Male Cinematic Pipeline v6.0" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Format:** CINEMATIC | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
-          echo "**Colour grade:** Dark, desaturated, cool | **Ken Burns:** 6-direction rotation" >> $GITHUB_STEP_SUMMARY
-          echo "**Subtitles:** Whisper tiny -> 75px Arial, MarginV 500px" >> $GITHUB_STEP_SUMMARY
-          if [ -f "video_pipeline/output/script.json" ]; then
-            TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
-            TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
-            KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
-            echo "**Type:** $TYPE | **Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
-            echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
-          fi
-          if [ -f "video_pipeline/output/upload_result.json" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat video_pipeline/output/upload_result.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-          if [ -f "video_pipeline/output/mindcore_ai_video.mp4" ]; then
-            SIZE=$(du -sh video_pipeline/output/mindcore_ai_video.mp4 | cut -f1)
-            echo "**Video size:** $SIZE" >> $GITHUB_STEP_SUMMARY
-          fi
+      - run: echo "This workflow is deprecated. The active workflow is male_pipeline.yml"
