@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v6.1
+MindCore AI -- Male Cinematic Pipeline v6.2
 ============================================
 Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
 No HeyGen. No avatar. Cinematic only.
+
+CHANGES (v6.2):
+  - FIX: ken_burns_vf() crop expressions now escape commas inside min()/max()
+    so FFmpeg's filtergraph parser does not treat them as filter separators.
+    (Previous version crashed every clip with "No such filter: '...'".)
 
 CHANGES (v6.1):
   - Day-based niche rotation from niche_keywords.json
@@ -362,13 +367,24 @@ def burn_subtitles_into_video(video_path, ass_path):
     if Path(burnt_tmp).exists(): Path(burnt_tmp).unlink(); return False
 
 def ken_burns_vf(clip_duration, direction):
+    """
+    Build a scale+crop filter that pans/zooms across the clip (Ken Burns).
+
+    IMPORTANT: the crop x/y expressions use min()/max(), which contain commas.
+    When this filter string is chained into -vf with other comma-separated
+    filters, FFmpeg's filtergraph parser treats ANY bare comma as a filter
+    separator. The commas inside min()/max() MUST be escaped as '\\,' so the
+    parser keeps them as part of the crop expression. (Previously unescaped
+    -> 'No such filter' crash on every clip.)
+    """
     d=max(clip_duration,0.5); sw=int(1080*KB_SCALE); sh=int(1920*KB_SCALE); ew=sw-1080; eh=sh-1920
-    if direction=="pan_right":   x,y=f"min(t/{d:.2f}*{ew},{ew})",str(eh//2)
-    elif direction=="pan_left":  x,y=f"max({ew}-t/{d:.2f}*{ew},0)",str(eh//2)
-    elif direction=="pan_up":    x,y=str(ew//2),f"min(t/{d:.2f}*{eh},{eh})"
-    elif direction=="pan_down":  x,y=str(ew//2),f"max({eh}-t/{d:.2f}*{eh},0)"
-    elif direction=="zoom_in":   x,y=f"max({ew}-t/{d:.2f}*{ew//2},{ew//2})",f"max({eh}-t/{d:.2f}*{eh//2},{eh//2})"
-    else:                        x,y=f"min(t/{d:.2f}*{ew//2},{ew//2})",f"min(t/{d:.2f}*{eh//2},{eh//2})"
+    cy=str(eh//2); cx=str(ew//2)
+    if direction=="pan_right":   x,y=f"min(t/{d:.2f}*{ew}\\,{ew})",cy
+    elif direction=="pan_left":  x,y=f"max({ew}-t/{d:.2f}*{ew}\\,0)",cy
+    elif direction=="pan_up":    x,y=cx,f"min(t/{d:.2f}*{eh}\\,{eh})"
+    elif direction=="pan_down":  x,y=cx,f"max({eh}-t/{d:.2f}*{eh}\\,0)"
+    elif direction=="zoom_in":   x,y=f"max({ew}-t/{d:.2f}*{ew//2}\\,{ew//2})",f"max({eh}-t/{d:.2f}*{eh//2}\\,{eh//2})"
+    else:                        x,y=f"min(t/{d:.2f}*{ew//2}\\,{ew//2})",f"min(t/{d:.2f}*{eh//2}\\,{eh//2})"
     return f"scale={sw}:{sh},crop=1080:1920:{x}:{y}"
 
 def generate_fish_audio_tts(script_text, output_path):
@@ -422,7 +438,8 @@ def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_ri
     kb_vf=ken_burns_vf(duration,direction); vf_str=f"{kb_vf},{COLOR_GRADE_FILTER},fps=30"
     cmd=["ffmpeg","-stream_loop","-1","-i",clip_path,"-vf",vf_str,"-t",str(duration),"-an","-c:v","libx264","-crf","20","-preset","fast","-y",output_path]
     result=subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode!=0: raise RuntimeError(f"Clip failed: {result.stderr[-300:]}"); return output_path
+    if result.returncode!=0: raise RuntimeError(f"Clip failed: {result.stderr[-300:]}")
+    return output_path
 
 def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None, ass_path=None):
     audio_duration=get_audio_duration(audio_path); n=len(clip_paths); clip_duration=audio_duration/n
@@ -523,7 +540,8 @@ def upload_to_platforms(video_path, metadata, cfg):
             resp=requests.post(UPLOAD_POST_API_URL,headers=headers,files=files,data=data,timeout=180)
         result=resp.json() if resp.headers.get("content-type","").startswith("application/json") else {"raw":resp.text}
         result["status_code"]=resp.status_code; print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
-        if not resp.ok: print(f"  {resp.text[:300]}"); return result
+        if not resp.ok: print(f"  {resp.text[:300]}")
+        return result
     except Exception as e: print(f"  Upload failed: {e}"); return {"error":str(e)}
 
 def save_upload_guide(guide_text, script, mode, run_number, niche):
@@ -542,7 +560,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v6.1")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v6.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Niche: {niche['name']} | Mood: {mood['name']}")
     print(f"  Ken Burns: {len(KB_DIRECTIONS)} directions | Colour grade: MALE (dark/cool)")
