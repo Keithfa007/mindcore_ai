@@ -27,6 +27,7 @@ import 'pages/sos_screen.dart';
 import 'pages/disclaimer_screen.dart';
 import 'pages/blog_screen.dart';
 import 'pages/journey_screen.dart';
+import 'pages/sleep_ritual_screen.dart';
 
 import 'pages/helpers/route_observer.dart';
 import 'services/settings_service.dart';
@@ -50,9 +51,7 @@ Future<void> main() async {
   try {
     await dotenv.load(fileName: 'assets/config/env/.env');
   } catch (_) {
-    try {
-      await dotenv.load(fileName: '.env');
-    } catch (_) {}
+    try { await dotenv.load(fileName: '.env'); } catch (_) {}
   }
 
   await OpenAiTtsService.instance.init();
@@ -124,6 +123,18 @@ class MindCoreApp extends StatelessWidget {
             '/disclaimer':       (_) => const DisclaimerScreen(),
             '/blog':             (_) => const BlogScreen(),
             '/journey':          (_) => const JourneyScreen(),
+            // v2 — Sleep Ritual
+            '/sleep-ritual': (ctx) {
+              final args = ModalRoute.of(ctx)?.settings.arguments;
+              SleepRitualMode mode = SleepRitualMode.evening;
+              if (args is Map) {
+                final m = args['mode']?.toString() ?? 'evening';
+                mode = m == 'morning'
+                    ? SleepRitualMode.morning
+                    : SleepRitualMode.evening;
+              }
+              return SleepRitualScreen(mode: mode);
+            },
           },
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),

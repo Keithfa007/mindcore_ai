@@ -23,34 +23,42 @@ class NotificationService {
   bool _initialized = false;
   GlobalKey<NavigatorState>? _navigatorKey;
 
-  static const _instantChannelId   = 'instant_channel';
-  static const _instantChannelName = 'Instant Notifications';
-  static const _instantChannelDesc = 'Channel for instant notifications';
-  static const _dailyChannelId     = 'daily_recommendation_channel';
-  static const _dailyChannelName   = 'Daily Recommendation';
-  static const _dailyChannelDesc   = 'Daily personalised recommendations';
-  static const _checkInChannelId   = 'checkin_channel';
-  static const _checkInChannelName = 'Check-in Notifications';
-  static const _checkInChannelDesc = 'Friendly check-ins to see how you are doing';
-  static const _blogChannelId      = 'blog_channel';
-  static const _blogChannelName    = 'New Articles';
-  static const _blogChannelDesc    = 'Notifies you when a new article is published on MindCore AI';
+  // Channel IDs
+  static const _instantChannelId        = 'instant_channel';
+  static const _instantChannelName      = 'Instant Notifications';
+  static const _instantChannelDesc      = 'Channel for instant notifications';
+  static const _dailyChannelId          = 'daily_recommendation_channel';
+  static const _dailyChannelName        = 'Daily Recommendation';
+  static const _dailyChannelDesc        = 'Daily personalised recommendations';
+  static const _checkInChannelId        = 'checkin_channel';
+  static const _checkInChannelName      = 'Check-in Notifications';
+  static const _checkInChannelDesc      = 'Friendly check-ins to see how you are doing';
+  static const _blogChannelId           = 'blog_channel';
+  static const _blogChannelName         = 'New Articles';
+  static const _blogChannelDesc         = 'Notifies you when a new article is published';
   static const _weeklySummaryChannelId   = 'weekly_summary_channel';
   static const _weeklySummaryChannelName = 'Weekly Progress';
-  static const _weeklySummaryChannelDesc = 'A warm Sunday evening summary of your week\'s wellness journey';
+  static const _weeklySummaryChannelDesc = 'A warm Sunday summary of your wellness journey';
+  static const _sleepChannelId           = 'sleep_ritual_channel';
+  static const _sleepChannelName         = 'Sleep Ritual';
+  static const _sleepChannelDesc         = 'Morning and evening check-in reminders';
 
-  static const int _dailyNotificationId = 2000;
-  static const int _checkInMorningId    = 4001;
-  static const int _checkInAfternoonId  = 4002;
-  static const int _checkInEveningId    = 4003;
-  static const int _blogNotificationId  = 5001;
-  static const int _weeklySummaryId     = 6001;
+  // Notification IDs
+  static const int _dailyNotificationId   = 2000;
+  static const int _checkInMorningId      = 4001;
+  static const int _checkInAfternoonId    = 4002;
+  static const int _checkInEveningId      = 4003;
+  static const int _blogNotificationId    = 5001;
+  static const int _weeklySummaryId       = 6001;
+  static const int _sleepEveningId        = 7001;
+  static const int _sleepMorningId        = 7002;
 
-  static const String _kLastScheduledSignature    = 'recommendation_last_schedule_signature';
-  static const String _kCheckInEnabled            = 'checkin_enabled';
-  static const String _kCheckInFrequency          = 'checkin_frequency';
-  static const String _kNeedsReschedule           = 'needs_notification_reschedule';
-  static const String _kBatteryPromptShown        = 'battery_opt_prompt_shown';
+  // Prefs keys
+  static const String _kLastScheduledSignature = 'recommendation_last_schedule_signature';
+  static const String _kCheckInEnabled         = 'checkin_enabled';
+  static const String _kCheckInFrequency       = 'checkin_frequency';
+  static const String _kNeedsReschedule        = 'needs_notification_reschedule';
+  static const String _kBatteryPromptShown     = 'battery_opt_prompt_shown';
 
   static const _checkInMessages = [
     _CheckInMsg('How are you doing? \ud83d\udc99', 'Take a moment to check in with yourself.'),
@@ -85,8 +93,8 @@ class NotificationService {
     try { tz.setLocalLocation(tz.getLocation(tzId)); }
     catch (_) { tz.setLocalLocation(tz.getLocation('UTC')); }
 
-    const androidInit   = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings  = InitializationSettings(android: androidInit);
+    const androidInit  = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidInit);
     await _plugin.initialize(initSettings,
         onDidReceiveNotificationResponse: _handleNotificationResponse);
 
@@ -95,26 +103,25 @@ class NotificationService {
           AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
       for (final ch in [
-        const AndroidNotificationChannel(_instantChannelId,   _instantChannelName,   description: _instantChannelDesc,       importance: Importance.max),
-        const AndroidNotificationChannel(_dailyChannelId,     _dailyChannelName,     description: _dailyChannelDesc,         importance: Importance.max),
-        const AndroidNotificationChannel(_checkInChannelId,   _checkInChannelName,   description: _checkInChannelDesc,       importance: Importance.high),
-        const AndroidNotificationChannel(_blogChannelId,      _blogChannelName,      description: _blogChannelDesc,          importance: Importance.high),
+        const AndroidNotificationChannel(_instantChannelId,   _instantChannelName,   description: _instantChannelDesc,        importance: Importance.max),
+        const AndroidNotificationChannel(_dailyChannelId,     _dailyChannelName,     description: _dailyChannelDesc,          importance: Importance.max),
+        const AndroidNotificationChannel(_checkInChannelId,   _checkInChannelName,   description: _checkInChannelDesc,        importance: Importance.high),
+        const AndroidNotificationChannel(_blogChannelId,      _blogChannelName,      description: _blogChannelDesc,           importance: Importance.high),
         const AndroidNotificationChannel(_weeklySummaryChannelId, _weeklySummaryChannelName, description: _weeklySummaryChannelDesc, importance: Importance.high),
+        const AndroidNotificationChannel(_sleepChannelId,     _sleepChannelName,     description: _sleepChannelDesc,          importance: Importance.high),
       ]) { await android?.createNotificationChannel(ch); }
     }
 
     _initialized = true;
 
     final prefs = await SharedPreferences.getInstance();
-
-    // If BootReceiver flagged a reboot, force-reschedule everything
     final needsReschedule = prefs.getBool(_kNeedsReschedule) ?? false;
     if (needsReschedule) {
       await prefs.remove(_kNeedsReschedule);
-      await prefs.remove(_kLastScheduledSignature); // force daily to reschedule
+      await prefs.remove(_kLastScheduledSignature);
     }
 
-    final checkInEnabled = prefs.getBool(_kCheckInEnabled)  ?? true;
+    final checkInEnabled = prefs.getBool(_kCheckInEnabled) ?? true;
     final checkInFreq    = prefs.getInt(_kCheckInFrequency) ?? 2;
     if (checkInEnabled) await scheduleCheckInNotifications(timesPerDay: checkInFreq);
     await scheduleWeeklySummary();
@@ -132,30 +139,22 @@ class NotificationService {
     } catch (_) {}
   }
 
-  // ── Battery optimisation ─────────────────────────────────────────────────────
+  // ── Battery ────────────────────────────────────────────────────────────
 
-  /// Returns true if the app is already exempted from battery optimisation.
   Future<bool> isIgnoringBatteryOptimizations() async {
     if (!Platform.isAndroid) return true;
     try {
-      final result = await _settingsChannel
-          .invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      final result = await _settingsChannel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
       return result ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
-  /// Shows an explanation dialog then opens Android’s battery optimisation
-  /// settings so the user can exempt MindCore AI.
-  /// Call this from the Settings screen.
   Future<void> promptBatteryOptimizationExemption(BuildContext context) async {
     if (!Platform.isAndroid) return;
     final already = await isIgnoringBatteryOptimizations();
     if (already) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('\u2705 Background notifications are already enabled')),
-      );
+          const SnackBar(content: Text('\u2705 Background notifications are already enabled')));
       return;
     }
     if (!context.mounted) return;
@@ -174,30 +173,25 @@ class NotificationService {
       ),
     );
     if (go != true) return;
-    try {
-      await _settingsChannel.invokeMethod('openBatterySettings');
-    } catch (_) {}
-    // Remember we’ve shown it so we don’t nag repeatedly
+    try { await _settingsChannel.invokeMethod('openBatterySettings'); } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kBatteryPromptShown, true);
   }
 
-  /// Show once on first app open if not already exempted.
   Future<void> promptBatteryOptimizationIfNeeded(BuildContext context) async {
     if (!Platform.isAndroid) return;
-    final prefs   = await SharedPreferences.getInstance();
-    final shown   = prefs.getBool(_kBatteryPromptShown) ?? false;
+    final prefs  = await SharedPreferences.getInstance();
+    final shown  = prefs.getBool(_kBatteryPromptShown) ?? false;
     if (shown) return;
     final already = await isIgnoringBatteryOptimizations();
     if (already) { await prefs.setBool(_kBatteryPromptShown, true); return; }
     if (!context.mounted) return;
-    // Small delay so it doesn’t pop immediately on first launch
     await Future.delayed(const Duration(seconds: 3));
     if (!context.mounted) return;
     await promptBatteryOptimizationExemption(context);
   }
 
-  // ── Immediate / blog notifications ──────────────────────────────────────────
+  // ── Immediate / blog ───────────────────────────────────────────────────────
 
   Future<void> showImmediateNotification({required String title, required String body}) async {
     const details = NotificationDetails(
@@ -217,7 +211,7 @@ class NotificationService {
     await _plugin.show(_blogNotificationId, 'New article \ud83d\udcd6', postTitle, details, payload: payload);
   }
 
-  // ── Daily recommendation ───────────────────────────────────────────────────
+  // ── Daily recommendation ──────────────────────────────────────────────────
 
   Future<void> scheduleDailyRecommendationNotification({
     required String uniqueKey,
@@ -234,22 +228,19 @@ class NotificationService {
     final signature = '$today|$hour:$minute|$uniqueKey|$title|$body|${jsonEncode(routeArguments ?? const {})}';
     if (prefs.getString(_kLastScheduledSignature) == signature) return;
 
-    final payload = jsonEncode({'routeName': routeName, 'arguments': routeArguments ?? <String, dynamic>{}});
-    final nowTz = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(tz.local, nowTz.year, nowTz.month, nowTz.day, hour, minute);
+    final payload  = jsonEncode({'routeName': routeName, 'arguments': routeArguments ?? <String, dynamic>{}});
+    final nowTz    = tz.TZDateTime.now(tz.local);
+    var scheduled  = tz.TZDateTime(tz.local, nowTz.year, nowTz.month, nowTz.day, hour, minute);
     if (scheduled.isBefore(nowTz)) scheduled = scheduled.add(const Duration(days: 1));
 
     const details = NotificationDetails(
       android: AndroidNotificationDetails(_dailyChannelId, _dailyChannelName,
           channelDescription: _dailyChannelDesc, importance: Importance.max, priority: Priority.high),
     );
-
     await _plugin.cancel(_dailyNotificationId);
     Future<void> doSchedule(AndroidScheduleMode mode) => _plugin.zonedSchedule(
       _dailyNotificationId, title, body, scheduled, details,
-      payload: payload,
-      matchDateTimeComponents: DateTimeComponents.time,
-      androidScheduleMode: mode,
+      payload: payload, matchDateTimeComponents: DateTimeComponents.time, androidScheduleMode: mode,
     );
     try { await doSchedule(AndroidScheduleMode.exactAllowWhileIdle); }
     on PlatformException catch (e) {
@@ -268,7 +259,7 @@ class NotificationService {
       scheduleDailyRecommendationNotification(
         uniqueKey: 'fallback_daily_reset',
         title: 'Your daily recommendation is ready',
-        body: 'Open MindCore AI for a calm reset and one gentle next step.',
+        body:  'Open MindCore AI for a calm reset and one gentle next step.',
         routeName: '/home', hour: hour, minute: minute,
         openSettingsIfNeeded: openSettingsIfNeeded,
       );
@@ -279,7 +270,7 @@ class NotificationService {
     await _plugin.cancel(_dailyNotificationId);
   }
 
-  // ── Check-in notifications ───────────────────────────────────────────────────
+  // ── Check-in ────────────────────────────────────────────────────────────
 
   Future<void> scheduleCheckInNotifications({required int timesPerDay}) async {
     await cancelCheckInNotifications();
@@ -304,12 +295,9 @@ class NotificationService {
       android: AndroidNotificationDetails(_checkInChannelId, _checkInChannelName,
           channelDescription: _checkInChannelDesc, importance: Importance.high, priority: Priority.high),
     );
-    // Try exact first — much more reliable than inexact in Doze mode
     Future<void> doSchedule(AndroidScheduleMode mode) => _plugin.zonedSchedule(
       id, msg.title, msg.body, scheduled, details,
-      payload: payload,
-      matchDateTimeComponents: DateTimeComponents.time,
-      androidScheduleMode: mode,
+      payload: payload, matchDateTimeComponents: DateTimeComponents.time, androidScheduleMode: mode,
     );
     try { await doSchedule(AndroidScheduleMode.exactAllowWhileIdle); }
     on PlatformException catch (e) {
@@ -331,12 +319,74 @@ class NotificationService {
     await prefs.setBool(_kCheckInEnabled, false);
   }
 
-  // ── Weekly Sunday summary ───────────────────────────────────────────────────
+  // ── Sleep Ritual ──────────────────────────────────────────────────────────
+
+  Future<void> scheduleSleepRitualNotifications({
+    required TimeOfDay eveningTime,
+    required TimeOfDay morningTime,
+  }) async {
+    await cancelSleepRitualNotifications();
+    await _scheduleOneSleepNotif(
+      id:      _sleepEveningId,
+      title:   'Evening check-in \ud83c\udf19',
+      body:    'How did today go? Take 30 seconds.',
+      hour:    eveningTime.hour,
+      minute:  eveningTime.minute,
+      mode:    'evening',
+    );
+    await _scheduleOneSleepNotif(
+      id:     _sleepMorningId,
+      title:  'Good morning \u2600\ufe0f',
+      body:   'How are you feeling today?',
+      hour:   morningTime.hour,
+      minute: morningTime.minute,
+      mode:   'morning',
+    );
+  }
+
+  Future<void> _scheduleOneSleepNotif({
+    required int    id,
+    required String title,
+    required String body,
+    required int    hour,
+    required int    minute,
+    required String mode,
+  }) async {
+    final payload = jsonEncode({'routeName': '/sleep-ritual', 'arguments': {'mode': mode}});
+    final nowTz   = tz.TZDateTime.now(tz.local);
+    var scheduled = tz.TZDateTime(tz.local, nowTz.year, nowTz.month, nowTz.day, hour, minute);
+    if (scheduled.isBefore(nowTz)) scheduled = scheduled.add(const Duration(days: 1));
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(_sleepChannelId, _sleepChannelName,
+          channelDescription: _sleepChannelDesc, importance: Importance.high, priority: Priority.high),
+    );
+    Future<void> doSchedule(AndroidScheduleMode m) => _plugin.zonedSchedule(
+      id, title, body, scheduled, details,
+      payload: payload, matchDateTimeComponents: DateTimeComponents.time, androidScheduleMode: m,
+    );
+    try { await doSchedule(AndroidScheduleMode.exactAllowWhileIdle); }
+    on PlatformException catch (e) {
+      if (e.code == 'exact_alarms_not_permitted') {
+        try { await doSchedule(AndroidScheduleMode.inexactAllowWhileIdle); } catch (_) {}
+      } else {
+        try { await doSchedule(AndroidScheduleMode.inexactAllowWhileIdle); } catch (_) {}
+      }
+    } catch (_) {
+      try { await doSchedule(AndroidScheduleMode.inexactAllowWhileIdle); } catch (_) {}
+    }
+  }
+
+  Future<void> cancelSleepRitualNotifications() async {
+    await _plugin.cancel(_sleepEveningId);
+    await _plugin.cancel(_sleepMorningId);
+  }
+
+  // ── Weekly summary ─────────────────────────────────────────────────────────
 
   Future<void> scheduleWeeklySummary() async {
     try {
       final weekNumber = DateTime.now().difference(DateTime(DateTime.now().year, 1, 1)).inDays ~/ 7;
-      final msg     = _weeklySummaryMessages[weekNumber % _weeklySummaryMessages.length];
+      final msg        = _weeklySummaryMessages[weekNumber % _weeklySummaryMessages.length];
       await _scheduleWeeklySummaryNotification(title: msg.title, body: msg.body);
     } catch (_) {}
   }
@@ -370,5 +420,5 @@ class NotificationService {
   }
 
   Future<void> cancelWeeklySummary() => _plugin.cancel(_weeklySummaryId).then((_) {});
-  Future<void> cancelAll() => _plugin.cancelAll();
+  Future<void> cancelAll()           => _plugin.cancelAll();
 }
