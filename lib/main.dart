@@ -28,6 +28,7 @@ import 'pages/disclaimer_screen.dart';
 import 'pages/blog_screen.dart';
 import 'pages/journey_screen.dart';
 import 'pages/sleep_ritual_screen.dart';
+import 'pages/wins_screen.dart';
 
 import 'pages/helpers/route_observer.dart';
 import 'services/settings_service.dart';
@@ -45,50 +46,37 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await SettingsService.init();
-
   try {
     await dotenv.load(fileName: 'assets/config/env/.env');
   } catch (_) {
     try { await dotenv.load(fileName: '.env'); } catch (_) {}
   }
-
   await OpenAiTtsService.instance.init();
-
   await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
+    DeviceOrientation.portraitUp, DeviceOrientation.portraitDown,
   ]);
-
   await Firebase.initializeApp();
-
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
   final messaging = FirebaseMessaging.instance;
   await messaging.requestPermission(alert: true, badge: true, sound: true);
   await messaging.subscribeToTopic('relax_audio_updates');
-
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     final screen = message.data['screen'];
     if (screen == 'relax_audio') appNavigatorKey.currentState?.pushNamed('/relax-audio');
   });
-
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
     final screen = message.data['screen'];
     if (screen == 'relax_audio') appNavigatorKey.currentState?.pushNamed('/relax-audio');
   });
-
   await PremiumService.init();
   await UsageService.instance.init();
   await NotificationService.instance.init(navigatorKey: appNavigatorKey);
-
   runApp(const MindCoreApp());
 }
 
 class MindCoreApp extends StatelessWidget {
   const MindCoreApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
@@ -123,15 +111,14 @@ class MindCoreApp extends StatelessWidget {
             '/disclaimer':       (_) => const DisclaimerScreen(),
             '/blog':             (_) => const BlogScreen(),
             '/journey':          (_) => const JourneyScreen(),
-            // v2 — Sleep Ritual
+            '/wins':             (_) => const WinsScreen(),
+            // Sleep Ritual — reads mode from route arguments
             '/sleep-ritual': (ctx) {
               final args = ModalRoute.of(ctx)?.settings.arguments;
               SleepRitualMode mode = SleepRitualMode.evening;
               if (args is Map) {
                 final m = args['mode']?.toString() ?? 'evening';
-                mode = m == 'morning'
-                    ? SleepRitualMode.morning
-                    : SleepRitualMode.evening;
+                mode = m == 'morning' ? SleepRitualMode.morning : SleepRitualMode.evening;
               }
               return SleepRitualScreen(mode: mode);
             },

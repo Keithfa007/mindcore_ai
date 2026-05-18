@@ -14,6 +14,7 @@ import 'package:mindcore_ai/ai/mood_pattern_service.dart';
 import 'package:mindcore_ai/ai/weekly_report_service.dart';
 import 'package:mindcore_ai/services/streak_service.dart';
 import 'package:mindcore_ai/services/journey_service.dart';
+import 'package:mindcore_ai/services/wins_service.dart';
 
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 import 'package:mindcore_ai/services/daily_plan_service.dart';
@@ -42,12 +43,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   MoodPrediction? _prediction;
   WeeklyReport? _weeklyReport;
   int _streak = 0;
-  String _journeyStatLine = ''; // real mood stat for insight card
+  String _journeyStatLine = '';
+
+  // v2 — Wins Archive
+  bool _winsLoggedToday = false;
 
   late final AnimationController _entranceCtrl;
   final List<Animation<double>> _fadeAnims  = [];
   final List<Animation<Offset>> _slideAnims = [];
-  static const int _cardCount = 7;
+  static const int _cardCount = 8; // bumped from 7 to accommodate wins card
 
   @override
   void initState() {
@@ -103,13 +107,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _loadAll() async {
     await DailyPlanService.getTodayNote();
-    final mood       = await MoodRepo.instance.last7Normalized();
-    final suggestion = await ProactiveSupportService.buildHomeSuggestion();
+    final mood        = await MoodRepo.instance.last7Normalized();
+    final suggestion  = await ProactiveSupportService.buildHomeSuggestion();
     final reminderEnabled = await SettingsService.getDailyReminderEnabled();
     final reminderTime    = await SettingsService.getDailyReminderTime();
-    // Load real journey stat for insight card
     final journeyStat = await JourneyService.getHomeStatLine();
-    // Re-schedule Sunday notification with real stat
     await NotificationService.instance.scheduleWeeklySummaryWithStat(journeyStat);
 
     if (reminderEnabled) {
@@ -124,12 +126,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
     }
 
+    // Check wins
+    final winsLogged = await WinsService.instance.hasWinToday();
+
     if (!mounted) return;
     setState(() {
       _plan.text         = '';
       _last7             = mood;
       _supportSuggestion = suggestion;
       _journeyStatLine   = journeyStat;
+      _winsLoggedToday   = winsLogged;
     });
   }
 
@@ -166,6 +172,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
     Navigator.of(context).pushNamed(route);
+  }
+
+  Future<void> _openWins() async {
+    await Navigator.of(context).pushNamed('/wins');
+    // Refresh wins state when returning
+    final logged = await WinsService.instance.hasWinToday();
+    if (mounted) setState(() => _winsLoggedToday = logged);
   }
 
   String get _greeting {
@@ -209,16 +222,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   const SizedBox(height: 10),
-
-                  // ── Evolved insight card ────────────────────────────────────
-                  // Shows real mood stat + daily briefing + journey button
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 500),
                     child: _briefingLoading
                         ? _BriefingShimmer(isDark: isDark)
                         : Column(
                             children: [
-                              // Real stat line
                               if (_journeyStatLine.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 6),
@@ -232,36 +241,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     ),
                                   ),
                                 ),
-                              // Daily AI briefing
-                              _BriefingText(
-                                  text: _briefing ?? '',
-                                  isDark: isDark, tt: tt),
-                              // Journey link
+                              _BriefingText(text: _briefing ?? '', isDark: isDark, tt: tt),
                               const SizedBox(height: 10),
                               GestureDetector(
                                 onTap: () => Navigator.of(context).pushNamed('/journey'),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   decoration: BoxDecoration(
                                     color: AppColors.primary.withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(100),
-                                    border: Border.all(
-                                        color: AppColors.primary.withValues(alpha: 0.20)),
+                                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.20)),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text(
-                                        'See your full journey',
-                                        style: tt.labelMedium?.copyWith(
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
+                                      Text('See your full journey',
+                                          style: tt.labelMedium?.copyWith(
+                                              color: AppColors.primary, fontWeight: FontWeight.w700)),
                                       const SizedBox(width: 4),
-                                      Icon(Icons.arrow_forward_rounded,
-                                          size: 14, color: AppColors.primary),
+                                      Icon(Icons.arrow_forward_rounded, size: 14, color: AppColors.primary),
                                     ],
                                   ),
                                 ),
@@ -298,12 +296,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             if (_weeklyReport != null)
               _animated(3, Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _WeeklyReportCard(
-                    report: _weeklyReport!, tt: tt, isDark: isDark),
+                child: _WeeklyReportCard(report: _weeklyReport!, tt: tt, isDark: isDark),
               )),
 
-            // 4 ─ Chat buttons
-            _animated(4, Row(
+            // 4 ─ Wins card (v2)
+            _animated(4, Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _WinsCard(
+                loggedToday: _winsLoggedToday,
+                onTap: _openWins,
+                isDark: isDark, tt: tt,
+              ),
+            )),
+
+            // 5 ─ Chat buttons
+            _animated(5, Row(
               children: [
                 Expanded(
                   child: GlassCard(
@@ -319,11 +326,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               colors: [Color(0xFF4D7CFF), Color(0xFF74C3FF)],
                             ),
                             shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.35),
-                                  blurRadius: 16, offset: const Offset(0, 6))
-                            ],
+                            boxShadow: [BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.35),
+                                blurRadius: 16, offset: const Offset(0, 6))],
                           ),
                           child: const Icon(Icons.chat_rounded, color: Colors.white, size: 24),
                         ),
@@ -331,16 +336,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         Text('Text Chat', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 4),
                         Text('Type your thoughts',
-                            style: tt.bodySmall?.copyWith(
-                                color: cs.onSurface.withValues(alpha: 0.55)),
+                            style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.55)),
                             textAlign: TextAlign.center),
                         const SizedBox(height: 12),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
                             onPressed: () => Navigator.of(context).pushNamed('/chat'),
-                            style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 10)),
+                            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
                             child: const Text('Open'),
                           ),
                         ),
@@ -363,11 +366,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               colors: [Color(0xFF32D0BE), Color(0xFF89E0CF)],
                             ),
                             shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                  color: AppColors.mintDeep.withValues(alpha: 0.35),
-                                  blurRadius: 16, offset: const Offset(0, 6))
-                            ],
+                            boxShadow: [BoxShadow(
+                                color: AppColors.mintDeep.withValues(alpha: 0.35),
+                                blurRadius: 16, offset: const Offset(0, 6))],
                           ),
                           child: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
                         ),
@@ -375,8 +376,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         Text('Voice Chat', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 4),
                         Text('Speak hands-free',
-                            style: tt.bodySmall?.copyWith(
-                                color: cs.onSurface.withValues(alpha: 0.55)),
+                            style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.55)),
                             textAlign: TextAlign.center),
                         const SizedBox(height: 12),
                         SizedBox(
@@ -399,8 +399,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             )),
             const SizedBox(height: 12),
 
-            // 5 ─ Guided sessions
-            _animated(5, ValueListenableBuilder<bool>(
+            // 6 ─ Guided sessions
+            _animated(6, ValueListenableBuilder<bool>(
               valueListenable: PremiumService.isPremium,
               builder: (context, isPremium, _) {
                 return GlassCard(
@@ -428,9 +428,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             )),
             const SizedBox(height: 12),
 
-            // 6 ─ Recommended for you
+            // 7 ─ Recommended for you
             if (_supportSuggestion != null)
-              _animated(6, GlassCard(
+              _animated(7, GlassCard(
                 glowColor: AppColors.glowMint,
                 padding: const EdgeInsets.all(18),
                 child: Column(
@@ -541,7 +541,81 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
-// ── SOS button ──────────────────────────────────────────────────────────────────
+// ── Wins card ────────────────────────────────────────────────────────────────
+
+class _WinsCard extends StatelessWidget {
+  final bool loggedToday;
+  final VoidCallback onTap;
+  final bool isDark;
+  final TextTheme tt;
+  const _WinsCard({
+    required this.loggedToday,
+    required this.onTap,
+    required this.isDark,
+    required this.tt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF4CAF82); // mint green
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+              color: accent.withValues(alpha: isDark ? 0.40 : 0.30), width: 1.5),
+          color: accent.withValues(alpha: isDark ? 0.08 : 0.05),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent.withValues(alpha: 0.15)),
+              child: Icon(
+                loggedToday
+                    ? Icons.check_circle_rounded
+                    : Icons.emoji_events_outlined,
+                color: accent, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    loggedToday
+                        ? 'Today\'s win logged \u2728'
+                        : 'What went okay today?',
+                    style: tt.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800, color: accent),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    loggedToday
+                        ? 'Tap to view your wins archive'
+                        : '30 seconds. Even one small thing counts.',
+                    style: tt.bodySmall?.copyWith(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.50)
+                            : Colors.black.withValues(alpha: 0.50)),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                color: accent.withValues(alpha: 0.60), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── SOS button ─────────────────────────────────────────────────────────────
 
 class _SosButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -557,14 +631,11 @@ class _SosButton extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-              color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.55 : 0.40),
-              width: 1.5),
+              color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.55 : 0.40), width: 1.5),
           color: const Color(0xFFFF6B6B).withValues(alpha: isDark ? 0.10 : 0.07),
-          boxShadow: [
-            BoxShadow(
-                color: const Color(0xFFFF6B6B).withValues(alpha: 0.18),
-                blurRadius: 18, spreadRadius: 1)
-          ],
+          boxShadow: [BoxShadow(
+              color: const Color(0xFFFF6B6B).withValues(alpha: 0.18),
+              blurRadius: 18, spreadRadius: 1)],
         ),
         child: Row(
           children: [
@@ -573,8 +644,7 @@ class _SosButton extends StatelessWidget {
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: const Color(0xFFFF6B6B).withValues(alpha: 0.15)),
-              child: const Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFFFF6B6B), size: 20),
+              child: const Icon(Icons.warning_amber_rounded, color: Color(0xFFFF6B6B), size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -583,8 +653,7 @@ class _SosButton extends StatelessWidget {
                 children: [
                   Text('SOS \u2014 I need help right now',
                       style: tt.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFFFF6B6B))),
+                          fontWeight: FontWeight.w800, color: const Color(0xFFFF6B6B))),
                   const SizedBox(height: 2),
                   Text('Tap for instant grounding: breathe, ground, audio',
                       style: tt.bodySmall?.copyWith(
@@ -603,7 +672,7 @@ class _SosButton extends StatelessWidget {
   }
 }
 
-// ── Weekly report card ──────────────────────────────────────────────────────────────
+// ── Weekly report card ─────────────────────────────────────────────────────────
 
 class _WeeklyReportCard extends StatelessWidget {
   final WeeklyReport report;
@@ -649,12 +718,8 @@ class _WeeklyReportCard extends StatelessWidget {
 }
 
 class _ReportRow extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String value;
-  final TextTheme tt;
-  final bool isDark;
+  final IconData icon; final Color color; final String label;
+  final String value; final TextTheme tt; final bool isDark;
   const _ReportRow({required this.icon, required this.color, required this.label,
       required this.value, required this.tt, required this.isDark});
   @override
@@ -682,7 +747,7 @@ class _ReportRow extends StatelessWidget {
   }
 }
 
-// ── Briefing shimmer ─────────────────────────────────────────────────────────────────
+// ── Briefing shimmer ───────────────────────────────────────────────────────────
 
 class _BriefingShimmer extends StatefulWidget {
   final bool isDark;
@@ -723,26 +788,20 @@ class _BriefingShimmerState extends State<_BriefingShimmer>
   }
 }
 
-// ── Briefing text ───────────────────────────────────────────────────────────────────
+// ── Briefing text ───────────────────────────────────────────────────────────
 
 class _BriefingText extends StatelessWidget {
-  final String text;
-  final bool isDark;
-  final TextTheme tt;
+  final String text; final bool isDark; final TextTheme tt;
   const _BriefingText({required this.text, required this.isDark, required this.tt});
   @override
   Widget build(BuildContext context) {
     if (text.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: tt.bodyMedium?.copyWith(
-          color: isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF475467),
-          height: 1.5, letterSpacing: 0.1,
-        ),
-      ),
+      child: Text(text, textAlign: TextAlign.center,
+          style: tt.bodyMedium?.copyWith(
+            color: isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF475467),
+            height: 1.5, letterSpacing: 0.1)),
     );
   }
 }
