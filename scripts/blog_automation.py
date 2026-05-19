@@ -16,8 +16,8 @@ WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 
-HISTORY_FILE = "scripts/blog_history.json"
-LIBRARY_FILE = "scripts/keyword_library.json"
+HISTORY_FILE   = "scripts/blog_history.json"
+LIBRARY_FILE   = "scripts/keyword_library.json"
 MIN_WORD_COUNT = 1200
 
 AUDIENCE_ROTATION = ["men", "women", "neutral"]
@@ -34,37 +34,53 @@ CATEGORY_IDS = {
 CATEGORIES = list(CATEGORY_IDS.keys())
 
 LIBRARY_CATEGORY_MAP = {
-    "mental health app":           "AI & Wellness",
-    "mental wellness apps":        "AI & Wellness",
-    "women's mental health":       "Women's Mental Health",
-    "women and mental health":     "Women's Mental Health",
-    "sobriety app":                "Recovery & Sobriety",
-    "sober app":                   "Recovery & Sobriety",
-    "mood tracking app":           "AI & Wellness",
-    "sober time app":              "Recovery & Sobriety",
-    "ai companion app":            "AI & Wellness",
-    "ai chat companion":           "AI & Wellness",
-    "postpartum depression support": "Women's Mental Health",
-    "sobriety tracker":            "Recovery & Sobriety",
-    "sober tracker":               "Recovery & Sobriety",
-    "days sober app":              "Recovery & Sobriety",
-    "sober counter":               "Recovery & Sobriety",
-    "sobriety counter":            "Recovery & Sobriety",
-    "best mood tracker app":       "AI & Wellness",
-    "self improvement app":        "AI & Wellness",
-    "personal growth apps":        "AI & Wellness",
-    "wellbeing apps":              "AI & Wellness",
-    "mood diary app":              "AI & Wellness",
-    "sober buddy app":             "Recovery & Sobriety",
-    "stay sober app":              "Recovery & Sobriety",
-    "loneliness app":              "AI & Wellness",
-    "anxiety relief app":          "Anxiety & Stress",
-    "emotional support app":       "AI & Wellness",
-    "self improving apps":         "AI & Wellness",
-    "mood journal app":            "AI & Wellness",
-    "sobriety tracking app":       "Recovery & Sobriety",
+    "mental health app":            "AI & Wellness",
+    "mental wellness apps":         "AI & Wellness",
+    "women's mental health":        "Women's Mental Health",
+    "women and mental health":      "Women's Mental Health",
+    "sobriety app":                 "Recovery & Sobriety",
+    "sober app":                    "Recovery & Sobriety",
+    "mood tracking app":            "AI & Wellness",
+    "sober time app":               "Recovery & Sobriety",
+    "ai companion app":             "AI & Wellness",
+    "ai chat companion":            "AI & Wellness",
+    "postpartum depression support":"Women's Mental Health",
+    "sobriety tracker":             "Recovery & Sobriety",
+    "sober tracker":                "Recovery & Sobriety",
+    "days sober app":               "Recovery & Sobriety",
+    "sober counter":                "Recovery & Sobriety",
+    "sobriety counter":             "Recovery & Sobriety",
+    "best mood tracker app":        "AI & Wellness",
+    "self improvement app":         "AI & Wellness",
+    "personal growth apps":         "AI & Wellness",
+    "wellbeing apps":               "AI & Wellness",
+    "mood diary app":               "AI & Wellness",
+    "sober buddy app":              "Recovery & Sobriety",
+    "stay sober app":               "Recovery & Sobriety",
+    "loneliness app":               "AI & Wellness",
+    "anxiety relief app":           "Anxiety & Stress",
+    "emotional support app":        "AI & Wellness",
+    "self improving apps":          "AI & Wellness",
+    "mood journal app":             "AI & Wellness",
+    "sobriety tracking app":        "Recovery & Sobriety",
     "stress anxiety companion app": "Anxiety & Stress",
 }
+
+# Internal pages to link to naturally within blog posts
+INTERNAL_LINKS = [
+    ("MindCore AI features", "https://mindcoreai.eu/features/"),
+    ("our story", "https://mindcoreai.eu/about-us/"),
+    ("MindCore AI blog", "https://mindcoreai.eu/blog/"),
+]
+
+# External authoritative sources for mental health links
+EXTERNAL_LINKS = [
+    ("Mind", "https://www.mind.org.uk"),
+    ("Mental Health Foundation", "https://www.mentalhealth.org.uk"),
+    ("NHS mental health support", "https://www.nhs.uk/mental-health/"),
+    ("NAMI", "https://www.nami.org"),
+    ("SAMHSA", "https://www.samhsa.gov"),
+]
 
 AUDIENCE_PROFILES = {
     "men": {
@@ -195,12 +211,14 @@ def validate_seo(content, title, meta, primary_keyword, slug):
     kw_n  = text.count(kw)
     dens  = (kw_n / wc * 100) if wc > 0 else 0
     checks = {
-        "Focus keyword in SEO title":         kw in title.lower(),
-        "Focus keyword in meta description":  kw in meta.lower(),
-        "Focus keyword in URL slug":          kw.replace(" ", "-") in slug,
-        "Focus keyword in first 10% of text": kw in first,
-        "Focus keyword found in content":     kw in text,
-        f"Word count >= {MIN_WORD_COUNT}":    wc >= MIN_WORD_COUNT,
+        "Keyword in title":            kw in title.lower(),
+        "Keyword in meta description": kw in meta.lower(),
+        "Keyword in URL slug":         kw.replace(" ", "-") in slug,
+        "Keyword in first 10%":        kw in first,
+        "Keyword found in content":    kw in text,
+        f"Word count >= {MIN_WORD_COUNT}": wc >= MIN_WORD_COUNT,
+        "External link present":       "http" in content and 'href="http' in content,
+        "Internal link present":       "mindcoreai.eu" in content,
     }
     all_ok = True
     for label, ok in checks.items():
@@ -300,7 +318,7 @@ def research_topic(history):
         return research_from_library(picked, audience, profile, history, library)
     else:
         remaining = sum(1 for k in library if not k["used"])
-        print(f"   [RESEARCH] No library keyword for this audience ({remaining} remaining for other audiences) — using Claude research")
+        print(f"   [RESEARCH] No library keyword for this audience ({remaining} remaining for others) — using Claude research")
         return research_from_claude(audience, profile, history)
 
 
@@ -311,9 +329,6 @@ def research_from_library(picked, audience, profile, history, library):
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO content strategist for mindcoreai.eu.
-
-You have been given a verified high-demand, low-competition keyword from keyword research.
-Build the perfect blog post brief around it.
 
 VERIFIED KEYWORD: {picked['keyword']}
 MONTHLY SEARCHES: {picked['monthly_searches']}
@@ -326,18 +341,18 @@ TARGET AUDIENCE: {profile['label']}
 AUDIENCE CONTEXT:
 {profile['description']}
 
-ALREADY PUBLISHED (avoid repeating these angles):
+ALREADY PUBLISHED (avoid repeating):
 {history_txt}
 
 Tasks:
-1. Use the verified keyword as primary keyword — do not change it
-2. Refine or improve the suggested title (must contain the keyword)
-3. Choose the best secondary keywords
-4. Write a compelling meta description (150-160 chars, must include primary keyword)
-5. Write a DALL-E image prompt for a cinematic-warm mental wellness scene
+1. Use the verified keyword as primary keyword — do NOT change it
+2. Write a compelling title that CONTAINS A NUMBER (e.g. "7 Signs...", "5 Ways...", "3 Things...") and contains the keyword
+3. Choose the best 5 secondary keywords
+4. Write a meta description (150-160 chars) that contains the primary keyword verbatim
+5. Write a DALL-E image prompt for a cinematic-warm scene
 
 Respond ONLY in this exact JSON — no markdown:
-{{"topic":"final blog title","primary_keyword":"{picked['keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta with keyword","image_prompt":"describe a specific cinematic-warm scene related to the topic: what is happening, where, what time of day, what light","rationale":"why this keyword will rank","category":"{category}","audience":"{audience}"}}"""}]
+{{"topic":"title with number and keyword","primary_keyword":"{picked['keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta containing primary keyword verbatim","image_prompt":"specific cinematic-warm scene: what is happening, where, time of day, lighting","rationale":"why this keyword will rank","category":"{category}","audience":"{audience}"}}"""}]
     )
 
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
@@ -381,7 +396,7 @@ ALL CATEGORIES:
 {all_cats}
 
 Respond ONLY in this exact JSON:
-{{"topic":"title","primary_keyword":"keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char meta","image_prompt":"describe a specific cinematic-warm scene related to the topic: what is happening, where, what time of day, what light","rationale":"SERP insight","category":"exact category","audience":"{audience}"}}"""}]
+{{"topic":"title containing a number (e.g. 7 Signs / 5 Ways) and the keyword","primary_keyword":"keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char meta containing primary keyword verbatim","image_prompt":"specific cinematic-warm scene: what is happening, where, time of day, lighting","rationale":"SERP insight","category":"exact category","audience":"{audience}"}}"""}]
     )
 
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
@@ -401,14 +416,19 @@ def write_blog_post(topic_data):
     print("Writing blog post...")
     audience = topic_data.get("audience", "neutral")
     profile  = AUDIENCE_PROFILES[audience]
+    kw       = topic_data["primary_keyword"]
+
+    # Build internal and external link instructions
+    int_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in INTERNAL_LINKS)
+    ext_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in EXTERNAL_LINKS[:3])
 
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=6000,
         messages=[{"role": "user", "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
 
-Write a full blog post:
+Write a full, publish-ready blog post:
   Title           : {topic_data['topic']}
-  Primary Keyword : {topic_data['primary_keyword']}
+  Primary Keyword : {kw}
   Secondary KWs   : {', '.join(topic_data['secondary_keywords'])}
   Search Intent   : {topic_data['search_intent']}
   Target Audience : {profile['label']}
@@ -416,39 +436,64 @@ Write a full blog post:
 TONE:
   {profile['tone']}
 
-YOAST SEO REQUIREMENTS:
-  1. Primary keyword in the H1 title
-  2. Primary keyword in the very first sentence
-  3. Primary keyword in at least 3 H2 subheadings
-  4. Keyword density 0.8%-2%
-  5. Minimum 1,200 words
+CRITICAL KEYWORD RULES (Yoast SEO compliance):
+  1. The EXACT phrase "{kw}" must appear in the H1 title
+  2. The EXACT phrase "{kw}" must be in the very FIRST sentence of the first paragraph
+  3. The EXACT phrase "{kw}" must appear in at least 3 H2 subheadings
+  4. The EXACT phrase "{kw}" must appear throughout the body — at least 8-10 times total
+  5. Use EXACTLY "{kw}" — not synonyms, not variations, the EXACT phrase every time
+  6. Keyword density target: 1.0%-1.5% (approx 1 mention per 100 words)
+  7. Minimum 1,200 words of readable content
 
-WRITING:
-  - H1 -> intro (2-3 para) -> 5-7 H2 sections (150-200 words each) -> conclusion + CTA
-  - Include at least one list
-  - Zero generic platitudes — real, specific, actionable
-  - Final section: natural CTA to download MindCore AI
+MANDATORY LINKS (must be included as working HTML anchor tags):
+  Internal links — include ALL 3 naturally within the content:
+{int_links}
+  External links — include at least 2 naturally within the content:
+{ext_links}
 
-FORMAT:
-  - Clean WordPress HTML: h1 h2 h3 p ul li strong em
-  - No html head body style script tags
-  - After all HTML: EXCERPT: [2-3 sentence hook with keyword]"""}]
+WRITING REQUIREMENTS:
+  - Structure: H1 → intro (2-3 para) → 5-7 H2 sections (150-200 words each) → conclusion + CTA
+  - Include at least one <ul> list
+  - Real, actionable advice — zero generic platitudes
+  - Final section: natural CTA to download MindCore AI as their 24/7 companion
+
+FORMAT RULES:
+  - Return clean WordPress HTML ONLY: h1 h2 h3 p ul li strong em a tags
+  - Links must use proper HTML: <a href="URL">text</a>
+  - External links must have target="_blank" and rel="noopener noreferrer"
+  - Internal links do NOT need target="_blank"
+  - Do NOT include html head body style script tags
+  - After ALL the HTML content, on its own line write:
+    EXCERPT: [2-3 sentence hook that contains the exact phrase "{kw}"]"""}]
     )
 
     content = response.content[0].text
     wc      = count_words_in_html(content)
     print(f"   Written ({wc} words)")
+
+    # Check keyword count
+    kw_count = content.lower().count(kw.lower())
+    print(f"   Keyword '{kw}' appears {kw_count} times")
+
     if wc < MIN_WORD_COUNT:
         print(f"   Expanding...")
         content = expand_blog_post(content, topic_data, wc)
+
     return content
 
 
 def expand_blog_post(content, topic_data, current_words):
-    needed   = MIN_WORD_COUNT - current_words
+    needed = MIN_WORD_COUNT - current_words
+    kw     = topic_data["primary_keyword"]
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
-        messages=[{"role": "user", "content": f"This post is {current_words} words — needs {MIN_WORD_COUNT}. Add ~{needed} words, same tone, HTML, keyword: '{topic_data['primary_keyword']}'. Return COMPLETE post with EXCERPT.\n\n{content}"}]
+        messages=[{"role": "user", "content": f"""This post is {current_words} words — needs {MIN_WORD_COUNT}.
+Add ~{needed} words by expanding sections or adding 2 new H2 sections.
+Same tone, HTML format.
+IMPORTANT: use the EXACT phrase "{kw}" at least 3 more times in the additions.
+Return the COMPLETE updated post including EXCERPT at the end.
+
+{content}"""}]
     )
     expanded = response.content[0].text
     print(f"   Expanded to {count_words_in_html(expanded)} words")
@@ -457,9 +502,7 @@ def expand_blog_post(content, topic_data, current_words):
 
 # -- Step 3: Image generation -------------------------------------------------
 def generate_illustration(image_prompt):
-    """Generate a cinematic-warm photograph style image for the blog post."""
     print("Generating cinematic image...")
-
     cinematic_prompt = (
         f"{image_prompt}. "
         "Style: cinematic photography, warm golden-hour lighting, "
@@ -469,31 +512,73 @@ def generate_illustration(image_prompt):
         "subtle lens flare, photorealistic. "
         "No text, no words, no letters in the image."
     )
-
     resp = openai_client.images.generate(
         model="dall-e-3",
         prompt=cinematic_prompt,
         size="1792x1024",
-        quality="hd",        # upgraded to HD for cinematic quality
+        quality="hd",
         n=1,
     )
     img = requests.get(resp.data[0].url, timeout=30).content
     print("   Cinematic image generated")
     return img
 
-def upload_image_to_wordpress(image_data):
+
+def upload_image_to_wordpress(image_data, alt_text=""):
+    """Upload image to WordPress media library and set alt text."""
     print("Uploading image...")
     filename = f"mindcore-blog-{datetime.now().strftime('%Y%m%d')}.png"
-    headers  = get_wp_auth()
-    headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-    headers["Content-Type"]        = "image/png"
-    resp = requests.post(f"{WP_URL}/wp-json/wp/v2/media", headers=headers, data=image_data, timeout=60)
-    if resp.status_code == 201:
-        mid = resp.json()["id"]
-        print(f"   Image uploaded (ID: {mid})")
-        return mid
-    print(f"   Upload failed ({resp.status_code})")
-    return None
+    auth     = get_wp_auth()
+
+    # Upload the image
+    upload_headers = {**auth}
+    upload_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    upload_headers["Content-Type"]        = "image/png"
+    resp = requests.post(f"{WP_URL}/wp-json/wp/v2/media", headers=upload_headers, data=image_data, timeout=60)
+
+    if resp.status_code != 201:
+        print(f"   Upload failed ({resp.status_code}): {resp.text}")
+        return None, None
+
+    media    = resp.json()
+    media_id  = media["id"]
+    media_url = media.get("source_url", "")
+    print(f"   Image uploaded (ID: {media_id})")
+
+    # Set alt text on the media item
+    if alt_text:
+        time.sleep(2)
+        patch_headers = {**auth, "Content-Type": "application/json"}
+        patch = requests.post(
+            f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+            headers=patch_headers,
+            json={"alt_text": alt_text, "caption": alt_text},
+            timeout=15,
+        )
+        if patch.status_code == 200:
+            print(f"   Alt text set: '{alt_text}'")
+        else:
+            print(f"   Alt text failed: {patch.text}")
+
+    return media_id, media_url
+
+
+def inject_image_into_content(content, media_url, alt_text):
+    """Embed the featured image inside the post content for Yoast rich media check."""
+    if not media_url:
+        return content
+    img_html = (
+        f'\n<figure class="wp-block-image size-full">'
+        f'<img src="{media_url}" alt="{alt_text}" class="wp-image"/>'
+        f'</figure>\n'
+    )
+    # Insert after the first closing </p> tag
+    insert_pos = content.find("</p>")
+    if insert_pos != -1:
+        content = content[:insert_pos + 4] + img_html + content[insert_pos + 4:]
+    else:
+        content = img_html + content
+    return content
 
 
 # -- Step 4: Category ---------------------------------------------------------
@@ -502,21 +587,28 @@ def resolve_category_id(category_name):
         print(f"   Category  : {category_name} (ID: {CATEGORY_IDS[category_name]})")
         return CATEGORY_IDS[category_name]
     auth = get_wp_auth()
-    resp = requests.get(f"{WP_URL}/wp-json/wp/v2/categories?per_page=100&search={requests.utils.quote(category_name)}", headers=auth, timeout=15)
+    resp = requests.get(
+        f"{WP_URL}/wp-json/wp/v2/categories?per_page=100&search={requests.utils.quote(category_name)}",
+        headers=auth, timeout=15,
+    )
     if resp.status_code == 200:
         for c in resp.json():
             if c["name"].replace("&amp;", "&").replace("&#039;", "'").lower() == category_name.lower():
                 CATEGORY_IDS[category_name] = c["id"]
                 print(f"   Category  : {category_name} (ID: {c['id']})")
                 return c["id"]
-    create = requests.post(f"{WP_URL}/wp-json/wp/v2/categories", headers={**auth, "Content-Type": "application/json"}, json={"name": category_name}, timeout=15)
+    create = requests.post(
+        f"{WP_URL}/wp-json/wp/v2/categories",
+        headers={**auth, "Content-Type": "application/json"},
+        json={"name": category_name}, timeout=15,
+    )
     if create.status_code == 201:
         cat_id = create.json()["id"]
         CATEGORY_IDS[category_name] = cat_id
         print(f"   Category  : {category_name} (ID: {cat_id}) [created]")
         return cat_id
     elif create.status_code == 400:
-        err = create.json()
+        err     = create.json()
         term_id = err.get("data", {}).get("term_id") or (err.get("additional_data") or [None])[0]
         if term_id:
             CATEGORY_IDS[category_name] = int(term_id)
@@ -527,29 +619,51 @@ def resolve_category_id(category_name):
 
 
 # -- Step 5: Publish ----------------------------------------------------------
-def publish_to_wordpress(topic_data, content, image_id=None):
+def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
     print("Publishing to WordPress...")
+
+    # Split excerpt
     excerpt = ""
     if "EXCERPT:" in content:
         bits    = content.split("EXCERPT:")
         content = bits[0].strip()
         excerpt = bits[1].strip() if len(bits) > 1 else ""
+
+    # Embed image inside content body (fixes Yoast rich media check)
+    if media_url:
+        content = inject_image_into_content(content, media_url, topic_data["primary_keyword"])
+
     slug     = keyword_to_slug(topic_data["primary_keyword"])
     cat_name = topic_data.get("category", "")
     cat_id   = resolve_category_id(cat_name) if cat_name else None
-    validate_seo(content, topic_data["topic"], topic_data["meta_description"], topic_data["primary_keyword"], slug)
+
+    validate_seo(content, topic_data["topic"], topic_data["meta_description"],
+                 topic_data["primary_keyword"], slug)
+
     auth = get_wp_auth()
     auth["Content-Type"] = "application/json"
+
     payload = {
-        "title": topic_data["topic"], "content": content, "excerpt": excerpt,
-        "slug": slug, "status": "publish", "categories": [cat_id] if cat_id else [],
-        "meta": {"_yoast_wpseo_metadesc": topic_data["meta_description"], "_yoast_wpseo_focuskw": topic_data["primary_keyword"], "_yoast_wpseo_title": topic_data["topic"]},
+        "title":      topic_data["topic"],
+        "content":    content,
+        "excerpt":    excerpt,
+        "slug":       slug,
+        "status":     "publish",
+        "categories": [cat_id] if cat_id else [],
+        "meta": {
+            "_yoast_wpseo_metadesc": topic_data["meta_description"],
+            "_yoast_wpseo_focuskw":  topic_data["primary_keyword"],
+            "_yoast_wpseo_title":    topic_data["topic"],
+        },
     }
+
     print("   Waiting 60s before publishing...")
     time.sleep(60)
+
     for attempt in range(4):
         resp = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", headers=auth, json=payload, timeout=30)
-        if resp.status_code == 201: break
+        if resp.status_code == 201:
+            break
         if resp.status_code == 429:
             wait = int(resp.headers.get("Retry-After", 30 * (attempt + 1)))
             print(f"   Rate limited - waiting {wait}s...")
@@ -558,13 +672,33 @@ def publish_to_wordpress(topic_data, content, image_id=None):
         raise RuntimeError(f"WordPress publish failed ({resp.status_code}): {resp.text}")
     else:
         raise RuntimeError("WordPress publish failed after 4 attempts")
+
     post    = resp.json()
     post_id = post["id"]
     print(f"   Published -> {post.get('link', 'N/A')}")
-    if image_id:
-        time.sleep(5)
-        upd = requests.post(f"{WP_URL}/wp-json/wp/v2/posts/{post_id}", headers=auth, json={"featured_media": image_id}, timeout=30)
-        print("   Featured image attached" if upd.status_code == 200 else f"   Image attach failed: {upd.text}")
+
+    # Attach featured image — retry up to 3 times with increasing delays
+    if media_id:
+        for img_attempt in range(3):
+            wait_time = 10 * (img_attempt + 1)
+            print(f"   Waiting {wait_time}s before attaching featured image...")
+            time.sleep(wait_time)
+            upd = requests.post(
+                f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
+                headers=auth,
+                json={"featured_media": media_id},
+                timeout=30,
+            )
+            if upd.status_code == 200:
+                print("   Featured image attached")
+                break
+            elif upd.status_code == 429:
+                print(f"   Image attach rate limited (attempt {img_attempt + 1}/3)")
+                continue
+            else:
+                print(f"   Image attach failed: {upd.status_code} — {upd.text}")
+                break
+
     return post
 
 
@@ -591,20 +725,22 @@ def update_history_on_github(history, new_entry):
 # -- Main ---------------------------------------------------------------------
 def main():
     print("\n== MindCore AI - Blog Automation Pipeline ==")
-    history    = load_history()
+    history = load_history()
     print(f"History: {len(history)} posts published")
 
     topic_data = research_topic(history)
     content    = write_blog_post(topic_data)
 
+    # Generate and upload image — returns both ID and URL
+    media_id  = None
+    media_url = None
     try:
-        image_data = generate_illustration(topic_data["image_prompt"])
-        image_id   = upload_image_to_wordpress(image_data)
+        image_data          = generate_illustration(topic_data["image_prompt"])
+        media_id, media_url = upload_image_to_wordpress(image_data, alt_text=topic_data["primary_keyword"])
     except Exception as exc:
         print(f"   Image failed: {exc}")
-        image_id = None
 
-    post = publish_to_wordpress(topic_data, content, image_id)
+    post = publish_to_wordpress(topic_data, content, media_id, media_url)
 
     if topic_data.get("_library_entry") and topic_data.get("_library") is not None:
         update_library_on_github(topic_data["_library"], topic_data["primary_keyword"])
