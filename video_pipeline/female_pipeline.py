@@ -1,27 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v2.2
+MindCore AI -- Female Cinematic Pipeline v2.3
 =============================================
-Fish Audio TTS + Pexels B-roll + FFmpeg assembly.
-No HeyGen. No avatar. Cinematic only.
+CHANGES (v2.3):
+  - Cinematic shot-based Pexels queries (cinematographer shots, not subjects)
+  - Scene-matched visuals: hook/problem/story/cta each pull different clips
+  - Word flash overlays: Whisper timestamps power words center screen at 110px
+  - Ken Burns comma escaping preserved from v2.2
+  - Voice ID 50860d52ab054efab4608bd6060f5ea6
 
-CHANGES (v2.2):
-  - FIX: ken_burns_vf() crop expressions now escape commas inside min()/max()
-    so FFmpeg's filtergraph parser does not treat them as filter separators.
-    (Previous version crashed every clip with "No such filter: '...'".）
-  - Voice ID updated to 50860d52ab054efab4608bd6060f5ea6
-
-CHANGES (v2.1):
-  - Day-based niche rotation from niche_keywords_female.json
-  - 12-formula hook system injected into every script prompt
-  - 25 banned hook openers
-  - Viewer persona per niche for precise emotional targeting
-  - Pexels: 8-query mood pool, random 5 sampled per run
-  - Pexels: random page 1-3 per search query for clip variety
-  - Visual mood cycles through 4 moods per niche by run number
-  - Instagram caption field added to upload (fix)
-
-SUBTITLES: Whisper 'tiny' -> 75px Arial bold, MarginV 500px
+SUBTITLES: Whisper 'tiny' -> 75px Arial bottom + 110px Flash center screen
 """
 
 import json
@@ -66,14 +54,16 @@ COLOR_GRADE_FILTER = (
     "colorbalance=rs=0.06:gs=0.01:bs=-0.04"
 )
 
-MUSIC_VOLUME       = 0.05
-WHISPER_MODEL      = "tiny"
-SUBTITLE_FONT      = "Arial"
-SUBTITLE_FONT_SIZE = 75
-SUBTITLE_MARGIN_V  = 500
-SUBTITLE_CHUNK     = 3
-CLAUDE_MAX_RETRIES = 10
-CLAUDE_RETRY_BASE  = 30
+MUSIC_VOLUME           = 0.05
+WHISPER_MODEL          = "tiny"
+SUBTITLE_FONT          = "Arial"
+SUBTITLE_FONT_SIZE     = 75
+SUBTITLE_MARGIN_V      = 500
+SUBTITLE_CHUNK         = 3
+WORD_FLASH_FONT_SIZE   = 110
+FLASH_EVERY_N_CHUNKS   = 3
+CLAUDE_MAX_RETRIES     = 10
+CLAUDE_RETRY_BASE      = 30
 SERP_SEEDS_PER_RUN         = 3
 AUTOCOMPLETE_SEEDS_PER_RUN = 2
 TIKTOK_CAPTION_LIMIT      = 2200
@@ -82,6 +72,22 @@ YOUTUBE_DESCRIPTION_LIMIT = 5000
 PEXELS_CLIPS_PER_VIDEO    = 5
 TOPIC_HISTORY_SIZE        = 5
 REQUIRED_BRAND_HASHTAG    = "#mindcoreai"
+
+WORD_FLASH_STOPWORDS = {
+    'the','and','for','are','but','not','you','all','can','had','her','was',
+    'one','our','out','get','has','him','his','how','its','may','new','now',
+    'old','see','two','way','who','did','let','put','say','she','too','use',
+    'a','i','in','is','it','if','do','an','so','at','be','by','no','or',
+    'on','up','as','of','to','from','that','this','with','have','they',
+    'what','when','your','will','been','were','just','than','then','them',
+    'these','into','some','there','about','which','their','after','every',
+    'where','would','could','should','still','going','really','never',
+    'always','here','more','very','even','also','back','down','only',
+    'look','come','want','give','most','know','take','think','good',
+    'like','time','feel','make','right','both','each','much','well',
+    'dont','doesnt','didnt','wont','cant','its','youre','theyre',
+    'were','im','thats','theres','heres','ive','youve','weve'
+}
 
 HOOK_FORMULAS = [
     {"name":"pattern_interrupt","instruction":"Open with a statement that contradicts what the viewer expects. No setup.","example":"Nobody talks about what actually happens when you stop people-pleasing.","rule":"The surprising statement IS the hook. No preamble, no context."},
@@ -188,7 +194,7 @@ def load_app_facts():
 
 def load_keywords_data():
     if not KEYWORDS_PATH.exists():
-        return {"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s carrying everything for everyone.","seed_queries":["women mental health tips"],"visual_moods":[{"name":"default","description":"soft warm","pexels_queries":["woman alone window","woman journaling","soft light woman","woman nature","woman quiet moment"]}]}}}
+        return {"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s carrying everything for everyone.","seed_queries":["women mental health tips"],"hook_queries":["bokeh warm light abstract"],"problem_queries":["woman alone dark room","woman window rain alone"],"story_queries":["woman walking nature path"],"cta_queries":["sunlight curtain morning soft"],"visual_moods":[{"name":"default","description":"soft warm","pexels_queries":["woman alone window","woman journaling","soft light woman","woman nature","woman quiet moment"]}]}}}
     with open(KEYWORDS_PATH) as f: return json.load(f)
 
 def get_niche_for_today(keywords_data):
@@ -202,11 +208,6 @@ def pick_visual_mood(niche_data):
     if not moods: return {"name":"default","description":"warm cinematic","pexels_queries":["woman alone window","woman journaling","soft light","woman nature","woman peaceful"]}
     mood_index=GITHUB_RUN_NUMBER%len(moods); mood=moods[mood_index]
     print(f"  Visual mood: {mood['name']} ({mood_index+1}/{len(moods)})"); return mood
-
-def sample_pexels_queries(mood, n=PEXELS_CLIPS_PER_VIDEO):
-    pool=mood.get("pexels_queries",[])
-    if len(pool)<=n: return pool[:]
-    return random.sample(pool,n)
 
 def _serp_google_query(seed):
     resp=requests.get(SERP_API_URL,params={"engine":"google","q":seed,"api_key":SERP_API_KEY,"num":10,"hl":"en","gl":"us"},timeout=30)
@@ -308,6 +309,27 @@ def build_full_script(script):
         parts.append(vo)
     return "  ".join(parts)
 
+
+# ---------------------------------------------------------------------------
+# Word flash -- pick most impactful word from subtitle chunk
+# ---------------------------------------------------------------------------
+
+def pick_power_word(words_in_chunk):
+    candidates = [
+        w for w in words_in_chunk
+        if len(w["word"].strip()) > 3
+        and w["word"].strip().lower().rstrip(".,!?'\"") not in WORD_FLASH_STOPWORDS
+        and w["word"].strip().replace("'","").replace("-","").isalpha()
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda w: len(w["word"].strip()))["word"].strip().upper()
+
+
+# ---------------------------------------------------------------------------
+# Subtitles + word flash overlay
+# ---------------------------------------------------------------------------
+
 def transcribe_audio_whisper(media_path):
     try:
         import whisper
@@ -325,19 +347,43 @@ def transcribe_audio_whisper(media_path):
 def generate_ass_subtitles(words, output_path):
     if not words: return False
     def ts(s): h=int(s//3600);m=int((s%3600)//60);s=s%60; return f"{h}:{m:02d}:{s:05.2f}"
-    header=("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nScaledBorderAndShadow: yes\nWrapStyle: 1\n\n[V4+ Styles]\n"
-            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-            f"Style: Default,{SUBTITLE_FONT},{SUBTITLE_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,4,0,2,60,60,{SUBTITLE_MARGIN_V},1\n\n"
-            "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+    header = (
+        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n"
+        "ScaledBorderAndShadow: yes\nWrapStyle: 1\n\n[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
+        "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Default,{SUBTITLE_FONT},{SUBTITLE_FONT_SIZE},"
+        "&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
+        f"-1,0,0,0,100,100,1,0,1,4,0,2,60,60,{SUBTITLE_MARGIN_V},1\n"
+        f"Style: Flash,{SUBTITLE_FONT},{WORD_FLASH_FONT_SIZE},"
+        "&H00FFFFFF,&H000000FF,&H00000000,&HAA000000,"
+        "-1,0,0,0,100,100,2,0,1,7,3,8,60,60,550,1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
     chunks=[]; i=0
     while i<len(words):
-        chunk=words[i:i+SUBTITLE_CHUNK]; text=" ".join(w["word"].upper() for w in chunk)
+        chunk=words[i:i+SUBTITLE_CHUNK]
+        text=" ".join(w["word"].upper() for w in chunk)
         start=chunk[0]["start"]; end=chunk[-1]["end"]
         if chunks and start<chunks[-1]["end"]: start=chunks[-1]["end"]
-        chunks.append({"text":text,"start":start,"end":end}); i+=SUBTITLE_CHUNK
-    events="".join(f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n" for c in chunks)
-    Path(output_path).write_text(header+events,encoding="utf-8")
-    print(f"  Subtitles: {len(chunks)} groups | {SUBTITLE_FONT} {SUBTITLE_FONT_SIZE}px | MarginV {SUBTITLE_MARGIN_V}px"); return True
+        chunks.append({"text":text,"start":start,"end":end,"words":chunk})
+        i+=SUBTITLE_CHUNK
+    events="".join(
+        f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n"
+        for c in chunks
+    )
+    flash_events=""; flash_count=0
+    for idx,chunk in enumerate(chunks):
+        if idx%FLASH_EVERY_N_CHUNKS!=0: continue
+        word=pick_power_word(chunk["words"])
+        if word:
+            flash_events+=f"Dialogue: 0,{ts(chunk['start'])},{ts(chunk['end'])},Flash,,0,0,0,,{word}\n"
+            flash_count+=1
+    Path(output_path).write_text(header+events+flash_events, encoding="utf-8")
+    print(f"  Subtitles: {len(chunks)} groups + {flash_count} word flashes")
+    return True
 
 def burn_subtitles_into_video(video_path, ass_path):
     if not ass_path or not Path(ass_path).exists(): return False
@@ -349,16 +395,12 @@ def burn_subtitles_into_video(video_path, ass_path):
     print("  WARNING: subtitle burn failed")
     if Path(burnt_tmp).exists(): Path(burnt_tmp).unlink(); return False
 
-def ken_burns_vf(clip_duration, direction):
-    """
-    Build a scale+crop filter that pans/zooms across the clip (Ken Burns).
 
-    IMPORTANT: the crop x/y expressions use min()/max(), which contain commas.
-    When this filter string is chained into -vf with other comma-separated
-    filters, FFmpeg's filtergraph parser treats ANY bare comma as a filter
-    separator. The commas inside min()/max() MUST be escaped as '\\,' so the
-    parser keeps them as part of the crop expression.
-    """
+# ---------------------------------------------------------------------------
+# Ken Burns (comma-escaped for FFmpeg filtergraph)
+# ---------------------------------------------------------------------------
+
+def ken_burns_vf(clip_duration, direction):
     d=max(clip_duration,0.5); sw=int(1080*KB_SCALE); sh=int(1920*KB_SCALE); ew=sw-1080; eh=sh-1920
     cy=str(eh//2); cx=str(ew//2)
     if direction=="pan_right":   x,y=f"min(t/{d:.2f}*{ew}\\,{ew})",cy
@@ -368,6 +410,11 @@ def ken_burns_vf(clip_duration, direction):
     elif direction=="zoom_in":   x,y=f"max({ew}-t/{d:.2f}*{ew//2}\\,{ew//2})",f"max({eh}-t/{d:.2f}*{eh//2}\\,{eh//2})"
     else:                        x,y=f"min(t/{d:.2f}*{ew//2}\\,{ew//2})",f"min(t/{d:.2f}*{eh//2}\\,{eh//2})"
     return f"scale={sw}:{sh},crop=1080:1920:{x}:{y}"
+
+
+# ---------------------------------------------------------------------------
+# Pexels -- scene-matched clip fetching
+# ---------------------------------------------------------------------------
 
 def generate_fish_audio_tts(script_text, output_path):
     if not FISH_AUDIO_API_KEY: raise RuntimeError("FISH_AUDIO_API_KEY not set")
@@ -384,7 +431,8 @@ def generate_fish_audio_tts(script_text, output_path):
 def get_audio_duration(audio_path):
     return float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",audio_path],capture_output=True,text=True,check=True).stdout.strip())
 
-def search_pexels_clips(queries, num_clips=PEXELS_CLIPS_PER_VIDEO):
+def search_pexels_clips(queries, num_clips=1):
+    """Fetch up to num_clips from Pexels. Default 1 for scene-matched fetching."""
     if not PEXELS_API_KEY: raise RuntimeError("PEXELS_API_KEY not set")
     headers={"Authorization":PEXELS_API_KEY}; clips=[]; seen_ids=set()
     for query in queries:
@@ -407,7 +455,28 @@ def search_pexels_clips(queries, num_clips=PEXELS_CLIPS_PER_VIDEO):
                         if len(clips)>=num_clips: break
                 time.sleep(0.3)
             except Exception as e: print(f"  Pexels error '{query}': {e}"); break
-    print(f"  Pexels: {len(clips)} clips"); return clips[:num_clips]
+    return clips[:num_clips]
+
+def fetch_scene_matched_clips(mood, niche):
+    """Fetch clips matched to script scenes: hook/problem/story/cta."""
+    fallback = mood.get("pexels_queries", ["woman alone nature"])
+    scene_plan = [
+        ("hook",    1, niche.get("hook_queries",    fallback)),
+        ("problem", 2, niche.get("problem_queries", fallback)),
+        ("story",   1, niche.get("story_queries",   fallback)),
+        ("cta",     1, niche.get("cta_queries",     fallback)),
+    ]
+    all_clips = []
+    for scene_name, count, pool in scene_plan:
+        queries = random.sample(pool, min(count, len(pool)))
+        clips = search_pexels_clips(queries, num_clips=count)
+        if not clips:
+            clips = search_pexels_clips(random.sample(fallback, min(count,len(fallback))), num_clips=count)
+        all_clips.extend(clips)
+        qstr = queries[0][:40] if queries else "fallback"
+        print(f"  [{scene_name.upper():8s}] {len(clips)} clip | {qstr}")
+    print(f"  Scene clips total: {len(all_clips)}")
+    return all_clips
 
 def download_clip(url, output_path):
     resp=requests.get(url,stream=True,timeout=120); resp.raise_for_status()
@@ -450,15 +519,14 @@ def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=Non
     print(f"  Assembled: {w}x{h} | {size_mb:.1f} MB")
     if ass_path: burn_subtitles_into_video(output_path,ass_path)
 
-def render_cinematic_video(script_text, mood):
+def render_cinematic_video(script_text, mood, niche):
     print("\n  [TTS] Generating voiceover...")
     audio_path=str(OUTPUT_DIR/"voiceover_female.mp3"); generate_fish_audio_tts(script_text,audio_path)
     print("\n  [Subtitles] Transcribing with Whisper...")
     ass_path=str(OUTPUT_DIR/"subtitles_cinematic_female.ass"); words=transcribe_audio_whisper(audio_path)
     if not generate_ass_subtitles(words,ass_path): ass_path=None
-    pexels_queries=sample_pexels_queries(mood)
-    print(f"\n  [Pexels] Mood: {mood['name']} | Queries: {pexels_queries}")
-    clips=search_pexels_clips(pexels_queries)
+    print("\n  [Pexels] Fetching scene-matched clips...")
+    clips=fetch_scene_matched_clips(mood, niche)
     if not clips: raise RuntimeError("No Pexels clips found")
     clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); raw_clip_paths=[]
     for i,clip in enumerate(clips):
@@ -472,6 +540,11 @@ def render_cinematic_video(script_text, mood):
 def get_video_dimensions(path):
     parts=subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0",path],capture_output=True,text=True,check=True).stdout.strip().split(",")
     return int(parts[0]),int(parts[1])
+
+
+# ---------------------------------------------------------------------------
+# Upload guide / metadata
+# ---------------------------------------------------------------------------
 
 def generate_upload_guide(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
@@ -533,6 +606,11 @@ def save_upload_guide(guide_text, script, mode, run_number, niche):
     for scene in SCENE_ORDER: header+=f"[{scene.upper()}] {script[scene]['voiceover']}\n\n"
     (OUTPUT_DIR/"upload_guide_female.txt").write_text(header+guide_text,encoding="utf-8"); print("  Upload guide saved")
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main():
     OUTPUT_DIR.mkdir(parents=True,exist_ok=True); (OUTPUT_DIR/"clips").mkdir(exist_ok=True)
     mode=determine_mode(); client=anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -542,11 +620,12 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v2.2")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v2.3")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Niche: {niche['name']} | Mood: {mood['name']}")
+    print(f"  Visuals: scene-matched (hook/problem/story/cta) | Word flash: every {FLASH_EVERY_N_CHUNKS} subtitle groups")
     print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Colour grade: FEMALE (warm/soft)")
-    print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT}, MarginV {SUBTITLE_MARGIN_V}px")
+    print(f"  Subtitles: {SUBTITLE_FONT_SIZE}px bottom + {WORD_FLASH_FONT_SIZE}px center flash | KB: comma-escaped")
     print(f"  Music: {len(music_tracks)} tracks @ {int(MUSIC_VOLUME*100)}% | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")
@@ -558,7 +637,7 @@ def main():
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER); est_duration=round(total_words/130*60)
     print(f"\n  ~{est_duration}s | Hook formula: {script.get('hook_formula','?')}")
     for scene in SCENE_ORDER: print(f"  [{scene:15s}] {script[scene]['voiceover'][:85]}...")
-    final_path=render_cinematic_video(build_full_script(script),mood)
+    final_path=render_cinematic_video(build_full_script(script), mood, niche)
     guide_text=generate_upload_guide(script,mode,niche,client); save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,niche)
     upload_metadata=generate_upload_metadata(script,mode,niche,client); (OUTPUT_DIR/"upload_metadata_female.json").write_text(json.dumps(upload_metadata,indent=2))
     if upload_enabled:
