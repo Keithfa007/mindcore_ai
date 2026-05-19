@@ -8,7 +8,8 @@ No HeyGen. No avatar. Cinematic only.
 CHANGES (v2.2):
   - FIX: ken_burns_vf() crop expressions now escape commas inside min()/max()
     so FFmpeg's filtergraph parser does not treat them as filter separators.
-    (Previous version crashed every clip with "No such filter: '...'".)
+    (Previous version crashed every clip with "No such filter: '...'".）
+  - Voice ID updated to 50860d52ab054efab4608bd6060f5ea6
 
 CHANGES (v2.1):
   - Day-based niche rotation from niche_keywords_female.json
@@ -48,7 +49,7 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-FISH_AUDIO_VOICE_ID = "5dac3271d0f04c9186efd837e606d133"
+FISH_AUDIO_VOICE_ID = "50860d52ab054efab4608bd6060f5ea6"
 
 OUTPUT_DIR         = Path("video_pipeline/output_female")
 PIPELINE_DIR       = Path("video_pipeline")
@@ -356,8 +357,7 @@ def ken_burns_vf(clip_duration, direction):
     When this filter string is chained into -vf with other comma-separated
     filters, FFmpeg's filtergraph parser treats ANY bare comma as a filter
     separator. The commas inside min()/max() MUST be escaped as '\\,' so the
-    parser keeps them as part of the crop expression. (Previously unescaped
-    -> 'No such filter' crash on every clip.)
+    parser keeps them as part of the crop expression.
     """
     d=max(clip_duration,0.5); sw=int(1080*KB_SCALE); sh=int(1920*KB_SCALE); ew=sw-1080; eh=sh-1920
     cy=str(eh//2); cx=str(ew//2)
@@ -545,7 +545,7 @@ def main():
     print(f"\n  MindCore AI -- Female Cinematic Pipeline v2.2")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Niche: {niche['name']} | Mood: {mood['name']}")
-    print(f"  Ken Burns: {len(KB_DIRECTIONS)} directions | Colour grade: FEMALE (warm/soft)")
+    print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Colour grade: FEMALE (warm/soft)")
     print(f"  Subtitles: Whisper '{WHISPER_MODEL}' -> {SUBTITLE_FONT_SIZE}px {SUBTITLE_FONT}, MarginV {SUBTITLE_MARGIN_V}px")
     print(f"  Music: {len(music_tracks)} tracks @ {int(MUSIC_VOLUME*100)}% | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
