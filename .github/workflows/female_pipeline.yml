@@ -1,7 +1,7 @@
 name: MindCore AI -- Female Cinematic Pipeline
 
-# Cinematic-only. Mon-Fri 13:00 UTC (15:00 Malta summer).
-# 4-hour gap before male pipeline (17:00 UTC) on same days.
+# Cinematic-only. Mon-Fri 07:00 UTC (09:00 Malta summer).
+# 10-hour gap before male pipeline (17:00 UTC) on same days.
 # Fish Audio TTS + Pexels B-roll. Day-based niche rotation.
 # Ad mode: every 10th run number.
 on:
@@ -17,7 +17,7 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 13 * * 1-5"   # Mon-Fri 13:00 UTC
+    - cron: "0 7 * * 1-5"   # Mon-Fri 07:00 UTC (09:00 Malta)
 
 jobs:
   generate-female-video:
@@ -56,7 +56,7 @@ jobs:
           echo "Ken Burns: 6 directions rotating per clip"
           echo "Colour grade: FEMALE -- warm, soft, intimate"
           echo "Subtitles: Whisper tiny -> 75px Arial, MarginV 500px"
-          echo "Schedule: Mon-Fri 13:00 UTC (4h before male)"
+          echo "Schedule: Mon-Fri 07:00 UTC (10h before male)"
 
       - name: Run Female Cinematic Pipeline
         env:
