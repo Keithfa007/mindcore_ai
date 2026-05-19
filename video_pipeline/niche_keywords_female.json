@@ -13,44 +13,244 @@
       "name": "Perimenopause & Women's Wellness",
       "viewer_persona": "A woman in her 40s to mid-50s who feels like a stranger in her own life. Her mood shifts without warning. She is exhausted in a way sleep does not fix. She loves her family but feels invisible inside it. She would not describe herself as struggling. She would say she is just going through a lot right now.",
       "seed_queries": ["women's wellness app","women's wellbeing app","wellness app for women","women and wellbeing","postpartum support app","new mum support app","loneliness app","women's mental health","women and mental health"],
+      "hook_queries": [
+        "mirror reflection abstract close blur",
+        "bokeh warm golden light abstract",
+        "clock blur close abstract dark",
+        "candle flame close abstract warm",
+        "curtain light abstract morning soft",
+        "water ripple abstract close warm"
+      ],
+      "problem_queries": [
+        "woman alone kitchen window morning tired",
+        "woman mirror reflection alone dark",
+        "woman hands lap alone dark room",
+        "woman staring window rain alone",
+        "woman tired bed morning dark",
+        "woman alone couch dark evening",
+        "woman hands tea cup alone dark",
+        "woman head down shadow dark"
+      ],
+      "story_queries": [
+        "woman walking garden morning alone",
+        "woman hands flower touch close",
+        "woman breath window morning light",
+        "woman journal pen writing close",
+        "woman walking path alone nature",
+        "woman hands open sky morning"
+      ],
+      "cta_queries": [
+        "sunlight curtain bedroom morning soft",
+        "woman smile morning warm light close",
+        "garden morning warm light flowers",
+        "woman face morning light peaceful",
+        "coffee steam warm hands morning",
+        "warm window light morning calm"
+      ],
       "visual_moods": [
-        {"name":"soft_morning","description":"warm early morning light, intimate domestic stillness, quiet before the world needs her","pexels_queries":["woman morning light window soft","woman hands tea cup morning","soft morning light bedroom woman","woman sitting quiet kitchen morning","curtain light morning bedroom","woman reading morning soft light","morning window light warm bedroom","woman alone morning coffee warm"]},
-        {"name":"garden_nature","description":"woman in outdoor natural light, garden, growth, quiet solitude in nature","pexels_queries":["woman alone garden peaceful","woman walking nature alone","woman flowers garden close","woman outdoor peaceful alone","woman forest path alone","woman sitting garden sunlight","woman nature peaceful quiet","woman trees light alone"]},
-        {"name":"reflective_moment","description":"a woman pausing, looking, being with herself: quiet introspection","pexels_queries":["woman looking window alone","woman mirror reflection close","woman sitting quiet reflection","woman gazing distance alone","woman profile window light","woman alone chair quiet","woman thinking alone soft light","woman close up face peaceful"]},
-        {"name":"intimate_detail","description":"close-up details that carry warmth and meaning: hands, objects, textures","pexels_queries":["woman hands close up warm","hands holding mug close warm","journal pen hands close up","flower close up soft light","woman hands lap close","candle warm light close up","hands writing notebook close","woman hand window light"]}
+        {
+          "name": "soft_morning",
+          "description": "warm early morning light, intimate domestic stillness, quiet before the world needs her",
+          "pexels_queries": ["woman morning light window soft","woman hands tea cup morning","soft morning light bedroom woman","woman sitting quiet kitchen morning","curtain light morning bedroom","woman reading morning soft light","morning window light warm bedroom","woman alone morning coffee warm"]
+        },
+        {
+          "name": "garden_nature",
+          "description": "woman in outdoor natural light, garden, growth, quiet solitude in nature",
+          "pexels_queries": ["woman alone garden peaceful","woman walking nature alone","woman flowers garden close","woman outdoor peaceful alone","woman forest path alone","woman sitting garden sunlight","woman nature peaceful quiet","woman trees light alone"]
+        },
+        {
+          "name": "reflective_moment",
+          "description": "a woman pausing, looking, being with herself: quiet introspection",
+          "pexels_queries": ["woman looking window alone","woman mirror reflection close","woman sitting quiet reflection","woman gazing distance alone","woman profile window light","woman alone chair quiet","woman thinking alone soft light","woman close up face peaceful"]
+        },
+        {
+          "name": "intimate_detail",
+          "description": "close-up details that carry warmth and meaning: hands, objects, textures",
+          "pexels_queries": ["woman hands close up warm","hands holding mug close warm","journal pen hands close up","flower close up soft light","woman hands lap close","candle warm light close up","hands writing notebook close","woman hand window light"]
+        }
       ]
     },
     "ai_companion": {
       "name": "AI Companion",
       "viewer_persona": "A woman in her late 30s to early 50s who is the emotional centre of everyone around her but has no one to fill that role for her. She is highly functioning. She helps everyone. She carries things alone. She would be quietly curious about an AI that simply listens with no advice, no judgment, no one to worry about in return.",
       "seed_queries": ["AI companion app","AI chat companion","best AI companion app","AI app with memory","AI that remembers you","personalised wellness app"],
+      "hook_queries": [
+        "phone screen glow dark abstract night",
+        "bokeh warm golden light dark abstract",
+        "abstract warmth light particles dark",
+        "screen reflection woman dark night",
+        "light warm glow dark abstract bokeh",
+        "sparkle warm abstract dark background"
+      ],
+      "problem_queries": [
+        "woman phone alone night dark room",
+        "woman bed dark night phone glow",
+        "woman sitting alone dark room night",
+        "woman looking window city night alone",
+        "woman alone coffee shop window rain",
+        "woman headphones dark alone",
+        "woman bench night city alone",
+        "woman hands lap dark alone night"
+      ],
+      "story_queries": [
+        "woman hand phone light warmth close",
+        "woman face phone light dark",
+        "woman reaching toward warmth light",
+        "woman door warm light ahead",
+        "woman smile phone light morning",
+        "woman hands open warmth light"
+      ],
+      "cta_queries": [
+        "woman morning phone warm light",
+        "sunrise window warm woman",
+        "woman smile morning light warm close",
+        "morning light warmth woman calm",
+        "woman hands warmth morning light",
+        "light dawn warm woman peace"
+      ],
       "visual_moods": [
-        {"name":"night_stillness","description":"a woman alone at night with her phone, the quiet after everyone else is asleep","pexels_queries":["woman phone night alone","woman screen glow dark room","woman bed phone night","person phone night quiet","woman alone dark room light","woman night alone thinking","phone glow woman dark","woman night window alone"]},
-        {"name":"soft_connection","description":"reaching toward warmth, openness, the possibility of being understood","pexels_queries":["woman hand reaching light","woman window warm light","woman hands open soft light","woman looking up light","woman peaceful eyes closed light","woman reaching forward soft","woman doorway warm light","woman sunlight reaching"]},
-        {"name":"urban_alone","description":"alone in public, the invisible woman among people","pexels_queries":["woman alone coffee shop window","woman alone city street","woman bench alone park","woman crowd alone blur","woman alone restaurant window","woman walking city alone","woman station alone quiet","woman alone urban evening"]},
-        {"name":"abstract_warmth","description":"warm abstract light as visual metaphor for connection","pexels_queries":["warm light abstract bokeh","soft gold light particles","amber light dark background","warm glow abstract background","soft light orb warm dark","golden bokeh dark","warm abstract light minimal","rose gold light abstract dark"]}
+        {
+          "name": "night_stillness",
+          "description": "a woman alone at night with her phone, the quiet after everyone else is asleep",
+          "pexels_queries": ["woman phone night alone","woman screen glow dark room","woman bed phone night","person phone night quiet","woman alone dark room light","woman night alone thinking","phone glow woman dark","woman night window alone"]
+        },
+        {
+          "name": "soft_connection",
+          "description": "reaching toward warmth, openness, the possibility of being understood",
+          "pexels_queries": ["woman hand reaching light","woman window warm light","woman hands open soft light","woman looking up light","woman peaceful eyes closed light","woman reaching forward soft","woman doorway warm light","woman sunlight reaching"]
+        },
+        {
+          "name": "urban_alone",
+          "description": "alone in public, the invisible woman among people",
+          "pexels_queries": ["woman alone coffee shop window","woman alone city street","woman bench alone park","woman crowd alone blur","woman alone restaurant window","woman walking city alone","woman station alone quiet","woman alone urban evening"]
+        },
+        {
+          "name": "abstract_warmth",
+          "description": "warm abstract light as visual metaphor for connection",
+          "pexels_queries": ["warm light abstract bokeh","soft gold light particles","amber light dark background","warm glow abstract background","soft light orb warm dark","golden bokeh dark","warm abstract light minimal","rose gold light abstract dark"]
+        }
       ]
     },
     "womens_mental_health": {
       "name": "Women's Mental Health",
       "viewer_persona": "A woman 25 to 45 who has been told her feelings are too much for most of her life. She overthinks at night. She rehearses conversations. She apologises reflexively. She knows something is not quite right but does not feel she deserves help because others have it worse.",
       "seed_queries": ["women's mental health","women and mental health","postpartum depression support","emotional support app","loneliness app","mood tracking app","mood diary app","self improvement app","personal growth apps"],
+      "hook_queries": [
+        "shadow woman wall abstract light",
+        "rain drops glass close up blur",
+        "empty room chair spotlight abstract",
+        "clock hands blur dark abstract",
+        "mirror reflection blur abstract",
+        "candle dark background close abstract"
+      ],
+      "problem_queries": [
+        "woman sitting floor alone dark",
+        "woman journal closed dark alone",
+        "woman window rain grey alone",
+        "woman staring ceiling alone dark",
+        "woman hands face shadow close",
+        "woman alone bed morning dark",
+        "woman clutch knees floor alone dark",
+        "rain window woman alone dark"
+      ],
+      "story_queries": [
+        "woman writing journal morning light",
+        "woman deep breath window light",
+        "woman walking nature path alone",
+        "woman hand chest calm close",
+        "woman looking up sky light",
+        "woman sitting upright morning light"
+      ],
+      "cta_queries": [
+        "woman face morning warm light",
+        "sunlight curtain morning woman",
+        "woman smile morning coffee light",
+        "morning light window warmth woman",
+        "woman hands open light morning",
+        "dawn light warm woman peace"
+      ],
       "visual_moods": [
-        {"name":"quiet_introspection","description":"a woman alone with her thoughts, soft and still","pexels_queries":["woman journaling soft light","woman writing alone quiet","woman reading alone window","woman sitting floor alone","woman bedroom alone thoughtful","woman quiet moment alone","woman pen paper close","woman desk writing soft light"]},
-        {"name":"emotional_weather","description":"mood as environment: rain, grey light, overcast softness","pexels_queries":["woman rain window alone","woman grey sky alone","rain window close up","woman overcast day alone","grey light woman thinking","woman fog morning alone","rain drops close up dark","woman cloudy day window"]},
-        {"name":"small_sanctuary","description":"a private space: bath, bed, bedroom: the last place that is hers","pexels_queries":["woman bath candle peaceful","woman bed morning alone","woman couch quiet blanket","woman floor pillow alone","cosy room woman alone","woman blanket window","woman alone bedroom light","woman sitting floor quiet room"]},
-        {"name":"movement_release","description":"walking, moving, the body as a way out of the mind","pexels_queries":["woman walking alone nature","woman running alone morning","woman yoga alone morning","woman stretching alone","woman walking beach alone","woman forest walk peaceful","woman exercise alone morning","woman outdoor movement calm"]}
+        {
+          "name": "quiet_introspection",
+          "description": "a woman alone with her thoughts, soft and still",
+          "pexels_queries": ["woman journaling soft light","woman writing alone quiet","woman reading alone window","woman sitting floor alone","woman bedroom alone thoughtful","woman quiet moment alone","woman pen paper close","woman desk writing soft light"]
+        },
+        {
+          "name": "emotional_weather",
+          "description": "mood as environment: rain, grey light, overcast softness",
+          "pexels_queries": ["woman rain window alone","woman grey sky alone","rain window close up","woman overcast day alone","grey light woman thinking","woman fog morning alone","rain drops close up dark","woman cloudy day window"]
+        },
+        {
+          "name": "small_sanctuary",
+          "description": "a private space: bath, bed, bedroom: the last place that is hers",
+          "pexels_queries": ["woman bath candle peaceful","woman bed morning alone","woman couch quiet blanket","woman floor pillow alone","cosy room woman alone","woman blanket window","woman alone bedroom light","woman sitting floor quiet room"]
+        },
+        {
+          "name": "movement_release",
+          "description": "walking, moving, the body as a way out of the mind",
+          "pexels_queries": ["woman walking alone nature","woman running alone morning","woman yoga alone morning","woman stretching alone","woman walking beach alone","woman forest walk peaceful","woman exercise alone morning","woman outdoor movement calm"]
+        }
       ]
     },
     "anxiety_sos": {
       "name": "Anxiety & SOS Relief",
       "viewer_persona": "A woman who knows what anxiety feels like from the inside but does not match the clinical description. Her anxiety looks like hypervigilance, people-pleasing, difficulty resting. She is functional. She is also exhausted in a very specific way she cannot explain to people who have not felt it.",
       "seed_queries": ["stress relief app","calm anxiety app","anxiety coping app","grounding app for stress","panic relief app","instant calm app","anxiety relief app","emotional support app"],
+      "hook_queries": [
+        "clock fast blur dark abstract",
+        "heartbeat line abstract blue dark",
+        "abstract waves dark background",
+        "blur abstract motion dark fast",
+        "shadow movement dark abstract",
+        "bokeh dark abstract close anxious"
+      ],
+      "problem_queries": [
+        "woman hands clasped lap tense close",
+        "woman breathing tight close dark",
+        "woman eyes closed worry dark",
+        "woman shoulders tense dark alone",
+        "woman hands tight clutch dark",
+        "woman hunched shoulders dark room",
+        "woman phone tense dark night",
+        "woman pacing blur dark room"
+      ],
+      "story_queries": [
+        "woman hands open lap calm",
+        "woman slow breath close calm",
+        "woman feet barefoot grass close",
+        "woman hands touch water calm",
+        "woman eyes close calm slow",
+        "woman arms stretch open calm"
+      ],
+      "cta_queries": [
+        "calm water surface morning still",
+        "woman breath open light morning",
+        "soft morning light curtain calm",
+        "leaves gentle sunlight bokeh",
+        "woman face peaceful morning light",
+        "still water reflection morning calm"
+      ],
       "visual_moods": [
-        {"name":"breathing_stillness","description":"the act of being still, slowing down, breath as the focus","pexels_queries":["woman breathing calm close","woman eyes closed peaceful","woman meditation calm alone","woman hands lap breathing","woman still moment calm","woman peaceful face close","woman eyes closed light","woman sitting calm quiet"]},
-        {"name":"nature_grounding","description":"feet on ground, hands in nature, sensory calming","pexels_queries":["woman barefoot grass close","hands touching water close","woman ground nature feet","hands leaves nature close","woman sitting earth nature","feet grass close morning","woman nature grounding","hands soil garden close"]},
-        {"name":"calm_water","description":"water as calm: still lakes, gentle movement, reflection","pexels_queries":["calm water surface still","woman water peaceful alone","lake still morning reflection","water ripple slow calm","woman near water alone","still water light reflection","pond morning calm alone","woman water edge peaceful"]},
-        {"name":"light_abstract","description":"soft diffused light: the visual feeling of calm arriving","pexels_queries":["soft light diffused calm","sunlight through curtain soft","warm bokeh light background","soft light beam dust","light through leaves soft","morning light soft abstract","gentle light window soft","light haze calm background"]}
+        {
+          "name": "breathing_stillness",
+          "description": "the act of being still, slowing down, breath as the focus",
+          "pexels_queries": ["woman breathing calm close","woman eyes closed peaceful","woman meditation calm alone","woman hands lap breathing","woman still moment calm","woman peaceful face close","woman eyes closed light","woman sitting calm quiet"]
+        },
+        {
+          "name": "nature_grounding",
+          "description": "feet on ground, hands in nature, sensory calming",
+          "pexels_queries": ["woman barefoot grass close","hands touching water close","woman ground nature feet","hands leaves nature close","woman sitting earth nature","feet grass close morning","woman nature grounding","hands soil garden close"]
+        },
+        {
+          "name": "calm_water",
+          "description": "water as calm: still lakes, gentle movement, reflection",
+          "pexels_queries": ["calm water surface still","woman water peaceful alone","lake still morning reflection","water ripple slow calm","woman near water alone","still water light reflection","pond morning calm alone","woman water edge peaceful"]
+        },
+        {
+          "name": "light_abstract",
+          "description": "soft diffused light: the visual feeling of calm arriving",
+          "pexels_queries": ["soft light diffused calm","sunlight through curtain soft","warm bokeh light background","soft light beam dust","light through leaves soft","morning light soft abstract","gentle light window soft","light haze calm background"]
+        }
       ]
     }
   }

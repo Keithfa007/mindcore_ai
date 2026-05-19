@@ -13,44 +13,244 @@
       "name": "Recovery & Sobriety",
       "viewer_persona": "A man in his late 30s to early 50s, in active recovery or struggling to stay sober. He is often awake at 2am not from cravings, but from the feelings sobriety uncovered that alcohol used to bury. He holds it together for his family. Nobody at work knows. He questions whether the flatness he feels will ever pass.",
       "seed_queries": ["sobriety app","sober app","sober time app","sobriety tracker","sober tracker","days sober app","sober counter","sobriety counter","sober buddy app","stay sober app","sobriety tracking app"],
+      "hook_queries": [
+        "bokeh light blur dark abstract background",
+        "flame candle close up dark blurred",
+        "water surface ripple abstract close up",
+        "clock face blurred dark close up",
+        "smoke drift slow dark background",
+        "shadow geometric lines wall light abstract"
+      ],
+      "problem_queries": [
+        "empty whiskey glass dark table alone",
+        "silhouette dark room single lamp window",
+        "man hands covering face shadow dark",
+        "ceiling stare dark bedroom night",
+        "rain streaks window night street bokeh",
+        "hands clasped table dark light alone",
+        "door closed dark hallway alone",
+        "empty bar stool dimly lit blurred"
+      ],
+      "story_queries": [
+        "feet walking wet pavement forward",
+        "empty road ahead perspective dawn mist",
+        "path through trees morning light ahead",
+        "hand releasing stone into water",
+        "man walking away path sunrise silhouette",
+        "staircase ascending toward morning light"
+      ],
+      "cta_queries": [
+        "sunlight curtain morning dust rays",
+        "dawn horizon warm sky first light",
+        "light breaking through dark clouds",
+        "hands open warmth light beam",
+        "green leaves sunlight bokeh morning",
+        "door opening warm light ahead"
+      ],
       "visual_moods": [
-        {"name":"dawn_renewal","description":"quiet early morning, new beginning, stillness before the world wakes","pexels_queries":["man alone sunrise morning","empty road dawn mist","hands coffee mug morning light","window light morning fog","person walking alone sunrise","quiet room morning light beam","dawn sky empty street","man sitting porch morning"]},
-        {"name":"night_weight","description":"late night solitude, weight of thoughts, darkness with single light source","pexels_queries":["man alone dark room lamp","city lights rain window night","person sitting dark silhouette","night bedroom ceiling stare","street lamp fog night alone","man hands face dark room","empty kitchen night light","window rain night city"]},
-        {"name":"forward_motion","description":"movement, walking, journey, progress without destination","pexels_queries":["man walking alone forest path","empty road perspective walk","person walking bridge alone","feet walking wet pavement","man running alone morning","trail walking alone nature","person crossing bridge fog","walking away perspective road"]},
-        {"name":"intimate_detail","description":"close-up objects and hands carrying quiet emotional weight","pexels_queries":["hands holding cup close up","journal pen writing close","clock hands time passing","hands folded table thinking","candle flame dark background","keys hand close up","ring hands close up detail","empty glass table alone"]}
+        {
+          "name": "dawn_renewal",
+          "description": "quiet early morning, new beginning, stillness before the world wakes",
+          "pexels_queries": ["man alone sunrise morning","empty road dawn mist","hands coffee mug morning light","window light morning fog","person walking alone sunrise","quiet room morning light beam","dawn sky empty street","man sitting porch morning"]
+        },
+        {
+          "name": "night_weight",
+          "description": "late night solitude, weight of thoughts, darkness with single light source",
+          "pexels_queries": ["man alone dark room lamp","city lights rain window night","person sitting dark silhouette","night bedroom ceiling stare","street lamp fog night alone","man hands face dark room","empty kitchen night light","window rain night city"]
+        },
+        {
+          "name": "forward_motion",
+          "description": "movement, walking, journey, progress without destination",
+          "pexels_queries": ["man walking alone forest path","empty road perspective walk","person walking bridge alone","feet walking wet pavement","man running alone morning","trail walking alone nature","person crossing bridge fog","walking away perspective road"]
+        },
+        {
+          "name": "intimate_detail",
+          "description": "close-up objects and hands carrying quiet emotional weight",
+          "pexels_queries": ["hands holding cup close up","journal pen writing close","clock hands time passing","hands folded table thinking","candle flame dark background","keys hand close up","ring hands close up detail","empty glass table alone"]
+        }
       ]
     },
     "ai_companion": {
       "name": "AI Companion",
       "viewer_persona": "A man in his 40s who lives in his head. He has people around him but feels fundamentally alone like he is performing a version of himself rather than living. He is curious about technology. He would never call a helpline. He would talk to an AI before he would talk to a friend about how he really feels.",
       "seed_queries": ["AI companion app","AI chat companion","best AI companion app","AI app with memory","AI that remembers you","personalised wellness app"],
+      "hook_queries": [
+        "phone screen glow dark abstract bokeh",
+        "data light lines blue abstract dark",
+        "bokeh blue particles dark background",
+        "circuit pattern abstract blue glow",
+        "light particle floating dark space",
+        "screen reflection face dark abstract"
+      ],
+      "problem_queries": [
+        "man phone alone dark room night glow",
+        "city street crowd alone blur night",
+        "empty table coffee shop window rain",
+        "person crowd alone blur bokeh",
+        "man sitting subway alone window",
+        "phone glow face dark bedroom night",
+        "man alone bench night city lights",
+        "window rain city lights alone night"
+      ],
+      "story_queries": [
+        "hand reaching toward phone screen light",
+        "finger scrolling screen dark room",
+        "face lit phone glow dark",
+        "door light end hallway darkness",
+        "hand reaching toward warmth light",
+        "person walking night city phone light"
+      ],
+      "cta_queries": [
+        "phone warm morning light hands",
+        "sunrise window warm golden light",
+        "hands warmth cup light morning",
+        "morning light phone warm",
+        "sun window light warm rays",
+        "smile close warmth morning light"
+      ],
       "visual_moods": [
-        {"name":"digital_solitude","description":"person and technology at night, the glow of a screen as the only companion","pexels_queries":["person phone glow dark room","man phone night alone","screen light face darkness","person laptop night solitude","phone glow bedroom night","man sitting phone light dark","night tablet screen glow","person scrolling dark background"]},
-        {"name":"reaching_connection","description":"reaching toward light, bridge between isolation and connection","pexels_queries":["hand reaching toward light","person window light reaching","silhouette reaching upward","hands open light beam","person doorway light hope","shadow reaching window","man looking horizon peaceful","person light end tunnel"]},
-        {"name":"city_solitude","description":"alone in a crowd, urban isolation, modern loneliness","pexels_queries":["man alone busy street blur","person crowd alone","city night one person","alone coffee shop window rain","urban street one person rain","man standing empty station","person alone park bench city","night city walk alone"]},
-        {"name":"abstract_light","description":"abstract light and space as metaphor for technology and human connection","pexels_queries":["abstract light particles dark","blue light streams dark background","digital light bokeh dark","glowing orb dark space","light through dark minimal","abstract blue glow dark","particles floating dark background","soft light dark room abstract"]}
+        {
+          "name": "digital_solitude",
+          "description": "person and technology at night, the glow of a screen as the only companion",
+          "pexels_queries": ["person phone glow dark room","man phone night alone","screen light face darkness","person laptop night solitude","phone glow bedroom night","man sitting phone light dark","night tablet screen glow","person scrolling dark background"]
+        },
+        {
+          "name": "reaching_connection",
+          "description": "reaching toward light, bridge between isolation and connection",
+          "pexels_queries": ["hand reaching toward light","person window light reaching","silhouette reaching upward","hands open light beam","person doorway light hope","shadow reaching window","man looking horizon peaceful","person light end tunnel"]
+        },
+        {
+          "name": "city_solitude",
+          "description": "alone in a crowd, urban isolation, modern loneliness",
+          "pexels_queries": ["man alone busy street blur","person crowd alone","city night one person","alone coffee shop window rain","urban street one person rain","man standing empty station","person alone park bench city","night city walk alone"]
+        },
+        {
+          "name": "abstract_light",
+          "description": "abstract light and space as metaphor for technology and human connection",
+          "pexels_queries": ["abstract light particles dark","blue light streams dark background","digital light bokeh dark","glowing orb dark space","light through dark minimal","abstract blue glow dark","particles floating dark background","soft light dark room abstract"]
+        }
       ]
     },
     "mens_mental_health": {
       "name": "Men's Mental Health",
       "viewer_persona": "A man mid-30s to late 40s who has been the strong one for so long he has forgotten what it feels like to not be. He is not in crisis. He is just exhausted in a way he cannot explain to anyone. He would not use the word depressed. He would say he is not himself lately.",
       "seed_queries": ["men's wellbeing support","men's wellness help","men's wellbeing app","men's wellness app","men's burnout app","burnout recovery app","emotional burnout app","mental health app","mental wellness app"],
+      "hook_queries": [
+        "shadow man silhouette wall abstract",
+        "dark room single chair spotlight empty",
+        "rain drops glass close up blur",
+        "heavy weight stone dark abstract",
+        "clock hands blur dark time",
+        "empty chair dark room abstract light"
+      ],
+      "problem_queries": [
+        "man head down dark park bench grey",
+        "man sitting window rain grey sky",
+        "hands folded table dark alone",
+        "man staring empty wall shadow",
+        "grey sky overcast empty field",
+        "man alone fog road dark",
+        "heavy coat man dark rain street",
+        "man looking down floor shadow"
+      ],
+      "story_queries": [
+        "man walking alone park morning",
+        "man face tilted up sky clouds",
+        "feet walking path alone forward",
+        "man hand chest breathing",
+        "man sitting upright morning light",
+        "man walking beach alone horizon"
+      ],
+      "cta_queries": [
+        "sunrise man silhouette warm sky",
+        "morning light room warm curtain",
+        "man hands open morning light",
+        "dawn sky warm glow horizon",
+        "light through trees morning warm",
+        "man face morning light peaceful"
+      ],
       "visual_moods": [
-        {"name":"weight_of_silence","description":"a man carrying something invisible, heavy still atmosphere","pexels_queries":["man sitting alone window rain","man head down thinking alone","person alone park bench grey","man staring distance alone","dark room man sitting chair","man looking down shadow light","person alone empty room","man hands together thinking"]},
-        {"name":"weather_mood","description":"rain, grey skies, empty natural spaces as mood environment","pexels_queries":["rain window grey sky","overcast sky empty field","rain street moody grey","fog forest morning alone","grey sky bare trees","rain drops window close up","misty morning empty landscape","clouds heavy sky open field"]},
-        {"name":"empty_spaces","description":"rooms and places that feel the absence of something","pexels_queries":["empty chair room sunlight","abandoned room window light","empty table two chairs","hallway perspective empty","single chair spotlight dark","room dust light beam","empty bed morning light","doorway leading empty room light"]},
-        {"name":"man_in_nature","description":"man alone in vast natural environment, scale and solitude","pexels_queries":["man alone mountain view","person small landscape vast","man standing cliff ocean","lone figure field horizon","man forest alone standing","person beach alone walking","silhouette man sunset nature","man overlooking valley alone"]}
+        {
+          "name": "weight_of_silence",
+          "description": "a man carrying something invisible, heavy still atmosphere",
+          "pexels_queries": ["man sitting alone window rain","man head down thinking alone","person alone park bench grey","man staring distance alone","dark room man sitting chair","man looking down shadow light","person alone empty room","man hands together thinking"]
+        },
+        {
+          "name": "weather_mood",
+          "description": "rain, grey skies, empty natural spaces as mood environment",
+          "pexels_queries": ["rain window grey sky","overcast sky empty field","rain street moody grey","fog forest morning alone","grey sky bare trees","rain drops window close up","misty morning empty landscape","clouds heavy sky open field"]
+        },
+        {
+          "name": "empty_spaces",
+          "description": "rooms and places that feel the absence of something",
+          "pexels_queries": ["empty chair room sunlight","abandoned room window light","empty table two chairs","hallway perspective empty","single chair spotlight dark","room dust light beam","empty bed morning light","doorway leading empty room light"]
+        },
+        {
+          "name": "man_in_nature",
+          "description": "man alone in vast natural environment, scale and solitude",
+          "pexels_queries": ["man alone mountain view","person small landscape vast","man standing cliff ocean","lone figure field horizon","man forest alone standing","person beach alone walking","silhouette man sunset nature","man overlooking valley alone"]
+        }
       ]
     },
     "mood_wellness": {
       "name": "Mood & General Wellness",
       "viewer_persona": "A man in his 30s to 40s who notices patterns in himself but has no framework to understand them. He is functional. He goes to the gym, does his job, looks fine from the outside. But something is off and he cannot name it. He is the type to download an app instead of talking to someone.",
       "seed_queries": ["mood tracking app","best mood tracker app","mood diary app","mood journal app","mental wellness app","mental wellness apps","wellbeing apps","self improvement app","personal growth apps","self improving apps"],
+      "hook_queries": [
+        "calendar pages blur abstract close",
+        "journal open close abstract bokeh warm",
+        "pen paper abstract close warm light",
+        "phone screen dark abstract night",
+        "graph chart blur abstract close",
+        "alarm clock dark abstract blur"
+      ],
+      "problem_queries": [
+        "man tired desk night lamp alone",
+        "man coffee dark morning tired",
+        "notebook closed dark table alone",
+        "man head desk dark night",
+        "alarm clock dark night blurred",
+        "man distracted window dark room",
+        "scattered desk night lamp alone",
+        "man looking outside window dark"
+      ],
+      "story_queries": [
+        "pen writing journal morning light close",
+        "man stretching window morning light",
+        "running shoes pavement morning light",
+        "coffee steam close up warm morning",
+        "journal open pen writing calm",
+        "man walking park morning light"
+      ],
+      "cta_queries": [
+        "journal open morning warm light",
+        "man smile morning coffee warm close",
+        "sunrise morning silhouette run",
+        "plants window morning light warm",
+        "notebook pen morning light calm",
+        "man looking horizon morning calm"
+      ],
       "visual_moods": [
-        {"name":"morning_ritual","description":"intentional morning, routine, the calm start of something","pexels_queries":["morning routine man calm","coffee desk morning notebook","man stretching morning light","journal writing morning desk","sunrise window morning calm","man gym early morning alone","morning light desk minimal","person breakfast morning calm"]},
-        {"name":"reflection","description":"mirrors, water, glass: moments of self-seeing","pexels_queries":["man mirror reflection alone","water reflection person","glass reflection person city","man looking mirror morning","reflection puddle person","mirror bedroom morning light","window reflection face","water surface ripple calm"]},
-        {"name":"movement_wellness","description":"body in motion, exercise, walking as mental health practice","pexels_queries":["man running alone trail","person walking meditation nature","man gym alone focus","running silhouette sunset","man cycling alone road","person walking park alone","man weights gym alone","person outdoor exercise morning"]},
-        {"name":"minimal_calm","description":"clean, minimal, quiet: order as a form of wellbeing","pexels_queries":["minimal desk clean morning","plant window light minimal","clean room morning light","notebook pen minimal desk","coffee steam minimal background","simple table morning calm","white room natural light","minimal lifestyle calm morning"]}
+        {
+          "name": "morning_ritual",
+          "description": "intentional morning, routine, the calm start of something",
+          "pexels_queries": ["morning routine man calm","coffee desk morning notebook","man stretching morning light","journal writing morning desk","sunrise window morning calm","man gym early morning alone","morning light desk minimal","person breakfast morning calm"]
+        },
+        {
+          "name": "reflection",
+          "description": "mirrors, water, glass: moments of self-seeing",
+          "pexels_queries": ["man mirror reflection alone","water reflection person","glass reflection person city","man looking mirror morning","reflection puddle person","mirror bedroom morning light","window reflection face","water surface ripple calm"]
+        },
+        {
+          "name": "movement_wellness",
+          "description": "body in motion, exercise, walking as mental health practice",
+          "pexels_queries": ["man running alone trail","person walking meditation nature","man gym alone focus","running silhouette sunset","man cycling alone road","person walking park alone","man weights gym alone","person outdoor exercise morning"]
+        },
+        {
+          "name": "minimal_calm",
+          "description": "clean, minimal, quiet: order as a form of wellbeing",
+          "pexels_queries": ["minimal desk clean morning","plant window light minimal","clean room morning light","notebook pen minimal desk","coffee steam minimal background","simple table morning calm","white room natural light","minimal lifestyle calm morning"]
+        }
       ]
     }
   }
