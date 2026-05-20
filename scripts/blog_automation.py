@@ -66,20 +66,20 @@ LIBRARY_CATEGORY_MAP = {
     "stress anxiety companion app": "Anxiety & Stress",
 }
 
-# Internal pages to link to naturally within blog posts
+# Internal site pages to link to naturally
 INTERNAL_LINKS = [
     ("MindCore AI features", "https://mindcoreai.eu/features/"),
-    ("our story", "https://mindcoreai.eu/about-us/"),
-    ("MindCore AI blog", "https://mindcoreai.eu/blog/"),
+    ("our story",            "https://mindcoreai.eu/about-us/"),
+    ("MindCore AI blog",     "https://mindcoreai.eu/blog/"),
 ]
 
-# External authoritative sources for mental health links
+# External authoritative sources
 EXTERNAL_LINKS = [
-    ("Mind", "https://www.mind.org.uk"),
+    ("Mind",                     "https://www.mind.org.uk"),
     ("Mental Health Foundation", "https://www.mentalhealth.org.uk"),
-    ("NHS mental health support", "https://www.nhs.uk/mental-health/"),
-    ("NAMI", "https://www.nami.org"),
-    ("SAMHSA", "https://www.samhsa.gov"),
+    ("NHS mental health support","https://www.nhs.uk/mental-health/"),
+    ("NAMI",                     "https://www.nami.org"),
+    ("SAMHSA",                   "https://www.samhsa.gov"),
 ]
 
 AUDIENCE_PROFILES = {
@@ -211,14 +211,14 @@ def validate_seo(content, title, meta, primary_keyword, slug):
     kw_n  = text.count(kw)
     dens  = (kw_n / wc * 100) if wc > 0 else 0
     checks = {
-        "Keyword in title":            kw in title.lower(),
-        "Keyword in meta description": kw in meta.lower(),
-        "Keyword in URL slug":         kw.replace(" ", "-") in slug,
-        "Keyword in first 10%":        kw in first,
-        "Keyword found in content":    kw in text,
+        "Keyword in title":             kw in title.lower(),
+        "Keyword in meta description":  kw in meta.lower(),
+        "Keyword in URL slug":          kw.replace(" ", "-") in slug,
+        "Keyword in first 10%":         kw in first,
+        "Keyword found in content":     kw in text,
         f"Word count >= {MIN_WORD_COUNT}": wc >= MIN_WORD_COUNT,
-        "External link present":       "http" in content and 'href="http' in content,
-        "Internal link present":       "mindcoreai.eu" in content,
+        "External link present":        'href="http' in content,
+        "Internal link present":        "mindcoreai.eu" in content,
     }
     all_ok = True
     for label, ok in checks.items():
@@ -250,6 +250,20 @@ def format_history_for_prompt(history):
         f"  {i}. [{e['date']}] \"{e['title']}\" — keyword: \"{e['primary_keyword']}\" (audience: {e.get('audience','unknown')})"
         for i, e in enumerate(history, 1)
     )
+
+def build_post_links(history):
+    """Build a list of existing published post titles + URLs for cross-linking."""
+    posts = []
+    for post in history:
+        slug = post.get("slug", "")
+        if not slug:
+            slug = keyword_to_slug(post.get("primary_keyword", ""))
+        if slug:
+            posts.append({
+                "title": post["title"],
+                "url":   f"https://mindcoreai.eu/{slug}/",
+            })
+    return posts
 
 
 # -- Keyword Library ----------------------------------------------------------
@@ -412,15 +426,37 @@ Respond ONLY in this exact JSON:
 
 
 # -- Step 2: Write post -------------------------------------------------------
-def write_blog_post(topic_data):
+def write_blog_post(topic_data, history):
     print("Writing blog post...")
     audience = topic_data.get("audience", "neutral")
     profile  = AUDIENCE_PROFILES[audience]
     kw       = topic_data["primary_keyword"]
 
-    # Build internal and external link instructions
+    # Build internal site page links
     int_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in INTERNAL_LINKS)
+
+    # Build external authoritative links
     ext_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in EXTERNAL_LINKS[:3])
+
+    # Build cross-post links from existing published posts
+    existing_posts   = build_post_links(history)
+    cross_link_block = ""
+    if len(existing_posts) >= 2:
+        cross_link_block = (
+            "\nCROSS-POST LINKS (MANDATORY — link to exactly 2 of these existing posts "
+            "naturally within the content using relevant anchor text):\n"
+        )
+        for p in existing_posts:
+            cross_link_block += f'  - "{p["title"]}" → {p["url"]}\n'
+        cross_link_block += (
+            "Pick the 2 most topically relevant posts to the current article. "
+            "Link to them mid-content, not just at the end.\n"
+        )
+    elif len(existing_posts) == 1:
+        cross_link_block = (
+            f'\nCROSS-POST LINK (link to this existing post naturally in the content):\n'
+            f'  - "{existing_posts[0]["title"]}" → {existing_posts[0]["url"]}\n'
+        )
 
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=6000,
@@ -442,15 +478,17 @@ CRITICAL KEYWORD RULES (Yoast SEO compliance):
   3. The EXACT phrase "{kw}" must appear in at least 3 H2 subheadings
   4. The EXACT phrase "{kw}" must appear throughout the body — at least 8-10 times total
   5. Use EXACTLY "{kw}" — not synonyms, not variations, the EXACT phrase every time
-  6. Keyword density target: 1.0%-1.5% (approx 1 mention per 100 words)
+  6. Keyword density target: 1.0%-1.5%
   7. Minimum 1,200 words of readable content
 
-MANDATORY LINKS (must be included as working HTML anchor tags):
-  Internal links — include ALL 3 naturally within the content:
-{int_links}
-  External links — include at least 2 naturally within the content:
-{ext_links}
+MANDATORY LINKS — all must appear as proper HTML anchor tags:
 
+  Internal site pages (include ALL 3):
+{int_links}
+
+  External authoritative sources (include at least 2):
+{ext_links}
+{cross_link_block}
 WRITING REQUIREMENTS:
   - Structure: H1 → intro (2-3 para) → 5-7 H2 sections (150-200 words each) → conclusion + CTA
   - Include at least one <ul> list
@@ -459,24 +497,21 @@ WRITING REQUIREMENTS:
 
 FORMAT RULES:
   - Return clean WordPress HTML ONLY: h1 h2 h3 p ul li strong em a tags
-  - Links must use proper HTML: <a href="URL">text</a>
-  - External links must have target="_blank" and rel="noopener noreferrer"
-  - Internal links do NOT need target="_blank"
-  - Do NOT include html head body style script tags
-  - After ALL the HTML content, on its own line write:
-    EXCERPT: [2-3 sentence hook that contains the exact phrase "{kw}"]"""}]
+  - Links: <a href="URL">text</a>
+  - External links: add target="_blank" rel="noopener noreferrer"
+  - Internal links: no target="_blank" needed
+  - No html head body style script tags
+  - After ALL HTML, on its own line:
+    EXCERPT: [2-3 sentence hook containing the exact phrase "{kw}"]"""}]
     )
 
-    content = response.content[0].text
-    wc      = count_words_in_html(content)
-    print(f"   Written ({wc} words)")
-
-    # Check keyword count
+    content  = response.content[0].text
+    wc       = count_words_in_html(content)
     kw_count = content.lower().count(kw.lower())
-    print(f"   Keyword '{kw}' appears {kw_count} times")
+    print(f"   Written ({wc} words, keyword appears {kw_count} times)")
 
     if wc < MIN_WORD_COUNT:
-        print(f"   Expanding...")
+        print("   Expanding...")
         content = expand_blog_post(content, topic_data, wc)
 
     return content
@@ -525,12 +560,10 @@ def generate_illustration(image_prompt):
 
 
 def upload_image_to_wordpress(image_data, alt_text=""):
-    """Upload image to WordPress media library and set alt text."""
     print("Uploading image...")
     filename = f"mindcore-blog-{datetime.now().strftime('%Y%m%d')}.png"
     auth     = get_wp_auth()
 
-    # Upload the image
     upload_headers = {**auth}
     upload_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     upload_headers["Content-Type"]        = "image/png"
@@ -540,31 +573,25 @@ def upload_image_to_wordpress(image_data, alt_text=""):
         print(f"   Upload failed ({resp.status_code}): {resp.text}")
         return None, None
 
-    media    = resp.json()
+    media     = resp.json()
     media_id  = media["id"]
     media_url = media.get("source_url", "")
     print(f"   Image uploaded (ID: {media_id})")
 
-    # Set alt text on the media item
     if alt_text:
         time.sleep(2)
-        patch_headers = {**auth, "Content-Type": "application/json"}
         patch = requests.post(
             f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
-            headers=patch_headers,
+            headers={**auth, "Content-Type": "application/json"},
             json={"alt_text": alt_text, "caption": alt_text},
             timeout=15,
         )
-        if patch.status_code == 200:
-            print(f"   Alt text set: '{alt_text}'")
-        else:
-            print(f"   Alt text failed: {patch.text}")
+        print(f"   Alt text set: '{alt_text}'" if patch.status_code == 200 else f"   Alt text failed: {patch.text}")
 
     return media_id, media_url
 
 
 def inject_image_into_content(content, media_url, alt_text):
-    """Embed the featured image inside the post content for Yoast rich media check."""
     if not media_url:
         return content
     img_html = (
@@ -572,7 +599,6 @@ def inject_image_into_content(content, media_url, alt_text):
         f'<img src="{media_url}" alt="{alt_text}" class="wp-image"/>'
         f'</figure>\n'
     )
-    # Insert after the first closing </p> tag
     insert_pos = content.find("</p>")
     if insert_pos != -1:
         content = content[:insert_pos + 4] + img_html + content[insert_pos + 4:]
@@ -622,14 +648,12 @@ def resolve_category_id(category_name):
 def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
     print("Publishing to WordPress...")
 
-    # Split excerpt
     excerpt = ""
     if "EXCERPT:" in content:
         bits    = content.split("EXCERPT:")
         content = bits[0].strip()
         excerpt = bits[1].strip() if len(bits) > 1 else ""
 
-    # Embed image inside content body (fixes Yoast rich media check)
     if media_url:
         content = inject_image_into_content(content, media_url, topic_data["primary_keyword"])
 
@@ -677,7 +701,7 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
     post_id = post["id"]
     print(f"   Published -> {post.get('link', 'N/A')}")
 
-    # Attach featured image — retry up to 3 times with increasing delays
+    # Attach featured image with retry
     if media_id:
         for img_attempt in range(3):
             wait_time = 10 * (img_attempt + 1)
@@ -694,7 +718,6 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
                 break
             elif upd.status_code == 429:
                 print(f"   Image attach rate limited (attempt {img_attempt + 1}/3)")
-                continue
             else:
                 print(f"   Image attach failed: {upd.status_code} — {upd.text}")
                 break
@@ -729,9 +752,8 @@ def main():
     print(f"History: {len(history)} posts published")
 
     topic_data = research_topic(history)
-    content    = write_blog_post(topic_data)
+    content    = write_blog_post(topic_data, history)   # history passed for cross-linking
 
-    # Generate and upload image — returns both ID and URL
     media_id  = None
     media_url = None
     try:
