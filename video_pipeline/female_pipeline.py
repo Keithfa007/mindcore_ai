@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v2.3
+MindCore AI -- Female Cinematic Pipeline v2.4
 =============================================
-CHANGES (v2.3):
-  - Cinematic shot-based Pexels queries (cinematographer shots, not subjects)
-  - Scene-matched visuals: hook/problem/story/cta each pull different clips
-  - Word flash overlays: Whisper timestamps power words center screen at 110px
-  - Ken Burns comma escaping preserved from v2.2
-  - Voice ID 50860d52ab054efab4608bd6060f5ea6
-
-SUBTITLES: Whisper 'tiny' -> 75px Arial bottom + 110px Flash center screen
+CHANGES (v2.4):
+  - specific_number hook formula added (13th formula, female examples)
+  - Word targets extended: problem 35-55, story 55-75 (~65-75s videos)
+  - CTA comment triggers: content ends with community engagement prompt
+  - Ad CTA: engagement trigger alongside MindCore AI mention
+  - Niche-specific hashtags from keywords JSON injected into metadata
+  - All v2.3 features preserved (scene-matched clips, word flash, KB fix)
 """
 
 import json
@@ -102,6 +101,7 @@ HOOK_FORMULAS = [
     {"name":"rhetorical_hit","instruction":"Ask a question the viewer has asked themselves but never heard asked back to them.","example":"When was the last time you put yourself on the list?","rule":"Rhetorical -- not a quiz. The question lands and the video answers it."},
     {"name":"contrast","instruction":"Two short sentences. What others see vs what is actually happening.","example":"Everyone thinks you have it together. You know how much that's costing you.","rule":"Two sentences maximum. No explanation. The contrast must be immediately felt."},
     {"name":"unspoken_truth","instruction":"Say the one thing the viewer has felt but never heard anyone articulate.","example":"You're not tired from doing too much. You're tired from disappearing too long.","rule":"Must be viscerally recognisable on first hearing. If it needs explaining, rewrite it."},
+    {"name":"specific_number","instruction":"Open with a specific, unexpected statistic or number that reframes how common the experience is. The number IS the hook.","example":"7 in 10 women feel like they're performing a version of themselves every single day.","rule":"Use odd, specific numbers -- never round numbers like 10 or 20. The number must make the viewer think: I didn't know it was that many."},
 ]
 
 BANNED_HOOK_OPENERS = [
@@ -119,7 +119,7 @@ BANNED_HOOK_OPENERS = [
 ]
 
 WORD_TARGETS_AD      = {"hook":(12,15),"problem":(30,40),"story":(40,55),"solution_cta":(20,30)}
-WORD_TARGETS_CONTENT = {"hook":(12,15),"problem":(30,45),"story":(45,65),"solution_cta":(20,35)}
+WORD_TARGETS_CONTENT = {"hook":(12,15),"problem":(35,55),"story":(55,75),"solution_cta":(20,35)}
 
 BANNED_PHRASE_REPLACEMENTS = [
     (r"try\s+it\s+for\s+free","try it"),
@@ -194,7 +194,7 @@ def load_app_facts():
 
 def load_keywords_data():
     if not KEYWORDS_PATH.exists():
-        return {"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s carrying everything for everyone.","seed_queries":["women mental health tips"],"hook_queries":["bokeh warm light abstract"],"problem_queries":["woman alone dark room","woman window rain alone"],"story_queries":["woman walking nature path"],"cta_queries":["sunlight curtain morning soft"],"visual_moods":[{"name":"default","description":"soft warm","pexels_queries":["woman alone window","woman journaling","soft light woman","woman nature","woman quiet moment"]}]}}}
+        return {"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s carrying everything for everyone.","seed_queries":["women mental health tips"],"hashtags":[],"hook_queries":["bokeh warm light abstract"],"problem_queries":["woman alone dark room"],"story_queries":["woman walking nature path"],"cta_queries":["sunlight curtain morning soft"],"visual_moods":[{"name":"default","description":"soft warm","pexels_queries":["woman alone window","woman journaling","soft light woman"]}]}}}
     with open(KEYWORDS_PATH) as f: return json.load(f)
 
 def get_niche_for_today(keywords_data):
@@ -291,14 +291,14 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a cinematic voiceover script for a short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING HERSELF: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. The viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order):\nhook (12-15 words) | problem ({lo_prob}-{hi_prob} words) | story ({lo_story}-{hi_story} words) | solution_cta ({lo_cta}-{hi_cta} words)\n\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a cinematic voiceover script for a short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING HERSELF: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. The viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order):\nhook (12-15 words) | problem ({lo_prob}-{hi_prob} words) | story ({lo_story}-{hi_story} words) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger such as "Comment [word] if you've felt this", "Tag someone who needs to hear this today", or "Drop a 🤍 if this hit you" -- NO app mentions in content videos)\n\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt,client,max_tokens=1200)
 
 def generate_ad_script(app_facts, niche, client):
     ad_topic=random.choice(AD_TOPICS); formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     print(f"  AD: pain point: {ad_topic['pain_point'][:65]}...")
     lo_prob,hi_prob=WORD_TARGETS_AD["problem"]; lo_story,hi_story=WORD_TARGETS_AD["story"]; lo_cta,hi_cta=WORD_TARGETS_AD["solution_cta"]
-    prompt=f"""You are writing a cinematic voiceover ad script for MindCore AI targeting women.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES: hook -> problem -> story (introduce MindCore AI naturally) -> solution_cta ("Find MindCore AI on Google Play.")\nBANNED: "free trial", "first week free", "download now"\nWORD COUNTS: hook 12-15 | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a cinematic voiceover ad script for MindCore AI targeting women.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES: hook -> problem -> story (introduce MindCore AI naturally) -> solution_cta (mention MindCore AI on Google Play briefly, then end with a community engagement trigger such as "Comment [word] if you need this" or "Tag someone who's carrying this silently")\nBANNED: "free trial", "first week free", "download now"\nWORD COUNTS: hook 12-15 | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt,client,max_tokens=1200)
 
 def build_full_script(script):
@@ -311,7 +311,7 @@ def build_full_script(script):
 
 
 # ---------------------------------------------------------------------------
-# Word flash -- pick most impactful word from subtitle chunk
+# Word flash
 # ---------------------------------------------------------------------------
 
 def pick_power_word(words_in_chunk):
@@ -324,11 +324,6 @@ def pick_power_word(words_in_chunk):
     if not candidates:
         return None
     return max(candidates, key=lambda w: len(w["word"].strip()))["word"].strip().upper()
-
-
-# ---------------------------------------------------------------------------
-# Subtitles + word flash overlay
-# ---------------------------------------------------------------------------
 
 def transcribe_audio_whisper(media_path):
     try:
@@ -370,10 +365,7 @@ def generate_ass_subtitles(words, output_path):
         if chunks and start<chunks[-1]["end"]: start=chunks[-1]["end"]
         chunks.append({"text":text,"start":start,"end":end,"words":chunk})
         i+=SUBTITLE_CHUNK
-    events="".join(
-        f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n"
-        for c in chunks
-    )
+    events="".join(f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n" for c in chunks)
     flash_events=""; flash_count=0
     for idx,chunk in enumerate(chunks):
         if idx%FLASH_EVERY_N_CHUNKS!=0: continue
@@ -397,7 +389,7 @@ def burn_subtitles_into_video(video_path, ass_path):
 
 
 # ---------------------------------------------------------------------------
-# Ken Burns (comma-escaped for FFmpeg filtergraph)
+# Ken Burns
 # ---------------------------------------------------------------------------
 
 def ken_burns_vf(clip_duration, direction):
@@ -413,7 +405,7 @@ def ken_burns_vf(clip_duration, direction):
 
 
 # ---------------------------------------------------------------------------
-# Pexels -- scene-matched clip fetching
+# Pexels -- scene-matched
 # ---------------------------------------------------------------------------
 
 def generate_fish_audio_tts(script_text, output_path):
@@ -432,7 +424,6 @@ def get_audio_duration(audio_path):
     return float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",audio_path],capture_output=True,text=True,check=True).stdout.strip())
 
 def search_pexels_clips(queries, num_clips=1):
-    """Fetch up to num_clips from Pexels. Default 1 for scene-matched fetching."""
     if not PEXELS_API_KEY: raise RuntimeError("PEXELS_API_KEY not set")
     headers={"Authorization":PEXELS_API_KEY}; clips=[]; seen_ids=set()
     for query in queries:
@@ -458,7 +449,6 @@ def search_pexels_clips(queries, num_clips=1):
     return clips[:num_clips]
 
 def fetch_scene_matched_clips(mood, niche):
-    """Fetch clips matched to script scenes: hook/problem/story/cta."""
     fallback = mood.get("pexels_queries", ["woman alone nature"])
     scene_plan = [
         ("hook",    1, niche.get("hook_queries",    fallback)),
@@ -543,7 +533,7 @@ def get_video_dimensions(path):
 
 
 # ---------------------------------------------------------------------------
-# Upload guide / metadata
+# Upload
 # ---------------------------------------------------------------------------
 
 def generate_upload_guide(script, mode, niche, client):
@@ -560,7 +550,8 @@ def generate_upload_guide(script, mode, niche, client):
 
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
-    prompt=f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- instagram_caption: 1-2 punchy sentences + 10-15 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","instagram_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"..."}}"""
+    niche_tags = " ".join(niche.get("hashtags", []))
+    prompt=f"""Social media expert for women's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {niche_tags}\n- instagram_caption: 1-2 punchy sentences + 10-15 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {niche_tags}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","instagram_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=900,messages=[{"role":"user","content":prompt}])
@@ -620,13 +611,13 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v2.3")
+    niche_tags = " ".join(niche.get("hashtags",[]))
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v2.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
-    print(f"  Niche: {niche['name']} | Mood: {mood['name']}")
-    print(f"  Visuals: scene-matched (hook/problem/story/cta) | Word flash: every {FLASH_EVERY_N_CHUNKS} subtitle groups")
-    print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Colour grade: FEMALE (warm/soft)")
-    print(f"  Subtitles: {SUBTITLE_FONT_SIZE}px bottom + {WORD_FLASH_FONT_SIZE}px center flash | KB: comma-escaped")
-    print(f"  Music: {len(music_tracks)} tracks @ {int(MUSIC_VOLUME*100)}% | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
+    print(f"  Niche: {niche['name']} | Tags: {niche_tags}")
+    print(f"  Hooks: {len(HOOK_FORMULAS)} formulas | Words: problem {WORD_TARGETS_CONTENT['problem']} story {WORD_TARGETS_CONTENT['story']} (~65-75s)")
+    print(f"  Visuals: scene-matched | Flash: every {FLASH_EVERY_N_CHUNKS} chunks | CTA: community trigger")
+    print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")
     if mode=="ad": script=generate_ad_script(load_app_facts(),niche,client)
@@ -635,7 +626,7 @@ def main():
         topic_history=load_topic_history(); save_topic_history(topic_history,topic.get("keyword",topic.get("topic","")))
     script=sanitize_script(script); (OUTPUT_DIR/"script_female.json").write_text(json.dumps(script,indent=2))
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER); est_duration=round(total_words/130*60)
-    print(f"\n  ~{est_duration}s | Hook formula: {script.get('hook_formula','?')}")
+    print(f"\n  ~{est_duration}s | Hook: {script.get('hook_formula','?')}")
     for scene in SCENE_ORDER: print(f"  [{scene:15s}] {script[scene]['voiceover'][:85]}...")
     final_path=render_cinematic_video(build_full_script(script), mood, niche)
     guide_text=generate_upload_guide(script,mode,niche,client); save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,niche)
@@ -643,7 +634,7 @@ def main():
     if upload_enabled:
         upload_result=upload_to_platforms(final_path,upload_metadata,cfg); (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps(upload_result,indent=2))
     else: (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps({"skipped":True},indent=2))
-    print(f"\n  DONE | CINEMATIC | ~{est_duration}s | {niche['name']} | {mood['name']}")
+    print(f"\n  DONE | ~{est_duration}s | {niche['name']} | {mood['name']}")
     if upload_enabled: print("  Posted: TikTok + Facebook + Instagram + YouTube")
 
 if __name__=="__main__":
