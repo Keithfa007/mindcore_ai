@@ -13,6 +13,7 @@
       "name": "Recovery & Sobriety",
       "viewer_persona": "A man in his late 30s to early 50s, in active recovery or struggling to stay sober. He is often awake at 2am not from cravings, but from the feelings sobriety uncovered that alcohol used to bury. He holds it together for his family. Nobody at work knows. He questions whether the flatness he feels will ever pass.",
       "seed_queries": ["sobriety app","sober app","sober time app","sobriety tracker","sober tracker","days sober app","sober counter","sobriety counter","sober buddy app","stay sober app","sobriety tracking app"],
+      "hashtags": ["#sobertok","#recoveryispossible","#soberaf","#sobercommunity","#addictionrecovery"],
       "hook_queries": [
         "bokeh light blur dark abstract background",
         "flame candle close up dark blurred",
@@ -74,6 +75,7 @@
       "name": "AI Companion",
       "viewer_persona": "A man in his 40s who lives in his head. He has people around him but feels fundamentally alone like he is performing a version of himself rather than living. He is curious about technology. He would never call a helpline. He would talk to an AI before he would talk to a friend about how he really feels.",
       "seed_queries": ["AI companion app","AI chat companion","best AI companion app","AI app with memory","AI that remembers you","personalised wellness app"],
+      "hashtags": ["#aimentalhealth","#mentalwellnessapp","#aitherapy","#techmentalhealth"],
       "hook_queries": [
         "phone screen glow dark abstract bokeh",
         "data light lines blue abstract dark",
@@ -135,6 +137,7 @@
       "name": "Men's Mental Health",
       "viewer_persona": "A man mid-30s to late 40s who has been the strong one for so long he has forgotten what it feels like to not be. He is not in crisis. He is just exhausted in a way he cannot explain to anyone. He would not use the word depressed. He would say he is not himself lately.",
       "seed_queries": ["men's wellbeing support","men's wellness help","men's wellbeing app","men's wellness app","men's burnout app","burnout recovery app","emotional burnout app","mental health app","mental wellness app"],
+      "hashtags": ["#malementalhealth","#mensmentalhealthmatters","#emotionalhealthformen","#menssupport"],
       "hook_queries": [
         "shadow man silhouette wall abstract",
         "dark room single chair spotlight empty",
@@ -196,6 +199,7 @@
       "name": "Mood & General Wellness",
       "viewer_persona": "A man in his 30s to 40s who notices patterns in himself but has no framework to understand them. He is functional. He goes to the gym, does his job, looks fine from the outside. But something is off and he cannot name it. He is the type to download an app instead of talking to someone.",
       "seed_queries": ["mood tracking app","best mood tracker app","mood diary app","mood journal app","mental wellness app","mental wellness apps","wellbeing apps","self improvement app","personal growth apps","self improving apps"],
+      "hashtags": ["#moodtracker","#dailywellness","#selfawareness","#wellnessjourney","#menswellness"],
       "hook_queries": [
         "calendar pages blur abstract close",
         "journal open close abstract bokeh warm",

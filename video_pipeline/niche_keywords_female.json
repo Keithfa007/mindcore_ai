@@ -13,6 +13,7 @@
       "name": "Perimenopause & Women's Wellness",
       "viewer_persona": "A woman in her 40s to mid-50s who feels like a stranger in her own life. Her mood shifts without warning. She is exhausted in a way sleep does not fix. She loves her family but feels invisible inside it. She would not describe herself as struggling. She would say she is just going through a lot right now.",
       "seed_queries": ["women's wellness app","women's wellbeing app","wellness app for women","women and wellbeing","postpartum support app","new mum support app","loneliness app","women's mental health","women and mental health"],
+      "hashtags": ["#perimenopause","#midlifewomen","#womenswellness","#hormonalhealth","#menopauseawareness"],
       "hook_queries": [
         "mirror reflection abstract close blur",
         "bokeh warm golden light abstract",
@@ -74,6 +75,7 @@
       "name": "AI Companion",
       "viewer_persona": "A woman in her late 30s to early 50s who is the emotional centre of everyone around her but has no one to fill that role for her. She is highly functioning. She helps everyone. She carries things alone. She would be quietly curious about an AI that simply listens with no advice, no judgment, no one to worry about in return.",
       "seed_queries": ["AI companion app","AI chat companion","best AI companion app","AI app with memory","AI that remembers you","personalised wellness app"],
+      "hashtags": ["#aimentalhealth","#mentalwellnessapp","#womenswellness","#selfcareapp"],
       "hook_queries": [
         "phone screen glow dark abstract night",
         "bokeh warm golden light dark abstract",
@@ -135,6 +137,7 @@
       "name": "Women's Mental Health",
       "viewer_persona": "A woman 25 to 45 who has been told her feelings are too much for most of her life. She overthinks at night. She rehearses conversations. She apologises reflexively. She knows something is not quite right but does not feel she deserves help because others have it worse.",
       "seed_queries": ["women's mental health","women and mental health","postpartum depression support","emotional support app","loneliness app","mood tracking app","mood diary app","self improvement app","personal growth apps"],
+      "hashtags": ["#womenhealing","#selfcompassion","#healingjourney","#womenswellness","#emotionalwellness"],
       "hook_queries": [
         "shadow woman wall abstract light",
         "rain drops glass close up blur",
@@ -196,6 +199,7 @@
       "name": "Anxiety & SOS Relief",
       "viewer_persona": "A woman who knows what anxiety feels like from the inside but does not match the clinical description. Her anxiety looks like hypervigilance, people-pleasing, difficulty resting. She is functional. She is also exhausted in a very specific way she cannot explain to people who have not felt it.",
       "seed_queries": ["stress relief app","calm anxiety app","anxiety coping app","grounding app for stress","panic relief app","instant calm app","anxiety relief app","emotional support app"],
+      "hashtags": ["#anxietyrelief","#anxietysupport","#stressrelief","#calmingtools","#somatic"],
       "hook_queries": [
         "clock fast blur dark abstract",
         "heartbeat line abstract blue dark",
