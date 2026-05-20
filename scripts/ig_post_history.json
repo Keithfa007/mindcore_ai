@@ -169,5 +169,17 @@
       "fallback_solid": 7
     },
     "mode": "manual_package"
+  },
+  {
+    "timestamp": "2026-05-20T09:43:11.908487+00:00",
+    "keyword": "why do i feel nothing after working so hard",
+    "audience": "men",
+    "format": "truth_bomb",
+    "hook": "Why Success Feels Like Nothing",
+    "job_id": "fc2691a4e3fe497d909bc8fd9b335df0",
+    "image_sources": {
+      "fallback_solid": 7
+    },
+    "mode": "auto"
   }
 ]
