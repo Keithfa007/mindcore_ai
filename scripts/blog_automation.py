@@ -66,14 +66,12 @@ LIBRARY_CATEGORY_MAP = {
     "stress anxiety companion app": "Anxiety & Stress",
 }
 
-# Internal site pages to link to naturally
 INTERNAL_LINKS = [
     ("MindCore AI features", "https://mindcoreai.eu/features/"),
     ("our story",            "https://mindcoreai.eu/about-us/"),
     ("MindCore AI blog",     "https://mindcoreai.eu/blog/"),
 ]
 
-# External authoritative sources
 EXTERNAL_LINKS = [
     ("Mind",                      "https://www.mind.org.uk"),
     ("Mental Health Foundation",  "https://www.mentalhealth.org.uk"),
@@ -82,7 +80,6 @@ EXTERNAL_LINKS = [
     ("SAMHSA",                    "https://www.samhsa.gov"),
 ]
 
-# Google Play CTA link — bold, dark, visually distinct
 GP_CTA_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
     'target="_blank" rel="noopener noreferrer" '
@@ -264,7 +261,6 @@ def format_history_for_prompt(history):
     )
 
 def build_post_links(history):
-    """Build a list of existing published post titles + URLs for cross-linking."""
     posts = []
     for post in history:
         slug = post.get("slug", "")
@@ -444,13 +440,9 @@ def write_blog_post(topic_data, history):
     profile  = AUDIENCE_PROFILES[audience]
     kw       = topic_data["primary_keyword"]
 
-    # Build internal site page links
     int_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in INTERNAL_LINKS)
-
-    # Build external authoritative links
     ext_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in EXTERNAL_LINKS[:3])
 
-    # Build cross-post links from existing published posts
     existing_posts   = build_post_links(history)
     cross_link_block = ""
     if len(existing_posts) >= 2:
@@ -460,13 +452,10 @@ def write_blog_post(topic_data, history):
         )
         for p in existing_posts:
             cross_link_block += f'  - "{p["title"]}" → {p["url"]}\n'
-        cross_link_block += (
-            "Pick the 2 most topically relevant posts. "
-            "Link to them mid-content, not just at the end.\n"
-        )
+        cross_link_block += "Pick the 2 most topically relevant. Link mid-content, not just at the end.\n"
     elif len(existing_posts) == 1:
         cross_link_block = (
-            f'\nCROSS-POST LINK (link to this existing post naturally in the content):\n'
+            f'\nCROSS-POST LINK (link naturally in the content):\n'
             f'  - "{existing_posts[0]["title"]}" → {existing_posts[0]["url"]}\n'
         )
 
@@ -484,43 +473,36 @@ Write a full, publish-ready blog post:
 TONE:
   {profile['tone']}
 
-CRITICAL KEYWORD RULES (Yoast SEO compliance):
-  1. The EXACT phrase "{kw}" must appear in the H1 title
-  2. The EXACT phrase "{kw}" must be in the very FIRST sentence of the first paragraph
-  3. The EXACT phrase "{kw}" must appear in at least 3 H2 subheadings
-  4. The EXACT phrase "{kw}" must appear throughout the body — at least 8-10 times total
-  5. Use EXACTLY "{kw}" — not synonyms, not variations, the EXACT phrase every time
-  6. Keyword density target: 1.0%-1.5%
-  7. Minimum 1,200 words of readable content
+CRITICAL KEYWORD RULES:
+  1. EXACT phrase "{kw}" in the H1 title
+  2. EXACT phrase "{kw}" in the very first sentence
+  3. EXACT phrase "{kw}" in at least 3 H2 subheadings
+  4. EXACT phrase "{kw}" at least 8-10 times total
+  5. No synonyms or variations — EXACT phrase only
+  6. Keyword density: 1.0%-1.5%
+  7. Minimum 1,200 words
 
-MANDATORY LINKS — all must appear as proper HTML anchor tags:
-
+MANDATORY LINKS:
   Internal site pages (include ALL 3):
 {int_links}
 
   External authoritative sources (include at least 2):
 {ext_links}
 {cross_link_block}
-GOOGLE PLAY CTA (MANDATORY — use this EXACT HTML in the final section):
+GOOGLE PLAY CTA (use this EXACT HTML in the final section):
   {GP_CTA_LINK}
-  Place this link prominently in the final CTA section.
-  Surround it with a short paragraph encouraging the reader to download MindCore AI.
-  The link is already bold and dark — do not add extra styling around it.
 
-WRITING REQUIREMENTS:
-  - Structure: H1 → intro (2-3 para) → 5-7 H2 sections (150-200 words each) → conclusion + CTA
-  - Include at least one <ul> list
-  - Real, actionable advice — zero generic platitudes
+WRITING:
+  - H1 → intro (2-3 para) → 5-7 H2 sections → conclusion + CTA
+  - At least one <ul> list
+  - Real, actionable advice — zero platitudes
   - Final section: CTA using the Google Play link above
 
-FORMAT RULES:
-  - Return clean WordPress HTML ONLY: h1 h2 h3 p ul li strong em a tags
-  - Links: <a href="URL">text</a>
-  - External links: add target="_blank" rel="noopener noreferrer"
-  - Internal links: no target="_blank" needed
+FORMAT:
+  - Clean WordPress HTML: h1 h2 h3 p ul li strong em a
+  - External links: target="_blank" rel="noopener noreferrer"
   - No html head body style script tags
-  - After ALL HTML, on its own line:
-    EXCERPT: [2-3 sentence hook containing the exact phrase "{kw}"]"""}]
+  - After all HTML: EXCERPT: [2-3 sentence hook with exact phrase "{kw}"]"""}]
     )
 
     content  = response.content[0].text
@@ -540,11 +522,9 @@ def expand_blog_post(content, topic_data, current_words):
     kw     = topic_data["primary_keyword"]
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
-        messages=[{"role": "user", "content": f"""This post is {current_words} words — needs {MIN_WORD_COUNT}.
-Add ~{needed} words by expanding sections or adding 2 new H2 sections.
-Same tone, HTML format.
-IMPORTANT: use the EXACT phrase "{kw}" at least 3 more times in the additions.
-Return the COMPLETE updated post including EXCERPT at the end.
+        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}.
+Add ~{needed} words, expand sections or add 2 H2s. Same tone, HTML format.
+Use EXACT phrase "{kw}" at least 3 more times. Return COMPLETE post with EXCERPT.
 
 {content}"""}]
     )
@@ -555,26 +535,50 @@ Return the COMPLETE updated post including EXCERPT at the end.
 
 # -- Step 3: Image generation -------------------------------------------------
 def generate_illustration(image_prompt):
+    """Generate cinematic-warm image. Tries gpt-image-1 first, falls back to dall-e-2."""
     print("Generating cinematic image...")
     cinematic_prompt = (
         f"{image_prompt}. "
         "Style: cinematic photography, warm golden-hour lighting, "
         "soft focus background with shallow depth of field, "
         "peaceful and hopeful atmosphere, no faces shown — shoot from behind or hands/objects only, "
-        "warm amber and soft teal colour grading, professional camera lens quality, "
-        "subtle lens flare, photorealistic. "
+        "warm amber and soft teal colour grading, photorealistic. "
         "No text, no words, no letters in the image."
     )
-    resp = openai_client.images.generate(
-        model="dall-e-3",
-        prompt=cinematic_prompt,
-        size="1792x1024",
-        quality="hd",
-        n=1,
-    )
-    img = requests.get(resp.data[0].url, timeout=30).content
-    print("   Cinematic image generated")
-    return img
+
+    # Try gpt-image-1 (new OpenAI image model replacing dall-e-3)
+    try:
+        resp = openai_client.images.generate(
+            model="gpt-image-1",
+            prompt=cinematic_prompt,
+            size="1536x1024",
+            quality="high",
+            n=1,
+        )
+        img_url = resp.data[0].url
+        if img_url:
+            img = requests.get(img_url, timeout=30).content
+        else:
+            # gpt-image-1 may return base64 instead of URL
+            img = base64.b64decode(resp.data[0].b64_json)
+        print("   Cinematic image generated (gpt-image-1)")
+        return img
+    except Exception as e1:
+        print(f"   gpt-image-1 failed: {e1} — trying dall-e-2...")
+
+    # Fallback to dall-e-2
+    try:
+        resp = openai_client.images.generate(
+            model="dall-e-2",
+            prompt=cinematic_prompt[:1000],  # dall-e-2 has shorter prompt limit
+            size="1024x1024",
+            n=1,
+        )
+        img = requests.get(resp.data[0].url, timeout=30).content
+        print("   Cinematic image generated (dall-e-2 fallback)")
+        return img
+    except Exception as e2:
+        raise RuntimeError(f"All image models failed. gpt-image-1: {e1} | dall-e-2: {e2}")
 
 
 def upload_image_to_wordpress(image_data, alt_text=""):
