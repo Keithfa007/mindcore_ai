@@ -75,12 +75,23 @@ INTERNAL_LINKS = [
 
 # External authoritative sources
 EXTERNAL_LINKS = [
-    ("Mind",                     "https://www.mind.org.uk"),
-    ("Mental Health Foundation", "https://www.mentalhealth.org.uk"),
-    ("NHS mental health support","https://www.nhs.uk/mental-health/"),
-    ("NAMI",                     "https://www.nami.org"),
-    ("SAMHSA",                   "https://www.samhsa.gov"),
+    ("Mind",                      "https://www.mind.org.uk"),
+    ("Mental Health Foundation",  "https://www.mentalhealth.org.uk"),
+    ("NHS mental health support", "https://www.nhs.uk/mental-health/"),
+    ("NAMI",                      "https://www.nami.org"),
+    ("SAMHSA",                    "https://www.samhsa.gov"),
 ]
+
+# Google Play CTA link — bold, dark, visually distinct
+GP_CTA_LINK = (
+    '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
+    'target="_blank" rel="noopener noreferrer" '
+    'style="font-weight:700;color:#07071a;background-color:#3ecfb2;'
+    'padding:0.5rem 1.2rem;border-radius:8px;text-decoration:none;'
+    'display:inline-block;margin-top:0.5rem;">'
+    '<strong>Download MindCore AI on Google Play</strong>'
+    '</a>'
+)
 
 AUDIENCE_PROFILES = {
     "men": {
@@ -219,6 +230,7 @@ def validate_seo(content, title, meta, primary_keyword, slug):
         f"Word count >= {MIN_WORD_COUNT}": wc >= MIN_WORD_COUNT,
         "External link present":        'href="http' in content,
         "Internal link present":        "mindcoreai.eu" in content,
+        "Google Play CTA present":      "play.google.com" in content,
     }
     all_ok = True
     for label, ok in checks.items():
@@ -449,7 +461,7 @@ def write_blog_post(topic_data, history):
         for p in existing_posts:
             cross_link_block += f'  - "{p["title"]}" → {p["url"]}\n'
         cross_link_block += (
-            "Pick the 2 most topically relevant posts to the current article. "
+            "Pick the 2 most topically relevant posts. "
             "Link to them mid-content, not just at the end.\n"
         )
     elif len(existing_posts) == 1:
@@ -489,11 +501,17 @@ MANDATORY LINKS — all must appear as proper HTML anchor tags:
   External authoritative sources (include at least 2):
 {ext_links}
 {cross_link_block}
+GOOGLE PLAY CTA (MANDATORY — use this EXACT HTML in the final section):
+  {GP_CTA_LINK}
+  Place this link prominently in the final CTA section.
+  Surround it with a short paragraph encouraging the reader to download MindCore AI.
+  The link is already bold and dark — do not add extra styling around it.
+
 WRITING REQUIREMENTS:
   - Structure: H1 → intro (2-3 para) → 5-7 H2 sections (150-200 words each) → conclusion + CTA
   - Include at least one <ul> list
   - Real, actionable advice — zero generic platitudes
-  - Final section: natural CTA to download MindCore AI as their 24/7 companion
+  - Final section: CTA using the Google Play link above
 
 FORMAT RULES:
   - Return clean WordPress HTML ONLY: h1 h2 h3 p ul li strong em a tags
@@ -701,7 +719,6 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
     post_id = post["id"]
     print(f"   Published -> {post.get('link', 'N/A')}")
 
-    # Attach featured image with retry
     if media_id:
         for img_attempt in range(3):
             wait_time = 10 * (img_attempt + 1)
@@ -752,7 +769,7 @@ def main():
     print(f"History: {len(history)} posts published")
 
     topic_data = research_topic(history)
-    content    = write_blog_post(topic_data, history)   # history passed for cross-linking
+    content    = write_blog_post(topic_data, history)
 
     media_id  = None
     media_url = None
