@@ -1,4 +1,4 @@
-name: MindCore AI -- Female Cinematic Pipeline
+name: "Female Video Pipeline"
 
 # Day-optimised schedule (Malta = UTC+2 summer):
 #   Mon-Fri: 07:00 UTC = 09:00 Malta  (Tue/Thu 9AM peak)
@@ -53,7 +53,7 @@ jobs:
             echo "Mode: AUTO (ad every 10th run)"
           fi
           echo "Schedule: Mon-Fri 09:00 Malta | Sat-Sun 07:00 Malta"
-          echo "Format: CINEMATIC | CTA triggers: SEEN / HEALING / TIRED / SAME"
+          echo "Pipeline: female_pipeline.py | CTA triggers: SEEN / HEALING / TIRED / SAME"
 
       - name: Run Female Cinematic Pipeline
         env:
@@ -97,8 +97,8 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## MindCore AI -- Female Cinematic Pipeline v2.5" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
+          echo "## Female Video Pipeline v2.5" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | **Script:** female_pipeline.py | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output_female/script_female.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
