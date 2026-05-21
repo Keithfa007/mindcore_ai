@@ -3,6 +3,7 @@ name: Male Video Pipeline
 # Day-optimised schedule (Malta = UTC+2 summer):
 #   Mon-Wed: 11:00 UTC = 13:00 Malta  (1PM peak slot)
 #   Thu-Sun: 17:00 UTC = 19:00 Malta  (7PM peak slot)
+# Note: GitHub Actions cron days are 0-6 (0=Sun, 1=Mon ... 6=Sat)
 on:
   workflow_dispatch:
     inputs:
@@ -16,8 +17,8 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 11 * * 1-3"  # Mon-Wed 11:00 UTC (13:00 Malta / 1PM)
-    - cron: "0 17 * * 4-7"  # Thu-Sun 17:00 UTC (19:00 Malta / 7PM)
+    - cron: "0 11 * * 1-3"    # Mon-Wed 11:00 UTC (13:00 Malta / 1PM)
+    - cron: "0 17 * * 4-6,0"  # Thu-Sat + Sun 17:00 UTC (19:00 Malta / 7PM)
 
 jobs:
   generate-male-video:
