@@ -1,9 +1,8 @@
 name: MindCore AI -- Female Cinematic Pipeline
 
-# Cinematic-only. Mon-Fri 07:00 UTC (09:00 Malta summer).
-# 10-hour gap before male pipeline (17:00 UTC) on same days.
-# Fish Audio TTS + Pexels B-roll. Day-based niche rotation.
-# Ad mode: every 10th run number.
+# Day-optimised schedule (Malta = UTC+2 summer):
+#   Mon-Fri: 07:00 UTC = 09:00 Malta  (Tue/Thu 9AM peak)
+#   Sat-Sun: 05:00 UTC = 07:00 Malta  (Sat/Sun 7AM peak)
 on:
   workflow_dispatch:
     inputs:
@@ -18,6 +17,7 @@ on:
 
   schedule:
     - cron: "0 7 * * 1-5"   # Mon-Fri 07:00 UTC (09:00 Malta)
+    - cron: "0 5 * * 6,0"   # Sat-Sun 05:00 UTC (07:00 Malta)
 
 jobs:
   generate-female-video:
@@ -52,11 +52,8 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Format: CINEMATIC (always)"
-          echo "Ken Burns: 6 directions rotating per clip"
-          echo "Colour grade: FEMALE -- warm, soft, intimate"
-          echo "Subtitles: Whisper tiny -> 75px Arial, MarginV 500px"
-          echo "Schedule: Mon-Fri 07:00 UTC (10h before male)"
+          echo "Schedule: Mon-Fri 09:00 Malta | Sat-Sun 07:00 Malta"
+          echo "Format: CINEMATIC | CTA triggers: SEEN / HEALING / TIRED / SAME"
 
       - name: Run Female Cinematic Pipeline
         env:
@@ -68,13 +65,11 @@ jobs:
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
-
           if [ "$FORCE" = "ad" ]; then
             export GITHUB_RUN_NUMBER=10
           elif [ "$FORCE" = "content" ]; then
             export GITHUB_RUN_NUMBER=1
           fi
-
           python video_pipeline/female_pipeline.py
 
       - name: Upload post bundle
@@ -102,26 +97,18 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## MindCore AI -- Female Cinematic Pipeline v2.1" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Format:** CINEMATIC | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
-          echo "**Colour grade:** Warm, soft, intimate | **Ken Burns:** 6-direction rotation" >> $GITHUB_STEP_SUMMARY
-          echo "**Subtitles:** Whisper tiny -> 75px Arial, MarginV 500px" >> $GITHUB_STEP_SUMMARY
+          echo "## MindCore AI -- Female Cinematic Pipeline v2.5" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | **Platforms:** TikTok + Facebook + Instagram + YouTube" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output_female/script_female.json" ]; then
-            TYPE=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('video_type','').upper())" 2>/dev/null || echo "")
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
             HOOK=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('hook_formula',''))" 2>/dev/null || echo "")
-            echo "**Type:** $TYPE | **Keyword:** $KW | **Hook:** $HOOK" >> $GITHUB_STEP_SUMMARY
+            echo "**Keyword:** $KW | **Hook:** $HOOK" >> $GITHUB_STEP_SUMMARY
             echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output_female/upload_result_female.json" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat video_pipeline/output_female/upload_result_female.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-          if [ -f "video_pipeline/output_female/mindcore_female_video.mp4" ]; then
-            SIZE=$(du -sh video_pipeline/output_female/mindcore_female_video.mp4 | cut -f1)
-            echo "**Video size:** $SIZE" >> $GITHUB_STEP_SUMMARY
           fi
