@@ -238,5 +238,16 @@
     "image_source": "gpt-image-1",
     "image_prompt": "A home office desk in early morning grey light, laptop closed, a full mug gone cold beside it, and a phone face-down next to an opened but untouched planner showing today's date, the chair pushed back at an angle as if someone just stood and walked away mid-task.\n\nStyle: Cinematic documentary photog",
     "preview": "You've been running on empty for months now, and you keep telling yourself it's just burnout.\n\nTake a week off. Sleep more. You'll bounce ba"
+  },
+  {
+    "timestamp": "2026-05-22T10:16:55.449400+00:00",
+    "keyword": "insomnia anxiety loop",
+    "audience": "neutral",
+    "style": "actionable_tip",
+    "fb_post_id": "1109112012279873_122100855974483134",
+    "with_image": true,
+    "image_source": "gpt-image-1",
+    "image_prompt": "A rumpled duvet thrown diagonally across an empty bed, one pillow still dented, bedroom door cracked open to a dimly lit hallway beyond. Bedside lamp still on in the blue predawn darkness, casting a warm circle on the abandoned sheets. A water glass half-empty beside a face-down phone.\n\nStyle: Cinem",
+    "preview": "You can't sleep because your mind won't stop. And now you can't stop thinking about the fact that you can't sleep.\n\nThat's the insomnia anxi"
   }
 ]
