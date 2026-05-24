@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v6.7
+MindCore AI -- Male Cinematic Pipeline v6.8
 ============================================
-CHANGES (v6.7):
-  - FIX: surrogate character crash in generate_ass_subtitles.
-    Whisper occasionally returns words with invalid Unicode surrogates.
-    Content is now sanitised with encode/decode before writing the ASS file.
+CHANGES (v6.8):
+  - ADD: X (Twitter) added to Upload-Post distribution.
+    Each video now posts to TikTok, Facebook, Instagram, YouTube, and X.
+    twitter_caption: hook line rewritten as punchy tweet + 2-3 hashtags, under 280 chars.
 
-All v6.6 features preserved.
+All v6.7 features preserved.
 """
 
 import json
@@ -65,6 +65,7 @@ CLAUDE_RETRY_BASE      = 30
 SERP_SEEDS_PER_RUN         = 3
 AUTOCOMPLETE_SEEDS_PER_RUN = 2
 TIKTOK_CAPTION_LIMIT      = 2200
+TWITTER_CAPTION_LIMIT     = 280
 YOUTUBE_TITLE_LIMIT       = 100
 YOUTUBE_DESCRIPTION_LIMIT = 5000
 PEXELS_CLIPS_PER_VIDEO    = 5
@@ -309,7 +310,7 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a cinematic voiceover script for a short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. The viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order):\nhook (12-15 words) | problem ({lo_prob}-{hi_prob} words) | story ({lo_story}-{hi_story} words) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger using a single emotionally specific word that matches the video's tone. Examples: "Comment KING if you've carried this", "Comment TIRED if you know this feeling", "Comment SOBER if you're fighting for it", "Comment SAME if this is you", "Comment SILENT if you've been holding this in". Pick the word that fits THIS video's emotion. Alternatives: "Tag someone who needs to hear this today" or "Drop a 🤍 if this hit you". NO app mentions in content videos.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a cinematic voiceover script for a short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. The viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order):\nhook (12-15 words) | problem ({lo_prob}-{hi_prob} words) | story ({lo_story}-{hi_story} words) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger using a single emotionally specific word that matches the video's tone. Examples: "Comment KING if you've carried this", "Comment TIRED if you know this feeling", "Comment SOBER if you're fighting for it", "Comment SAME if this is you", "Comment SILENT if you've been holding this in". Pick the word that fits THIS video's emotion. Alternatives: "Tag someone who needs to hear this today" or "Drop a \U0001f90d if this hit you". NO app mentions in content videos.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt, client, max_tokens=1200)
 
 def generate_ad_script(app_facts, niche, client):
@@ -332,7 +333,7 @@ def pick_power_word(words_in_chunk):
     candidates = [
         w for w in words_in_chunk
         if len(w["word"].strip()) > 3
-        and w["word"].strip().lower().rstrip(".,!?'\"") not in WORD_FLASH_STOPWORDS
+        and w["word"].strip().lower().rstrip(".,!?'\")") not in WORD_FLASH_STOPWORDS
         and w["word"].strip().replace("'","").replace("-","").isalpha()
     ]
     if not candidates:
@@ -539,7 +540,7 @@ def get_video_dimensions(path):
 
 def generate_upload_guide(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
-    prompt=f"""Social media expert for TikTok, Instagram, Facebook, YouTube Shorts. Men's mental health.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nGenerate upload copy for all 4 platforms. Include {REQUIRED_BRAND_HASHTAG} everywhere.\nCRITICAL: Original sentences only. Never copy the script."""
+    prompt=f"""Social media expert for TikTok, Instagram, Facebook, YouTube Shorts, and X (Twitter). Men's mental health.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nGenerate upload copy for all 5 platforms. Include {REQUIRED_BRAND_HASHTAG} everywhere.\nCRITICAL: Original sentences only. Never copy the script."""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1500,messages=[{"role":"user","content":prompt}])
@@ -552,16 +553,17 @@ def generate_upload_guide(script, mode, niche, client):
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
     niche_tags = " ".join(niche.get("hashtags", []))
-    prompt=f"""Social media expert for men's mental health on TikTok, Instagram, Facebook, YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- instagram_caption: 1-2 punchy sentences + 10-15 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","instagram_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"..."}}"""
+    prompt=f"""Social media expert for men's mental health on TikTok, Instagram, Facebook, YouTube Shorts, and X (Twitter).\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- instagram_caption: 1-2 punchy sentences + 10-15 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- twitter_caption: Rewrite the hook as a punchy standalone tweet + 2-3 key hashtags. MAX 280 characters total. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","instagram_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","twitter_caption":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
-            msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=900,messages=[{"role":"user","content":prompt}])
+            msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1000,messages=[{"role":"user","content":prompt}])
             raw=msg.content[0].text.strip()
             if raw.startswith("```"): parts=raw.split("```"); raw=parts[1].lstrip("json").strip() if len(parts)>1 else raw
             metadata=json.loads(raw)
             for key in ("tiktok_caption","instagram_caption","facebook_description","youtube_description"): metadata[key]=ensure_brand_hashtag(metadata.get(key,""))
             metadata["youtube_title"]=metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]
-            print(f"  TikTok:  {metadata.get('tiktok_caption','')[:80]}..."); print(f"  YouTube: {metadata.get('youtube_title','')[:60]}...")
+            metadata["twitter_caption"]=ensure_brand_hashtag(metadata.get("twitter_caption",""))[:TWITTER_CAPTION_LIMIT]
+            print(f"  TikTok:  {metadata.get('tiktok_caption','')[:80]}..."); print(f"  YouTube: {metadata.get('youtube_title','')[:60]}..."); print(f"  Twitter: {metadata.get('twitter_caption','')[:80]}...")
             return metadata
         except (anthropic.APIStatusError,json.JSONDecodeError) as e:
             if attempt==CLAUDE_MAX_RETRIES: raise RuntimeError(f"Metadata failed: {e}")
@@ -573,14 +575,15 @@ def upload_to_platforms(video_path, metadata, cfg):
     user=cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
     headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"}
-    data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","instagram"),("platform[]","youtube"),
+    data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","instagram"),("platform[]","youtube"),("platform[]","twitter"),
           ("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),
           ("instagram_caption",metadata.get("instagram_caption",metadata.get("tiktok_caption",""))[:TIKTOK_CAPTION_LIMIT]),
           ("facebook_title",metadata.get("facebook_title","")[:255]),
           ("facebook_description",metadata.get("facebook_description","")),
           ("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),
           ("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),
-          ("youtube_tags",metadata.get("youtube_tags",""))]
+          ("youtube_tags",metadata.get("youtube_tags","")),
+          ("twitter_caption",metadata.get("twitter_caption","")[:TWITTER_CAPTION_LIMIT])]
     try:
         with open(video_path,"rb") as f:
             files=[("video",("mindcore_ai_video.mp4",f,"video/mp4"))]
@@ -607,7 +610,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v6.7")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v6.8")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Niche: {niche['name']} | Global tags: {GLOBAL_HASHTAGS}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
@@ -628,7 +631,7 @@ def main():
         upload_result=upload_to_platforms(final_path,upload_metadata,cfg); (OUTPUT_DIR/"upload_result.json").write_text(json.dumps(upload_result,indent=2))
     else: (OUTPUT_DIR/"upload_result.json").write_text(json.dumps({"skipped":True},indent=2))
     print(f"\n  DONE | ~{est_duration}s | {niche['name']} | {mood['name']}")
-    if upload_enabled: print("  Posted: TikTok + Facebook + Instagram + YouTube")
+    if upload_enabled: print("  Posted: TikTok + Facebook + Instagram + YouTube + X")
 
 if __name__=="__main__":
     try: main()
