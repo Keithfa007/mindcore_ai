@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v6.6
+MindCore AI -- Male Cinematic Pipeline v6.7
 ============================================
-CHANGES (v6.6):
-  - GLOBAL_HASHTAGS added: #mentalhealth #fyp #foryou #mentalhealthawareness
-    #selfcare #healing appended to every TikTok + Instagram caption to
-    signal international English audience and break out of Malta bubble.
+CHANGES (v6.7):
+  - FIX: surrogate character crash in generate_ass_subtitles.
+    Whisper occasionally returns words with invalid Unicode surrogates.
+    Content is now sanitised with encode/decode before writing the ASS file.
 
-All v6.5 features preserved.
+All v6.6 features preserved.
 """
 
 import json
@@ -309,7 +309,7 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a cinematic voiceover script for a short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. The viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order):\nhook (12-15 words) | problem ({lo_prob}-{hi_prob} words) | story ({lo_story}-{hi_story} words) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger using a single emotionally specific word that matches the video's tone. Examples: "Comment KING if you've carried this", "Comment TIRED if you know this feeling", "Comment SOBER if you're fighting for it", "Comment SAME if this is you", "Comment SILENT if you've been holding this in". Pick the word that fits THIS video's emotion. Alternatives: "Tag someone who needs to hear this today" or "Drop a \ud83e\udd0d if this hit you". NO app mentions in content videos.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a cinematic voiceover script for a short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. The viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order):\nhook (12-15 words) | problem ({lo_prob}-{hi_prob} words) | story ({lo_story}-{hi_story} words) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger using a single emotionally specific word that matches the video's tone. Examples: "Comment KING if you've carried this", "Comment TIRED if you know this feeling", "Comment SOBER if you're fighting for it", "Comment SAME if this is you", "Comment SILENT if you've been holding this in". Pick the word that fits THIS video's emotion. Alternatives: "Tag someone who needs to hear this today" or "Drop a 🤍 if this hit you". NO app mentions in content videos.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt, client, max_tokens=1200)
 
 def generate_ad_script(app_facts, niche, client):
@@ -387,7 +387,9 @@ def generate_ass_subtitles(words, output_path):
         if word:
             flash_events+=f"Dialogue: 0,{ts(chunk['start'])},{ts(chunk['end'])},Flash,,0,0,0,,{word}\n"
             flash_count+=1
-    Path(output_path).write_text(header+events+flash_events, encoding="utf-8")
+    # Sanitise: remove surrogate characters that Whisper occasionally produces
+    content = (header+events+flash_events).encode("utf-8", errors="ignore").decode("utf-8")
+    Path(output_path).write_text(content, encoding="utf-8")
     print(f"  Subtitles: {len(chunks)} groups + {flash_count} word flashes")
     return True
 
@@ -605,8 +607,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    niche_tags = " ".join(niche.get("hashtags",[]))
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v6.6")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v6.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
     print(f"  Niche: {niche['name']} | Global tags: {GLOBAL_HASHTAGS}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
