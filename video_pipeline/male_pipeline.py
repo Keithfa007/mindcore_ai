@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v6.9
+MindCore AI -- Male Cinematic Pipeline v7.0
 ============================================
-CHANGES (v6.9):
-  - DISABLE: Instagram removed from Upload-Post platforms (upload errors).
-    Now posts to: TikTok, Facebook, YouTube, X only.
+CHANGES (v7.0):
+  - FIX: Clip variety -- every video now uses different Pexels shots.
+    page rotated by run number ((run-1+salt)%20)+1 cycles through 20 pages.
+    per_page raised 5->15 for more candidates per request.
+    results shuffled before selection so same page never picks same clip.
 
-All v6.8 features preserved.
+All v6.9 features preserved.
 """
 
 import json
@@ -332,7 +334,7 @@ def pick_power_word(words_in_chunk):
     candidates = [
         w for w in words_in_chunk
         if len(w["word"].strip()) > 3
-        and w["word"].strip().lower().rstrip(".,!?'\"") not in WORD_FLASH_STOPWORDS
+        and w["word"].strip().lower().rstrip(".,!?'\")") not in WORD_FLASH_STOPWORDS
         and w["word"].strip().replace("'","").replace("-","").isalpha()
     ]
     if not candidates:
@@ -387,7 +389,6 @@ def generate_ass_subtitles(words, output_path):
         if word:
             flash_events+=f"Dialogue: 0,{ts(chunk['start'])},{ts(chunk['end'])},Flash,,0,0,0,,{word}\n"
             flash_count+=1
-    # Sanitise: remove surrogate characters that Whisper occasionally produces
     content = (header+events+flash_events).encode("utf-8", errors="ignore").decode("utf-8")
     Path(output_path).write_text(content, encoding="utf-8")
     print(f"  Subtitles: {len(chunks)} groups + {flash_count} word flashes")
@@ -436,12 +437,17 @@ def search_pexels_clips(queries, num_clips=1):
         if len(clips)>=num_clips: break
         for orientation in ("portrait",None):
             if len(clips)>=num_clips: break
-            params={"query":query,"per_page":5,"size":"medium","page":random.randint(1,3)}
+            # Rotate page by run number + random salt so every scheduled run
+            # pulls from a different section of Pexels -- no repeated clips
+            page = ((GITHUB_RUN_NUMBER - 1 + random.randint(0, 6)) % 20) + 1
+            params={"query":query,"per_page":15,"size":"medium","page":page}
             if orientation: params["orientation"]=orientation
             try:
                 resp=requests.get(PEXELS_VIDEO_URL, headers=headers, params=params, timeout=30)
                 if not resp.ok: break
-                for video in resp.json().get("videos",[]):
+                videos = resp.json().get("videos",[])
+                random.shuffle(videos)  # Shuffle so same page never picks same clip twice
+                for video in videos:
                     vid_id=video["id"]
                     if vid_id in seen_ids: continue
                     seen_ids.add(vid_id); files=video.get("video_files",[])
@@ -464,10 +470,12 @@ def fetch_scene_matched_clips(mood, niche):
     ]
     all_clips = []
     for scene_name, count, pool in scene_plan:
-        queries = random.sample(pool, min(count, len(pool)))
+        pool_shuffled = list(pool); random.shuffle(pool_shuffled)
+        queries = pool_shuffled[:min(count, len(pool_shuffled))]
         clips = search_pexels_clips(queries, num_clips=count)
         if not clips:
-            clips = search_pexels_clips(random.sample(fallback, min(count,len(fallback))), num_clips=count)
+            fallback_shuffled = list(fallback); random.shuffle(fallback_shuffled)
+            clips = search_pexels_clips(fallback_shuffled[:min(count,len(fallback_shuffled))], num_clips=count)
         all_clips.extend(clips)
         qstr = queries[0][:40] if queries else "fallback"
         print(f"  [{scene_name.upper():8s}] {len(clips)} clip | {qstr}")
@@ -608,8 +616,8 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v6.9")
-    print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()}")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.0")
+    print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
     print(f"  Niche: {niche['name']} | Global tags: {GLOBAL_HASHTAGS}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
     print("="*60)
