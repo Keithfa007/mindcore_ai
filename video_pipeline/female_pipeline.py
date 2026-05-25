@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v3.0
+MindCore AI -- Female Cinematic Pipeline v3.1
 =============================================
-CHANGES (v3.0):
-  - FIX: Clip variety -- every video now uses different Pexels shots.
-    page rotated by run number ((run-1+salt)%20)+1 cycles through 20 pages.
-    per_page raised 5->15 for more candidates per request.
-    results shuffled before selection so same page never picks same clip.
+CHANGES (v3.1):
+  - FIX: Upload-Post platform identifier changed from "twitter" to "x".
+    Caption field renamed from twitter_caption to x_caption in upload payload.
 
-All v2.9 features preserved.
+All v3.0 features preserved.
 """
 
 import json
@@ -316,7 +314,7 @@ def pick_power_word(words_in_chunk):
     candidates = [
         w for w in words_in_chunk
         if len(w["word"].strip()) > 3
-        and w["word"].strip().lower().rstrip(".,!?'\")") not in WORD_FLASH_STOPWORDS
+        and w["word"].strip().lower().rstrip(".,!?'\"") not in WORD_FLASH_STOPWORDS
         and w["word"].strip().replace("'","").replace("-","").isalpha()
     ]
     if not candidates:
@@ -419,8 +417,6 @@ def search_pexels_clips(queries, num_clips=1):
         if len(clips)>=num_clips: break
         for orientation in ("portrait",None):
             if len(clips)>=num_clips: break
-            # Rotate page by run number + random salt so every scheduled run
-            # pulls from a different section of Pexels -- no repeated clips
             page = ((GITHUB_RUN_NUMBER - 1 + random.randint(0, 6)) % 20) + 1
             params={"query":query,"per_page":15,"size":"medium","page":page}
             if orientation: params["orientation"]=orientation
@@ -428,7 +424,7 @@ def search_pexels_clips(queries, num_clips=1):
                 resp=requests.get(PEXELS_VIDEO_URL,headers=headers,params=params,timeout=30)
                 if not resp.ok: break
                 videos = resp.json().get("videos",[])
-                random.shuffle(videos)  # Shuffle so same page never picks same clip twice
+                random.shuffle(videos)
                 for video in videos:
                     vid_id=video["id"]
                     if vid_id in seen_ids: continue
@@ -529,7 +525,7 @@ def get_video_dimensions(path):
 
 def generate_upload_guide(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
-    prompt=f"""Social media expert for TikTok, Facebook, YouTube Shorts, and X (Twitter). Women's mental health.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nGenerate upload copy for all 4 platforms. Include {REQUIRED_BRAND_HASHTAG} everywhere.\nCRITICAL: Original sentences only. Never copy the script."""
+    prompt=f"""Social media expert for TikTok, Facebook, YouTube Shorts, and X. Women's mental health.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nGenerate upload copy for all 4 platforms. Include {REQUIRED_BRAND_HASHTAG} everywhere.\nCRITICAL: Original sentences only. Never copy the script."""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1500,messages=[{"role":"user","content":prompt}])
@@ -542,7 +538,7 @@ def generate_upload_guide(script, mode, niche, client):
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
     niche_tags = " ".join(niche.get("hashtags", []))
-    prompt=f"""Social media expert for women's mental health on TikTok, Facebook, YouTube Shorts, and X (Twitter).\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- twitter_caption: Rewrite the hook as a punchy standalone tweet + 2-3 key hashtags. MAX 280 characters total. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","twitter_caption":"..."}}"""
+    prompt=f"""Social media expert for women's mental health on TikTok, Facebook, YouTube Shorts, and X.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- x_caption: Rewrite the hook as a punchy standalone tweet + 2-3 key hashtags. MAX 280 characters total. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","x_caption":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1000,messages=[{"role":"user","content":prompt}])
@@ -551,8 +547,8 @@ def generate_upload_metadata(script, mode, niche, client):
             metadata=json.loads(raw)
             for key in ("tiktok_caption","facebook_description","youtube_description"): metadata[key]=ensure_brand_hashtag(metadata.get(key,""))
             metadata["youtube_title"]=metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]
-            metadata["twitter_caption"]=ensure_brand_hashtag(metadata.get("twitter_caption",""))[:TWITTER_CAPTION_LIMIT]
-            print(f"  TikTok:  {metadata.get('tiktok_caption','')[:80]}..."); print(f"  YouTube: {metadata.get('youtube_title','')[:60]}..."); print(f"  Twitter: {metadata.get('twitter_caption','')[:80]}...")
+            metadata["x_caption"]=ensure_brand_hashtag(metadata.get("x_caption",""))[:TWITTER_CAPTION_LIMIT]
+            print(f"  TikTok:  {metadata.get('tiktok_caption','')[:80]}..."); print(f"  YouTube: {metadata.get('youtube_title','')[:60]}..."); print(f"  X:       {metadata.get('x_caption','')[:80]}...")
             return metadata
         except (anthropic.APIStatusError,json.JSONDecodeError) as e:
             if attempt==CLAUDE_MAX_RETRIES: raise RuntimeError(f"Metadata failed: {e}")
@@ -564,14 +560,14 @@ def upload_to_platforms(video_path, metadata, cfg):
     user=cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
     headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"}
-    data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("platform[]","twitter"),
+    data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("platform[]","x"),
           ("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),
           ("facebook_title",metadata.get("facebook_title","")[:255]),
           ("facebook_description",metadata.get("facebook_description","")),
           ("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),
           ("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),
           ("youtube_tags",metadata.get("youtube_tags","")),
-          ("twitter_caption",metadata.get("twitter_caption","")[:TWITTER_CAPTION_LIMIT])]
+          ("x_caption",metadata.get("x_caption","")[:TWITTER_CAPTION_LIMIT])]
     try:
         with open(video_path,"rb") as f:
             files=[("video",("mindcore_female_video.mp4",f,"video/mp4"))]
@@ -598,7 +594,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.0")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
     print(f"  Niche: {niche['name']} | Global tags: {GLOBAL_HASHTAGS}")
     print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
