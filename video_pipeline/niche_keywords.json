@@ -12,7 +12,16 @@
     "recovery": {
       "name": "Recovery & Sobriety",
       "viewer_persona": "A man in his late 30s to early 50s, in active recovery or struggling to stay sober. He is often awake at 2am not from cravings, but from the feelings sobriety uncovered that alcohol used to bury. He holds it together for his family. Nobody at work knows. He questions whether the flatness he feels will ever pass.",
-      "seed_queries": ["sobriety app","sober app","sober time app","sobriety tracker","sober tracker","days sober app","sober counter","sobriety counter","sober buddy app","stay sober app","sobriety tracking app"],
+      "seed_queries": [
+        "sober tiktok recovery",
+        "surviving instead of living",
+        "lowkey tired",
+        "i feel like i cant do anything right",
+        "sobriety emotional recovery",
+        "when a man says he's tired",
+        "im genuinely drained",
+        "night feeling sober"
+      ],
       "hashtags": ["#sobertok","#recoveryispossible","#soberaf","#sobercommunity","#addictionrecovery"],
       "hook_queries": [
         "bokeh light blur dark abstract background",
@@ -74,7 +83,16 @@
     "ai_companion": {
       "name": "AI Companion",
       "viewer_persona": "A man in his 40s who lives in his head. He has people around him but feels fundamentally alone like he is performing a version of himself rather than living. He is curious about technology. He would never call a helpline. He would talk to an AI before he would talk to a friend about how he really feels.",
-      "seed_queries": ["AI companion app","AI chat companion","best AI companion app","AI app with memory","AI that remembers you","personalised wellness app"],
+      "seed_queries": [
+        "surviving instead of living",
+        "night feeling",
+        "im feeling",
+        "when a man says he's tired",
+        "im genuinely drained",
+        "lowkey tired",
+        "i feel like i cant do anything right",
+        "empathetic men"
+      ],
       "hashtags": ["#aimentalhealth","#mentalwellnessapp","#aitherapy","#techmentalhealth"],
       "hook_queries": [
         "phone screen glow dark abstract bokeh",
@@ -136,7 +154,17 @@
     "mens_mental_health": {
       "name": "Men's Mental Health",
       "viewer_persona": "A man mid-30s to late 40s who has been the strong one for so long he has forgotten what it feels like to not be. He is not in crisis. He is just exhausted in a way he cannot explain to anyone. He would not use the word depressed. He would say he is not himself lately.",
-      "seed_queries": ["men's wellbeing support","men's wellness help","men's wellbeing app","men's wellness app","men's burnout app","burnout recovery app","emotional burnout app","mental health app","mental wellness app"],
+      "seed_queries": [
+        "empathetic men",
+        "when a man says he's tired",
+        "i feel like i cant do anything right",
+        "fragile masculinity",
+        "always overthinking",
+        "corrective emotional experience",
+        "if you are feeling disheartened",
+        "im genuinely drained",
+        "surviving instead of living"
+      ],
       "hashtags": ["#malementalhealth","#mensmentalhealthmatters","#emotionalhealthformen","#menssupport"],
       "hook_queries": [
         "shadow man silhouette wall abstract",
@@ -198,7 +226,17 @@
     "mood_wellness": {
       "name": "Mood & General Wellness",
       "viewer_persona": "A man in his 30s to 40s who notices patterns in himself but has no framework to understand them. He is functional. He goes to the gym, does his job, looks fine from the outside. But something is off and he cannot name it. He is the type to download an app instead of talking to someone.",
-      "seed_queries": ["mood tracking app","best mood tracker app","mood diary app","mood journal app","mental wellness app","mental wellness apps","wellbeing apps","self improvement app","personal growth apps","self improving apps"],
+      "seed_queries": [
+        "always overthinking",
+        "night feeling",
+        "lowkey tired",
+        "if you are feeling disheartened",
+        "surviving instead of living",
+        "im genuinely drained",
+        "corrective emotional experience",
+        "when a man says he's tired",
+        "i feel like i cant do anything right"
+      ],
       "hashtags": ["#moodtracker","#dailywellness","#selfawareness","#wellnessjourney","#menswellness"],
       "hook_queries": [
         "calendar pages blur abstract close",
