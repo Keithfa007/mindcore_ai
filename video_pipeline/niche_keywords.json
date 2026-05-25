@@ -42,20 +42,20 @@
         "empty bar stool dimly lit blurred"
       ],
       "story_queries": [
+        "aerial drone coastline sea waves below",
+        "drone shot winding road mountain sunrise",
+        "aerial beach waves breaking sunrise golden",
+        "drone flight ocean horizon morning calm",
         "feet walking wet pavement forward",
-        "empty road ahead perspective dawn mist",
-        "path through trees morning light ahead",
-        "hand releasing stone into water",
-        "man walking away path sunrise silhouette",
-        "staircase ascending toward morning light"
+        "man walking away path sunrise silhouette"
       ],
       "cta_queries": [
-        "sunlight curtain morning dust rays",
-        "dawn horizon warm sky first light",
-        "light breaking through dark clouds",
-        "hands open warmth light beam",
-        "green leaves sunlight bokeh morning",
-        "door opening warm light ahead"
+        "aerial drone coastline sunrise golden light",
+        "drone sea horizon morning calm light",
+        "aerial island coast golden sky morning",
+        "drone ocean waves sunrise peaceful",
+        "city lights aerial dawn morning drone",
+        "aerial cliffs sea sunrise drone wide"
       ],
       "visual_moods": [
         {
@@ -71,7 +71,7 @@
         {
           "name": "forward_motion",
           "description": "movement, walking, journey, progress without destination",
-          "pexels_queries": ["man walking alone forest path","empty road perspective walk","person walking bridge alone","feet walking wet pavement","man running alone morning","trail walking alone nature","person crossing bridge fog","walking away perspective road"]
+          "pexels_queries": ["aerial drone coastline sea","drone road winding ahead","aerial ocean sunrise drone","drone beach waves aerial","man walking alone forest path","feet walking wet pavement","person crossing bridge fog","walking away perspective road"]
         },
         {
           "name": "intimate_detail",
@@ -113,20 +113,20 @@
         "window rain city lights alone night"
       ],
       "story_queries": [
-        "hand reaching toward phone screen light",
-        "finger scrolling screen dark room",
-        "face lit phone glow dark",
-        "door light end hallway darkness",
+        "aerial drone city lights night skyline",
+        "drone flight city buildings night glow",
+        "aerial coastline night stars drone",
+        "drone wide ocean night horizon calm",
         "hand reaching toward warmth light",
-        "person walking night city phone light"
+        "person walking night city alone"
       ],
       "cta_queries": [
-        "phone warm morning light hands",
-        "sunrise window warm golden light",
-        "hands warmth cup light morning",
-        "morning light phone warm",
-        "sun window light warm rays",
-        "smile close warmth morning light"
+        "aerial city sunrise drone morning golden",
+        "drone ocean sunrise morning wide",
+        "aerial coastline dawn light drone",
+        "city skyline aerial sunrise morning",
+        "drone sea horizon sunrise calm golden",
+        "aerial island dawn morning drone wide"
       ],
       "visual_moods": [
         {
@@ -147,7 +147,7 @@
         {
           "name": "abstract_light",
           "description": "abstract light and space as metaphor for technology and human connection",
-          "pexels_queries": ["abstract light particles dark","blue light streams dark background","digital light bokeh dark","glowing orb dark space","light through dark minimal","abstract blue glow dark","particles floating dark background","soft light dark room abstract"]
+          "pexels_queries": ["aerial drone city night lights","drone city skyline sunrise","aerial ocean drone morning","drone coastline wide sunrise","abstract light particles dark","blue light streams dark background","soft light dark room abstract","particles floating dark background"]
         }
       ]
     },
@@ -185,20 +185,20 @@
         "man looking down floor shadow"
       ],
       "story_queries": [
-        "man walking alone park morning",
-        "man face tilted up sky clouds",
-        "feet walking path alone forward",
-        "man hand chest breathing",
-        "man sitting upright morning light",
-        "man walking beach alone horizon"
+        "aerial drone sea cliffs wide below",
+        "drone shot landscape horizon wide open",
+        "aerial ocean waves sunset drone",
+        "drone flight mountains wide open sky",
+        "man walking alone path forward",
+        "man face tilted up sky clouds"
       ],
       "cta_queries": [
-        "sunrise man silhouette warm sky",
-        "morning light room warm curtain",
-        "man hands open morning light",
-        "dawn sky warm glow horizon",
-        "light through trees morning warm",
-        "man face morning light peaceful"
+        "aerial coastline sunrise drone golden",
+        "drone sea horizon morning wide",
+        "aerial city dawn light drone",
+        "drone ocean sunrise morning calm",
+        "aerial cliffs sunrise wide drone",
+        "drone island sea morning golden light"
       ],
       "visual_moods": [
         {
@@ -218,8 +218,8 @@
         },
         {
           "name": "man_in_nature",
-          "description": "man alone in vast natural environment, scale and solitude",
-          "pexels_queries": ["man alone mountain view","person small landscape vast","man standing cliff ocean","lone figure field horizon","man forest alone standing","person beach alone walking","silhouette man sunset nature","man overlooking valley alone"]
+          "description": "man alone in vast natural environment, scale and solitude — now with aerial shots",
+          "pexels_queries": ["aerial drone sea cliffs wide","drone flight ocean horizon sunrise","aerial beach waves drone morning","drone mountain wide open sky","man alone mountain view","lone figure field horizon","silhouette man sunset nature","man overlooking valley alone"]
         }
       ]
     },
@@ -257,20 +257,20 @@
         "man looking outside window dark"
       ],
       "story_queries": [
-        "pen writing journal morning light close",
-        "man stretching window morning light",
-        "running shoes pavement morning light",
-        "coffee steam close up warm morning",
-        "journal open pen writing calm",
-        "man walking park morning light"
+        "aerial drone nature landscape morning wide",
+        "drone flight open countryside sunrise",
+        "aerial sea calm morning drone",
+        "drone wide open sky horizon",
+        "man walking park morning light",
+        "running shoes pavement morning light"
       ],
       "cta_queries": [
-        "journal open morning warm light",
-        "man smile morning coffee warm close",
-        "sunrise morning silhouette run",
-        "plants window morning light warm",
-        "notebook pen morning light calm",
-        "man looking horizon morning calm"
+        "aerial sunrise drone morning golden wide",
+        "drone ocean horizon morning calm",
+        "aerial coastline morning drone light",
+        "drone city sunrise aerial golden",
+        "aerial sea drone morning peaceful",
+        "drone wide landscape sunrise calm"
       ],
       "visual_moods": [
         {
@@ -285,8 +285,8 @@
         },
         {
           "name": "movement_wellness",
-          "description": "body in motion, exercise, walking as mental health practice",
-          "pexels_queries": ["man running alone trail","person walking meditation nature","man gym alone focus","running silhouette sunset","man cycling alone road","person walking park alone","man weights gym alone","person outdoor exercise morning"]
+          "description": "body in motion, and aerial perspective showing the world opening up",
+          "pexels_queries": ["aerial drone coastline wide morning","drone sea calm sunrise aerial","aerial nature open landscape drone","man running alone trail","person walking meditation nature","man gym alone focus","running silhouette sunset","person outdoor exercise morning"]
         },
         {
           "name": "minimal_calm",

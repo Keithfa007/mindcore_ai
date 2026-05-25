@@ -43,20 +43,20 @@
         "woman head down shadow dark"
       ],
       "story_queries": [
+        "aerial drone coastline sea sunrise wide",
+        "drone flight island coast morning golden",
+        "aerial ocean calm waves drone morning",
+        "drone wide landscape sunrise peaceful",
         "woman walking garden morning alone",
-        "woman hands flower touch close",
-        "woman breath window morning light",
-        "woman journal pen writing close",
-        "woman walking path alone nature",
-        "woman hands open sky morning"
+        "woman breath window morning light"
       ],
       "cta_queries": [
-        "sunlight curtain bedroom morning soft",
-        "woman smile morning warm light close",
-        "garden morning warm light flowers",
-        "woman face morning light peaceful",
-        "coffee steam warm hands morning",
-        "warm window light morning calm"
+        "aerial coastline sunrise golden drone wide",
+        "drone sea morning calm golden light",
+        "aerial island coast sunrise drone",
+        "drone ocean waves soft morning calm",
+        "aerial cliffs sea morning golden drone",
+        "drone wide open sea sunrise peaceful"
       ],
       "visual_moods": [
         {
@@ -76,8 +76,8 @@
         },
         {
           "name": "intimate_detail",
-          "description": "close-up details that carry warmth and meaning: hands, objects, textures",
-          "pexels_queries": ["woman hands close up warm","hands holding mug close warm","journal pen hands close up","flower close up soft light","woman hands lap close","candle warm light close up","hands writing notebook close","woman hand window light"]
+          "description": "close-up details that carry warmth and meaning: hands, objects, textures, opening to aerial for resolution",
+          "pexels_queries": ["aerial drone sea sunrise golden","drone coastline morning wide","aerial island ocean drone morning","woman hands close up warm","hands holding mug close warm","journal pen hands close up","candle warm light close up","woman hand window light"]
         }
       ]
     },
@@ -114,20 +114,20 @@
         "woman hands lap dark alone night"
       ],
       "story_queries": [
-        "woman hand phone light warmth close",
-        "woman face phone light dark",
+        "aerial drone city lights night wide",
+        "drone coastline night stars sea aerial",
+        "aerial sea calm night drone wide",
+        "drone flight island coast night",
         "woman reaching toward warmth light",
-        "woman door warm light ahead",
-        "woman smile phone light morning",
-        "woman hands open warmth light"
+        "woman door warm light ahead"
       ],
       "cta_queries": [
-        "woman morning phone warm light",
-        "sunrise window warm woman",
-        "woman smile morning light warm close",
-        "morning light warmth woman calm",
-        "woman hands warmth morning light",
-        "light dawn warm woman peace"
+        "aerial sunrise sea drone morning golden",
+        "drone coastline morning light aerial wide",
+        "aerial island sunrise drone golden calm",
+        "drone ocean sunrise wide morning peaceful",
+        "aerial city dawn golden light drone",
+        "drone sea morning calm sunrise aerial"
       ],
       "visual_moods": [
         {
@@ -147,8 +147,8 @@
         },
         {
           "name": "abstract_warmth",
-          "description": "warm abstract light as visual metaphor for connection",
-          "pexels_queries": ["warm light abstract bokeh","soft gold light particles","amber light dark background","warm glow abstract background","soft light orb warm dark","golden bokeh dark","warm abstract light minimal","rose gold light abstract dark"]
+          "description": "warm abstract light and aerial views as visual metaphor for connection and perspective",
+          "pexels_queries": ["aerial drone sea sunrise golden","drone coastline morning aerial wide","aerial island sunrise warm drone","drone ocean morning golden calm","warm light abstract bokeh","soft gold light particles","amber light dark background","warm glow abstract background"]
         }
       ]
     },
@@ -186,20 +186,20 @@
         "rain window woman alone dark"
       ],
       "story_queries": [
-        "woman writing journal morning light",
-        "woman deep breath window light",
+        "aerial drone sea cliffs coast wide",
+        "drone flight coastline sunrise woman",
+        "aerial ocean waves calm morning drone",
+        "drone wide open landscape sunrise",
         "woman walking nature path alone",
-        "woman hand chest calm close",
-        "woman looking up sky light",
-        "woman sitting upright morning light"
+        "woman looking up sky light"
       ],
       "cta_queries": [
-        "woman face morning warm light",
-        "sunlight curtain morning woman",
-        "woman smile morning coffee light",
-        "morning light window warmth woman",
-        "woman hands open light morning",
-        "dawn light warm woman peace"
+        "aerial coastline sunrise golden drone",
+        "drone sea morning wide calm",
+        "aerial island coast sunrise drone",
+        "drone ocean sunrise soft morning",
+        "aerial cliffs sunrise drone wide golden",
+        "drone sea horizon morning peaceful"
       ],
       "visual_moods": [
         {
@@ -219,8 +219,8 @@
         },
         {
           "name": "movement_release",
-          "description": "walking, moving, the body as a way out of the mind",
-          "pexels_queries": ["woman walking alone nature","woman running alone morning","woman yoga alone morning","woman stretching alone","woman walking beach alone","woman forest walk peaceful","woman exercise alone morning","woman outdoor movement calm"]
+          "description": "aerial perspective and movement: the body and the world opening up after being closed in",
+          "pexels_queries": ["aerial drone coastline woman morning","drone sea sunrise wide aerial","aerial ocean calm drone morning","drone wide landscape sunrise open","woman walking beach alone","woman forest walk peaceful","woman exercise alone morning","woman outdoor movement calm"]
         }
       ]
     },
@@ -258,20 +258,20 @@
         "woman pacing blur dark room"
       ],
       "story_queries": [
+        "aerial drone calm sea morning wide",
+        "drone flight open landscape sunrise calm",
+        "aerial ocean still morning drone peaceful",
+        "drone wide coast sunrise calm",
         "woman hands open lap calm",
-        "woman slow breath close calm",
-        "woman feet barefoot grass close",
-        "woman hands touch water calm",
-        "woman eyes close calm slow",
-        "woman arms stretch open calm"
+        "woman slow breath close calm"
       ],
       "cta_queries": [
-        "calm water surface morning still",
-        "woman breath open light morning",
-        "soft morning light curtain calm",
-        "leaves gentle sunlight bokeh",
-        "woman face peaceful morning light",
-        "still water reflection morning calm"
+        "aerial sea calm sunrise golden drone",
+        "drone coastline morning peaceful wide",
+        "aerial ocean still sunrise drone",
+        "drone wide open landscape morning calm",
+        "aerial island sunrise soft golden drone",
+        "drone sea horizon calm morning light"
       ],
       "visual_moods": [
         {
@@ -286,13 +286,13 @@
         },
         {
           "name": "calm_water",
-          "description": "water as calm: still lakes, gentle movement, reflection",
-          "pexels_queries": ["calm water surface still","woman water peaceful alone","lake still morning reflection","water ripple slow calm","woman near water alone","still water light reflection","pond morning calm alone","woman water edge peaceful"]
+          "description": "water as calm: aerial ocean, still lakes, gentle movement",
+          "pexels_queries": ["aerial drone ocean calm morning","drone sea still sunrise aerial","aerial coastline calm morning drone","drone ocean waves gentle aerial","calm water surface still","lake still morning reflection","water ripple slow calm","pond morning calm alone"]
         },
         {
           "name": "light_abstract",
-          "description": "soft diffused light: the visual feeling of calm arriving",
-          "pexels_queries": ["soft light diffused calm","sunlight through curtain soft","warm bokeh light background","soft light beam dust","light through leaves soft","morning light soft abstract","gentle light window soft","light haze calm background"]
+          "description": "soft diffused light and open aerial: the visual feeling of calm arriving",
+          "pexels_queries": ["aerial drone sunrise wide calm","drone open sky morning aerial","aerial sea morning soft golden","drone coastline sunrise calm wide","soft light diffused calm","sunlight through curtain soft","warm bokeh light background","gentle light window soft"]
         }
       ]
     }
