@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v7.4
+MindCore AI -- Male Cinematic Pipeline v7.5
 ============================================
-CHANGES (v7.4):
-  - FIX: POWER_WORDS set -- flash overlay now prioritises emotionally
-    resonant words (broken, numb, tired, sober, healing...) over longest word.
-  - FIX: SUBTITLE_CHUNK 3 -> 2 -- faster text turnover in first 3 seconds.
-  - FIX: First subtitle forced to t=0.0 -- no dead screen before audio starts.
-  - FIX: SILENT SCROLL RULE added to hook prompt -- first 3-4 words must
-    deliver emotional punch for silent scrollers before setup.
+CHANGES (v7.5):
+  - FIX: Video length cut to 25-35 seconds.
+    WORD_TARGETS reduced across all scenes -- tighter, punchier, no filler.
+    Target: 53-75 words total = ~24-35 seconds at 130wpm.
+  - FIX: Hook B-roll queries updated to human-centred footage (faces, hands,
+    body language) replacing abstract particle/bokeh visuals. See niche_keywords.json.
 
-All v7.3 features preserved.
+All v7.4 features preserved.
 """
 
 import json
@@ -141,8 +140,9 @@ BANNED_HOOK_OPENERS = [
     "We need to talk about","It's time to talk about",
 ]
 
-WORD_TARGETS_AD      = {"hook":(12,15),"problem":(30,40),"story":(40,55),"solution_cta":(20,30)}
-WORD_TARGETS_CONTENT = {"hook":(12,15),"problem":(35,55),"story":(55,75),"solution_cta":(20,35)}
+# Target: 53-75 words total = ~24-35 seconds at 130wpm
+WORD_TARGETS_AD      = {"hook":(8,12),"problem":(15,22),"story":(18,25),"solution_cta":(7,10)}
+WORD_TARGETS_CONTENT = {"hook":(8,12),"problem":(18,25),"story":(20,28),"solution_cta":(7,10)}
 
 BANNED_PHRASE_REPLACEMENTS = [
     (r"try\s+it\s+for\s+free","try it"),
@@ -225,7 +225,7 @@ def load_app_facts():
 
 def load_keywords_data():
     if not KEYWORDS_PATH.exists():
-        return {"schedule":{},"niches":{"default":{"name":"Men's Mental Health","viewer_persona":"A man in his 40s struggling silently.","seed_queries":["men mental health tips"],"hashtags":[],"hook_queries":["bokeh light dark abstract"],"problem_queries":["man alone dark room"],"story_queries":["feet walking path forward"],"cta_queries":["sunrise morning warm light"],"visual_moods":[{"name":"default","description":"moody","pexels_queries":["man alone window","empty road","dark room light"]}]}}}
+        return {"schedule":{},"niches":{"default":{"name":"Men's Mental Health","viewer_persona":"A man in his 40s struggling silently.","seed_queries":["men mental health tips"],"hashtags":[],"hook_queries":["man face close up dark"],"problem_queries":["man alone dark room"],"story_queries":["feet walking path forward"],"cta_queries":["sunrise morning warm light"],"visual_moods":[{"name":"default","description":"moody","pexels_queries":["man alone window","empty road","dark room light"]}]}}}
     with open(KEYWORDS_PATH) as f: return json.load(f)
 
 def get_niche_for_today(keywords_data):
@@ -342,7 +342,7 @@ def _build_hook_block(formula):
     )
     return (
         f"{silent_scroll_rule}\n\n"
-        f"HOOK (12-15 words MAXIMUM -- the most critical sentence in the video):\n"
+        f"HOOK (8-12 words MAXIMUM -- the most critical sentence in the video):\n"
         f"Formula to use: \"{formula['name']}\"\n"
         f"What to do: {formula['instruction']}\n"
         f"Worked example: \"{formula['example']}\"\n"
@@ -355,15 +355,15 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a cinematic voiceover script for a short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. The viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order):\nhook (12-15 words) | problem ({lo_prob}-{hi_prob} words) | story ({lo_story}-{hi_story} words) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger using a single emotionally specific word that matches the video's tone. Examples: "Comment KING if you've carried this", "Comment TIRED if you know this feeling", "Comment SOBER if you're fighting for it", "Comment SAME if this is you", "Comment SILENT if you've been holding this in". Pick the word that fits THIS video's emotion. Alternatives: "Tag someone who needs to hear this today" or "Drop a \U0001f90d if this hit you". NO app mentions in content videos.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
-    return _call_claude_raw(prompt, client, max_tokens=1200)
+    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook ({lo_prob-10}-{hi_prob-3} words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger: "Comment KING if you've carried this", "Comment TIRED if you know this feeling", "Comment SOBER if you're fighting for it", "Comment SAME if this is you". Pick the word that fits THIS video's emotion. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    return _call_claude_raw(prompt, client, max_tokens=800)
 
 def generate_ad_script(app_facts, niche, client):
     ad_topic=random.choice(AD_TOPICS); formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     print(f"  AD: pain point: {ad_topic['pain_point'][:65]}...")
     lo_prob,hi_prob=WORD_TARGETS_AD["problem"]; lo_story,hi_story=WORD_TARGETS_AD["story"]; lo_cta,hi_cta=WORD_TARGETS_AD["solution_cta"]
-    prompt=f"""You are writing a cinematic voiceover ad script for MindCore AI.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES: hook -> problem -> story (introduce MindCore AI naturally) -> solution_cta (mention MindCore AI on Google Play briefly, then end with a community engagement trigger using a single emotionally specific word -- e.g. "Comment KING if you need this", "Comment TIRED if this is you", "Comment SOBER if you're fighting for it". Pick the word that fits this video's emotion.)\nBANNED: "free trial", "first week free", "download now"\nWORD COUNTS: hook 12-15 | problem {lo_prob}-{hi_prob} | story {lo_story}-{hi_story} | cta {lo_cta}-{hi_cta}\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
-    return _call_claude_raw(prompt, client, max_tokens=1200)
+    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT -- every word must earn its place):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly + engagement trigger: "Comment KING if you need this", "Comment TIRED if this is you")\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    return _call_claude_raw(prompt, client, max_tokens=800)
 
 def build_full_script(script):
     parts=[]
@@ -375,24 +375,16 @@ def build_full_script(script):
 
 
 def pick_power_word(words_in_chunk):
-    """Pick the most emotionally resonant word from a subtitle chunk.
-    Prioritises POWER_WORDS over length -- meaning matters more than syllables."""
+    """Pick the most emotionally resonant word from a subtitle chunk."""
     candidates = [
         w for w in words_in_chunk
         if len(w["word"].strip()) > 2
         and w["word"].strip().lower().rstrip(".,!?'\"") not in WORD_FLASH_STOPWORDS
         and w["word"].strip().replace("'","").replace("-","").isalpha()
     ]
-    if not candidates:
-        return None
-    # Priority 1: emotionally resonant power words
-    power_candidates = [
-        w for w in candidates
-        if w["word"].strip().lower().rstrip(".,!?'\"") in POWER_WORDS
-    ]
-    if power_candidates:
-        return power_candidates[0]["word"].strip().upper()
-    # Priority 2: longest meaningful word as fallback
+    if not candidates: return None
+    power_candidates = [w for w in candidates if w["word"].strip().lower().rstrip(".,!?'\"") in POWER_WORDS]
+    if power_candidates: return power_candidates[0]["word"].strip().upper()
     return max(candidates, key=lambda w: len(w["word"].strip()))["word"].strip().upper()
 
 def transcribe_audio_whisper(media_path):
@@ -432,10 +424,8 @@ def generate_ass_subtitles(words, output_path):
         chunk=words[i:i+SUBTITLE_CHUNK]
         text=" ".join(w["word"].upper() for w in chunk)
         start=chunk[0]["start"]; end=chunk[-1]["end"]
-        if not chunks:
-            start=0.0  # Force first subtitle from frame 1 -- no dead screen
-        elif start<chunks[-1]["end"]:
-            start=chunks[-1]["end"]
+        if not chunks: start=0.0
+        elif start<chunks[-1]["end"]: start=chunks[-1]["end"]
         chunks.append({"text":text,"start":start,"end":end,"words":chunk})
         i+=SUBTITLE_CHUNK
     events="".join(f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n" for c in chunks)
@@ -615,7 +605,7 @@ def generate_upload_guide(script, mode, niche, client):
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
     niche_tags = " ".join(niche.get("hashtags", []))
-    prompt=f"""Social media expert for men's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- first_comment: A single punchy question or invitation (max 150 chars) posted as the first comment the moment the video goes live. Must spark replies. Match the emotional tone of the hook. Examples: "Which part of this hit you hardest? \U0001f447", "Drop a word that describes this feeling \U0001f447", "Tag someone who needs to hear this \U0001f499", "Save this for when you need it \U0001f516". Do NOT repeat the video CTA.\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
+    prompt=f"""Social media expert for men's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- first_comment: A single punchy question or invitation (max 150 chars) posted as the first comment the moment the video goes live. Must spark replies. Match the emotional tone of the hook. Examples: "Which part of this hit you hardest? \U0001f447", "Drop a word that describes this feeling \U0001f447", "Tag someone who needs to hear this \U0001f499". Do NOT repeat the video CTA.\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1000,messages=[{"role":"user","content":prompt}])
@@ -673,9 +663,9 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.4")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
-    print(f"  Niche: {niche['name']} | Global tags: {GLOBAL_HASHTAGS}")
+    print(f"  Niche: {niche['name']} | Target: 25-35s | Global tags: {GLOBAL_HASHTAGS}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
     print("="*60)
     print("\n  Generating script...")
