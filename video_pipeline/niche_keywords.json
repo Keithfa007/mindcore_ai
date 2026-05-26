@@ -24,12 +24,12 @@
       ],
       "hashtags": ["#sobertok","#recoveryispossible","#soberaf","#sobercommunity","#addictionrecovery"],
       "hook_queries": [
-        "bokeh light blur dark abstract background",
-        "flame candle close up dark blurred",
-        "water surface ripple abstract close up",
-        "clock face blurred dark close up",
-        "smoke drift slow dark background",
-        "shadow geometric lines wall light abstract"
+        "man face close up dark shadow tired",
+        "close up man hands clasped together dark",
+        "man looking down alone dark room close",
+        "man hands covering face shadow dark",
+        "close up man eyes tired shadow",
+        "man sitting alone dark thinking close up"
       ],
       "problem_queries": [
         "empty whiskey glass dark table alone",
@@ -95,12 +95,12 @@
       ],
       "hashtags": ["#aimentalhealth","#mentalwellnessapp","#aitherapy","#techmentalhealth"],
       "hook_queries": [
-        "phone screen glow dark abstract bokeh",
-        "data light lines blue abstract dark",
-        "bokeh blue particles dark background",
-        "circuit pattern abstract blue glow",
-        "light particle floating dark space",
-        "screen reflection face dark abstract"
+        "man face phone glow dark night close",
+        "close up man face alone thinking dark",
+        "man alone window night city lights close",
+        "close up man face looking down dark",
+        "man eyes dark night alone close up",
+        "man face close up tired alone night"
       ],
       "problem_queries": [
         "man phone alone dark room night glow",
@@ -167,12 +167,12 @@
       ],
       "hashtags": ["#malementalhealth","#mensmentalhealthmatters","#emotionalhealthformen","#menssupport"],
       "hook_queries": [
-        "shadow man silhouette wall abstract",
-        "dark room single chair spotlight empty",
-        "rain drops glass close up blur",
-        "heavy weight stone dark abstract",
-        "clock hands blur dark time",
-        "empty chair dark room abstract light"
+        "man face close up shadow tired thoughtful",
+        "close up man hands together dark thinking",
+        "man head bowed alone dark room close",
+        "man face looking away dark shadow close",
+        "close up man tired face morning shadow",
+        "man alone sitting dark close up face"
       ],
       "problem_queries": [
         "man head down dark park bench grey",
@@ -218,7 +218,7 @@
         },
         {
           "name": "man_in_nature",
-          "description": "man alone in vast natural environment, scale and solitude — now with aerial shots",
+          "description": "man alone in vast natural environment, scale and solitude",
           "pexels_queries": ["aerial drone sea cliffs wide","drone flight ocean horizon sunrise","aerial beach waves drone morning","drone mountain wide open sky","man alone mountain view","lone figure field horizon","silhouette man sunset nature","man overlooking valley alone"]
         }
       ]
@@ -239,12 +239,12 @@
       ],
       "hashtags": ["#moodtracker","#dailywellness","#selfawareness","#wellnessjourney","#menswellness"],
       "hook_queries": [
-        "calendar pages blur abstract close",
-        "journal open close abstract bokeh warm",
-        "pen paper abstract close warm light",
-        "phone screen dark abstract night",
-        "graph chart blur abstract close",
-        "alarm clock dark abstract blur"
+        "man close up face tired morning thinking",
+        "close up man hands dark desk thinking",
+        "man face window morning tired close up",
+        "close up man eyes tired morning light",
+        "man coffee dark morning close up face",
+        "man face close up distracted thinking"
       ],
       "problem_queries": [
         "man tired desk night lamp alone",

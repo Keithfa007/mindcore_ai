@@ -25,12 +25,12 @@
       ],
       "hashtags": ["#perimenopause","#midlifewomen","#womenswellness","#hormonalhealth","#menopauseawareness"],
       "hook_queries": [
-        "mirror reflection abstract close blur",
-        "bokeh warm golden light abstract",
-        "clock blur close abstract dark",
-        "candle flame close abstract warm",
-        "curtain light abstract morning soft",
-        "water ripple abstract close warm"
+        "woman face close up tired looking away",
+        "close up woman hands dark morning",
+        "woman face shadow looking down tired",
+        "close up woman eyes tired morning light",
+        "woman alone kitchen morning tired close",
+        "woman face close up alone dark thoughtful"
       ],
       "problem_queries": [
         "woman alone kitchen window morning tired",
@@ -76,7 +76,7 @@
         },
         {
           "name": "intimate_detail",
-          "description": "close-up details that carry warmth and meaning: hands, objects, textures, opening to aerial for resolution",
+          "description": "close-up details that carry warmth and meaning: hands, objects, textures",
           "pexels_queries": ["aerial drone sea sunrise golden","drone coastline morning wide","aerial island ocean drone morning","woman hands close up warm","hands holding mug close warm","journal pen hands close up","candle warm light close up","woman hand window light"]
         }
       ]
@@ -96,12 +96,12 @@
       ],
       "hashtags": ["#aimentalhealth","#mentalwellnessapp","#womenswellness","#selfcareapp"],
       "hook_queries": [
-        "phone screen glow dark abstract night",
-        "bokeh warm golden light dark abstract",
-        "abstract warmth light particles dark",
-        "screen reflection woman dark night",
-        "light warm glow dark abstract bokeh",
-        "sparkle warm abstract dark background"
+        "woman face phone glow dark night close",
+        "close up woman face alone thinking night",
+        "woman alone window night city lights close",
+        "close up woman face looking down dark",
+        "woman eyes dark night alone close up",
+        "woman face close up tired alone night"
       ],
       "problem_queries": [
         "woman phone alone night dark room",
@@ -147,8 +147,8 @@
         },
         {
           "name": "abstract_warmth",
-          "description": "warm abstract light and aerial views as visual metaphor for connection and perspective",
-          "pexels_queries": ["aerial drone sea sunrise golden","drone coastline morning aerial wide","aerial island sunrise warm drone","drone ocean morning golden calm","warm light abstract bokeh","soft gold light particles","amber light dark background","warm glow abstract background"]
+          "description": "warm aerial views as visual metaphor for connection and perspective",
+          "pexels_queries": ["aerial drone sea sunrise golden","drone coastline morning aerial wide","aerial island sunrise warm drone","drone ocean morning golden calm","warm light soft background","sunlight through curtain soft","amber light warm background","gentle morning light soft"]
         }
       ]
     },
@@ -168,12 +168,12 @@
       ],
       "hashtags": ["#womenhealing","#selfcompassion","#healingjourney","#womenswellness","#emotionalwellness"],
       "hook_queries": [
-        "shadow woman wall abstract light",
-        "rain drops glass close up blur",
-        "empty room chair spotlight abstract",
-        "clock hands blur dark abstract",
-        "mirror reflection blur abstract",
-        "candle dark background close abstract"
+        "woman face close up shadow thoughtful alone",
+        "close up woman hands together dark",
+        "woman face looking away dark shadow close",
+        "close up woman tired face dark alone",
+        "woman head bowed alone dark room close",
+        "woman face close up alone thoughtful sad"
       ],
       "problem_queries": [
         "woman sitting floor alone dark",
@@ -240,12 +240,12 @@
       ],
       "hashtags": ["#anxietyrelief","#anxietysupport","#stressrelief","#calmingtools","#somatic"],
       "hook_queries": [
-        "clock fast blur dark abstract",
-        "heartbeat line abstract blue dark",
-        "abstract waves dark background",
-        "blur abstract motion dark fast",
-        "shadow movement dark abstract",
-        "bokeh dark abstract close anxious"
+        "woman face close up worried tense dark",
+        "close up woman hands tight clasped tense",
+        "woman eyes closed tense dark close up",
+        "woman face anxious close dark room",
+        "close up woman face stressed alone dark",
+        "woman face close up eyes closed worried"
       ],
       "problem_queries": [
         "woman hands clasped lap tense close",
