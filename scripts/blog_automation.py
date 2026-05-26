@@ -34,36 +34,43 @@ CATEGORY_IDS = {
 CATEGORIES = list(CATEGORY_IDS.keys())
 
 LIBRARY_CATEGORY_MAP = {
-    "mental health app":            "AI & Wellness",
-    "mental wellness apps":         "AI & Wellness",
-    "women's mental health":        "Women's Mental Health",
-    "women and mental health":      "Women's Mental Health",
-    "sobriety app":                 "Recovery & Sobriety",
-    "sober app":                    "Recovery & Sobriety",
-    "mood tracking app":            "AI & Wellness",
-    "sober time app":               "Recovery & Sobriety",
-    "ai companion app":             "AI & Wellness",
-    "ai chat companion":            "AI & Wellness",
-    "postpartum depression support":"Women's Mental Health",
-    "sobriety tracker":             "Recovery & Sobriety",
-    "sober tracker":                "Recovery & Sobriety",
-    "days sober app":               "Recovery & Sobriety",
-    "sober counter":                "Recovery & Sobriety",
-    "sobriety counter":             "Recovery & Sobriety",
-    "best mood tracker app":        "AI & Wellness",
-    "self improvement app":         "AI & Wellness",
-    "personal growth apps":         "AI & Wellness",
-    "wellbeing apps":               "AI & Wellness",
-    "mood diary app":               "AI & Wellness",
-    "sober buddy app":              "Recovery & Sobriety",
-    "stay sober app":               "Recovery & Sobriety",
-    "loneliness app":               "AI & Wellness",
-    "anxiety relief app":           "Anxiety & Stress",
-    "emotional support app":        "AI & Wellness",
-    "self improving apps":          "AI & Wellness",
-    "mood journal app":             "AI & Wellness",
-    "sobriety tracking app":        "Recovery & Sobriety",
-    "stress anxiety companion app": "Anxiety & Stress",
+    "mental health app":                "AI & Wellness",
+    "mental wellness apps":             "AI & Wellness",
+    "women's mental health":            "Women's Mental Health",
+    "women and mental health":          "Women's Mental Health",
+    "sobriety app":                     "Recovery & Sobriety",
+    "sober app":                        "Recovery & Sobriety",
+    "mood tracking app":                "AI & Wellness",
+    "sober time app":                   "Recovery & Sobriety",
+    "ai companion app":                 "AI & Wellness",
+    "ai chat companion":                "AI & Wellness",
+    "postpartum depression support":    "Women's Mental Health",
+    "sobriety tracker":                 "Recovery & Sobriety",
+    "sober tracker":                    "Recovery & Sobriety",
+    "days sober app":                   "Recovery & Sobriety",
+    "sober counter":                    "Recovery & Sobriety",
+    "sobriety counter":                 "Recovery & Sobriety",
+    "best mood tracker app":            "AI & Wellness",
+    "self improvement app":             "AI & Wellness",
+    "personal growth apps":             "AI & Wellness",
+    "wellbeing apps":                   "AI & Wellness",
+    "mood diary app":                   "AI & Wellness",
+    "sober buddy app":                  "Recovery & Sobriety",
+    "stay sober app":                   "Recovery & Sobriety",
+    "loneliness app":                   "AI & Wellness",
+    "anxiety relief app":               "Anxiety & Stress",
+    "emotional support app":            "AI & Wellness",
+    "self improving apps":              "AI & Wellness",
+    "mood journal app":                 "AI & Wellness",
+    "sobriety tracking app":            "Recovery & Sobriety",
+    "stress anxiety companion app":     "Anxiety & Stress",
+    "body scan meditation for sleep":   "Sleep & Burnout",
+    "bedtime meditation for sleep":     "Sleep & Burnout",
+    "guided relaxation meditation":     "Sleep & Burnout",
+    "meditation to fall asleep":        "Sleep & Burnout",
+    "short meditation for anxiety":     "Anxiety & Stress",
+    "meditation to calm the mind":      "Anxiety & Stress",
+    "guided meditation for beginners":  "AI & Wellness",
 }
 
 INTERNAL_LINKS = [
@@ -80,6 +87,13 @@ EXTERNAL_LINKS = [
     ("SAMHSA",                    "https://www.samhsa.gov"),
 ]
 
+# Inline app link — used naturally within content text
+APP_INLINE_LINK = (
+    '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
+    'target="_blank" rel="noopener noreferrer"><strong>MindCore AI</strong></a>'
+)
+
+# CTA button — bold dark styled button used in the final CTA section
 GP_CTA_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
     'target="_blank" rel="noopener noreferrer" '
@@ -227,7 +241,8 @@ def validate_seo(content, title, meta, primary_keyword, slug):
         f"Word count >= {MIN_WORD_COUNT}": wc >= MIN_WORD_COUNT,
         "External link present":        'href="http' in content,
         "Internal link present":        "mindcoreai.eu" in content,
-        "Google Play CTA present":      "play.google.com" in content,
+        "Google Play link present":     "play.google.com" in content,
+        "FAQ section present":          "Frequently Asked Questions" in content,
     }
     all_ok = True
     for label, ok in checks.items():
@@ -460,7 +475,7 @@ def write_blog_post(topic_data, history):
         )
 
     response = anthropic_client.messages.create(
-        model="claude-opus-4-5", max_tokens=6000,
+        model="claude-opus-4-5", max_tokens=7000,
         messages=[{"role": "user", "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
 
 Write a full, publish-ready blog post:
@@ -480,29 +495,44 @@ CRITICAL KEYWORD RULES:
   4. EXACT phrase "{kw}" at least 8-10 times total
   5. No synonyms or variations — EXACT phrase only
   6. Keyword density: 1.0%-1.5%
-  7. Minimum 1,200 words
+  7. Minimum 1,200 words (not counting FAQ)
 
-MANDATORY LINKS:
+MANDATORY LINKS — all must appear as proper HTML anchor tags:
+
   Internal site pages (include ALL 3):
 {int_links}
 
   External authoritative sources (include at least 2):
 {ext_links}
+
+  MindCore AI app link (include naturally at least ONCE in the body content, separate from the CTA button):
+  - Use this HTML inline in a sentence: {APP_INLINE_LINK}
+  - Example: "That is why tools like {APP_INLINE_LINK} were built — to be there at 3am when no one else is."
 {cross_link_block}
-GOOGLE PLAY CTA (use this EXACT HTML in the final section):
+GOOGLE PLAY CTA BUTTON (use this EXACT HTML in the final CTA section):
   {GP_CTA_LINK}
 
-WRITING:
-  - H1 → intro (2-3 para) → 5-7 H2 sections → conclusion + CTA
-  - At least one <ul> list
+MANDATORY FAQ SECTION:
+  After the main content and before the final CTA, include a FAQ section with this structure:
+  <h2>Frequently Asked Questions About {kw.title()}</h2>
+  Then 5 questions and answers using <h3> for each question and <p> for each answer.
+  - Questions must be natural, conversational, things people actually Google
+  - At least 2 questions must include the exact phrase "{kw}"
+  - Answers must be 2-4 sentences — specific and helpful, not generic
+  - One answer should naturally mention MindCore AI as a useful tool
+
+STRUCTURE:
+  H1 → intro (2-3 para) → 5-7 H2 sections (150-200 words each) → FAQ section → conclusion + CTA button
+
+  Other requirements:
+  - At least one <ul> list in the main content
   - Real, actionable advice — zero platitudes
-  - Final section: CTA using the Google Play link above
 
 FORMAT:
   - Clean WordPress HTML: h1 h2 h3 p ul li strong em a
   - External links: target="_blank" rel="noopener noreferrer"
   - No html head body style script tags
-  - After all HTML: EXCERPT: [2-3 sentence hook with exact phrase "{kw}"]"""}]
+  - After ALL HTML: EXCERPT: [2-3 sentence hook with exact phrase "{kw}"]"""}]
     )
 
     content  = response.content[0].text
@@ -546,7 +576,6 @@ def generate_illustration(image_prompt):
         "No text, no words, no letters in the image."
     )
 
-    # Try gpt-image-1 (new OpenAI image model replacing dall-e-3)
     try:
         resp = openai_client.images.generate(
             model="gpt-image-1",
@@ -555,22 +584,20 @@ def generate_illustration(image_prompt):
             quality="high",
             n=1,
         )
-        img_url = resp.data[0].url
-        if img_url:
-            img = requests.get(img_url, timeout=30).content
+        data = resp.data[0]
+        if getattr(data, "url", None):
+            img = requests.get(data.url, timeout=30).content
         else:
-            # gpt-image-1 may return base64 instead of URL
-            img = base64.b64decode(resp.data[0].b64_json)
+            img = base64.b64decode(data.b64_json)
         print("   Cinematic image generated (gpt-image-1)")
         return img
     except Exception as e1:
         print(f"   gpt-image-1 failed: {e1} — trying dall-e-2...")
 
-    # Fallback to dall-e-2
     try:
         resp = openai_client.images.generate(
             model="dall-e-2",
-            prompt=cinematic_prompt[:1000],  # dall-e-2 has shorter prompt limit
+            prompt=cinematic_prompt[:1000],
             size="1024x1024",
             n=1,
         )
