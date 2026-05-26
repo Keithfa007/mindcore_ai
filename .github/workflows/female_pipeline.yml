@@ -1,8 +1,9 @@
 name: Female Video Pipeline
 
-# Day-optimised schedule (Malta = UTC+2 summer):
-#   Mon-Fri: 06:00 UTC = 08:00 Malta  (8AM peak)
-#   Sat-Sun: 04:00 UTC = 06:00 Malta  (6AM early peak)
+# USA-targeted schedule (VPN = US audience, Malta = UTC+2 summer):
+#   Mon-Fri: cron 12:00 UTC -> arrives ~13:00 UTC = 9am EST = 3pm Malta
+#   Sat-Sun: cron 17:00 UTC -> arrives ~18:00 UTC = 2pm EST = 8pm Malta
+# 1hr early on both slots to compensate for GitHub Actions delay
 # GitHub Actions cron days: 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
 on:
   workflow_dispatch:
@@ -17,8 +18,8 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 6 * * 1-5"  # Mon-Fri 06:00 UTC (08:00 Malta)
-    - cron: "0 4 * * 6,0"  # Sat + Sun 04:00 UTC (06:00 Malta)
+    - cron: "0 12 * * 1-5"  # Mon-Fri cron 12:00 UTC -> ~13:00 UTC (9am EST / 3pm Malta)
+    - cron: "0 17 * * 6,0"  # Sat-Sun cron 17:00 UTC -> ~18:00 UTC (2pm EST / 8pm Malta)
 
 jobs:
   generate-female-video:
@@ -53,8 +54,8 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Mon-Fri 08:00 Malta | Sat-Sun 06:00 Malta"
-          echo "Pipeline: female_pipeline.py | CTA: SEEN / HEALING / TIRED / SAME"
+          echo "Schedule: Mon-Fri ~13:00 UTC (9am EST / 3pm Malta) | Sat-Sun ~18:00 UTC (2pm EST / 8pm Malta)"
+          echo "Pipeline: female_pipeline.py v3.2 | Platforms: TikTok + Facebook + YouTube"
 
       - name: Run Female Cinematic Pipeline
         env:
@@ -98,8 +99,8 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## Female Video Pipeline v3.0" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Script:** female_pipeline.py | **Platforms:** TikTok + Facebook + YouTube + X" >> $GITHUB_STEP_SUMMARY
+          echo "## Female Video Pipeline v3.2" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | **Script:** female_pipeline.py | **Platforms:** TikTok + Facebook + YouTube" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output_female/script_female.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
