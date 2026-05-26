@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v3.4
+MindCore AI -- Female Cinematic Pipeline v3.5
 =============================================
-CHANGES (v3.4):
-  - FIX: POWER_WORDS set -- flash overlay now prioritises emotionally
-    resonant words (broken, numb, tired, healing, invisible...) over longest word.
-  - FIX: SUBTITLE_CHUNK 3 -> 2 -- faster text turnover in first 3 seconds.
-  - FIX: First subtitle forced to t=0.0 -- no dead screen before audio starts.
-  - FIX: SILENT SCROLL RULE added to hook prompt -- first 3-4 words must
-    deliver emotional punch for silent scrollers before setup.
+CHANGES (v3.5):
+  - UPDATE: Female voice ID changed to 5233336f5f44460ea0902b0802375451.
 
-All v3.3 features preserved.
+All v3.4 features preserved.
 """
 
 import json
@@ -38,7 +33,7 @@ PEXELS_VIDEO_URL    = "https://api.pexels.com/videos/search"
 SERP_API_URL        = "https://serpapi.com/search"
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-FISH_AUDIO_VOICE_ID = "50860d52ab054efab4608bd6060f5ea6"
+FISH_AUDIO_VOICE_ID = "5233336f5f44460ea0902b0802375451"
 
 OUTPUT_DIR         = Path("video_pipeline/output_female")
 PIPELINE_DIR       = Path("video_pipeline")
@@ -91,23 +86,16 @@ WORD_FLASH_STOPWORDS = {
     'were','im','thats','theres','heres','ive','youve','weve'
 }
 
-# Emotionally resonant words that get priority in the flash overlay.
-# These are chosen over the longest word -- meaning > length.
 POWER_WORDS = {
-    # Core emotional pain
     'broken','tired','alone','lost','numb','empty','heavy','dark','scared',
     'hurt','pain','shame','guilt','anger','grief','fear','doubt','silence',
     'hollow','drained','invisible','worthless','hopeless','desperate','trapped',
-    # Mental health & recovery
     'healing','depression','anxiety','trauma','burnout','exhausted',
     'overwhelmed','suffocating','withdrawn','sensitive','anxious',
-    # Action & identity
     'fight','carry','hold','fall','rise','change','truth','real',
     'survive','breathe','pretend','mask','hide','quit','disappear',
-    # Worth & self
     'enough','worthy','seen','heard','free','strong','silent',
     'soul','heart','weight','burden','purpose','missing','love',
-    # Present-tense emotional states
     'pretending','performing','disappearing','shrinking','drowning','fading',
     'pleasing','hiding','carrying','protecting','managing','fixing',
 }
@@ -358,24 +346,16 @@ def build_full_script(script):
 
 
 def pick_power_word(words_in_chunk):
-    """Pick the most emotionally resonant word from a subtitle chunk.
-    Prioritises POWER_WORDS over length -- meaning matters more than syllables."""
+    """Pick the most emotionally resonant word from a subtitle chunk."""
     candidates = [
         w for w in words_in_chunk
         if len(w["word"].strip()) > 2
         and w["word"].strip().lower().rstrip(".,!?'\"") not in WORD_FLASH_STOPWORDS
         and w["word"].strip().replace("'","").replace("-","").isalpha()
     ]
-    if not candidates:
-        return None
-    # Priority 1: emotionally resonant power words
-    power_candidates = [
-        w for w in candidates
-        if w["word"].strip().lower().rstrip(".,!?'\"") in POWER_WORDS
-    ]
-    if power_candidates:
-        return power_candidates[0]["word"].strip().upper()
-    # Priority 2: longest meaningful word as fallback
+    if not candidates: return None
+    power_candidates = [w for w in candidates if w["word"].strip().lower().rstrip(".,!?'\"") in POWER_WORDS]
+    if power_candidates: return power_candidates[0]["word"].strip().upper()
     return max(candidates, key=lambda w: len(w["word"].strip()))["word"].strip().upper()
 
 def transcribe_audio_whisper(media_path):
@@ -415,10 +395,8 @@ def generate_ass_subtitles(words, output_path):
         chunk=words[i:i+SUBTITLE_CHUNK]
         text=" ".join(w["word"].upper() for w in chunk)
         start=chunk[0]["start"]; end=chunk[-1]["end"]
-        if not chunks:
-            start=0.0  # Force first subtitle from frame 1 -- no dead screen
-        elif start<chunks[-1]["end"]:
-            start=chunks[-1]["end"]
+        if not chunks: start=0.0
+        elif start<chunks[-1]["end"]: start=chunks[-1]["end"]
         chunks.append({"text":text,"start":start,"end":end,"words":chunk})
         i+=SUBTITLE_CHUNK
     events="".join(f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n" for c in chunks)
@@ -429,8 +407,8 @@ def generate_ass_subtitles(words, output_path):
         if word:
             flash_events+=f"Dialogue: 0,{ts(chunk['start'])},{ts(chunk['end'])},Flash,,0,0,0,,{word}\n"
             flash_count+=1
-    content = (header+events+flash_events).encode("utf-8", errors="ignore").decode("utf-8")
-    Path(output_path).write_text(content, encoding="utf-8")
+    content=(header+events+flash_events).encode("utf-8",errors="ignore").decode("utf-8")
+    Path(output_path).write_text(content,encoding="utf-8")
     print(f"  Subtitles: {len(chunks)} groups + {flash_count} word flashes")
     return True
 
@@ -477,14 +455,13 @@ def search_pexels_clips(queries, num_clips=1):
         if len(clips)>=num_clips: break
         for orientation in ("portrait",None):
             if len(clips)>=num_clips: break
-            page = ((GITHUB_RUN_NUMBER - 1 + random.randint(0, 6)) % 20) + 1
+            page=((GITHUB_RUN_NUMBER-1+random.randint(0,6))%20)+1
             params={"query":query,"per_page":15,"size":"medium","page":page}
             if orientation: params["orientation"]=orientation
             try:
                 resp=requests.get(PEXELS_VIDEO_URL,headers=headers,params=params,timeout=30)
                 if not resp.ok: break
-                videos = resp.json().get("videos",[])
-                random.shuffle(videos)
+                videos=resp.json().get("videos",[]); random.shuffle(videos)
                 for video in videos:
                     vid_id=video["id"]
                     if vid_id in seen_ids: continue
@@ -499,26 +476,18 @@ def search_pexels_clips(queries, num_clips=1):
     return clips[:num_clips]
 
 def fetch_scene_matched_clips(mood, niche):
-    fallback = mood.get("pexels_queries", ["woman alone nature"])
-    scene_plan = [
-        ("hook",    1, niche.get("hook_queries",    fallback)),
-        ("problem", 2, niche.get("problem_queries", fallback)),
-        ("story",   1, niche.get("story_queries",   fallback)),
-        ("cta",     1, niche.get("cta_queries",     fallback)),
-    ]
-    all_clips = []
-    for scene_name, count, pool in scene_plan:
-        pool_shuffled = list(pool); random.shuffle(pool_shuffled)
-        queries = pool_shuffled[:min(count, len(pool_shuffled))]
-        clips = search_pexels_clips(queries, num_clips=count)
+    fallback=mood.get("pexels_queries",["woman alone nature"])
+    scene_plan=[("hook",1,niche.get("hook_queries",fallback)),("problem",2,niche.get("problem_queries",fallback)),("story",1,niche.get("story_queries",fallback)),("cta",1,niche.get("cta_queries",fallback))]
+    all_clips=[]
+    for scene_name,count,pool in scene_plan:
+        pool_shuffled=list(pool); random.shuffle(pool_shuffled)
+        queries=pool_shuffled[:min(count,len(pool_shuffled))]
+        clips=search_pexels_clips(queries,num_clips=count)
         if not clips:
-            fallback_shuffled = list(fallback); random.shuffle(fallback_shuffled)
-            clips = search_pexels_clips(fallback_shuffled[:min(count,len(fallback_shuffled))], num_clips=count)
+            fb=list(fallback); random.shuffle(fb); clips=search_pexels_clips(fb[:min(count,len(fb))],num_clips=count)
         all_clips.extend(clips)
-        qstr = queries[0][:40] if queries else "fallback"
-        print(f"  [{scene_name.upper():8s}] {len(clips)} clip | {qstr}")
-    print(f"  Scene clips total: {len(all_clips)}")
-    return all_clips
+        print(f"  [{scene_name.upper():8s}] {len(clips)} clip | {queries[0][:40] if queries else 'fallback'}")
+    print(f"  Scene clips total: {len(all_clips)}"); return all_clips
 
 def download_clip(url, output_path):
     resp=requests.get(url,stream=True,timeout=120); resp.raise_for_status()
@@ -568,7 +537,7 @@ def render_cinematic_video(script_text, mood, niche):
     ass_path=str(OUTPUT_DIR/"subtitles_cinematic_female.ass"); words=transcribe_audio_whisper(audio_path)
     if not generate_ass_subtitles(words,ass_path): ass_path=None
     print("\n  [Pexels] Fetching scene-matched clips...")
-    clips=fetch_scene_matched_clips(mood, niche)
+    clips=fetch_scene_matched_clips(mood,niche)
     if not clips: raise RuntimeError("No Pexels clips found")
     clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); raw_clip_paths=[]
     for i,clip in enumerate(clips):
@@ -597,7 +566,7 @@ def generate_upload_guide(script, mode, niche, client):
 
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
-    niche_tags = " ".join(niche.get("hashtags", []))
+    niche_tags=" ".join(niche.get("hashtags",[]))
     prompt=f"""Social media expert for women's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- first_comment: A single punchy question or invitation (max 150 chars) posted as the first comment the moment the video goes live. Must spark replies. Match the emotional tone of the hook. Examples: "Which part of this hit you hardest? \U0001f447", "Drop a word that describes this feeling \U0001f447", "Tag someone who needs to hear this \U0001f499", "Save this for when you need it \U0001f516". Do NOT repeat the video CTA.\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
@@ -656,7 +625,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.4")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
     print(f"  Niche: {niche['name']} | Global tags: {GLOBAL_HASHTAGS}")
     print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
@@ -670,7 +639,7 @@ def main():
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER); est_duration=round(total_words/130*60)
     print(f"\n  ~{est_duration}s | Hook: {script.get('hook_formula','?')}")
     for scene in SCENE_ORDER: print(f"  [{scene:15s}] {script[scene]['voiceover'][:85]}...")
-    final_path=render_cinematic_video(build_full_script(script), mood, niche)
+    final_path=render_cinematic_video(build_full_script(script),mood,niche)
     guide_text=generate_upload_guide(script,mode,niche,client); save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,niche)
     upload_metadata=generate_upload_metadata(script,mode,niche,client); (OUTPUT_DIR/"upload_metadata_female.json").write_text(json.dumps(upload_metadata,indent=2))
     if upload_enabled:
