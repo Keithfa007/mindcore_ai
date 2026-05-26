@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v7.3
+MindCore AI -- Male Cinematic Pipeline v7.4
 ============================================
-CHANGES (v7.3):
-  - FEAT: Auto-seed first comment on every upload.
-    Claude generates a punchy engagement question per video.
-    Sent as first_comment to Upload-Post API (TikTok, Facebook, YouTube).
+CHANGES (v7.4):
+  - FIX: POWER_WORDS set -- flash overlay now prioritises emotionally
+    resonant words (broken, numb, tired, sober, healing...) over longest word.
+  - FIX: SUBTITLE_CHUNK 3 -> 2 -- faster text turnover in first 3 seconds.
+  - FIX: First subtitle forced to t=0.0 -- no dead screen before audio starts.
+  - FIX: SILENT SCROLL RULE added to hook prompt -- first 3-4 words must
+    deliver emotional punch for silent scrollers before setup.
 
-All v7.2 features preserved.
+All v7.3 features preserved.
 """
 
 import json
@@ -57,7 +60,7 @@ WHISPER_MODEL          = "tiny"
 SUBTITLE_FONT          = "Arial"
 SUBTITLE_FONT_SIZE     = 75
 SUBTITLE_MARGIN_V      = 500
-SUBTITLE_CHUNK         = 3
+SUBTITLE_CHUNK         = 2
 WORD_FLASH_FONT_SIZE   = 110
 FLASH_EVERY_N_CHUNKS   = 3
 CLAUDE_MAX_RETRIES     = 10
@@ -86,6 +89,26 @@ WORD_FLASH_STOPWORDS = {
     'like','time','feel','make','right','both','each','much','well',
     'dont','doesnt','didnt','wont','cant','its','youre','theyre',
     'were','im','thats','theres','heres','ive','youve','weve'
+}
+
+# Emotionally resonant words that get priority in the flash overlay.
+# These are chosen over the longest word -- meaning > length.
+POWER_WORDS = {
+    # Core emotional pain
+    'broken','tired','alone','lost','numb','empty','heavy','dark','scared',
+    'hurt','pain','shame','guilt','anger','grief','fear','doubt','silence',
+    'hollow','drained','invisible','worthless','hopeless','desperate','trapped',
+    # Mental health & recovery
+    'sober','healing','recovery','depression','anxiety','trauma','burnout',
+    'relapse','exhausted','overwhelmed','suffocating','withdrawn',
+    # Action & identity
+    'fight','carry','hold','fall','rise','change','truth','real',
+    'survive','breathe','pretend','mask','hide','quit',
+    # Worth & self
+    'enough','worthy','seen','heard','free','strong','silent',
+    'soul','heart','weight','burden','purpose','missing',
+    # Present-tense emotional states
+    'pretending','performing','disappearing','shrinking','drowning','fading',
 }
 
 HOOK_FORMULAS = [
@@ -303,7 +326,30 @@ def fetch_trending_topic(client, niche):
 
 def _build_hook_block(formula):
     banned_str="\n".join(f'  - "{p}..."' for p in BANNED_HOOK_OPENERS)
-    return f"""HOOK (12-15 words MAXIMUM -- the most critical sentence in the video):\nFormula to use: "{formula['name']}"\nWhat to do: {formula['instruction']}\nWorked example: "{formula['example']}"\nNon-negotiable rule: {formula['rule']}\nThe hook MUST create a curiosity gap. The viewer must need the next sentence to feel complete.\n\nFORBIDDEN HOOK OPENERS -- never start with any of these or anything similar:\n{banned_str}"""
+    silent_scroll_rule = (
+        "SILENT SCROLL RULE -- CRITICAL:\n"
+        "Most TikTok viewers scroll with sound OFF. They read your first 3-4 words before deciding to stop.\n"
+        "Those first 3-4 words must deliver emotional impact on their own -- before the rest of the sentence.\n\n"
+        "WRONG: \"There's one thing nobody tells you...\" -- 'There's one thing' is empty\n"
+        "WRONG: \"Most men don't realise that anxiety...\" -- 'Most men don't' is weak\n"
+        "WRONG: \"If you've been holding it together...\" -- 'If you've been' delays the punch\n\n"
+        "RIGHT: \"You stopped feeling things.\" -- emotional punch in 4 words\n"
+        "RIGHT: \"Soul-tired. Nobody warned you about this.\" -- punch in 1 word\n"
+        "RIGHT: \"Numb isn't peace. It's survival mode.\" -- punch in 3 words\n"
+        "RIGHT: \"Anger is just grief wearing armour.\" -- punch in 4 words\n\n"
+        "Lead with the FEELING. Lead with the PAIN. Lead with the TRUTH.\n"
+        "Setup comes AFTER the punch, never before it."
+    )
+    return (
+        f"{silent_scroll_rule}\n\n"
+        f"HOOK (12-15 words MAXIMUM -- the most critical sentence in the video):\n"
+        f"Formula to use: \"{formula['name']}\"\n"
+        f"What to do: {formula['instruction']}\n"
+        f"Worked example: \"{formula['example']}\"\n"
+        f"Non-negotiable rule: {formula['rule']}\n"
+        f"The hook MUST create a curiosity gap. The viewer must need the next sentence to feel complete.\n\n"
+        f"FORBIDDEN HOOK OPENERS -- never start with any of these or anything similar:\n{banned_str}"
+    )
 
 def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
@@ -329,14 +375,24 @@ def build_full_script(script):
 
 
 def pick_power_word(words_in_chunk):
+    """Pick the most emotionally resonant word from a subtitle chunk.
+    Prioritises POWER_WORDS over length -- meaning matters more than syllables."""
     candidates = [
         w for w in words_in_chunk
-        if len(w["word"].strip()) > 3
+        if len(w["word"].strip()) > 2
         and w["word"].strip().lower().rstrip(".,!?'\"") not in WORD_FLASH_STOPWORDS
         and w["word"].strip().replace("'","").replace("-","").isalpha()
     ]
     if not candidates:
         return None
+    # Priority 1: emotionally resonant power words
+    power_candidates = [
+        w for w in candidates
+        if w["word"].strip().lower().rstrip(".,!?'\"") in POWER_WORDS
+    ]
+    if power_candidates:
+        return power_candidates[0]["word"].strip().upper()
+    # Priority 2: longest meaningful word as fallback
     return max(candidates, key=lambda w: len(w["word"].strip()))["word"].strip().upper()
 
 def transcribe_audio_whisper(media_path):
@@ -376,7 +432,10 @@ def generate_ass_subtitles(words, output_path):
         chunk=words[i:i+SUBTITLE_CHUNK]
         text=" ".join(w["word"].upper() for w in chunk)
         start=chunk[0]["start"]; end=chunk[-1]["end"]
-        if chunks and start<chunks[-1]["end"]: start=chunks[-1]["end"]
+        if not chunks:
+            start=0.0  # Force first subtitle from frame 1 -- no dead screen
+        elif start<chunks[-1]["end"]:
+            start=chunks[-1]["end"]
         chunks.append({"text":text,"start":start,"end":end,"words":chunk})
         i+=SUBTITLE_CHUNK
     events="".join(f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n" for c in chunks)
@@ -614,7 +673,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.3")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
     print(f"  Niche: {niche['name']} | Global tags: {GLOBAL_HASHTAGS}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
