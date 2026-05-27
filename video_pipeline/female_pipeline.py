@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v3.6
+MindCore AI -- Female Cinematic Pipeline v3.7
 =============================================
-CHANGES (v3.6):
-  - FIX: Video length cut to 25-35 seconds.
-    WORD_TARGETS reduced across all scenes -- tighter, punchier, no filler.
-    Target: 53-75 words total = ~24-35 seconds at 130wpm.
-  - FIX: Hook B-roll queries updated to human-centred footage (faces, hands,
-    body language) replacing abstract particle/bokeh visuals. See niche_keywords_female.json.
+CHANGES (v3.7):
+  - ADD: confession_ladder hook formula -- 3-4 beat escalating confession
+    (Emotionally/Mentally/Physically/Spiritually), opens at the emotional
+    floor mid-sentence, zero setup. Derived from competitor analysis.
+  - ADD: Per-scene colour grading. Hook/problem clips use COLOR_GRADE_COLD
+    (softer desaturated, moody). Story/CTA clips use COLOR_GRADE_WARM
+    (soft amber/golden, hopeful). The colour arc mirrors the emotional arc.
+  - UPDATE: CTA now offers emotional resolution ("You're not alone.") as
+    an alternative to comment-bait triggers, chosen by Claude based on
+    the script's emotional tone. Drives saves/shares on confessional videos.
 
-All v3.5 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
+All v3.6 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
 """
 
 import json
@@ -49,10 +53,18 @@ SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
 KB_SCALE      = 1.10
 KB_DIRECTIONS = ["pan_right", "pan_left", "pan_up", "pan_down", "zoom_in", "zoom_out"]
 
-COLOR_GRADE_FILTER = (
-    "eq=contrast=1.05:brightness=0.02:saturation=0.85:gamma=0.95,"
-    "colorbalance=rs=0.06:gs=0.01:bs=-0.04"
+# Cold grade: softer desaturated, moody -- used for hook and problem scenes
+COLOR_GRADE_COLD = (
+    "eq=contrast=1.10:brightness=-0.02:saturation=0.75:gamma=1.00,"
+    "colorbalance=rs=0.02:gs=0:bs=0.03"
 )
+# Warm grade: soft amber/golden, hopeful -- used for story and CTA scenes
+COLOR_GRADE_WARM = (
+    "eq=contrast=1.00:brightness=0.06:saturation=0.95:gamma=0.93,"
+    "colorbalance=rs=0.10:gs=0.03:bs=-0.06"
+)
+# Scene types that get the warm grade
+WARM_SCENES = {"story", "cta", "solution_cta"}
 
 MUSIC_VOLUME           = 0.05
 WHISPER_MODEL          = "tiny"
@@ -105,6 +117,7 @@ POWER_WORDS = {
 }
 
 HOOK_FORMULAS = [
+    {"name":"confession_ladder","instruction":"Open at the emotional floor with a 3-4 beat escalating confession. Each beat names one dimension of exhaustion (emotional, mental, physical, spiritual). Drop the viewer mid-confession -- zero setup, zero preamble.","example":"Emotionally, I'm completely empty. Mentally, I can't hold one more thought. And physically? I'm so tired I can't even cry anymore.","rule":"Each beat must name a different dimension. The ladder MUST escalate in emotional weight. Open as if mid-confession -- no 'Have you ever felt' or any setup. The viewer hears herself in the first word."},
     {"name":"pattern_interrupt","instruction":"Open with a statement that contradicts what the viewer expects. No setup.","example":"Nobody talks about what actually happens when you stop people-pleasing.","rule":"The surprising statement IS the hook. No preamble, no context."},
     {"name":"counter_intuitive","instruction":"State something true that feels wrong at first. Flip the obvious assumption.","example":"Anxiety in women doesn't always look like panic. It looks like over-preparing for everything.","rule":"Must feel like a reframe. The viewer should think: I never thought of it that way."},
     {"name":"uncomfortable_admission","instruction":"Say something the viewer has felt but never heard spoken out loud.","example":"I used to apologise for taking up space in my own life.","rule":"First person or universal. Never preachy. Must feel like someone finally said the quiet part."},
@@ -310,7 +323,7 @@ def _build_hook_block(formula):
         "WRONG: \"Most women don't realise that anxiety...\" -- 'Most women don't' is weak\n"
         "WRONG: \"If you've been holding it together...\" -- 'If you've been' delays the punch\n\n"
         "RIGHT: \"You stopped feeling things.\" -- emotional punch in 4 words\n"
-        "RIGHT: \"Invisible. That's what carrying everyone feels like.\" -- punch in 1 word\n"
+        "RIGHT: \"Emotionally, I'm completely empty.\" -- confession ladder, punch in 1 word\n"
         "RIGHT: \"Tired isn't the word. It's gone.\" -- punch in 3 words\n"
         "RIGHT: \"Disappearing while everyone watches.\" -- punch in 4 words\n\n"
         "Lead with the FEELING. Lead with the PAIN. Lead with the TRUTH.\n"
@@ -331,14 +344,14 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING HERSELF: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- MUST end with a community engagement trigger: "Comment SEEN if this is you", "Comment HEALING if you're on this journey", "Comment TIRED if you know this feeling", "Comment SAME if this hit", "Comment INVISIBLE if you've felt this way". Pick the word that fits THIS video's emotion. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING HERSELF: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- end with EITHER: (a) an emotional resolution payoff that drives saves and shares -- "You're not alone." / "You kept showing up, and that matters." / "This is for the ones disappearing in silence." -- choose this when the script is deeply confessional or raw; OR (b) a community engagement trigger -- "Comment SEEN if this is you" / "Comment TIRED if you know this feeling" / "Comment INVISIBLE if you've felt this way" -- choose this when the script is more direct or empowering. Match the ending to the emotional tone. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt,client,max_tokens=800)
 
 def generate_ad_script(app_facts, niche, client):
     ad_topic=random.choice(AD_TOPICS); formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     print(f"  AD: pain point: {ad_topic['pain_point'][:65]}...")
     lo_prob,hi_prob=WORD_TARGETS_AD["problem"]; lo_story,hi_story=WORD_TARGETS_AD["story"]; lo_cta,hi_cta=WORD_TARGETS_AD["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI targeting women. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT -- every word must earn its place):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly + engagement trigger: "Comment SEEN if you need this", "Comment HEALING if you're ready", "Comment TIRED if this is you")\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI targeting women. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT -- every word must earn its place):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly, then end with EITHER an emotional resolution ("You're not alone in this.") OR an engagement trigger ("Comment SEEN if you need this" / "Comment HEALING if you're ready"). Match the tone.\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt,client,max_tokens=800)
 
 def build_full_script(script):
@@ -482,16 +495,25 @@ def search_pexels_clips(queries, num_clips=1):
 
 def fetch_scene_matched_clips(mood, niche):
     fallback=mood.get("pexels_queries",["woman alone nature"])
-    scene_plan=[(("hook",1,niche.get("hook_queries",fallback)),("problem",2,niche.get("problem_queries",fallback)),("story",1,niche.get("story_queries",fallback)),("cta",1,niche.get("cta_queries",fallback)))]
+    scene_plan=[
+        ("hook",         1, niche.get("hook_queries",    fallback)),
+        ("problem",      2, niche.get("problem_queries", fallback)),
+        ("story",        1, niche.get("story_queries",   fallback)),
+        ("solution_cta", 1, niche.get("cta_queries",     fallback)),
+    ]
     all_clips=[]
-    for scene_name,count,pool in [("hook",1,niche.get("hook_queries",fallback)),("problem",2,niche.get("problem_queries",fallback)),("story",1,niche.get("story_queries",fallback)),("cta",1,niche.get("cta_queries",fallback))]:
+    for scene_name,count,pool in scene_plan:
         pool_shuffled=list(pool); random.shuffle(pool_shuffled)
         queries=pool_shuffled[:min(count,len(pool_shuffled))]
         clips=search_pexels_clips(queries,num_clips=count)
         if not clips:
             fb=list(fallback); random.shuffle(fb); clips=search_pexels_clips(fb[:min(count,len(fb))],num_clips=count)
+        # Tag each clip with its scene type for colour grade selection
+        for clip in clips:
+            clip["scene"] = scene_name
         all_clips.extend(clips)
-        print(f"  [{scene_name.upper():8s}] {len(clips)} clip | {queries[0][:40] if queries else 'fallback'}")
+        grade_label = "WARM" if scene_name in WARM_SCENES else "COLD"
+        print(f"  [{scene_name.upper():12s}] {len(clips)} clip | {grade_label} grade | {queries[0][:35] if queries else 'fallback'}")
     print(f"  Scene clips total: {len(all_clips)}"); return all_clips
 
 def download_clip(url, output_path):
@@ -501,20 +523,29 @@ def download_clip(url, output_path):
             if chunk: f.write(chunk)
     print(f"  Clip: {Path(output_path).name} ({Path(output_path).stat().st_size/(1024*1024):.1f} MB)"); return output_path
 
-def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_right"):
-    kb_vf=ken_burns_vf(duration,direction); vf_str=f"{kb_vf},{COLOR_GRADE_FILTER},fps=30"
+def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_right", color_grade=None):
+    """Process a clip with Ken Burns motion and colour grade. Defaults to cold grade."""
+    if color_grade is None:
+        color_grade = COLOR_GRADE_COLD
+    kb_vf=ken_burns_vf(duration,direction); vf_str=f"{kb_vf},{color_grade},fps=30"
     cmd=["ffmpeg","-stream_loop","-1","-i",clip_path,"-vf",vf_str,"-t",str(duration),"-an","-c:v","libx264","-crf","20","-preset","fast","-y",output_path]
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode!=0: raise RuntimeError(f"Clip failed: {result.stderr[-300:]}")
     return output_path
 
-def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None, ass_path=None):
+def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None, ass_path=None, scene_types=None):
+    """Assemble clips into final video. scene_types list drives warm/cold colour grading per clip."""
     audio_duration=get_audio_duration(audio_path); n=len(clip_paths); clip_duration=audio_duration/n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s")
     clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); processed=[]
     for i,raw_path in enumerate(clip_paths):
+        scene_type = scene_types[i] if scene_types and i < len(scene_types) else "problem"
+        grade = COLOR_GRADE_WARM if scene_type in WARM_SCENES else COLOR_GRADE_COLD
         direction=KB_DIRECTIONS[i%len(KB_DIRECTIONS)]; out=str(clips_dir/f"clip_{i}_processed.mp4")
-        try: process_clip_to_portrait(raw_path,out,clip_duration,direction); processed.append(out); print(f"    Clip {i+1}/{n}: {direction}")
+        try:
+            process_clip_to_portrait(raw_path, out, clip_duration, direction, grade)
+            processed.append(out)
+            print(f"    Clip {i+1}/{n}: {direction} | {'WARM' if grade==COLOR_GRADE_WARM else 'COLD'}")
         except Exception as e: print(f"  Clip {i+1} failed ({e}) -- skipping")
     if not processed: raise RuntimeError("No clips processed")
     concat_file=OUTPUT_DIR/"concat.txt"
@@ -529,7 +560,7 @@ def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=Non
         cmd=["ffmpeg","-i",concat_video,"-i",audio_path,"-map","0:v:0","-map","1:a:0","-c:v","copy","-c:a","aac","-b:a","192k","-t",str(audio_duration),"-y",output_path]
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode!=0:
-        if music_path: print("  Music mix failed -- retrying without music"); assemble_cinematic_video(clip_paths,audio_path,output_path,music_path=None,ass_path=ass_path); return
+        if music_path: print("  Music mix failed -- retrying without music"); assemble_cinematic_video(clip_paths,audio_path,output_path,music_path=None,ass_path=ass_path,scene_types=scene_types); return
         raise RuntimeError(f"Audio mix failed: {result.stderr[-500:]}")
     size_mb=Path(output_path).stat().st_size/(1024*1024); w,h=get_video_dimensions(output_path)
     print(f"  Assembled: {w}x{h} | {size_mb:.1f} MB")
@@ -544,14 +575,18 @@ def render_cinematic_video(script_text, mood, niche):
     print("\n  [Pexels] Fetching scene-matched clips...")
     clips=fetch_scene_matched_clips(mood,niche)
     if not clips: raise RuntimeError("No Pexels clips found")
-    clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); raw_clip_paths=[]
+    clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); raw_clip_paths=[]; scene_types=[]
     for i,clip in enumerate(clips):
         clip_path=str(clips_dir/f"raw_{i}.mp4")
-        try: download_clip(clip["url"],clip_path); raw_clip_paths.append(clip_path)
+        try:
+            download_clip(clip["url"],clip_path)
+            raw_clip_paths.append(clip_path)
+            scene_types.append(clip.get("scene","problem"))
         except Exception as e: print(f"  Clip {i+1} download failed ({e})")
     if not raw_clip_paths: raise RuntimeError("All clip downloads failed")
     music_path=pick_music_track(); final_path=str(OUTPUT_DIR/"mindcore_female_video.mp4")
-    assemble_cinematic_video(raw_clip_paths,audio_path,final_path,music_path,ass_path); return final_path
+    assemble_cinematic_video(raw_clip_paths, audio_path, final_path, music_path, ass_path, scene_types=scene_types)
+    return final_path
 
 def get_video_dimensions(path):
     parts=subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0",path],capture_output=True,text=True,check=True).stdout.strip().split(",")
@@ -630,9 +665,9 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.6")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
-    print(f"  Niche: {niche['name']} | Target: 25-35s | Global tags: {GLOBAL_HASHTAGS}")
+    print(f"  Niche: {niche['name']} | Target: 25-35s | Colour: COLD(hook/problem) WARM(story/cta)")
     print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")
@@ -642,7 +677,7 @@ def main():
         topic_history=load_topic_history(); save_topic_history(topic_history,topic.get("keyword",topic.get("topic","")))
     script=sanitize_script(script); (OUTPUT_DIR/"script_female.json").write_text(json.dumps(script,indent=2))
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER); est_duration=round(total_words/130*60)
-    print(f"\n  ~{est_duration}s | Hook: {script.get('hook_formula','?')}")
+    print(f"\n  ~{est_duration}s | Hook formula: {script.get('hook_formula','?')}")
     for scene in SCENE_ORDER: print(f"  [{scene:15s}] {script[scene]['voiceover'][:85]}...")
     final_path=render_cinematic_video(build_full_script(script),mood,niche)
     guide_text=generate_upload_guide(script,mode,niche,client); save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,niche)
