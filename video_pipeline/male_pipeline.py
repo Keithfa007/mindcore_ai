@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v7.6
+MindCore AI -- Male Cinematic Pipeline v7.7
 ============================================
-CHANGES (v7.6):
-  - ADD: confession_ladder hook formula -- 3-4 beat escalating confession
-    (Mentally/Emotionally/Spiritually/Physically), opens at the emotional
-    floor mid-sentence, zero setup. Derived from competitor analysis.
-  - ADD: Per-scene colour grading. Hook/problem clips use COLOR_GRADE_COLD
-    (desaturated, moody, heavy). Story/CTA clips use COLOR_GRADE_WARM
-    (warmer, hopeful, brighter). The colour arc mirrors the emotional arc.
-  - UPDATE: CTA now offers emotional resolution ("You're not alone.") as
-    an alternative to comment-bait triggers, chosen by Claude based on
-    the script's emotional tone. Drives saves/shares on confessional videos.
+CHANGES (v7.7):
+  - FIX: POWER_WORDS expanded with payoff words identified from /watch
+    competitor analysis. Words that were missing: wound, depleted,
+    difference, flaw, earned, rooms, wrong, apologize, perception, rehearse.
+    These are the exact words that carry the diagnostic reframe payoff
+    ("you're not failing -- you're depleted", "wrong rooms") but were not
+    flashing because they weren't in the set.
+  - FIX: Timing reverted to single daily cron 07:00 UTC = 9am Malta.
 
-All v7.5 features preserved.
+All v7.6 features preserved.
 """
 
 import json
@@ -53,17 +51,14 @@ SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
 KB_SCALE      = 1.10
 KB_DIRECTIONS = ["pan_right", "pan_left", "pan_up", "pan_down", "zoom_in", "zoom_out"]
 
-# Cold grade: desaturated, moody, heavy -- used for hook and problem scenes
 COLOR_GRADE_COLD = (
     "eq=contrast=1.15:brightness=-0.05:saturation=0.65:gamma=1.05,"
     "colorbalance=rs=-0.03:gs=0:bs=0.07"
 )
-# Warm grade: hopeful, brighter, amber -- used for story and CTA scenes
 COLOR_GRADE_WARM = (
     "eq=contrast=1.05:brightness=0.05:saturation=0.90:gamma=0.95,"
     "colorbalance=rs=0.08:gs=0.02:bs=-0.05"
 )
-# Scene types that get the warm grade
 WARM_SCENES = {"story", "cta", "solution_cta"}
 
 MUSIC_VOLUME           = 0.05
@@ -103,16 +98,25 @@ WORD_FLASH_STOPWORDS = {
 }
 
 POWER_WORDS = {
+    # Core emotional pain
     'broken','tired','alone','lost','numb','empty','heavy','dark','scared',
     'hurt','pain','shame','guilt','anger','grief','fear','doubt','silence',
     'hollow','drained','invisible','worthless','hopeless','desperate','trapped',
+    # Mental health & recovery
     'sober','healing','recovery','depression','anxiety','trauma','burnout',
     'relapse','exhausted','overwhelmed','suffocating','withdrawn',
+    # Action & identity
     'fight','carry','hold','fall','rise','change','truth','real',
     'survive','breathe','pretend','mask','hide','quit',
+    # Worth & self
     'enough','worthy','seen','heard','free','strong','silent',
     'soul','heart','weight','burden','purpose','missing',
+    # Present-tense emotional states
     'pretending','performing','disappearing','shrinking','drowning','fading',
+    # v7.7: payoff words from /watch competitor analysis -- these carry the
+    # diagnostic reframe punchlines but were missing from the flash set
+    'wound','depleted','difference','flaw','earned','rooms','wrong',
+    'apologize','perception','rehearse',
 }
 
 HOOK_FORMULAS = [
@@ -146,7 +150,6 @@ BANNED_HOOK_OPENERS = [
     "We need to talk about","It's time to talk about",
 ]
 
-# Target: 53-75 words total = ~24-35 seconds at 130wpm
 WORD_TARGETS_AD      = {"hook":(8,12),"problem":(15,22),"story":(18,25),"solution_cta":(7,10)}
 WORD_TARGETS_CONTENT = {"hook":(8,12),"problem":(18,25),"story":(20,28),"solution_cta":(7,10)}
 
@@ -231,7 +234,7 @@ def load_app_facts():
 
 def load_keywords_data():
     if not KEYWORDS_PATH.exists():
-        return {"schedule":{},"niches":{"default":{"name":"Men's Mental Health","viewer_persona":"A man in his 40s struggling silently.","seed_queries":["men mental health tips"],"hashtags":[],"hook_queries":["man face close up dark"],"problem_queries":["man alone dark room"],"story_queries":["feet walking path forward"],"cta_queries":["sunrise morning warm light"],"visual_moods":[{"name":"default","description":"moody","pexels_queries":["man alone window","empty road","dark room light"]}]}}}
+        return {"schedule":{},"niches":{"default":{"name":"Men's Mental Health","viewer_persona":"A man in his 40s struggling silently.","seed_queries":["men mental health tips"],"hashtags":[],"hook_queries":["man face close up dark"],"problem_queries":["man alone dark room interior"],"story_queries":["man walking alone path grey"],"cta_queries":["sunrise morning warm light"],"visual_moods":[{"name":"default","description":"moody","pexels_queries":["man alone window","empty road","dark room light"]}]}}}
     with open(KEYWORDS_PATH) as f: return json.load(f)
 
 def get_niche_for_today(keywords_data):
@@ -297,7 +300,7 @@ def research_keyword_candidates_from_serp(seeds):
                 seen.add(t.lower()); candidates.append({"text":t,"source":"autocomplete","tail_type":_keyword_type(t),"word_count":_word_count(t),"seed":ac,"total_results":0}); ac_count+=1
         if ac_count: print(f"  [AUTOCOMPLETE] '{ac}': {ac_count} suggestions")
         time.sleep(0.5)
-    s=sum(1 for c in candidates if c["tail_type"]=="short_tail"); m=sum(1 for c in candidates if c["tail_type"]=="mid_tail"); l=sum(1 for c in candidates if c["tail_type"]=="long_tail")
+    s=sum(1 for c in candidates if c["tail_type"]=="short_tail"); m=sum(1 for c in candidates if c["tail_type"]=="mid_tail"); l=sum(1 for c in candidates if c["tail_type"]=="_long_tail")
     print(f"  Candidates: {len(candidates)} ({s} short | {m} mid | {l} long)"); return candidates
 
 def rank_and_select_keyword_claude(candidates, client, topic_history, niche):
@@ -527,7 +530,6 @@ def fetch_scene_matched_clips(mood, niche):
         if not clips:
             fallback_shuffled = list(fallback); random.shuffle(fallback_shuffled)
             clips = search_pexels_clips(fallback_shuffled[:min(count,len(fallback_shuffled))], num_clips=count)
-        # Tag each clip with its scene type for colour grade selection
         for clip in clips:
             clip["scene"] = scene_name
         all_clips.extend(clips)
@@ -545,7 +547,6 @@ def download_clip(url, output_path):
     print(f"  Clip: {Path(output_path).name} ({Path(output_path).stat().st_size/(1024*1024):.1f} MB)"); return output_path
 
 def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_right", color_grade=None):
-    """Process a clip with Ken Burns motion and colour grade. Defaults to cold grade."""
     if color_grade is None:
         color_grade = COLOR_GRADE_COLD
     kb_vf=ken_burns_vf(duration,direction); vf_str=f"{kb_vf},{color_grade},fps=30"
@@ -555,7 +556,6 @@ def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_ri
     return output_path
 
 def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None, ass_path=None, scene_types=None):
-    """Assemble clips into final video. scene_types list drives warm/cold colour grading per clip."""
     audio_duration=get_audio_duration(audio_path); n=len(clip_paths); clip_duration=audio_duration/n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s")
     clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); processed=[]
@@ -686,7 +686,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.6")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
     print(f"  Niche: {niche['name']} | Target: 25-35s | Colour: COLD(hook/problem) WARM(story/cta)")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
