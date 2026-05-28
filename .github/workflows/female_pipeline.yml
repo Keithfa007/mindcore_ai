@@ -1,7 +1,9 @@
 name: Female Video Pipeline
 
-# Malta-audience schedule: 07:00 UTC daily = 9am Malta (UTC+2 summer) = 8am UK
-# Single cron -- no split schedule. Optimised for primary audience (60% Malta, 16% UK).
+# Malta-audience schedule:
+#   Female: 17:00 UTC daily = 7pm Malta (UTC+2 summer) = 6pm UK
+#   Male pipeline fires at 07:00 UTC (9am Malta) -- 8 hours apart
+#   Evening window: women's emotional content resonates in wind-down hours
 on:
   workflow_dispatch:
     inputs:
@@ -15,7 +17,7 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 7 * * *"  # Daily 07:00 UTC = 9am Malta = 8am UK
+    - cron: "0 17 * * *"  # Daily 17:00 UTC = 7pm Malta = 6pm UK
 
 jobs:
   generate-female-video:
@@ -46,9 +48,11 @@ jobs:
           if [ "$FORCE" = "ad" ]; then
             echo "Mode: FORCED AD"
           elif [ "$FORCE" = "content" ]; then
+            echo "Mode: FORCED CONTENT"
+          else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Daily 07:00 UTC = 9am Malta = 8am UK"
+          echo "Schedule: Daily 17:00 UTC = 7pm Malta = 6pm UK"
           echo "Pipeline: female_pipeline.py | Platforms: TikTok + Facebook + YouTube"
 
       - name: Run Female Cinematic Pipeline
