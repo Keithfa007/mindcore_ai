@@ -1,10 +1,7 @@
 name: Female Video Pipeline
 
-# USA-targeted schedule (VPN = US audience, Malta = UTC+2 summer):
-#   Mon-Fri: cron 12:00 UTC -> arrives ~13:00 UTC = 9am EST = 3pm Malta
-#   Sat-Sun: cron 17:00 UTC -> arrives ~18:00 UTC = 2pm EST = 8pm Malta
-# 1hr early on both slots to compensate for GitHub Actions delay
-# GitHub Actions cron days: 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+# Malta-audience schedule: 07:00 UTC daily = 9am Malta (UTC+2 summer) = 8am UK
+# Single cron -- no split schedule. Optimised for primary audience (60% Malta, 16% UK).
 on:
   workflow_dispatch:
     inputs:
@@ -18,8 +15,7 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 12 * * 1-5"  # Mon-Fri cron 12:00 UTC -> ~13:00 UTC (9am EST / 3pm Malta)
-    - cron: "0 17 * * 6,0"  # Sat-Sun cron 17:00 UTC -> ~18:00 UTC (2pm EST / 8pm Malta)
+    - cron: "0 7 * * *"  # Daily 07:00 UTC = 9am Malta = 8am UK
 
 jobs:
   generate-female-video:
@@ -50,12 +46,10 @@ jobs:
           if [ "$FORCE" = "ad" ]; then
             echo "Mode: FORCED AD"
           elif [ "$FORCE" = "content" ]; then
-            echo "Mode: FORCED CONTENT"
-          else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Mon-Fri ~13:00 UTC (9am EST / 3pm Malta) | Sat-Sun ~18:00 UTC (2pm EST / 8pm Malta)"
-          echo "Pipeline: female_pipeline.py v3.2 | Platforms: TikTok + Facebook + YouTube"
+          echo "Schedule: Daily 07:00 UTC = 9am Malta = 8am UK"
+          echo "Pipeline: female_pipeline.py | Platforms: TikTok + Facebook + YouTube"
 
       - name: Run Female Cinematic Pipeline
         env:
@@ -99,7 +93,7 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## Female Video Pipeline v3.2" >> $GITHUB_STEP_SUMMARY
+          echo "## Female Video Pipeline" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** #${{ github.run_number }} | **Script:** female_pipeline.py | **Platforms:** TikTok + Facebook + YouTube" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output_female/script_female.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
