@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v3.7
+MindCore AI -- Female Cinematic Pipeline v3.8
 =============================================
-CHANGES (v3.7):
-  - ADD: confession_ladder hook formula -- 3-4 beat escalating confession
-    (Emotionally/Mentally/Physically/Spiritually), opens at the emotional
-    floor mid-sentence, zero setup. Derived from competitor analysis.
-  - ADD: Per-scene colour grading. Hook/problem clips use COLOR_GRADE_COLD
-    (softer desaturated, moody). Story/CTA clips use COLOR_GRADE_WARM
-    (soft amber/golden, hopeful). The colour arc mirrors the emotional arc.
-  - UPDATE: CTA now offers emotional resolution ("You're not alone.") as
-    an alternative to comment-bait triggers, chosen by Claude based on
-    the script's emotional tone. Drives saves/shares on confessional videos.
+CHANGES (v3.8):
+  - FIX: POWER_WORDS expanded with payoff words identified from /watch
+    competitor analysis. Words that were missing: wound, depleted,
+    difference, flaw, earned, rooms, wrong, apologize, perception, rehearse.
+    These are the exact words that carry the diagnostic reframe payoff
+    but were not flashing because they weren't in the set.
+  - FIX: Timing reverted to single daily cron 07:00 UTC = 9am Malta.
 
-All v3.6 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
+All v3.7 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
 """
 
 import json
@@ -53,17 +50,14 @@ SCENE_ORDER        = ["hook", "problem", "story", "solution_cta"]
 KB_SCALE      = 1.10
 KB_DIRECTIONS = ["pan_right", "pan_left", "pan_up", "pan_down", "zoom_in", "zoom_out"]
 
-# Cold grade: softer desaturated, moody -- used for hook and problem scenes
 COLOR_GRADE_COLD = (
     "eq=contrast=1.10:brightness=-0.02:saturation=0.75:gamma=1.00,"
     "colorbalance=rs=0.02:gs=0:bs=0.03"
 )
-# Warm grade: soft amber/golden, hopeful -- used for story and CTA scenes
 COLOR_GRADE_WARM = (
     "eq=contrast=1.00:brightness=0.06:saturation=0.95:gamma=0.93,"
     "colorbalance=rs=0.10:gs=0.03:bs=-0.06"
 )
-# Scene types that get the warm grade
 WARM_SCENES = {"story", "cta", "solution_cta"}
 
 MUSIC_VOLUME           = 0.05
@@ -103,17 +97,26 @@ WORD_FLASH_STOPWORDS = {
 }
 
 POWER_WORDS = {
+    # Core emotional pain
     'broken','tired','alone','lost','numb','empty','heavy','dark','scared',
     'hurt','pain','shame','guilt','anger','grief','fear','doubt','silence',
     'hollow','drained','invisible','worthless','hopeless','desperate','trapped',
+    # Mental health & recovery
     'healing','depression','anxiety','trauma','burnout','exhausted',
     'overwhelmed','suffocating','withdrawn','sensitive','anxious',
+    # Action & identity
     'fight','carry','hold','fall','rise','change','truth','real',
     'survive','breathe','pretend','mask','hide','quit','disappear',
+    # Worth & self
     'enough','worthy','seen','heard','free','strong','silent',
     'soul','heart','weight','burden','purpose','missing','love',
+    # Present-tense emotional states
     'pretending','performing','disappearing','shrinking','drowning','fading',
     'pleasing','hiding','carrying','protecting','managing','fixing',
+    # v3.8: payoff words from /watch competitor analysis -- these carry the
+    # diagnostic reframe punchlines but were missing from the flash set
+    'wound','depleted','difference','flaw','earned','rooms','wrong',
+    'apologize','perception','rehearse',
 }
 
 HOOK_FORMULAS = [
@@ -147,7 +150,6 @@ BANNED_HOOK_OPENERS = [
     "We need to talk about","It's time to talk about",
 ]
 
-# Target: 53-75 words total = ~24-35 seconds at 130wpm
 WORD_TARGETS_AD      = {"hook":(8,12),"problem":(15,22),"story":(18,25),"solution_cta":(7,10)}
 WORD_TARGETS_CONTENT = {"hook":(8,12),"problem":(18,25),"story":(20,28),"solution_cta":(7,10)}
 
@@ -224,7 +226,7 @@ def load_app_facts():
 
 def load_keywords_data():
     if not KEYWORDS_PATH.exists():
-        return {"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s carrying everything for everyone.","seed_queries":["women mental health tips"],"hashtags":[],"hook_queries":["woman face close up tired"],"problem_queries":["woman alone dark room"],"story_queries":["woman walking nature path"],"cta_queries":["sunlight curtain morning soft"],"visual_moods":[{"name":"default","description":"soft warm","pexels_queries":["woman alone window","woman journaling","soft light woman"]}]}}}
+        return {"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s carrying everything for everyone.","seed_queries":["women mental health tips"],"hashtags":[],"hook_queries":["woman face close up tired"],"problem_queries":["woman alone dark room interior"],"story_queries":["woman walking alone path quiet"],"cta_queries":["sunlight curtain morning soft"],"visual_moods":[{"name":"default","description":"soft warm","pexels_queries":["woman alone window","woman journaling","soft light woman"]}]}}}
     with open(KEYWORDS_PATH) as f: return json.load(f)
 
 def get_niche_for_today(keywords_data):
@@ -508,7 +510,6 @@ def fetch_scene_matched_clips(mood, niche):
         clips=search_pexels_clips(queries,num_clips=count)
         if not clips:
             fb=list(fallback); random.shuffle(fb); clips=search_pexels_clips(fb[:min(count,len(fb))],num_clips=count)
-        # Tag each clip with its scene type for colour grade selection
         for clip in clips:
             clip["scene"] = scene_name
         all_clips.extend(clips)
@@ -524,7 +525,6 @@ def download_clip(url, output_path):
     print(f"  Clip: {Path(output_path).name} ({Path(output_path).stat().st_size/(1024*1024):.1f} MB)"); return output_path
 
 def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_right", color_grade=None):
-    """Process a clip with Ken Burns motion and colour grade. Defaults to cold grade."""
     if color_grade is None:
         color_grade = COLOR_GRADE_COLD
     kb_vf=ken_burns_vf(duration,direction); vf_str=f"{kb_vf},{color_grade},fps=30"
@@ -534,7 +534,6 @@ def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_ri
     return output_path
 
 def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None, ass_path=None, scene_types=None):
-    """Assemble clips into final video. scene_types list drives warm/cold colour grading per clip."""
     audio_duration=get_audio_duration(audio_path); n=len(clip_paths); clip_duration=audio_duration/n
     print(f"  Assembling: {n} clips x {clip_duration:.1f}s = {audio_duration:.1f}s")
     clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); processed=[]
@@ -665,7 +664,7 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.7")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.8")
     print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
     print(f"  Niche: {niche['name']} | Target: 25-35s | Colour: COLD(hook/problem) WARM(story/cta)")
     print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
