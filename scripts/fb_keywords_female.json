@@ -1,0 +1,133 @@
+{
+  "last_updated": "2026-05-29",
+  "research_method": "derived_from_video_pipeline_niches_v2.2",
+  "source": "video_pipeline/niche_keywords_female.json (perimenopause_wellness, ai_companion, womens_mental_health, anxiety_sos)",
+  "note": "Mirrors the SEO research that feeds the female cinematic video pipeline so the FB female pool stays in lockstep with what's working there.",
+  "topics": [
+    {
+      "keyword": "perimenopause exhaustion sleep doesn't fix",
+      "angle": "This isn't tiredness sleep can solve. This is your hormones renegotiating who you are. Both can be true.",
+      "niche": "perimenopause_wellness"
+    },
+    {
+      "keyword": "feeling invisible inside your own family",
+      "angle": "You love them. You'd do it all again. And you still feel invisible inside it. Both can be true.",
+      "niche": "perimenopause_wellness"
+    },
+    {
+      "keyword": "why do i feel like a stranger to myself in midlife",
+      "angle": "Somewhere in your forties you stopped recognising the feeling you used to call fine.",
+      "niche": "perimenopause_wellness"
+    },
+    {
+      "keyword": "mood swings perimenopause no warning",
+      "angle": "You're not unstable. Your body is recalibrating something it doesn't have a manual for.",
+      "niche": "perimenopause_wellness"
+    },
+    {
+      "keyword": "i'm not struggling i'm just going through a lot",
+      "angle": "You wouldn't call it struggling. You'd say you're going through a lot. That phrase carries more than people hear.",
+      "niche": "perimenopause_wellness"
+    },
+    {
+      "keyword": "midlife women's wellbeing paradox",
+      "angle": "You can do everything right and still feel like a stranger to yourself. That's not failure. That's transition.",
+      "niche": "perimenopause_wellness"
+    },
+    {
+      "keyword": "why women talk to ai instead of friends",
+      "angle": "Your friends are tired too. An AI that listens without needing anything back is a kind of relief.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "emotional caretaker burnout women",
+      "angle": "You're the one everyone comes to. Where do you put the things you need to say.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "3am overthinking spiral women",
+      "angle": "It's not the day that's hard. It's the 3am replay you can't switch off.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "no one to listen without giving advice",
+      "angle": "Sometimes you don't want advice. You just want someone to listen without trying to fix it.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "highly functioning and quietly drained",
+      "angle": "You're high-functioning. You also haven't been okay in months. Both can be true.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "told i'm too sensitive my whole life",
+      "angle": "You're not too sensitive. You've just been in environments that treated sensitivity as a flaw.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "why do i apologise reflexively for everything",
+      "angle": "You don't say sorry because you're wrong. You say it because somewhere along the way you learned it was safer.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "i don't deserve help others have it worse",
+      "angle": "Other people having it harder doesn't make your hard less real. Both can be true.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "rehearsing conversations in my head all night",
+      "angle": "You're not overthinking. You're rehearsing — and that's a very specific kind of tired.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "people pleasing isn't a personality trait",
+      "angle": "People-pleasing is a survival strategy that stops working — and most women find that out the hardest way.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "emotional exhaustion women carrying everyone",
+      "angle": "You carry everyone else's emotions. Where do yours get to go.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "women's anxiety doesn't look like panic",
+      "angle": "Anxiety in women doesn't always look like panic. Sometimes it looks like over-preparing for everything.",
+      "niche": "anxiety_sos"
+    },
+    {
+      "keyword": "hypervigilance disguised as being organised",
+      "angle": "You're not just on top of things. You're scanning for what could go wrong. That's not organisation, that's hypervigilance.",
+      "niche": "anxiety_sos"
+    },
+    {
+      "keyword": "can't rest can't relax constantly on alert",
+      "angle": "You don't rest because resting feels unsafe. That's not a lack of discipline — that's a nervous system that never got to switch off.",
+      "niche": "anxiety_sos"
+    },
+    {
+      "keyword": "functional anxiety women symptoms",
+      "angle": "You look fine. You sound fine. You also haven't taken a full breath since Tuesday.",
+      "niche": "anxiety_sos"
+    },
+    {
+      "keyword": "why do i feel guilty when i finally rest",
+      "angle": "Resting doesn't feel restful. It feels like waiting to get caught. That guilt was taught — and it can be unlearned.",
+      "niche": "anxiety_sos"
+    },
+    {
+      "keyword": "i used to apologise for taking up space",
+      "angle": "You spent years apologising for taking up space in your own life. Stopping that is allowed. Slowly.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "tired of acting okay",
+      "angle": "Acting okay is exhausting. And nobody warns you how much it costs over time.",
+      "niche": "womens_mental_health"
+    },
+    {
+      "keyword": "when was the last time someone asked how you really are",
+      "angle": "When was the last time someone asked how you actually are — and waited for the real answer.",
+      "niche": "womens_mental_health"
+    }
+  ]
+}

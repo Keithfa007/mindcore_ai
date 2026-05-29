@@ -1,102 +1,148 @@
 {
-  "last_updated": "2026-05-01",
-  "research_method": "claude_web_search",
+  "last_updated": "2026-05-29",
+  "research_method": "derived_from_video_pipeline_niches_v6.2",
+  "source": "video_pipeline/niche_keywords.json (recovery, ai_companion, mens_mental_health, mood_wellness)",
+  "note": "Mirrors the SEO research that feeds the male cinematic video pipeline so the FB pool stays in lockstep with what's working there.",
   "topics": [
     {
-      "keyword": "why do i feel nothing after working so hard",
-      "angle": "Success without satisfaction isn't success—it's a warning sign your nervous system is tapped out."
-    },
-    {
-      "keyword": "how to tell if burnout is actually depression",
-      "angle": "When rest stops working and nothing brings you back, it's time to stop guessing and get real help."
-    },
-    {
-      "keyword": "why does my anxiety come out as anger",
-      "angle": "Rage is often anxiety in a suit—men weren't taught to name fear, so it shows up sideways."
-    },
-    {
-      "keyword": "what is high functioning anxiety in men",
-      "angle": "You're crushing it at work but dying inside—that's not balance, that's borrowed time."
-    },
-    {
-      "keyword": "panic attack symptoms that feel like heart attack",
-      "angle": "Your chest is tight, heart racing—but the ER says you're fine. Now what do you do."
-    },
-    {
-      "keyword": "why do men struggle with emotional numbness",
-      "angle": "Feeling nothing isn't strength—it's what happens when your brain hits the mute button to survive."
-    },
-    {
-      "keyword": "how to recover from emotional burnout as a dad",
-      "angle": "You love your kids but you're running on fumes—here's how to refill without feeling selfish."
-    },
-    {
       "keyword": "loneliness in sobriety after quitting drinking",
-      "angle": "Sobriety gave you your life back, but now you're sitting with feelings you used to drown."
-    },
-    {
-      "keyword": "depleted dad syndrome symptoms and solutions",
-      "angle": "Being an involved father shouldn't mean losing yourself—but for too many men, it does."
-    },
-    {
-      "keyword": "why does everyone think im fine when im not",
-      "angle": "High-functioning doesn't mean healthy—it just means nobody can see you falling apart yet."
-    },
-    {
-      "keyword": "how to stop feeling like a robot going through motions",
-      "angle": "Autopilot keeps you moving but it's stealing your ability to feel alive in your own life."
-    },
-    {
-      "keyword": "male anxiety symptoms that don't look like worry",
-      "angle": "If you're irritable, restless, or always on edge but never 'anxious,' you might be missing the real issue."
-    },
-    {
-      "keyword": "why do i feel more alone after becoming a father",
-      "angle": "Fatherhood is supposed to bring connection—so why do so many dads feel more isolated than ever."
-    },
-    {
-      "keyword": "why successful men feel empty and unfulfilled",
-      "angle": "You hit the goals, got the money, earned respect—so why does none of it actually matter anymore."
-    },
-    {
-      "keyword": "emotional shutdown in relationships after stress",
-      "angle": "You're not trying to pull away from your partner—your brain just can't hold one more thing right now."
-    },
-    {
-      "keyword": "how to make friends as a man over 35",
-      "angle": "Your college buddies moved away, work friends aren't real friends—and now you're starting from scratch."
-    },
-    {
-      "keyword": "signs you need therapy not just a vacation",
-      "angle": "A weekend off won't fix what months of grinding broke—some problems need more than rest."
+      "angle": "Sobriety gave you your life back, but now you're sitting with feelings you used to drown.",
+      "niche": "recovery"
     },
     {
       "keyword": "why does sobriety feel harder than addiction sometimes",
-      "angle": "You did the hardest part and got clean—now the loneliness and boredom are testing you differently."
+      "angle": "You did the hardest part and got clean — now the loneliness and boredom are testing you differently.",
+      "niche": "recovery"
     },
     {
-      "keyword": "how to stop overthinking every conversation you had",
-      "angle": "Replaying what you said on a loop isn't reflection—it's anxiety dressed up as self-improvement."
+      "keyword": "emotional flatness in early recovery",
+      "angle": "You're awake at 2am not from cravings but from the feelings sobriety uncovered.",
+      "niche": "recovery"
+    },
+    {
+      "keyword": "hiding sobriety from people at work",
+      "angle": "Nobody at the office knows. Holding two lives together is its own kind of exhaustion.",
+      "niche": "recovery"
+    },
+    {
+      "keyword": "surviving instead of living recovery",
+      "angle": "You're not relapsing, but you're not living either. The middle is the hardest place to name.",
+      "niche": "recovery"
+    },
+    {
+      "keyword": "why do men talk to ai instead of friends",
+      "angle": "He'd talk to an AI before he'd talk to a friend about how he really feels — and that's not a flaw.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "surrounded by people but still alone",
+      "angle": "You can have people around you and still feel fundamentally alone in your own head.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "performing a version of yourself",
+      "angle": "You're not living — you're performing a version of yourself everyone expects to see.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "private place to talk about mental health",
+      "angle": "Sometimes you don't need advice. You just need a place to put the thoughts that aren't anyone else's to carry.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "why men would never call a helpline",
+      "angle": "Picking up the phone feels like admitting something. Typing into an app doesn't.",
+      "niche": "ai_companion"
+    },
+    {
+      "keyword": "when a man says he's tired",
+      "angle": "When a man says he's tired, he usually means something a lot heavier than sleep can fix.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "high functioning depression in men",
+      "angle": "You're crushing it at work but dying inside — that's not balance, that's borrowed time.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "why my anxiety comes out as anger",
+      "angle": "Rage is often anxiety in a suit — men weren't taught to name fear, so it shows up sideways.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "emotional numbness men",
+      "angle": "Feeling nothing isn't strength — it's what happens when your brain hits the mute button to survive.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "i'm not depressed i'm just not myself lately",
+      "angle": "You wouldn't use the word depressed. You'd just say you're not yourself lately. Both can be true.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "male loneliness epidemic",
+      "angle": "You're surrounded by people but still feel alone — that's not weakness, it's epidemic-level common.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "how to make friends as a man over 35",
+      "angle": "Your college mates moved away, work friends aren't real friends — and now you're starting from scratch.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "why do successful men feel empty",
+      "angle": "You hit the goals, got the money, earned respect — so why does none of it actually matter anymore.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "depleted dad syndrome",
+      "angle": "You love your kids but you're running on fumes — here's how to refill without feeling selfish.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "strong silent type burnout",
+      "angle": "You've been the strong one for so long you forgot what it feels like to not be. That bill always comes due.",
+      "niche": "mens_mental_health"
+    },
+    {
+      "keyword": "always overthinking conversations at night",
+      "angle": "Replaying what you said on a loop at 1am isn't reflection — it's anxiety dressed up as self-improvement.",
+      "niche": "mood_wellness"
+    },
+    {
+      "keyword": "something is off but i can't name it",
+      "angle": "You're functional. You go to the gym, you do your job, you look fine. But something is off. That's worth naming.",
+      "niche": "mood_wellness"
+    },
+    {
+      "keyword": "how to track your mood as a man",
+      "angle": "You can't fix what you can't see. Naming the pattern is the first move out of it.",
+      "niche": "mood_wellness"
+    },
+    {
+      "keyword": "low key tired every single day",
+      "angle": "Not exhausted, just low-key tired in a way coffee doesn't fix. That's the one most men ignore the longest.",
+      "niche": "mood_wellness"
+    },
+    {
+      "keyword": "why morning routines fail when you're burnt out",
+      "angle": "Discipline isn't the problem. Your nervous system is. No 5am routine will fix that.",
+      "niche": "mood_wellness"
+    },
+    {
+      "keyword": "emotional shutdown in relationships after stress",
+      "angle": "You're not trying to pull away from your partner — your brain just can't hold one more thing right now.",
+      "niche": "mens_mental_health"
     },
     {
       "keyword": "physical symptoms of chronic stress in men",
-      "angle": "Headaches, tight chest, bad sleep—your body's been screaming for months but you kept pushing through."
+      "angle": "Headaches, tight chest, bad sleep — your body's been screaming for months but you kept pushing through.",
+      "niche": "mens_mental_health"
     },
     {
-      "keyword": "what does quiet burnout look like in fathers",
-      "angle": "Not every breakdown is loud—some dads just stop feeling joy and nobody even notices."
-    },
-    {
-      "keyword": "why do i feel guilty for taking time for myself",
-      "angle": "Rest isn't selfish, but if you were raised to always provide, it sure feels that way."
-    },
-    {
-      "keyword": "how to rebuild confidence after mental health breakdown",
-      "angle": "Hitting rock bottom doesn't erase who you are—it just means you're rebuilding on honest ground now."
-    },
-    {
-      "keyword": "male loneliness epidemic why men feel isolated",
-      "angle": "You're surrounded by people but still feel alone—turns out that's not weakness, it's epidemic-level common."
+      "keyword": "signs you need therapy not just a vacation",
+      "angle": "A weekend off won't fix what months of grinding broke — some problems need more than rest.",
+      "niche": "mens_mental_health"
     }
   ]
 }

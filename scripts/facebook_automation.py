@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Facebook Daily Automation (v3.0 — Text-as-Image Typography)
+MindCore AI — Facebook Daily Automation (v3.1 — Text-as-Image + 3-Pool Audience)
+
+CHANGES (v3.1):
+  Audience mix expanded from 70/30 (men/neutral) to 40/30/30 (men/female/neutral).
+  Added scripts/fb_keywords_female.json keyword pool, mirrored from the female
+  cinematic video pipeline's niche research (perimenopause, women's mental
+  health, female AI-companion angle, women's anxiety SOS). Refreshed
+  scripts/fb_keywords.json to align with the male video pipeline's niches
+  (recovery, men's mental health, men's AI-companion angle, mood wellness)
+  so both audience pools draw from the same SEO research that's feeding
+  the cinematic videos.
+
+  Voice prompts updated: explicit female audience guidance added, neutral
+  guidance refined to truly be universal rather than male-leaning.
 
 CHANGES (v3.0):
   Replaced cinematic gpt-image-1 photography with Pillow-rendered text-as-image
-  typography graphics. Bold 8-15 word emotional one-liner dominates the frame
-  on a warm brand-palette gradient background. Tiny mindcoreai.eu watermark
-  bottom-right preserves attribution on reshares.
+  typography graphics. Caption tone shortened to 30-80 words, conversational.
 
-  Caption prompt also rewritten: 30-80 words (down from 120-250), lowercase,
-  broken sentences allowed, occasional emoji. Conversational tone instead of
-  editorial copy. FB algorithm deprioritises long publisher-style captions.
-
-  OPENAI_API_KEY is no longer required (kept optional for backward compat —
-  if missing, pipeline still runs).
-
-  Format logged as "text_as_image" in history so engagement vs prior
-  cinematic baseline can be compared.
-
-PHASE 1 AUDIENCE STRATEGY (unchanged):
-  70% men's content (preserves men 35+ wedge positioning)
-  30% neutral content (broadens reach without losing focus)
+PHASE 1 AUDIENCE STRATEGY (now multi-audience):
+  40% men's content    (men 35+ wedge, our anchor)
+  30% women's content  (matches female video pipeline expansion)
+  30% neutral content  (universal — no gender framing)
 
 Required env vars:
   ANTHROPIC_API_KEY  - for content + headline generation
   FB_PAGE_ID         - Page asset ID
   FB_ACCESS_TOKEN    - System User token
-
-Optional:
-  OPENAI_API_KEY     - no longer used by this pipeline; safe to leave set
 """
 
 import os
@@ -50,15 +49,20 @@ OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY")  # no longer used; kept for
 FB_PAGE_ID        = os.environ["FB_PAGE_ID"]
 FB_ACCESS_TOKEN   = os.environ["FB_ACCESS_TOKEN"]
 
-SITE_URL              = "https://mindcoreai.eu"
-WATERMARK_TEXT        = "mindcoreai.eu"
-MENS_KEYWORDS_FILE    = Path("scripts/fb_keywords.json")
-NEUTRAL_KEYWORDS_FILE = Path("scripts/neutral_keywords.json")
-HISTORY_FILE          = Path("scripts/fb_post_history.json")
-HISTORY_LIMIT         = 25
+SITE_URL                = "https://mindcoreai.eu"
+WATERMARK_TEXT          = "mindcoreai.eu"
+MENS_KEYWORDS_FILE      = Path("scripts/fb_keywords.json")
+FEMALE_KEYWORDS_FILE    = Path("scripts/fb_keywords_female.json")
+NEUTRAL_KEYWORDS_FILE   = Path("scripts/neutral_keywords.json")
+HISTORY_FILE            = Path("scripts/fb_post_history.json")
+HISTORY_LIMIT           = 25
 
-MENS_WEIGHT    = 0.70
-NEUTRAL_WEIGHT = 0.30
+# Audience mix — keep the men's wedge primary but explicitly serve women + everyone.
+AUDIENCE_WEIGHTS = {
+    "men":     0.40,
+    "female":  0.30,
+    "neutral": 0.30,
+}
 
 # ── Brand palette (warm, muted — same as IG carousels & YouTube banner) ─────
 PALETTE = {
@@ -71,8 +75,6 @@ PALETTE = {
     "soft_dark":  (90, 75, 60),    # secondary text
 }
 
-# Background gradient pairs — each post randomly picks one for variety while
-# staying on-brand. Top→bottom soft gradient with a hint of palette.
 GRADIENTS = [
     ("cream",      "beige"),
     ("cream",      "dusty_rose"),
@@ -83,18 +85,15 @@ GRADIENTS = [
 ]
 
 IMAGE_SIZE = 1080
-
-# Cap on the on-image headline so it stays readable as a thumbnail.
 HEADLINE_MIN_WORDS = 6
 HEADLINE_MAX_WORDS = 15
-
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
 APP_FACTS = """
 MindCore AI — voice-first AI mental wellness companion.
 - Available 24/7, no judgment, no waiting rooms.
 - Built primarily for men 35+ navigating anxiety, burnout, loneliness, recovery —
-  with expanding content for everyone navigating modern mental health.
+  with expanding content for women and for anyone navigating modern mental health.
 - 7-day trial €1.99 (NOT free — never say \"free trial\").
 - Premium €14.99/month or €99.99/year.
 - Pro €25/month or €179.99/year.
@@ -110,9 +109,6 @@ STYLES = [
     "mini_story",
 ]
 
-# Reference one-liners — give Claude a feel for the register we want.
-# Universal, plain, recognisable. NOT edge-baiting (avoid suicidal-ideation
-# flavoured wording — Meta cracks down on that hard).
 HEADLINE_REFERENCE_EXAMPLES = [
     "Nobody talks about the silence.",
     "You don't need to be okay today.",
@@ -126,6 +122,36 @@ HEADLINE_REFERENCE_EXAMPLES = [
     "The brave thing is asking for help.",
 ]
 
+# ── Audience-specific voice guidance ────────────────────────────────────────
+VOICE_BY_AUDIENCE = {
+    "men": {
+        "description": "AI mental health companion built primarily for men 35+",
+        "voice": (
+            "Voice: like a man who's been through it talking to another man. "
+            "Plain, direct, second-person. The kind of honesty men rarely get "
+            "from each other. No fluff, no therapy-speak."
+        ),
+        "extra_hashtags": "#MensMentalHealth",
+    },
+    "female": {
+        "description": "voice-first AI mental wellness companion for women carrying invisible weight",
+        "voice": (
+            "Voice: a woman who's been the one everyone leans on, finally hearing "
+            "her own experience named back to her. Warm, direct, second-person. "
+            "Not therapy-speak, not motivational. The quiet kind of true."
+        ),
+        "extra_hashtags": "#WomensMentalHealth",
+    },
+    "neutral": {
+        "description": "voice-first AI mental wellness companion for anyone navigating modern mental health",
+        "voice": (
+            "Voice: warm, plain, direct, second-person. Universal — speaks to "
+            "anyone navigating this. Not gendered. Not therapy-speak. Just honest."
+        ),
+        "extra_hashtags": "",  # nothing extra — brand + #MentalHealthMatters cover it
+    },
+}
+
 # ── Keyword & history helpers ───────────────────────────────────────────────
 def _load_topic_file(path: Path, audience_tag: str) -> list:
     if not path.exists():
@@ -136,16 +162,20 @@ def _load_topic_file(path: Path, audience_tag: str) -> list:
         raise ValueError(f"{path} contains no topics.")
     for t in topics:
         t["audience"] = audience_tag
-    print(f"  Loaded {len(topics)} {audience_tag} keywords (last updated: {data.get('last_updated', 'unknown')})")
+    print(f"  Loaded {len(topics):>3} {audience_tag:>7} keywords (last updated: {data.get('last_updated', 'unknown')})")
     return topics
 
 
 def load_topic_pools() -> dict:
     pools = {
         "men":     _load_topic_file(MENS_KEYWORDS_FILE,    "men"),
+        "female":  _load_topic_file(FEMALE_KEYWORDS_FILE,  "female"),
         "neutral": _load_topic_file(NEUTRAL_KEYWORDS_FILE, "neutral"),
     }
-    print(f"  Audience mix: {int(MENS_WEIGHT * 100)}% men / {int(NEUTRAL_WEIGHT * 100)}% neutral")
+    weights_str = " / ".join(
+        f"{int(AUDIENCE_WEIGHTS[k]*100)}% {k}" for k in ("men", "female", "neutral")
+    )
+    print(f"  Audience mix: {weights_str}")
     return pools
 
 
@@ -164,39 +194,50 @@ def save_history(history: list) -> None:
 
 
 def pick_topic(pools: dict, history: list) -> dict:
-    audience = random.choices(
-        ["men", "neutral"],
-        weights=[MENS_WEIGHT, NEUTRAL_WEIGHT],
-        k=1,
-    )[0]
+    """
+    Pick an audience by weight, then pick a topic from that pool, avoiding
+    recently-used keywords. If the chosen pool is fully on cooldown, cascade
+    through the remaining pools in a sensible order before giving up.
+    """
+    audiences = list(AUDIENCE_WEIGHTS.keys())
+    weights   = [AUDIENCE_WEIGHTS[a] for a in audiences]
+    audience  = random.choices(audiences, weights=weights, k=1)[0]
+
     recent_keywords = {h["keyword"] for h in history[-HISTORY_LIMIT:]}
     available = [t for t in pools[audience] if t["keyword"] not in recent_keywords]
+
     if not available:
-        other = "neutral" if audience == "men" else "men"
-        available = [t for t in pools[other] if t["keyword"] not in recent_keywords]
-        if available:
-            print(f"  {audience} pool on cooldown — falling back to {other}")
-        else:
+        # Cascade: try the other pools rather than repeat a recent keyword.
+        cascade_order = [a for a in audiences if a != audience]
+        random.shuffle(cascade_order)
+        for other in cascade_order:
+            available = [t for t in pools[other] if t["keyword"] not in recent_keywords]
+            if available:
+                print(f"  {audience} pool on cooldown — falling back to {other}")
+                break
+        if not available:
+            # Everything's on cooldown — accept a repeat from the originally chosen audience.
+            print(f"  All pools on cooldown — picking from {audience} anyway")
             available = pools[audience]
+
     return random.choice(available)
 
 
 # ── Headline generation (the BIG text on the image) ────────────────────────
 def generate_headline(topic: dict, style: str) -> str:
-    """
-    Generate the 6-15 word emotional one-liner that becomes the image text.
-    This is the scroll-stopper. Universal pronouns. Plain, not poetic.
-    """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     examples_block = "\n".join(f'  - "{h}"' for h in HEADLINE_REFERENCE_EXAMPLES)
-    audience = topic.get("audience", "men")
+    audience = topic.get("audience", "neutral")
+
+    # Even women's and men's keyword pools should produce universal-pronoun
+    # headlines, because the image is read by everyone scrolling FB. The
+    # *body* of the post can lean audience-coded; the headline stays open.
     audience_note = (
-        "Universal pronouns ('you', 'anyone', 'someone'). Speaks to anyone "
-        "regardless of gender — even if the topic angle leans male."
-        if audience == "neutral" else
-        "Use 'you' or universal phrasing. Even though this is for men "
-        "primarily, the line should still feel universal — anyone reading "
-        "should recognise themselves in it."
+        "Universal pronouns ('you', 'anyone', 'someone'). The headline must "
+        "feel like 'that's me' on first read for anyone scrolling — even "
+        "though the post's audience leans "
+        f"{audience}. Do NOT mention gender in the headline. The headline "
+        "is the image — everyone scrolling will read it."
     )
 
     prompt = f"""You are writing the BIG TEXT that will be printed across an
@@ -221,8 +262,7 @@ RULES:
 - AVOID anything that sounds like it's romanticising self-harm or suicide.
   ❌ "close to the edge", "can't take it anymore", "the end", "give up", "ready to go"
   ✅ "carrying it alone", "tired of pretending", "everything feels heavy"
-- Must work as huge bold text on a square image (so no question marks
-  followed by setups, no two-part jokes).
+- Must work as huge bold text on a square image.
 
 Return ONLY the headline text. No quotes, no preamble, no explanation."""
 
@@ -232,7 +272,6 @@ Return ONLY the headline text. No quotes, no preamble, no explanation."""
         messages=[{"role": "user", "content": prompt}],
     )
     headline = msg.content[0].text.strip().strip('"').strip("'").strip()
-    # Hard safety: strip newlines and over-long results.
     headline = " ".join(headline.split())
     words = headline.split()
     if len(words) > HEADLINE_MAX_WORDS + 2:
@@ -242,13 +281,9 @@ Return ONLY the headline text. No quotes, no preamble, no explanation."""
 
 # ── Caption generation (the conversational text BELOW the image) ───────────
 def generate_caption(topic: dict, style: str, headline: str) -> str:
-    """
-    Short, conversational caption. 30-80 words. Lowercase OK, broken
-    sentences OK, occasional emoji OK. Closes with a question, a soft
-    mindcoreai.eu mention, or a 'share this' line.
-    """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    audience = topic.get("audience", "men")
+    audience = topic.get("audience", "neutral")
+    voice_pack = VOICE_BY_AUDIENCE.get(audience, VOICE_BY_AUDIENCE["neutral"])
 
     cta_options = (
         "  a) A short question that invites a comment "
@@ -259,6 +294,12 @@ def generate_caption(topic: dict, style: str, headline: str) -> str:
         '  c) A "share this with someone who needs it tonight" line.'
     )
 
+    extra_tag_line = (
+        f"    For this {audience}-audience post also include: {voice_pack['extra_hashtags']}"
+        if voice_pack["extra_hashtags"]
+        else f"    No audience-specific tag for neutral posts — keep the set universal."
+    )
+
     prompt = f"""You are writing the caption that sits BELOW the image on Facebook.
 The image already shows this big text: "{headline}"
 
@@ -267,25 +308,29 @@ The caption should NOT repeat the image text. It expands or adds a personal beat
 TOPIC: {topic['keyword']}
 ANGLE: {topic['angle']}
 STYLE: {style}
+AUDIENCE: {audience}
+
+VOICE GUIDANCE: {voice_pack['voice']}
 
 APP FACTS (only mention if it fits naturally — never force it):
 {APP_FACTS}
 
-VOICE & RULES (this is the most important part):
-- 30 to 80 words MAX. Shorter is better. Facebook deprioritises long captions
-  on new pages — keep it tight.
+GENERAL RULES (this is the most important part):
+- 30 to 80 words MAX. Shorter is better.
 - Tone: a friend texting you, NOT a brand posting. Conversational, slightly
   loose. Lowercase is fine. Broken sentences are fine. One emoji at the end
   is fine if it fits naturally (🫶 ☕ 💙 🙏 — never more than one).
 - DO NOT sound like a magazine column. NO polished editorial prose.
 - NO toxic positivity. NO "you got this!". NO "stay strong queen/king".
-- Speak in second person ("you") or universal ("we"). Never gendered.
+- Speak in second person ("you") or universal ("we"). For audience-coded
+  posts you may use 'as a woman' or 'as a man' if it fits naturally — but
+  never in a way that excludes the other.
 - First line still has to hook — first ~12 words are visible before truncation.
 - End with ONE of these CTAs (pick whichever fits the post best):
 {cta_options}
 - 4 to 6 hashtags at the very end on a single line.
     ALWAYS INCLUDE: {REQUIRED_BRAND_HASHTAG} #MentalHealthMatters
-    For men-audience posts also include: #MensMentalHealth
+{extra_tag_line}
     Plus 1-2 niche tags relevant to "{topic['keyword']}".
 
 NEVER:
@@ -320,8 +365,6 @@ def ensure_brand_hashtag(caption: str) -> str:
 
 # ── Image rendering (Pillow, text-as-image typography) ──────────────────────
 def _find_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Find a usable font on the runner. DejaVu/Liberation are pre-installed
-    on ubuntu-latest GitHub Actions runners."""
     candidates_bold = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
@@ -339,7 +382,6 @@ def _find_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 
 def _wrap_lines(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list:
-    """Greedy word-wrap into lines that each fit within max_width."""
     words = text.split()
     lines, line = [], ""
     for w in words:
@@ -357,10 +399,6 @@ def _wrap_lines(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> l
 
 def _fit_font_size(draw: ImageDraw.ImageDraw, text: str, max_width: int,
                    max_height: int, start_size: int = 130, min_size: int = 60) -> tuple:
-    """
-    Binary search-ish: find the largest font size that fits the headline
-    inside max_width x max_height after wrapping. Returns (font, lines).
-    """
     size = start_size
     while size >= min_size:
         font = _find_font(size, bold=True)
@@ -371,18 +409,12 @@ def _fit_font_size(draw: ImageDraw.ImageDraw, text: str, max_width: int,
         if block_height <= max_height and widest <= max_width:
             return font, lines, line_height
         size -= 6
-    # Bottom of the range — return min size whatever fits.
     font = _find_font(min_size, bold=True)
     lines = _wrap_lines(draw, text, font, max_width)
     return font, lines, int(min_size * 1.15)
 
 
 def render_text_image(headline: str) -> bytes:
-    """
-    Renders a 1080x1080 square JPEG with the headline as bold black text
-    over a warm-palette vertical gradient, plus a tiny mindcoreai.eu
-    watermark in the bottom-right.
-    """
     top_key, bottom_key = random.choice(GRADIENTS)
     c_top = PALETTE[top_key]
     c_bot = PALETTE[bottom_key]
@@ -396,8 +428,6 @@ def render_text_image(headline: str) -> bytes:
         b = int(c_top[2] * (1 - t) + c_bot[2] * t)
         draw.line([(0, y), (IMAGE_SIZE, y)], fill=(r, g, b))
 
-    # Optional very subtle blurred accent blob for visual depth (off-centre,
-    # behind text — adds richness without distracting).
     blob_layer = Image.new("RGBA", (IMAGE_SIZE, IMAGE_SIZE), (0, 0, 0, 0))
     bd = ImageDraw.Draw(blob_layer)
     accent_key = random.choice(["dusty_rose", "sage", "terracotta", "beige"])
@@ -408,10 +438,9 @@ def render_text_image(headline: str) -> bytes:
     img = Image.alpha_composite(img.convert("RGBA"), blob_layer).convert("RGB")
     draw = ImageDraw.Draw(img)
 
-    # Headline — bold, dominant, centred, with safe margins.
     margin = 90
     text_max_w = IMAGE_SIZE - 2 * margin
-    text_max_h = IMAGE_SIZE - 2 * margin - 60  # leave room for watermark
+    text_max_h = IMAGE_SIZE - 2 * margin - 60
 
     font, lines, line_height = _fit_font_size(
         draw, headline, text_max_w, text_max_h, start_size=140, min_size=64
@@ -425,12 +454,10 @@ def render_text_image(headline: str) -> bytes:
         y = y_start + i * line_height
         draw.text((x, y), ln, font=font, fill=text_colour)
 
-    # Watermark — small, semi-transparent terracotta, bottom-right.
     wm_font = _find_font(28, bold=True)
     wm_w = draw.textlength(WATERMARK_TEXT, font=wm_font)
     wm_x = IMAGE_SIZE - wm_w - 40
     wm_y = IMAGE_SIZE - 60
-    # Soft drop shadow for legibility on any background.
     draw.text((wm_x + 1, wm_y + 1), WATERMARK_TEXT, font=wm_font, fill=(255, 255, 255, 160))
     draw.text((wm_x, wm_y), WATERMARK_TEXT, font=wm_font, fill=PALETTE["terracotta"])
 
@@ -470,7 +497,6 @@ def fetch_page_token() -> str:
 def upload_image_to_facebook_via_bytes(
     message: str, image_bytes: bytes, page_token: str,
 ) -> dict:
-    """Posts the image to Facebook via /photos using multipart upload."""
     url = f"https://graph.facebook.com/v21.0/{FB_PAGE_ID}/photos"
     files = {"source": ("mindcore_fb_image.jpg", image_bytes, "image/jpeg")}
     data  = {"caption": message, "access_token": page_token}
@@ -505,7 +531,7 @@ def post_text_to_facebook(message: str, page_token: str) -> dict:
 # ── Main ────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("  MindCore AI — Facebook Daily Automation (v3.0 text-as-image)")
+    print("  MindCore AI — Facebook Daily Automation (v3.1 text-as-image + 3-pool)")
     print(f"  Run at: {datetime.now(timezone.utc).isoformat()}")
     print("=" * 60)
 
@@ -517,6 +543,8 @@ def main():
     print(f"\n  Topic    : {topic['keyword']}")
     print(f"  Angle    : {topic['angle']}")
     print(f"  Audience : {topic.get('audience', 'unknown')}")
+    if 'niche' in topic:
+        print(f"  Niche    : {topic['niche']}")
     print(f"  Style    : {style}\n")
 
     print("  Generating headline (the big on-image text)…")
@@ -570,6 +598,7 @@ def main():
         "timestamp"  : datetime.now(timezone.utc).isoformat(),
         "keyword"    : topic["keyword"],
         "audience"   : topic.get("audience", "unknown"),
+        "niche"      : topic.get("niche"),
         "style"      : style,
         "format"     : "text_as_image",
         "headline"   : headline,
