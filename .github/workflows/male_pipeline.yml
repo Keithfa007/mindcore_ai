@@ -1,7 +1,8 @@
 name: Male Video Pipeline
 
-# Malta-audience schedule: 07:00 UTC daily = 9am Malta (UTC+2 summer) = 8am UK
-# Single cron -- no split schedule. Optimised for primary audience (60% Malta, 16% UK).
+# Malta-audience schedule:
+#   Male: 07:00 UTC daily = 9am Malta (UTC+2 summer) = 8am UK
+#   Female pipeline fires at 17:00 UTC (7pm Malta) -- 8 hours apart
 on:
   workflow_dispatch:
     inputs:
@@ -34,7 +35,8 @@ jobs:
 
       - name: Install FFmpeg + fonts
         run: |
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
           ffmpeg -version | head -1
 
       - name: Install Python dependencies

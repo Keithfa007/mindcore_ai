@@ -3,7 +3,6 @@ name: Female Video Pipeline
 # Malta-audience schedule:
 #   Female: 17:00 UTC daily = 7pm Malta (UTC+2 summer) = 6pm UK
 #   Male pipeline fires at 07:00 UTC (9am Malta) -- 8 hours apart
-#   Evening window: women's emotional content resonates in wind-down hours
 on:
   workflow_dispatch:
     inputs:
@@ -36,7 +35,8 @@ jobs:
 
       - name: Install FFmpeg + fonts
         run: |
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
           ffmpeg -version | head -1
 
       - name: Install Python dependencies
