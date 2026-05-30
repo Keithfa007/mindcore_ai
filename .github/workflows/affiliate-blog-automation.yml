@@ -1,0 +1,36 @@
+name: MindCore AI — Affiliate Blog Automation
+
+on:
+  schedule:
+    - cron: '0 10 * * 3'   # Every Wednesday at 10:00 AM UTC (12:00 Malta)
+  workflow_dispatch:        # Manual trigger from GitHub UI
+
+jobs:
+  publish-affiliate-blog:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install anthropic openai requests
+
+      - name: Run affiliate blog pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
+          WP_USERNAME:       ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD:   ${{ secrets.WP_APP_PASSWORD }}
+          GITHUB_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/affiliate_blog_automation.py

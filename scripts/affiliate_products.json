@@ -1,0 +1,148 @@
+{
+  "product_categories": [
+    {
+      "category": "Weighted Blankets",
+      "blog_keyword": "best weighted blankets for anxiety",
+      "blog_title_template": "Best Weighted Blankets for Anxiety and Deep Sleep in 2026",
+      "audience": "neutral",
+      "wp_category": "Anxiety & Stress",
+      "products": [
+        {
+          "name": "Bearaby Hand-Knit Weighted Blanket",
+          "affiliate_link": "https://amzn.to/4nYm3a0",
+          "price_range": "$149-249",
+          "weight": "5-25 lbs",
+          "best_for": "Premium quality, breathable, eco-friendly",
+          "highlight": "Hand-knit from organic cotton, naturally cooling, machine washable",
+          "commission": "3%"
+        },
+        {
+          "name": "YnM Weighted Blanket",
+          "affiliate_link": "https://amzn.to/4dY0YrF",
+          "price_range": "$35-65",
+          "weight": "5-25 lbs",
+          "best_for": "Best value, cooling glass beads, all-season",
+          "highlight": "7-layer system with cooling glass beads, multiple sizes and colours",
+          "commission": "3%"
+        },
+        {
+          "name": "Yescool Weighted Blanket",
+          "affiliate_link": "https://amzn.to/4dTzZNM",
+          "price_range": "$30-50",
+          "weight": "15-25 lbs",
+          "best_for": "Budget-friendly, breathable, machine washable",
+          "highlight": "Premium glass beads, breathable fabric, great for hot sleepers",
+          "commission": "3%"
+        }
+      ]
+    },
+    {
+      "category": "Light Therapy Lamps",
+      "blog_keyword": "best light therapy lamps for mood",
+      "blog_title_template": "Best Light Therapy Lamps for Mood and Energy in 2026",
+      "audience": "neutral",
+      "wp_category": "Sleep & Burnout",
+      "products": [
+        {
+          "name": "Verilux HappyLight Luxe",
+          "affiliate_link": "https://amzn.to/4vjdRDG",
+          "price_range": "$50-70",
+          "weight": "N/A",
+          "best_for": "Adjustable brightness and colour, UV-free, timer",
+          "highlight": "10,000 LUX, LED full-spectrum, adjustable stand, countdown timer",
+          "commission": "1%"
+        },
+        {
+          "name": "Circadian Optics Lumos 2.0",
+          "affiliate_link": "https://amzn.to/43oygeN",
+          "price_range": "$40-55",
+          "weight": "N/A",
+          "best_for": "Portable, sleek design, adjustable folding",
+          "highlight": "As Seen On Shark Tank, 10,000 LUX UV-free, foldable and portable",
+          "commission": "3%"
+        },
+        {
+          "name": "Carex Day-Light Classic Plus",
+          "affiliate_link": "https://amzn.to/49tD1XI",
+          "price_range": "$100-130",
+          "weight": "N/A",
+          "best_for": "Clinical-grade, adjustable height, large surface area",
+          "highlight": "10,000 LUX at 12 inches, LED, adjustable height and brightness",
+          "commission": "1%"
+        }
+      ]
+    },
+    {
+      "category": "Massage Guns",
+      "blog_keyword": "best massage guns for stress relief",
+      "blog_title_template": "Best Massage Guns for Stress and Tension Relief in 2026",
+      "audience": "neutral",
+      "wp_category": "Anxiety & Stress",
+      "products": [
+        {
+          "name": "Theragun Prime (4th Gen)",
+          "affiliate_link": "https://amzn.to/435scHJ",
+          "price_range": "$199-249",
+          "weight": "N/A",
+          "best_for": "Premium quality, Bluetooth enabled, deep tissue",
+          "highlight": "Professional-grade percussion therapy, Bluetooth app connectivity",
+          "commission": "1%"
+        },
+        {
+          "name": "Bob and Brad D6 Pro Plus",
+          "affiliate_link": "https://amzn.to/4vbPzeG",
+          "price_range": "$80-110",
+          "weight": "N/A",
+          "best_for": "Heat therapy combined with percussion, 16mm amplitude",
+          "highlight": "Deep tissue with heat, professional-grade amplitude, quiet motor",
+          "commission": "1%"
+        },
+        {
+          "name": "RENPHO Active Massage Gun",
+          "affiliate_link": "https://amzn.to/4uIZhFI",
+          "price_range": "$45-65",
+          "weight": "N/A",
+          "best_for": "Budget-friendly, ergonomic, portable with carry case",
+          "highlight": "5 speeds, ergonomic grip, includes carry case for travel",
+          "commission": "1%"
+        }
+      ]
+    },
+    {
+      "category": "Fitness Trackers",
+      "blog_keyword": "best fitness trackers for sleep and stress",
+      "blog_title_template": "Best Fitness Trackers for Sleep and Stress Monitoring in 2026",
+      "audience": "neutral",
+      "wp_category": "Sleep & Burnout",
+      "products": [
+        {
+          "name": "Fitbit Charge 6 Bundle",
+          "affiliate_link": "https://amzn.to/3RCvm3i",
+          "price_range": "$130-160",
+          "weight": "N/A",
+          "best_for": "Heart rate, GPS, sleep and stress tracking",
+          "highlight": "Built-in GPS, continuous heart rate, sleep score, stress management tools",
+          "commission": "4%"
+        },
+        {
+          "name": "Garmin vivoactive 6",
+          "affiliate_link": "https://amzn.to/49XAzcc",
+          "price_range": "$300-350",
+          "weight": "N/A",
+          "best_for": "Premium health tracking, AMOLED display, 11-day battery",
+          "highlight": "Advanced sleep tracking, body battery energy monitoring, stress score",
+          "commission": "4%"
+        },
+        {
+          "name": "Samsung Galaxy Watch 8",
+          "affiliate_link": "https://amzn.to/4wZl2Ta",
+          "price_range": "$250-300",
+          "weight": "N/A",
+          "best_for": "Sleep coaching, energy score, running coach",
+          "highlight": "AI sleep coaching, energy score, heart rate tracking, 2-year warranty",
+          "commission": "4%"
+        }
+      ]
+    }
+  ]
+}
