@@ -29,9 +29,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
+        # Pillow added 2026-05-29 for the v3.0 text-as-image typography rendering.
+        # DejaVu/Liberation fonts ship with ubuntu-latest runners by default,
+        # so no apt install is needed for fonts.
         run: |
           pip install --upgrade pip
-          pip install anthropic requests
+          pip install anthropic requests Pillow
 
       - name: Run Facebook automation
         env:
