@@ -1,8 +1,8 @@
 name: Female Video Pipeline
 
-# Malta-audience schedule:
-#   Female: 17:00 UTC daily = 7pm Malta (UTC+2 summer) = 6pm UK
-#   Male pipeline fires at 07:00 UTC (9am Malta) -- 8 hours apart
+# Target landing time: ~7pm Malta (UTC+2 summer)
+# Cron fires at 14:00 UTC (4pm Malta) to absorb up to 3hr GitHub delay
+# Worst case: fires at 14:00 UTC + 3hr delay = lands ~7pm Malta
 on:
   workflow_dispatch:
     inputs:
@@ -16,7 +16,7 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 17 * * *"  # Daily 17:00 UTC = 7pm Malta = 6pm UK
+    - cron: "0 14 * * *"  # 14:00 UTC = 4pm Malta -- targets ~7pm Malta landing
 
 jobs:
   generate-female-video:
@@ -52,7 +52,7 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Daily 17:00 UTC = 7pm Malta = 6pm UK"
+          echo "Schedule: Cron 14:00 UTC = 4pm Malta -- target landing ~7pm Malta"
           echo "Pipeline: female_pipeline.py | Platforms: TikTok + Facebook + YouTube"
 
       - name: Run Female Cinematic Pipeline
