@@ -14,7 +14,7 @@ class BlogPost {
   final int    id;
   final String title;
   final String excerpt;   // plain text, HTML stripped
-  final String content;   // plain text, HTML stripped
+  final String content;   // Markdown-converted (links preserved as [text](url))
   final String date;      // formatted: "7 April 2026"
   final String link;      // canonical URL on mindcoreai.eu
   final String? imageUrl; // featured image, may be null
@@ -55,12 +55,12 @@ class BlogService {
       'https://mindcoreai.eu/wp-json/wp/v2/posts'
       '?_embed&per_page=20&orderby=date&order=desc&status=publish';
 
-  static const _kCache        = 'blog_posts_v1';
-  static const _kCacheTime    = 'blog_posts_time_v1';
+  static const _kCache        = 'blog_posts_v2'; // bumped so stale cache is ignored
+  static const _kCacheTime    = 'blog_posts_time_v2';
   static const _kLastSeenId   = 'blog_last_seen_post_id';
   static const _cacheTtlMs    = 60 * 60 * 1000; // 1 hour
 
-  // ── Public API ─────────────────────────────────────────────────────
+  // ── Public API ──────────────────────────────────────────────────────
 
   static Future<List<BlogPost>> getPosts({bool forceRefresh = false}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -97,8 +97,6 @@ class BlogService {
   }
 
   /// Called on every app open.
-  /// Silently fetches the latest post, compares to the last seen ID,
-  /// and fires a notification if there is something new.
   static Future<void> checkForNewPost() async {
     try {
       final response = await http
@@ -120,11 +118,7 @@ class BlogService {
       final lastSeenId = prefs.getInt(_kLastSeenId) ?? 0;
 
       if (latestId > lastSeenId) {
-        // New post found — update stored ID first, then notify
         await prefs.setInt(_kLastSeenId, latestId);
-
-        // Only notify if the user has seen at least one post before
-        // (avoids notifying on very first ever launch).
         if (lastSeenId > 0) {
           final title = _stripHtml(
               latest['title']?['rendered']?.toString() ?? 'New article');
@@ -132,9 +126,7 @@ class BlogService {
               .showNewBlogPostNotification(postTitle: title);
         }
       }
-    } catch (_) {
-      // Silently fail — never interrupt the app experience
-    }
+    } catch (_) {}
   }
 
   // ── Cache ───────────────────────────────────────────────────────────────
@@ -156,13 +148,14 @@ class BlogService {
     }
   }
 
-  // ── Parse a WordPress REST API post object ─────────────────────────────
+  // ── Parse ───────────────────────────────────────────────────────────────
 
   static BlogPost _parsePost(Map<String, dynamic> json) {
     final id      = json['id'] as int? ?? 0;
     final title   = _stripHtml(json['title']?['rendered']?.toString() ?? '');
     final excerpt = _stripHtml(json['excerpt']?['rendered']?.toString() ?? '');
-    final content = _stripHtml(json['content']?['rendered']?.toString() ?? '');
+    // Content: convert HTML to Markdown so links are preserved and tappable
+    final content = _htmlToMarkdown(json['content']?['rendered']?.toString() ?? '');
     final link    = json['link']?.toString() ?? '';
     final date    = _formatDate(json['date']?.toString() ?? '');
 
@@ -181,14 +174,99 @@ class BlogService {
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── HTML → Markdown conversion ───────────────────────────────────────────────
+  //
+  // Converts the most common HTML elements to Markdown before stripping
+  // remaining tags. Critically, <a href> links become [text](url) so they
+  // are rendered as tappable links by flutter_markdown.
+
+  static String _htmlToMarkdown(String html) {
+    var s = html;
+
+    // Links: <a href="URL">text</a> → [text](URL)
+    s = s.replaceAllMapped(
+      RegExp(r'<a[^>]*?href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+             caseSensitive: false, dotAll: true),
+      (m) {
+        final url  = m.group(1)?.trim() ?? '';
+        final text = _stripHtml(m.group(2) ?? '').trim();
+        if (url.isEmpty) return text;
+        return '[$text]($url)';
+      },
+    );
+
+    // Bold
+    s = s.replaceAllMapped(
+      RegExp(r'<(?:strong|b)>(.*?)</(?:strong|b)>',
+             caseSensitive: false, dotAll: true),
+      (m) => '**${m.group(1)}**',
+    );
+
+    // Italic
+    s = s.replaceAllMapped(
+      RegExp(r'<(?:em|i)>(.*?)</(?:em|i)>',
+             caseSensitive: false, dotAll: true),
+      (m) => '*${m.group(1)}*',
+    );
+
+    // Headings
+    s = s.replaceAllMapped(
+      RegExp(r'<h([1-6])[^>]*>(.*?)</h[1-6]>',
+             caseSensitive: false, dotAll: true),
+      (m) {
+        final hashes = '#' * int.parse(m.group(1)!);
+        final text   = _stripHtml(m.group(2) ?? '').trim();
+        return '\n$hashes $text\n';
+      },
+    );
+
+    // List items
+    s = s.replaceAllMapped(
+      RegExp(r'<li[^>]*>(.*?)</li>',
+             caseSensitive: false, dotAll: true),
+      (m) => '\n- ${_stripHtml(m.group(1) ?? '').trim()}',
+    );
+
+    // Paragraph / block-level line breaks
+    s = s
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '  \n')
+        .replaceAll(
+            RegExp(r'</(p|div|h[1-6]|ul|ol|blockquote)>',
+                   caseSensitive: false),
+            '\n');
+
+    // Strip all remaining HTML tags
+    s = s.replaceAll(RegExp(r'<[^>]+>'), '');
+
+    // Decode HTML entities
+    s = s
+        .replaceAll('&amp;',  '&')
+        .replaceAll('&lt;',   '<')
+        .replaceAll('&gt;',   '>')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&#038;', '&')
+        .replaceAll('&#8216;', '\u2018')
+        .replaceAll('&#8217;', '\u2019')
+        .replaceAll('&#8220;', '\u201c')
+        .replaceAll('&#8221;', '\u201d')
+        .replaceAll('&#8211;', '\u2013')
+        .replaceAll('&#8212;', '\u2014')
+        .replaceAll(RegExp(r'&#\d+;'), '')
+        .replaceAll(RegExp(r'&[a-z]+;'), '');
+
+    // Collapse excess blank lines
+    s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+    return s;
+  }
+
+  // ── Plain HTML stripper (title / excerpt only) ────────────────────────────
 
   static String _stripHtml(String html) {
     var s = html
-        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
         .replaceAll(
             RegExp(r'</(p|div|h[1-6]|li|blockquote)>', caseSensitive: false),
-            '\n')
+            ' ')
         .replaceAll(RegExp(r'<[^>]+>'), '')
         .replaceAll(RegExp(r'&amp;'),  '&')
         .replaceAll(RegExp(r'&lt;'),   '<')
@@ -196,7 +274,7 @@ class BlogService {
         .replaceAll(RegExp(r'&nbsp;'), ' ')
         .replaceAll(RegExp(r'&#\d+;'), '')
         .replaceAll(RegExp(r'&[a-z]+;'), '');
-    s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+    s = s.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
     return s;
   }
 
