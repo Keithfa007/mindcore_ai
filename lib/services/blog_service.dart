@@ -1,10 +1,4 @@
 // lib/services/blog_service.dart
-//
-// Fetches published posts from mindcoreai.eu via the WordPress REST API.
-// Caches responses for 1 hour so the screen loads instantly on repeat visits.
-// Falls back to cached data if the network is unavailable.
-// Checks for new posts on every app open and fires a local notification.
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,11 +7,11 @@ import 'package:mindcore_ai/services/notification_service.dart';
 class BlogPost {
   final int    id;
   final String title;
-  final String excerpt;   // plain text, HTML stripped
+  final String excerpt;
   final String content;   // Markdown-converted (links preserved as [text](url))
-  final String date;      // formatted: "7 April 2026"
-  final String link;      // canonical URL on mindcoreai.eu
-  final String? imageUrl; // featured image, may be null
+  final String date;
+  final String link;
+  final String? imageUrl;
 
   const BlogPost({
     required this.id,
@@ -30,13 +24,8 @@ class BlogPost {
   });
 
   Map<String, dynamic> toJson() => {
-        'id':       id,
-        'title':    title,
-        'excerpt':  excerpt,
-        'content':  content,
-        'date':     date,
-        'link':     link,
-        'imageUrl': imageUrl,
+        'id': id, 'title': title, 'excerpt': excerpt,
+        'content': content, 'date': date, 'link': link, 'imageUrl': imageUrl,
       };
 
   factory BlogPost.fromJson(Map<String, dynamic> j) => BlogPost(
@@ -55,48 +44,37 @@ class BlogService {
       'https://mindcoreai.eu/wp-json/wp/v2/posts'
       '?_embed&per_page=20&orderby=date&order=desc&status=publish';
 
-  static const _kCache        = 'blog_posts_v2'; // bumped so stale cache is ignored
-  static const _kCacheTime    = 'blog_posts_time_v2';
-  static const _kLastSeenId   = 'blog_last_seen_post_id';
-  static const _cacheTtlMs    = 60 * 60 * 1000; // 1 hour
+  static const _kCache      = 'blog_posts_v2';
+  static const _kCacheTime  = 'blog_posts_time_v2';
+  static const _kLastSeenId = 'blog_last_seen_post_id';
+  static const _cacheTtlMs  = 60 * 60 * 1000;
 
   // ── Public API ──────────────────────────────────────────────────────
 
   static Future<List<BlogPost>> getPosts({bool forceRefresh = false}) async {
     final prefs = await SharedPreferences.getInstance();
-
     if (!forceRefresh) {
       final cached = _loadCache(prefs);
       if (cached != null) return cached;
     }
-
     try {
       final response = await http
           .get(Uri.parse(_endpoint))
           .timeout(const Duration(seconds: 12));
-
-      if (response.statusCode != 200) {
-        return _loadCache(prefs) ?? [];
-      }
-
+      if (response.statusCode != 200) return _loadCache(prefs) ?? [];
       final raw   = jsonDecode(response.body) as List;
       final posts = raw
           .map((item) => _parsePost(item as Map<String, dynamic>))
           .where((p) => p.title.isNotEmpty)
           .toList();
-
-      await prefs.setString(
-          _kCache, jsonEncode(posts.map((p) => p.toJson()).toList()));
-      await prefs.setInt(
-          _kCacheTime, DateTime.now().millisecondsSinceEpoch);
-
+      await prefs.setString(_kCache, jsonEncode(posts.map((p) => p.toJson()).toList()));
+      await prefs.setInt(_kCacheTime, DateTime.now().millisecondsSinceEpoch);
       return posts;
     } catch (_) {
       return _loadCache(prefs) ?? [];
     }
   }
 
-  /// Called on every app open.
   static Future<void> checkForNewPost() async {
     try {
       final response = await http
@@ -104,57 +82,43 @@ class BlogService {
               'https://mindcoreai.eu/wp-json/wp/v2/posts'
               '?per_page=1&orderby=date&order=desc&status=publish'))
           .timeout(const Duration(seconds: 10));
-
       if (response.statusCode != 200) return;
-
       final raw = jsonDecode(response.body) as List;
       if (raw.isEmpty) return;
-
       final latest   = raw.first as Map<String, dynamic>;
       final latestId = latest['id'] as int? ?? 0;
       if (latestId == 0) return;
-
       final prefs      = await SharedPreferences.getInstance();
       final lastSeenId = prefs.getInt(_kLastSeenId) ?? 0;
-
       if (latestId > lastSeenId) {
         await prefs.setInt(_kLastSeenId, latestId);
         if (lastSeenId > 0) {
-          final title = _stripHtml(
-              latest['title']?['rendered']?.toString() ?? 'New article');
-          await NotificationService.instance
-              .showNewBlogPostNotification(postTitle: title);
+          final title = _stripHtml(latest['title']?['rendered']?.toString() ?? 'New article');
+          await NotificationService.instance.showNewBlogPostNotification(postTitle: title);
         }
       }
     } catch (_) {}
   }
 
-  // ── Cache ───────────────────────────────────────────────────────────────
+  // ── Cache ────────────────────────────────────────────────────────────
 
   static List<BlogPost>? _loadCache(SharedPreferences prefs) {
     final savedMs = prefs.getInt(_kCacheTime) ?? 0;
-    final age     = DateTime.now().millisecondsSinceEpoch - savedMs;
-    if (age > _cacheTtlMs) return null;
+    if (DateTime.now().millisecondsSinceEpoch - savedMs > _cacheTtlMs) return null;
     final raw = prefs.getString(_kCache);
     if (raw == null || raw.isEmpty) return null;
     try {
       final list = jsonDecode(raw) as List;
-      return list
-          .map((e) =>
-              BlogPost.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-    } catch (_) {
-      return null;
-    }
+      return list.map((e) => BlogPost.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    } catch (_) { return null; }
   }
 
-  // ── Parse ───────────────────────────────────────────────────────────────
+  // ── Parse ────────────────────────────────────────────────────────────
 
   static BlogPost _parsePost(Map<String, dynamic> json) {
     final id      = json['id'] as int? ?? 0;
     final title   = _stripHtml(json['title']?['rendered']?.toString() ?? '');
     final excerpt = _stripHtml(json['excerpt']?['rendered']?.toString() ?? '');
-    // Content: convert HTML to Markdown so links are preserved and tappable
     final content = _htmlToMarkdown(json['content']?['rendered']?.toString() ?? '');
     final link    = json['link']?.toString() ?? '';
     final date    = _formatDate(json['date']?.toString() ?? '');
@@ -174,18 +138,31 @@ class BlogService {
     );
   }
 
-  // ── HTML → Markdown conversion ───────────────────────────────────────────────
+  // ── HTML → Markdown ──────────────────────────────────────────────────────────
   //
-  // Converts the most common HTML elements to Markdown before stripping
-  // remaining tags. Critically, <a href> links become [text](url) so they
-  // are rendered as tappable links by flutter_markdown.
+  // Converts HTML to Markdown so links are preserved as [text](url)
+  // and rendered as tappable by flutter_markdown.
+  // Note: uses non-raw strings (double-quoted) for regexes that need
+  // to match both single and double quotes without Dart parse errors.
 
   static String _htmlToMarkdown(String html) {
     var s = html;
 
-    // Links: <a href="URL">text</a> → [text](URL)
+    // Links — double-quoted href
     s = s.replaceAllMapped(
-      RegExp(r'<a[^>]*?href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+      RegExp('<a[^>]*?href="([^"]+)"[^>]*>(.*?)</a>',
+             caseSensitive: false, dotAll: true),
+      (m) {
+        final url  = m.group(1)?.trim() ?? '';
+        final text = _stripHtml(m.group(2) ?? '').trim();
+        if (url.isEmpty) return text;
+        return '[$text]($url)';
+      },
+    );
+
+    // Links — single-quoted href
+    s = s.replaceAllMapped(
+      RegExp("<a[^>]*?href='([^']+)'[^>]*>(.*?)</a>",
              caseSensitive: false, dotAll: true),
       (m) {
         final url  = m.group(1)?.trim() ?? '';
@@ -227,18 +204,17 @@ class BlogService {
       (m) => '\n- ${_stripHtml(m.group(1) ?? '').trim()}',
     );
 
-    // Paragraph / block-level line breaks
+    // Block-level line breaks
     s = s
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '  \n')
         .replaceAll(
-            RegExp(r'</(p|div|h[1-6]|ul|ol|blockquote)>',
-                   caseSensitive: false),
+            RegExp(r'</(p|div|h[1-6]|ul|ol|blockquote)>', caseSensitive: false),
             '\n');
 
-    // Strip all remaining HTML tags
+    // Strip remaining tags
     s = s.replaceAll(RegExp(r'<[^>]+>'), '');
 
-    // Decode HTML entities
+    // Decode entities
     s = s
         .replaceAll('&amp;',  '&')
         .replaceAll('&lt;',   '<')
@@ -254,28 +230,24 @@ class BlogService {
         .replaceAll(RegExp(r'&#\d+;'), '')
         .replaceAll(RegExp(r'&[a-z]+;'), '');
 
-    // Collapse excess blank lines
     s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
     return s;
   }
 
-  // ── Plain HTML stripper (title / excerpt only) ────────────────────────────
+  // ── Plain text stripper (title / excerpt) ───────────────────────────────────
 
   static String _stripHtml(String html) {
     var s = html
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
-        .replaceAll(
-            RegExp(r'</(p|div|h[1-6]|li|blockquote)>', caseSensitive: false),
-            ' ')
+        .replaceAll(RegExp(r'</(p|div|h[1-6]|li|blockquote)>', caseSensitive: false), ' ')
         .replaceAll(RegExp(r'<[^>]+>'), '')
-        .replaceAll(RegExp(r'&amp;'),  '&')
-        .replaceAll(RegExp(r'&lt;'),   '<')
-        .replaceAll(RegExp(r'&gt;'),   '>')
-        .replaceAll(RegExp(r'&nbsp;'), ' ')
+        .replaceAll('&amp;',  '&')
+        .replaceAll('&lt;',   '<')
+        .replaceAll('&gt;',   '>')
+        .replaceAll('&nbsp;', ' ')
         .replaceAll(RegExp(r'&#\d+;'), '')
         .replaceAll(RegExp(r'&[a-z]+;'), '');
-    s = s.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
-    return s;
+    return s.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
   }
 
   static String _formatDate(String iso) {
@@ -286,8 +258,6 @@ class BlogService {
         'July', 'August', 'September', 'October', 'November', 'December',
       ];
       return '${dt.day} ${months[dt.month]} ${dt.year}';
-    } catch (_) {
-      return '';
-    }
+    } catch (_) { return ''; }
   }
 }
