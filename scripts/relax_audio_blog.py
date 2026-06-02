@@ -43,14 +43,12 @@ APP_INLINE_LINK = (
     'target="_blank" rel="noopener noreferrer"><strong>MindCore AI</strong></a>'
 )
 
-# CTA button — bold dark styled button for final section
+# Official Google Play badge — used in the final CTA section
 GP_CTA_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
-    'target="_blank" rel="noopener noreferrer" '
-    'style="font-weight:700;color:#07071a;background-color:#3ecfb2;'
-    'padding:0.5rem 1.2rem;border-radius:8px;text-decoration:none;'
-    'display:inline-block;margin-top:0.5rem;">'
-    '<strong>Download MindCore AI on Google Play</strong>'
+    'target="_blank" rel="noopener noreferrer">'
+    '<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" '
+    'alt="Get it on Google Play" style="height:60px;width:auto;display:block;margin-top:0.75rem;">'
     '</a>'
 )
 
@@ -181,7 +179,7 @@ def write_companion_post(title, category_name, seo_keywords, audio_url, serp_dat
     int_links     = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in INTERNAL_LINKS)
     ext_links     = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in EXTERNAL_LINKS)
 
-    # Build SERP-based FAQ questions or use generic ones
+    # Build SERP-based FAQ questions or use topic-relevant defaults
     paa_questions = serp_data.get("people_also_ask", [])
     if not paa_questions:
         paa_questions = [
@@ -230,9 +228,6 @@ MANDATORY LINKS — all must appear as proper HTML anchor tags:
   Use: {APP_INLINE_LINK}
   Example: "Apps like {APP_INLINE_LINK} are designed specifically for this."
 
-GOOGLE PLAY CTA BUTTON (use this EXACT HTML in the final CTA section):
-  {GP_CTA_LINK}
-
 MANDATORY FAQ SECTION (must always be included):
   After the main content sections, add:
   <h2>Frequently Asked Questions About {primary_kw.title()}</h2>
@@ -241,20 +236,25 @@ MANDATORY FAQ SECTION (must always be included):
   - At least 2 answers must include the exact phrase "{primary_kw}"
   - One answer should naturally mention MindCore AI as a helpful tool
 
+FINAL CTA SECTION (MANDATORY — use exactly this structure):
+  After the FAQ, write a short concluding section with:
+  1. A bold paragraph encouraging the reader to open MindCore AI and listen to the session:
+     <p><strong>Open MindCore AI now and listen to &#8220;{title}&#8221; — [complete with a motivating sentence about starting their journey].</strong></p>
+  2. Immediately followed by this EXACT Google Play badge HTML:
+     {GP_CTA_LINK}
+
 STRUCTURE:
-  H1 (with number + keyword) → intro (2 para) → audio player → 4-5 H2 sections (150-200 words each) → FAQ section → conclusion + CTA button
+  H1 (with number + keyword) → intro (2 para) → audio player → 4-5 H2 sections → FAQ section → Final CTA
 
   Other requirements:
   - At least one <ul> list in the main content
-  - The post supports and explains the audio session (why it helps, science behind it, how to get most from it)
   - Real, actionable content — zero fluff
-  - Final section: CTA using the Google Play button above
 
 INSERT this audio player HTML after the intro paragraph:
   {audio_embed}
 
 FORMAT:
-  - Clean WordPress HTML: h1 h2 h3 p ul li strong em a audio
+  - Clean WordPress HTML: h1 h2 h3 p ul li strong em a audio img
   - External links: target="_blank" rel="noopener noreferrer"
   - No html head body style script tags
   - After ALL HTML on its own line:
@@ -301,11 +301,7 @@ def generate_illustration(title, category_name):
 
     try:
         resp = openai_client.images.generate(
-            model="gpt-image-1",
-            prompt=prompt,
-            size="1536x1024",
-            quality="high",
-            n=1,
+            model="gpt-image-1", prompt=prompt, size="1536x1024", quality="high", n=1,
         )
         data = resp.data[0]
         img  = requests.get(data.url, timeout=30).content if getattr(data, "url", None) else base64.b64decode(data.b64_json)
@@ -351,7 +347,7 @@ def upload_image(image_data, alt_text=""):
             json={"alt_text": alt_text, "caption": alt_text},
             timeout=15,
         )
-        print(f"   Alt text set: '{alt_text}'" if patch.status_code == 200 else f"   Alt text failed")
+        print(f"   Alt text set: '{alt_text}'" if patch.status_code == 200 else "   Alt text failed")
 
     return media_id, media_url
 
@@ -408,11 +404,10 @@ def publish_to_wordpress(title, content, primary_keyword, media_id, media_url, c
         content = bits[0].strip()
         excerpt = bits[1].strip() if len(bits) > 1 else ""
 
-    # Inject image into content body
     if media_url:
         content = inject_image_into_content(content, media_url, primary_keyword)
 
-    slug     = keyword_to_slug(primary_keyword)
+    slug      = keyword_to_slug(primary_keyword)
     meta_desc = excerpt[:155] if excerpt else f"{title} — MindCore AI guided relaxation."
 
     validate_seo(content, title, meta_desc, primary_keyword, slug)
@@ -454,7 +449,6 @@ def publish_to_wordpress(title, content, primary_keyword, media_id, media_url, c
     post_id = post["id"]
     print(f"   Published -> {post.get('link', 'N/A')}")
 
-    # Attach featured image with retry
     if media_id:
         for img_attempt in range(3):
             wait_time = 10 * (img_attempt + 1)
