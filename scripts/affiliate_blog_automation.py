@@ -387,13 +387,6 @@ def upload_image_to_wordpress(image_data, alt_text=""):
     return media_id, media_url
 
 
-def inject_image_into_content(content, media_url, alt_text):
-    if not media_url: return content
-    img_html = f'\n<figure class="wp-block-image size-full"><img src="{media_url}" alt="{alt_text}" class="wp-image"/></figure>\n'
-    insert_pos = content.find("</p>")
-    return content[:insert_pos + 4] + img_html + content[insert_pos + 4:] if insert_pos != -1 else img_html + content
-
-
 # -- Step 4: Category ---------------------------------------------------------
 def resolve_category_id(category_name):
     resp = scraper.get(
@@ -419,15 +412,14 @@ def resolve_category_id(category_name):
 
 
 # -- Step 5: Publish ----------------------------------------------------------
-def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
+def publish_to_wordpress(topic_data, content, media_id=None):
+    """Publish post. Image is set as featured only — NOT injected into content to avoid duplication."""
     print("Publishing to WordPress via cloudscraper...")
     excerpt = ""
     if "EXCERPT:" in content:
         bits    = content.split("EXCERPT:")
         content = bits[0].strip()
         excerpt = bits[1].strip() if len(bits) > 1 else ""
-    if media_url:
-        content = inject_image_into_content(content, media_url, topic_data["primary_keyword"])
     slug     = keyword_to_slug(topic_data["primary_keyword"])
     cat_name = topic_data.get("category", "")
     cat_id   = resolve_category_id(cat_name) if cat_name else None
@@ -463,6 +455,7 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
     post    = resp.json()
     post_id = post["id"]
     print(f"   Published -> {post.get('link', 'N/A')}")
+    # Attach featured image only — no content injection to avoid duplicate
     if media_id:
         for img_attempt in range(3):
             wait_time = 10 * (img_attempt + 1)
@@ -517,15 +510,15 @@ def main():
     topic_data = research_topic(product_cat, history)
     content    = write_affiliate_post(topic_data, product_cat, history)
 
-    media_id  = None
-    media_url = None
+    media_id = None
     try:
-        image_data          = generate_illustration(topic_data["image_prompt"])
-        media_id, media_url = upload_image_to_wordpress(image_data, alt_text=topic_data["primary_keyword"])
+        image_data = generate_illustration(topic_data["image_prompt"])
+        media_id, _ = upload_image_to_wordpress(image_data, alt_text=topic_data["primary_keyword"])
     except Exception as exc:
         print(f"   Image failed: {exc}")
 
-    post = publish_to_wordpress(topic_data, content, media_id, media_url)
+    # Pass only media_id — no media_url to prevent content injection
+    post = publish_to_wordpress(topic_data, content, media_id)
 
     update_history_on_github(history, {
         "date":             datetime.now().strftime("%Y-%m-%d"),

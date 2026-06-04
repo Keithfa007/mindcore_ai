@@ -1,7 +1,6 @@
-"""One-time fix: updates product card colours in the weighted blankets post."""
+"""One-time fix: removes duplicate image and updates product card colours in the weighted blankets post."""
 import os
 import base64
-import json
 import re
 import cloudscraper
 
@@ -21,9 +20,7 @@ def auth():
 # Fixed product cards with full inline colour styles
 FIXED_CARDS = [
     (
-        # Old card identifier (unique text to find each card)
         "Bearaby Hand-Knit Weighted Blanket",
-        # New fixed card HTML
         '<div style="background:#0c0c24;border:2px solid #3ecfb2;border-radius:12px;padding:20px;margin:20px 0;color:#e0e8e8;">'
         '<h3 style="color:#ffffff;margin-top:0;">Bearaby Hand-Knit Weighted Blanket</h3>'
         '<p style="color:#b0c8c8;">Hand-knit from organic cotton, naturally cooling, machine washable</p>'
@@ -66,7 +63,6 @@ FIXED_CARDS = [
     ),
 ]
 
-# Fixed quick links box
 FIXED_QUICK_LINKS = (
     '<div style="background:#0c0c24;border:2px solid #a594f9;border-radius:12px;padding:20px;margin:30px 0;color:#e0e8e8;">'
     '<h2 style="color:#ffffff;margin-top:0;">Quick Links \u2014 All Products</h2>'
@@ -88,31 +84,40 @@ def get_post():
         raise RuntimeError(f"Post '{POST_SLUG}' not found")
     post = posts[0]
     print(f"   Found: '{post['title']['rendered']}' (ID: {post['id']})")
-    return post["id"], post["content"]["raw"] or post["content"]["rendered"]
+    return post["id"], post["content"]["rendered"]
 
 
 def fix_content(content):
-    """Replace old dark cards with new properly coloured cards."""
     fixed = content
 
+    # 1. Remove duplicate injected image (wp-block-image figure)
+    img_pattern = r'\n?<figure class="wp-block-image size-full"><img[^/]*/></figure>\n?'
+    img_matches = list(re.finditer(img_pattern, fixed, re.DOTALL))
+    if len(img_matches) > 0:
+        # Remove the first occurrence (injected into body — featured image handles display)
+        fixed = fixed[:img_matches[0].start()] + fixed[img_matches[0].end():]
+        print(f"   Removed duplicate injected image")
+    else:
+        print("   No duplicate image found")
+
+    # 2. Fix product cards
     for product_name, new_card in FIXED_CARDS:
-        # Find the old card div containing this product name
-        pattern = r'<div[^>]*background:#0c0c24[^>]*border:2px solid #3ecfb2[^>]*>.*?' + re.escape(product_name) + r'.*?</div>'
+        pattern = r'<div[^>]*background:#0c0c24[^>]*>(?:(?!</div>).)*?' + re.escape(product_name) + r'.*?</div>'
         match = re.search(pattern, fixed, re.DOTALL | re.IGNORECASE)
         if match:
             fixed = fixed[:match.start()] + new_card + fixed[match.end():]
             print(f"   Fixed card: {product_name}")
         else:
-            print(f"   Card not found (may already be fixed): {product_name}")
+            print(f"   Card not found: {product_name}")
 
-    # Fix quick links box
+    # 3. Fix quick links box
     ql_pattern = r'<div[^>]*background:#0c0c24[^>]*border:2px solid #a594f9[^>]*>.*?Quick Links.*?</div>'
     ql_match = re.search(ql_pattern, fixed, re.DOTALL | re.IGNORECASE)
     if ql_match:
         fixed = fixed[:ql_match.start()] + FIXED_QUICK_LINKS + fixed[ql_match.end():]
         print("   Fixed quick links box")
     else:
-        print("   Quick links box not found (may already be fixed)")
+        print("   Quick links box not found")
 
     return fixed
 
@@ -126,18 +131,17 @@ def update_post(post_id, content):
         timeout=30,
     )
     if resp.status_code == 200:
-        print(f"   Post updated successfully!")
-        print(f"   URL: {resp.json().get('link', 'N/A')}")
+        print(f"   Updated! -> {resp.json().get('link', 'N/A')}")
     else:
         raise RuntimeError(f"Update failed ({resp.status_code}): {resp.text[:300]}")
 
 
 def main():
-    print("\n== Fixing weighted blankets post card colours ==")
+    print("\n== Fixing weighted blankets post ==")
     post_id, content = get_post()
-    fixed_content    = fix_content(content)
-    update_post(post_id, fixed_content)
-    print("\nDone! Product cards are now fully visible. \u2705")
+    fixed            = fix_content(content)
+    update_post(post_id, fixed)
+    print("\nDone! Duplicate image removed, cards fully visible. \u2705")
 
 
 if __name__ == "__main__":
