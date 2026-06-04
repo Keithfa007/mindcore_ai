@@ -4,6 +4,7 @@ import base64
 import re
 import time
 import requests
+import cloudscraper
 from anthropic import Anthropic
 from openai import OpenAI
 from datetime import datetime
@@ -12,6 +13,11 @@ from datetime import datetime
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
+# cloudscraper bypasses Cloudflare JS challenges that block plain requests
+scraper = cloudscraper.create_scraper(
+    browser={"browser": "chrome", "platform": "windows", "mobile": False}
+)
+
 WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
@@ -19,13 +25,6 @@ WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 HISTORY_FILE   = "scripts/affiliate_blog_history.json"
 PRODUCTS_FILE  = "scripts/affiliate_products.json"
 MIN_WORD_COUNT = 1200
-
-# Browser User-Agent to bypass Hostinger/Cloudflare bot detection
-WP_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
 
 INTERNAL_LINKS = [
     ("MindCore AI features", "https://mindcoreai.eu/features/"),
@@ -46,7 +45,6 @@ APP_INLINE_LINK = (
     'target="_blank" rel="noopener noreferrer"><strong>MindCore AI</strong></a>'
 )
 
-# Official Google Play badge
 GP_CTA_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
     'target="_blank" rel="noopener noreferrer">'
@@ -99,12 +97,24 @@ def quick_links_html(products):
 
 # -- Helpers ------------------------------------------------------------------
 def get_wp_auth():
-    """Return auth headers with browser User-Agent to bypass Cloudflare bot detection."""
+    """Auth headers — used with cloudscraper for all WP API calls."""
     token = base64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
-    return {
-        "Authorization": f"Basic {token}",
-        "User-Agent":    WP_USER_AGENT,
-    }
+    return {"Authorization": f"Basic {token}"}
+
+def wp_get(url, **kwargs):
+    """GET via cloudscraper to bypass Cloudflare."""
+    return scraper.get(url, headers=get_wp_auth(), **kwargs)
+
+def wp_post(url, json_data=None, data=None, extra_headers=None, **kwargs):
+    """POST via cloudscraper to bypass Cloudflare."""
+    headers = get_wp_auth()
+    if extra_headers:
+        headers.update(extra_headers)
+    return scraper.post(url, headers=headers, json=json_data, data=data, **kwargs)
+
+def wp_put(url, json_data=None, **kwargs):
+    """PUT via cloudscraper to bypass Cloudflare."""
+    return scraper.put(url, headers={**get_wp_auth(), "Content-Type": "application/json"}, json=json_data, **kwargs)
 
 def keyword_to_slug(keyword):
     slug = keyword.lower().strip()
@@ -174,8 +184,6 @@ def build_post_links(history):
             posts.append({"title": post["title"], "url": f"https://mindcoreai.eu/{slug}/"})
     return posts
 
-
-# -- Load main blog history for cross-linking ---------------------------------
 def load_main_blog_history():
     main_history_file = "scripts/blog_history.json"
     if not os.path.exists(main_history_file):
@@ -220,14 +228,14 @@ ALREADY PUBLISHED (avoid repeating):
 {history_txt}
 
 Tasks:
-1. Use the suggested keyword or improve it for higher search volume
-2. Write a compelling title that CONTAINS A NUMBER and the keyword
-3. Choose 5 secondary keywords related to this product category + mental wellness
-4. Write a meta description (150-160 chars) containing the primary keyword
+1. Use the suggested keyword or improve it
+2. Write a compelling title with a NUMBER and the keyword
+3. Choose 5 secondary keywords
+4. Write a meta description (150-160 chars) with primary keyword
 5. Write a DALL-E image prompt for a cinematic-warm lifestyle scene
 
 Respond ONLY in this exact JSON — no markdown:
-{{"topic":"title with number and keyword","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta containing primary keyword","image_prompt":"specific cinematic-warm lifestyle scene","category":"{product_cat['wp_category']}"}}"""}]
+{{"topic":"title","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"intent","meta_description":"meta","image_prompt":"scene","category":"{product_cat['wp_category']}"}}"""}]
     )
 
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
@@ -247,39 +255,22 @@ def write_affiliate_post(topic_data, product_cat, history):
 
     product_details = ""
     for i, p in enumerate(products, 1):
-        product_details += f"""\nPRODUCT {i}:
-  Name: {p['name']}
-  Affiliate link: {p['affiliate_link']}
-  Price: {p['price_range']}
-  Weight: {p.get('weight', 'N/A')}
-  Best for: {p['best_for']}
-  Highlight: {p['highlight']}
-"""
+        product_details += f"\nPRODUCT {i}:\n  Name: {p['name']}\n  Affiliate link: {p['affiliate_link']}\n  Price: {p['price_range']}\n  Best for: {p['best_for']}\n  Highlight: {p['highlight']}\n"
 
     int_links = "\n".join(f'  - Link text: "{t[0]}" \u2192 {t[1]}' for t in INTERNAL_LINKS)
     ext_links = "\n".join(f'  - Link text: "{t[0]}" \u2192 {t[1]}' for t in EXTERNAL_LINKS[:2])
 
     main_history = load_main_blog_history()
-    main_posts   = build_post_links(main_history)
-    aff_posts    = build_post_links(history)
-    all_posts    = main_posts + aff_posts
-
+    all_posts    = build_post_links(main_history) + build_post_links(history)
     cross_link_block = ""
     if len(all_posts) >= 2:
-        cross_link_block = (
-            "\nCROSS-POST LINKS (link to exactly 2 of these existing posts "
-            "naturally within the content):\n"
-        )
+        cross_link_block = "\nCROSS-POST LINKS (link to exactly 2 naturally):\n"
         for p in all_posts[-10:]:
             cross_link_block += f'  - "{p["title"]}" \u2192 {p["url"]}\n'
-        cross_link_block += "Pick the 2 most topically relevant.\n"
 
     product_card_instructions = ""
     for i, p in enumerate(products, 1):
-        product_card_instructions += f"""
-For product {i} ({p['name']}), insert this EXACT HTML product card:
-{product_card_html(p)}
-"""
+        product_card_instructions += f"\nFor product {i} ({p['name']}), insert this EXACT product card HTML:\n{product_card_html(p)}\n"
 
     quick_links_block = quick_links_html(products)
 
@@ -287,81 +278,53 @@ For product {i} ({p['name']}), insert this EXACT HTML product card:
         model="claude-opus-4-5", max_tokens=7000,
         messages=[{"role": "user", "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
 
-Write a full, publish-ready AFFILIATE REVIEW blog post:
+Write a full publish-ready AFFILIATE REVIEW blog post:
   Title           : {topic_data['topic']}
   Primary Keyword : {kw}
   Secondary KWs   : {', '.join(topic_data['secondary_keywords'])}
-  Search Intent   : {topic_data['search_intent']}
 
-PRODUCTS TO REVIEW:
+PRODUCTS:
 {product_details}
 
 CRITICAL KEYWORD RULES:
-  1. EXACT phrase "{kw}" in the H1 title
-  2. EXACT phrase "{kw}" in the very first sentence
-  3. EXACT phrase "{kw}" in at least 3 H2 subheadings
-  4. EXACT phrase "{kw}" at least 8-10 times total
-  5. No synonyms or variations — EXACT phrase only
-  6. Keyword density: 1.0%-1.5%
-  7. Minimum 1,200 words
+  1. EXACT phrase "{kw}" in H1
+  2. EXACT phrase "{kw}" in first sentence
+  3. EXACT phrase "{kw}" in at least 3 H2s
+  4. EXACT phrase "{kw}" 8-10 times total
+  5. Keyword density 1.0%-1.5%
+  6. Min 1,200 words
 
-STRUCTURE (follow this EXACTLY):
-
-1. FIRST ELEMENT — Affiliate Disclosure (insert this EXACT HTML first):
+STRUCTURE:
+1. Affiliate Disclosure (insert EXACT HTML):
 {AFFILIATE_DISCLOSURE}
-
-2. H1 TITLE with keyword and number
-
-3. INTRO (2-3 paragraphs):
-   - Start with personal experience or relatable hook
-   - Mention why this product type matters for mental wellness
-   - Use "{kw}" in the very first sentence
-
-4. H2 — "Why [Product Type] Matter for Mental Wellness"
-   - Explain the connection between this product and mental health
-
-5. H2 — "How We Chose the {len(products)} Best [Products]"
-   - Brief methodology
-
-6. H2 — Each product gets its own H2 section:
-   For each product write 100-150 words of genuine review THEN insert the product card HTML EXACTLY as provided:
+2. H1 with keyword + number
+3. Intro 2-3 paragraphs (keyword in first sentence)
+4. H2 - Why these products matter for mental wellness
+5. H2 - How we chose them
+6. H2 per product - 100-150 word review then EXACT product card:
 {product_card_instructions}
-
-7. H2 — "How to Choose the Right [Product] for You"
-   - Buying guide with <ul> list of factors
-
+7. H2 - How to choose the right one (with <ul> list)
 8. FAQ SECTION (MANDATORY):
    <h2>Frequently Asked Questions About {kw.title()}</h2>
-   5 questions using <h3> tags:
-   - At least 2 questions include exact phrase "{kw}"
-   - Answers 2-4 sentences each
-   - One answer mentions MindCore AI naturally
-
-9. QUICK LINKS SUMMARY (insert this EXACT HTML before the final CTA):
+   5 x <h3> questions, <p> answers (2-4 sentences)
+   At least 2 questions include exact phrase "{kw}"
+   One answer mentions MindCore AI
+9. Quick links (insert EXACT HTML):
 {quick_links_block}
-
 10. FINAL CTA:
-   - Bold paragraph: <p><strong>These products support your body. {APP_INLINE_LINK} supports your mind — 24/7, no waiting room required.</strong></p>
-   - Then this EXACT Google Play badge:
+   <p><strong>These products support your body. {APP_INLINE_LINK} supports your mind — 24/7, no waiting room required.</strong></p>
    {GP_CTA_LINK}
 
 MANDATORY LINKS:
-  Internal (include ALL 3):
+  Internal (ALL 3):
 {int_links}
-
-  External (include at least 2):
+  External (at least 2):
 {ext_links}
 {cross_link_block}
-TONE:
-  Honest, practical, trustworthy. Like a knowledgeable friend recommending products
-  they actually use. Never salesy. Acknowledge that products alone don't fix mental
-  health — they support a broader wellness practice.
-
 FORMAT:
-  - Clean WordPress HTML: h1 h2 h3 p ul li strong em a div
-  - Affiliate links: target="_blank" rel="noopener sponsored"
-  - External links: target="_blank" rel="noopener noreferrer"
-  - No html head body style script tags
+  - Clean WordPress HTML only
+  - Affiliate links: rel="noopener sponsored"
+  - External links: rel="noopener noreferrer"
   - After ALL HTML: EXCERPT: [2-3 sentence hook with "{kw}"]"""}]
     )
 
@@ -369,11 +332,9 @@ FORMAT:
     wc       = count_words_in_html(content)
     kw_count = content.lower().count(kw.lower())
     print(f"   Written ({wc} words, keyword appears {kw_count} times)")
-
     if wc < MIN_WORD_COUNT:
         print("   Expanding...")
         content = expand_post(content, topic_data, wc)
-
     return content
 
 
@@ -382,11 +343,7 @@ def expand_post(content, topic_data, current_words):
     kw     = topic_data["primary_keyword"]
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
-        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}.
-Add ~{needed} words by expanding product reviews or buying guide.
-Use EXACT phrase "{kw}" at least 3 more times. Return COMPLETE post with EXCERPT.
-
-{content}"""}]
+        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}. Add ~{needed} words. Use EXACT phrase "{kw}" 3+ more times. Return COMPLETE post with EXCERPT.\n\n{content}"""}]
     )
     expanded = response.content[0].text
     print(f"   Expanded to {count_words_in_html(expanded)} words")
@@ -396,19 +353,13 @@ Use EXACT phrase "{kw}" at least 3 more times. Return COMPLETE post with EXCERPT
 # -- Step 3: Image generation -------------------------------------------------
 def generate_illustration(image_prompt):
     print("Generating cinematic image...")
-    cinematic_prompt = (
-        f"{image_prompt}. "
-        "Style: cinematic photography, warm golden-hour lighting, "
-        "soft focus background with shallow depth of field, "
-        "peaceful and hopeful atmosphere, no faces shown, "
-        "warm amber and soft teal colour grading, photorealistic. "
-        "No text, no words, no letters in the image."
+    prompt = (
+        f"{image_prompt}. Style: cinematic photography, warm golden-hour lighting, "
+        "soft focus background, shallow depth of field, no faces shown, "
+        "warm amber and soft teal colour grading, photorealistic. No text in the image."
     )
     try:
-        resp = openai_client.images.generate(
-            model="gpt-image-1", prompt=cinematic_prompt,
-            size="1536x1024", quality="high", n=1,
-        )
+        resp = openai_client.images.generate(model="gpt-image-1", prompt=prompt, size="1536x1024", quality="high", n=1)
         data = resp.data[0]
         img  = requests.get(data.url, timeout=30).content if getattr(data, "url", None) else base64.b64decode(data.b64_json)
         print("   Cinematic image generated (gpt-image-1)")
@@ -416,10 +367,8 @@ def generate_illustration(image_prompt):
     except Exception as e1:
         print(f"   gpt-image-1 failed: {e1} — trying dall-e-2...")
     try:
-        resp = openai_client.images.generate(
-            model="dall-e-2", prompt=cinematic_prompt[:1000], size="1024x1024", n=1,
-        )
-        img = requests.get(resp.data[0].url, timeout=30).content
+        resp = openai_client.images.generate(model="dall-e-2", prompt=prompt[:1000], size="1024x1024", n=1)
+        img  = requests.get(resp.data[0].url, timeout=30).content
         print("   Cinematic image generated (dall-e-2 fallback)")
         return img
     except Exception as e2:
@@ -427,13 +376,11 @@ def generate_illustration(image_prompt):
 
 
 def upload_image_to_wordpress(image_data, alt_text=""):
-    print("Uploading image...")
+    print("Uploading image via cloudscraper...")
     filename = f"mindcore-affiliate-{datetime.now().strftime('%Y%m%d')}.png"
     auth     = get_wp_auth()
-    upload_headers = {**auth}
-    upload_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-    upload_headers["Content-Type"]        = "image/png"
-    resp = requests.post(f"{WP_URL}/wp-json/wp/v2/media", headers=upload_headers, data=image_data, timeout=60)
+    upload_headers = {**auth, "Content-Disposition": f'attachment; filename="{filename}"', "Content-Type": "image/png"}
+    resp = scraper.post(f"{WP_URL}/wp-json/wp/v2/media", headers=upload_headers, data=image_data, timeout=60)
     if resp.status_code != 201:
         print(f"   Upload failed ({resp.status_code}): {resp.text[:200]}")
         return None, None
@@ -443,7 +390,7 @@ def upload_image_to_wordpress(image_data, alt_text=""):
     print(f"   Image uploaded (ID: {media_id})")
     if alt_text:
         time.sleep(2)
-        requests.post(
+        scraper.post(
             f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
             headers={**auth, "Content-Type": "application/json"},
             json={"alt_text": alt_text, "caption": alt_text}, timeout=15,
@@ -454,33 +401,24 @@ def upload_image_to_wordpress(image_data, alt_text=""):
 
 def inject_image_into_content(content, media_url, alt_text):
     if not media_url: return content
-    img_html = (
-        f'\n<figure class="wp-block-image size-full">'
-        f'<img src="{media_url}" alt="{alt_text}" class="wp-image"/>'
-        f'</figure>\n'
-    )
+    img_html = f'\n<figure class="wp-block-image size-full"><img src="{media_url}" alt="{alt_text}" class="wp-image"/></figure>\n'
     insert_pos = content.find("</p>")
-    if insert_pos != -1:
-        content = content[:insert_pos + 4] + img_html + content[insert_pos + 4:]
-    else:
-        content = img_html + content
-    return content
+    return content[:insert_pos + 4] + img_html + content[insert_pos + 4:] if insert_pos != -1 else img_html + content
 
 
 # -- Step 4: Category ---------------------------------------------------------
 def resolve_category_id(category_name):
-    auth = get_wp_auth()
-    resp = requests.get(
+    resp = scraper.get(
         f"{WP_URL}/wp-json/wp/v2/categories?per_page=100&search={requests.utils.quote(category_name)}",
-        headers=auth, timeout=15,
+        headers=get_wp_auth(), timeout=15,
     )
     if resp.status_code == 200:
         for c in resp.json():
             if c["name"].replace("&amp;", "&").replace("&#039;", "'").lower() == category_name.lower():
                 return c["id"]
-    create = requests.post(
+    create = scraper.post(
         f"{WP_URL}/wp-json/wp/v2/categories",
-        headers={**auth, "Content-Type": "application/json"},
+        headers={**get_wp_auth(), "Content-Type": "application/json"},
         json={"name": category_name}, timeout=15,
     )
     if create.status_code == 201:
@@ -494,7 +432,7 @@ def resolve_category_id(category_name):
 
 # -- Step 5: Publish ----------------------------------------------------------
 def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
-    print("Publishing to WordPress...")
+    print("Publishing to WordPress via cloudscraper...")
     excerpt = ""
     if "EXCERPT:" in content:
         bits    = content.split("EXCERPT:")
@@ -507,8 +445,7 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
     cat_id   = resolve_category_id(cat_name) if cat_name else None
     validate_seo(content, topic_data["topic"], topic_data["meta_description"],
                  topic_data["primary_keyword"], slug)
-    auth = get_wp_auth()
-    auth["Content-Type"] = "application/json"
+    headers = {**get_wp_auth(), "Content-Type": "application/json"}
     payload = {
         "title":      topic_data["topic"],
         "content":    content,
@@ -525,7 +462,7 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
     print("   Waiting 60s before publishing...")
     time.sleep(60)
     for attempt in range(4):
-        resp = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", headers=auth, json=payload, timeout=30)
+        resp = scraper.post(f"{WP_URL}/wp-json/wp/v2/posts", headers=headers, json=payload, timeout=30)
         if resp.status_code == 201: break
         if resp.status_code == 429:
             wait = int(resp.headers.get("Retry-After", 30 * (attempt + 1)))
@@ -543,9 +480,9 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
             wait_time = 10 * (img_attempt + 1)
             print(f"   Waiting {wait_time}s before attaching featured image...")
             time.sleep(wait_time)
-            upd = requests.post(
+            upd = scraper.post(
                 f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
-                headers=auth, json={"featured_media": media_id}, timeout=30,
+                headers=headers, json={"featured_media": media_id}, timeout=30,
             )
             if upd.status_code == 200:
                 print("   Featured image attached")

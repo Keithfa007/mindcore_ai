@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install anthropic openai requests
+          pip install anthropic openai requests cloudscraper
 
       - name: Run affiliate blog pipeline
         env:
