@@ -3,7 +3,6 @@ name: Female Video Pipeline
 # SCHEDULE: Every day (daily evening slot)
 # Cron fires at 09:00 UTC (11am Malta)
 # Absorbs up to 8hr GitHub delay --> lands ~7pm Malta
-# Recent delays have been 6-8hrs so 09:00 UTC is the correct fire time
 # Full fal.ai video (~$1.25/video, 7 videos/week)
 on:
   workflow_dispatch:
@@ -66,6 +65,7 @@ jobs:
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
           FAL_KEY:              ${{ secrets.FAL_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
+          PYTHONPATH:           ${{ github.workspace }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
           if [ "$FORCE" = "ad" ]; then

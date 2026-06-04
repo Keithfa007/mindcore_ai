@@ -66,6 +66,7 @@ jobs:
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
           FAL_KEY:              ${{ secrets.FAL_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
+          PYTHONPATH:           ${{ github.workspace }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
           if [ "$FORCE" = "ad" ]; then
