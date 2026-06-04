@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Cinematic Pipeline v7.8
+MindCore AI -- Male Cinematic Pipeline v7.9
 ============================================
-CHANGES (v7.8):
-  - ADD: fal.ai Wan 2.5 hook clip generation via fal_hook.py.
-    The hook clip is now AI-generated -- no Pexels for the hook.
-    Eliminates the wounded-hand / trauma-coded imagery problem.
-    Falls back to Pexels if FAL_KEY not set or generation fails.
-  - ADD: 'glass' to POWER_WORDS (best un-flashed metaphor in scripts).
-  - Cost: ~$0.25 per hook clip (5s at $0.05/sec).
-All v7.7 features preserved.
+CHANGES (v7.9):
+  - FULL fal.ai video generation -- all 5 clips are AI-generated.
+    No Pexels B-roll. Every scene has an emotionally calibrated prompt:
+    hook (cold/raw) | problem x2 (cold/isolated) |
+    story (transitional) | cta (warm/resolved).
+  - Schedule: Mon/Wed/Fri/Sat/Sun = 5 videos/week.
+  - Cost: ~$1.25/video, ~$25/month (5 videos/week x 4 weeks).
+All v7.8 features preserved.
 """
 
 import json
@@ -75,7 +75,6 @@ AUTOCOMPLETE_SEEDS_PER_RUN = 2
 TIKTOK_CAPTION_LIMIT      = 2200
 YOUTUBE_TITLE_LIMIT       = 100
 YOUTUBE_DESCRIPTION_LIMIT = 5000
-PEXELS_CLIPS_PER_VIDEO    = 5
 TOPIC_HISTORY_SIZE        = 5
 REQUIRED_BRAND_HASHTAG    = "#mindcoreai"
 GLOBAL_HASHTAGS           = "#mentalhealth #fyp #foryou #mentalhealthawareness #selfcare #healing"
@@ -226,7 +225,7 @@ def load_app_facts():
 
 def load_keywords_data():
     if not KEYWORDS_PATH.exists():
-        return {"schedule":{},"niches":{"default":{"name":"Men's Mental Health","viewer_persona":"A man in his 40s struggling silently.","seed_queries":["men mental health tips"],"hashtags":[],"hook_queries":["man face close up dark"],"problem_queries":["man alone dark room interior"],"story_queries":["man walking alone path grey"],"cta_queries":["sunrise morning warm light"],"visual_moods":[{"name":"default","description":"moody","pexels_queries":["man alone window","empty road","dark room light"]}]}}}
+        return {"schedule":{},"niches":{"default":{"name":"Men's Mental Health","viewer_persona":"A man in his 40s struggling silently.","seed_queries":["men mental health tips"],"hashtags":[]}}}
     with open(KEYWORDS_PATH) as f: return json.load(f)
 
 def get_niche_for_today(keywords_data):
@@ -237,14 +236,6 @@ def get_niche_for_today(keywords_data):
     niche = keywords_data["niches"][niche_key]
     print(f"  Niche: {niche['name']} ({today.capitalize()})")
     return niche
-
-def pick_visual_mood(niche_data):
-    moods = niche_data.get("visual_moods",[])
-    if not moods: return {"name":"default","description":"cinematic","pexels_queries":["man alone nature","empty road","dark room light","man thinking","person silhouette"]}
-    mood_index = GITHUB_RUN_NUMBER%len(moods)
-    mood = moods[mood_index]
-    print(f"  Visual mood: {mood['name']} ({mood_index+1}/{len(moods)})")
-    return mood
 
 def _serp_google_query(seed):
     resp = requests.get(SERP_API_URL, params={"engine":"google","q":seed,"api_key":SERP_API_KEY,"num":10,"hl":"en","gl":"us"}, timeout=30)
@@ -356,14 +347,14 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- end with EITHER: (a) an emotional resolution payoff -- "You're not alone." / "You kept going, and that matters." -- choose when script is confessional; OR (b) a comment trigger -- "Comment TIRED if you know this feeling" -- choose when script is more direct. Match the tone. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- end with EITHER: (a) emotional resolution -- "You're not alone." / "You kept going, and that matters." -- when script is confessional; OR (b) comment trigger -- "Comment TIRED if you know this feeling" -- when script is more direct. Match the tone. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt, client, max_tokens=800)
 
 def generate_ad_script(app_facts, niche, client):
     ad_topic=random.choice(AD_TOPICS); formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     print(f"  AD: pain point: {ad_topic['pain_point'][:65]}...")
     lo_prob,hi_prob=WORD_TARGETS_AD["problem"]; lo_story,hi_story=WORD_TARGETS_AD["story"]; lo_cta,hi_cta=WORD_TARGETS_AD["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly, then end with EITHER an emotional resolution ("You're not alone in this.") OR an engagement trigger ("Comment KING if you need this"). Match the tone.\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly, end with emotional resolution or engagement trigger. Match the tone.)\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt, client, max_tokens=800)
 
 def build_full_script(script):
@@ -477,66 +468,6 @@ def generate_fish_audio_tts(script_text, output_path):
 def get_audio_duration(audio_path):
     return float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",audio_path],capture_output=True,text=True,check=True).stdout.strip())
 
-def search_pexels_clips(queries, num_clips=1):
-    if not PEXELS_API_KEY: raise RuntimeError("PEXELS_API_KEY not set")
-    headers={"Authorization":PEXELS_API_KEY}; clips=[]; seen_ids=set()
-    for query in queries:
-        if len(clips)>=num_clips: break
-        for orientation in ("portrait",None):
-            if len(clips)>=num_clips: break
-            page = ((GITHUB_RUN_NUMBER - 1 + random.randint(0, 6)) % 20) + 1
-            params={"query":query,"per_page":15,"size":"medium","page":page}
-            if orientation: params["orientation"]=orientation
-            try:
-                resp=requests.get(PEXELS_VIDEO_URL, headers=headers, params=params, timeout=30)
-                if not resp.ok: break
-                videos = resp.json().get("videos",[])
-                random.shuffle(videos)
-                for video in videos:
-                    vid_id=video["id"]
-                    if vid_id in seen_ids: continue
-                    seen_ids.add(vid_id); files=video.get("video_files",[])
-                    portrait=[f for f in files if f.get("width",1)<f.get("height",1)]
-                    chosen=sorted([f for f in (portrait or files) if f.get("height",0)<=1920],key=lambda x:x.get("height",0),reverse=True)
-                    if chosen:
-                        clips.append({"url":chosen[0]["link"],"query":query,"id":vid_id,"duration":video.get("duration",10)})
-                        if len(clips)>=num_clips: break
-                time.sleep(0.3)
-            except Exception as e: print(f"  Pexels error '{query}': {e}"); break
-    return clips[:num_clips]
-
-def fetch_scene_matched_clips(mood, niche):
-    fallback = mood.get("pexels_queries", ["person alone nature"])
-    scene_plan = [
-        ("hook",         1, niche.get("hook_queries",    fallback)),
-        ("problem",      2, niche.get("problem_queries", fallback)),
-        ("story",        1, niche.get("story_queries",   fallback)),
-        ("solution_cta", 1, niche.get("cta_queries",     fallback)),
-    ]
-    all_clips = []
-    for scene_name, count, pool in scene_plan:
-        pool_shuffled = list(pool); random.shuffle(pool_shuffled)
-        queries = pool_shuffled[:min(count, len(pool_shuffled))]
-        clips = search_pexels_clips(queries, num_clips=count)
-        if not clips:
-            fallback_shuffled = list(fallback); random.shuffle(fallback_shuffled)
-            clips = search_pexels_clips(fallback_shuffled[:min(count,len(fallback_shuffled))], num_clips=count)
-        for clip in clips:
-            clip["scene"] = scene_name
-        all_clips.extend(clips)
-        qstr = queries[0][:40] if queries else "fallback"
-        grade_label = "WARM" if scene_name in WARM_SCENES else "COLD"
-        print(f"  [{scene_name.upper():12s}] {len(clips)} clip | {grade_label} grade | {qstr}")
-    print(f"  Scene clips total: {len(all_clips)}")
-    return all_clips
-
-def download_clip(url, output_path):
-    resp=requests.get(url, stream=True, timeout=120); resp.raise_for_status()
-    with open(output_path,"wb") as f:
-        for chunk in resp.iter_content(chunk_size=65_536):
-            if chunk: f.write(chunk)
-    print(f"  Clip: {Path(output_path).name} ({Path(output_path).stat().st_size/(1024*1024):.1f} MB)"); return output_path
-
 def process_clip_to_portrait(clip_path, output_path, duration, direction="pan_right", color_grade=None):
     if color_grade is None:
         color_grade = COLOR_GRADE_COLD
@@ -579,33 +510,31 @@ def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=Non
     if ass_path: burn_subtitles_into_video(output_path,ass_path)
 
 def render_cinematic_video(script_text, mood, niche, script=None):
-    """Render full video. Hook clip is AI-generated via fal.ai if FAL_KEY set."""
-    from video_pipeline.fal_hook import generate_hook_clip_fal
+    """Render full video. All 5 clips generated via fal.ai Wan 2.5."""
+    from video_pipeline.fal_clips import generate_scene_clip_fal
     print("\n  [TTS] Generating voiceover...")
     audio_path=str(OUTPUT_DIR/"voiceover.mp3"); generate_fish_audio_tts(script_text,audio_path)
     print("\n  [Subtitles] Transcribing with Whisper...")
     ass_path=str(OUTPUT_DIR/"subtitles_cinematic.ass"); words=transcribe_audio_whisper(audio_path)
     if not generate_ass_subtitles(words,ass_path): ass_path=None
-    print("\n  [Pexels] Fetching scene-matched clips...")
-    clips=fetch_scene_matched_clips(mood, niche)
-    if not clips: raise RuntimeError("No Pexels clips found")
+    print("\n  [fal.ai] Generating all clips (5 x ~$0.25 = ~$1.25)...")
     clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True)
     raw_clip_paths=[]; scene_types=[]
-    for i,clip in enumerate(clips):
-        clip_path=str(clips_dir/f"raw_{i}.mp4")
-        if i == 0 and FAL_KEY and script:
-            hook_vo = script.get("hook", {}).get("voiceover", "")
-            fal_path = generate_hook_clip_fal(hook_vo, niche["name"], clip_path, FAL_KEY)
+    scene_plan=[("hook",1),("problem",2),("story",1),("solution_cta",1)]
+    clip_idx=0
+    for scene_name, count in scene_plan:
+        scene_vo = script.get(scene_name,{}).get("voiceover","") if script else ""
+        for j in range(count):
+            clip_path=str(clips_dir/f"raw_{clip_idx}.mp4")
+            fal_path=generate_scene_clip_fal(scene_name, scene_vo, clip_path, FAL_KEY, gender="man")
             if fal_path:
                 raw_clip_paths.append(fal_path)
-                scene_types.append("hook")
-                continue
-        try:
-            download_clip(clip["url"],clip_path)
-            raw_clip_paths.append(clip_path)
-            scene_types.append(clip.get("scene","problem"))
-        except Exception as e: print(f"  Clip {i+1} download failed ({e})")
-    if not raw_clip_paths: raise RuntimeError("All clip downloads failed")
+                scene_types.append(scene_name)
+            else:
+                print(f"  WARNING: {scene_name} clip {j+1} failed -- skipping")
+            clip_idx+=1
+    if not raw_clip_paths: raise RuntimeError("All fal.ai clip generations failed")
+    print(f"  Generated {len(raw_clip_paths)}/5 clips (~${len(raw_clip_paths)*0.25:.2f})")
     music_path=pick_music_track(); final_path=str(OUTPUT_DIR/"mindcore_ai_video.mp4")
     assemble_cinematic_video(raw_clip_paths, audio_path, final_path, music_path, ass_path, scene_types=scene_types)
     return final_path
@@ -686,11 +615,10 @@ def main():
         with open(cfg_path) as f: cfg=json.load(f)
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
-    keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    fal_status = f"ENABLED (~$0.25/hook)" if FAL_KEY else "DISABLED (no FAL_KEY)"
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.8")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Hook AI: {fal_status}")
-    print(f"  Niche: {niche['name']} | Target: 25-35s | COLD(hook/problem) WARM(story/cta)")
+    keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data)
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v7.9")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | All clips: fal.ai Wan 2.5")
+    print(f"  Niche: {niche['name']} | Target: 25-35s | Schedule: Mon/Wed/Fri/Sat/Sun")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
     print("="*60)
     print("\n  Generating script...")
@@ -702,13 +630,13 @@ def main():
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER); est_duration=round(total_words/130*60)
     print(f"\n  ~{est_duration}s | Hook formula: {script.get('hook_formula','?')}")
     for scene in SCENE_ORDER: print(f"  [{scene:15s}] {script[scene]['voiceover'][:85]}...")
-    final_path=render_cinematic_video(build_full_script(script), mood, niche, script=script)
+    final_path=render_cinematic_video(build_full_script(script), None, niche, script=script)
     guide_text=generate_upload_guide(script,mode,niche,client); save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,niche)
     upload_metadata=generate_upload_metadata(script,mode,niche,client); (OUTPUT_DIR/"upload_metadata.json").write_text(json.dumps(upload_metadata,indent=2))
     if upload_enabled:
         upload_result=upload_to_platforms(final_path,upload_metadata,cfg); (OUTPUT_DIR/"upload_result.json").write_text(json.dumps(upload_result,indent=2))
     else: (OUTPUT_DIR/"upload_result.json").write_text(json.dumps({"skipped":True},indent=2))
-    print(f"\n  DONE | ~{est_duration}s | {niche['name']} | {mood['name']}")
+    print(f"\n  DONE | ~{est_duration}s | {niche['name']}")
     if upload_enabled: print("  Posted: TikTok + Facebook + YouTube")
 
 if __name__=="__main__":

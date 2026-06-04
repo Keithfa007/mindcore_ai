@@ -1,7 +1,8 @@
 name: Female Video Pipeline
 
+# Schedule: Mon/Wed/Fri/Sat/Sun (5 videos/week)
 # Target landing time: ~7pm Malta (UTC+2 summer)
-# Cron fires at 11:00 UTC (1pm Malta) to absorb up to 6hr GitHub delay
+# Cron fires at 11:00 UTC (1pm Malta) -- 6hr buffer for GitHub delay
 on:
   workflow_dispatch:
     inputs:
@@ -15,13 +16,13 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 11 * * *"  # 11:00 UTC = 1pm Malta -- targets ~7pm Malta landing
+    - cron: "0 11 * * 0,1,3,5,6"  # Sun/Mon/Wed/Fri/Sat -- 11:00 UTC = 1pm Malta
 
 jobs:
   generate-female-video:
     name: Generate + Upload Female Cinematic Video (9:16)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repo
@@ -51,8 +52,8 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Cron 11:00 UTC = 1pm Malta -- target landing ~7pm Malta"
-          echo "Pipeline: female_pipeline.py | Hook: fal.ai Wan 2.5"
+          echo "Schedule: Mon/Wed/Fri/Sat/Sun | Cron 11:00 UTC | Target ~7pm Malta"
+          echo "Clips: fal.ai Wan 2.5 (full AI video)"
 
       - name: Run Female Cinematic Pipeline
         env:
@@ -98,16 +99,14 @@ jobs:
         if: always()
         run: |
           echo "## Female Video Pipeline" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Script:** female_pipeline.py | **Platforms:** TikTok + Facebook + YouTube" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | v4.0 | All clips: fal.ai Wan 2.5" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output_female/script_female.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
             HOOK=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('hook_formula',''))" 2>/dev/null || echo "")
-            echo "**Keyword:** $KW | **Hook:** $HOOK" >> $GITHUB_STEP_SUMMARY
-            echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
+            echo "**Keyword:** $KW | **Hook:** $HOOK | **Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output_female/upload_result_female.json" ]; then
-            echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat video_pipeline/output_female/upload_result_female.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
