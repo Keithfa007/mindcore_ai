@@ -1,0 +1,19 @@
+name: Fix Affiliate Product Cards (one-time)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-cards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests cloudscraper
+      - name: Fix product card colours
+        env:
+          WP_USERNAME:     ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: python scripts/fix_affiliate_cards.py
