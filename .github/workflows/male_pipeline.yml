@@ -2,7 +2,6 @@ name: Male Video Pipeline
 
 # Target landing time: ~9am Malta (UTC+2 summer)
 # Cron fires at 05:00 UTC (7am Malta) to absorb up to 2hr GitHub delay
-# Worst case: fires at 05:00 UTC + 2hr delay = lands ~9am Malta
 on:
   workflow_dispatch:
     inputs:
@@ -40,7 +39,7 @@ jobs:
           ffmpeg -version | head -1
 
       - name: Install Python dependencies
-        run: pip install anthropic requests openai-whisper
+        run: pip install anthropic requests openai-whisper fal-client
 
       - name: Show run info
         run: |
@@ -53,7 +52,7 @@ jobs:
             echo "Mode: AUTO (ad every 10th run)"
           fi
           echo "Schedule: Cron 05:00 UTC = 7am Malta -- target landing ~9am Malta"
-          echo "Pipeline: male_pipeline.py | Platforms: TikTok + Facebook + YouTube"
+          echo "Pipeline: male_pipeline.py | Hook: fal.ai Wan 2.5"
 
       - name: Run Male Cinematic Pipeline
         env:
@@ -62,6 +61,7 @@ jobs:
           PEXELS_API_KEY:       ${{ secrets.PEXELS_API_KEY }}
           SERP_API_KEY:         ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
+          FAL_KEY:              ${{ secrets.FAL_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
