@@ -13,7 +13,6 @@ from datetime import datetime
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-# cloudscraper bypasses Cloudflare JS challenges that block plain requests
 scraper = cloudscraper.create_scraper(
     browser={"browser": "chrome", "platform": "windows", "mobile": False}
 )
@@ -56,7 +55,7 @@ GP_CTA_LINK = (
 AFFILIATE_DISCLOSURE = (
     '<div style="background:#0c0c24;border-left:4px solid #a594f9;padding:15px 20px;'
     'margin:0 0 25px 0;border-radius:0 8px 8px 0;font-size:0.9em;color:#9090b8;">'
-    '<strong>Disclosure:</strong> This post contains affiliate links. If you purchase '
+    '<strong style="color:#c0b8f0;">Disclosure:</strong> This post contains affiliate links. If you purchase '
     'through these links, MindCore AI may earn a small commission at no extra cost to you. '
     'We only recommend products we genuinely believe support your mental wellness journey.'
     '</div>'
@@ -64,15 +63,19 @@ AFFILIATE_DISCLOSURE = (
 
 
 def product_card_html(product):
+    weight_row = (
+        f'<li style="color:#b0c8c8;"><strong style="color:#3ecfb2;">Weight:</strong> {product["weight"]}</li>'
+        if product.get("weight") and product["weight"] != "N/A" else ""
+    )
     return (
         f'<div style="background:#0c0c24;border:2px solid #3ecfb2;border-radius:12px;'
-        f'padding:20px;margin:20px 0;">'
-        f'<h3>{product["name"]}</h3>'
-        f'<p>{product["highlight"]}</p>'
-        f'<ul>'
-        f'<li><strong>Best for:</strong> {product["best_for"]}</li>'
-        f'<li><strong>Price:</strong> {product["price_range"]}</li>'
-        f'{"<li><strong>Weight:</strong> " + product["weight"] + "</li>" if product.get("weight") and product["weight"] != "N/A" else ""}'
+        f'padding:20px;margin:20px 0;color:#e0e8e8;">'
+        f'<h3 style="color:#ffffff;margin-top:0;">{product["name"]}</h3>'
+        f'<p style="color:#b0c8c8;">{product["highlight"]}</p>'
+        f'<ul style="color:#b0c8c8;padding-left:20px;">'
+        f'<li><strong style="color:#3ecfb2;">Best for:</strong> {product["best_for"]}</li>'
+        f'<li><strong style="color:#3ecfb2;">Price:</strong> {product["price_range"]}</li>'
+        f'{weight_row}'
         f'</ul>'
         f'<p style="margin-top:15px;">'
         f'<a href="{product["affiliate_link"]}" target="_blank" rel="noopener sponsored" '
@@ -84,37 +87,22 @@ def product_card_html(product):
 
 def quick_links_html(products):
     links = "".join(
-        f'<p>\U0001f449 <a href="{p["affiliate_link"]}" target="_blank" '
-        f'rel="noopener sponsored" style="color:#3ecfb2;">{p["name"]}</a></p>'
+        f'<p style="margin:6px 0;">\U0001f449 <a href="{p["affiliate_link"]}" target="_blank" '
+        f'rel="noopener sponsored" style="color:#3ecfb2;text-decoration:none;">{p["name"]}</a></p>'
         for p in products
     )
     return (
         f'<div style="background:#0c0c24;border:2px solid #a594f9;border-radius:12px;'
-        f'padding:20px;margin:30px 0;">'
-        f'<h2>Quick Links \u2014 All Products</h2>{links}</div>'
+        f'padding:20px;margin:30px 0;color:#e0e8e8;">'
+        f'<h2 style="color:#ffffff;margin-top:0;">Quick Links \u2014 All Products</h2>'
+        f'{links}</div>'
     )
 
 
 # -- Helpers ------------------------------------------------------------------
 def get_wp_auth():
-    """Auth headers — used with cloudscraper for all WP API calls."""
     token = base64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
     return {"Authorization": f"Basic {token}"}
-
-def wp_get(url, **kwargs):
-    """GET via cloudscraper to bypass Cloudflare."""
-    return scraper.get(url, headers=get_wp_auth(), **kwargs)
-
-def wp_post(url, json_data=None, data=None, extra_headers=None, **kwargs):
-    """POST via cloudscraper to bypass Cloudflare."""
-    headers = get_wp_auth()
-    if extra_headers:
-        headers.update(extra_headers)
-    return scraper.post(url, headers=headers, json=json_data, data=data, **kwargs)
-
-def wp_put(url, json_data=None, **kwargs):
-    """PUT via cloudscraper to bypass Cloudflare."""
-    return scraper.put(url, headers={**get_wp_auth(), "Content-Type": "application/json"}, json=json_data, **kwargs)
 
 def keyword_to_slug(keyword):
     slug = keyword.lower().strip()
@@ -234,7 +222,7 @@ Tasks:
 4. Write a meta description (150-160 chars) with primary keyword
 5. Write a DALL-E image prompt for a cinematic-warm lifestyle scene
 
-Respond ONLY in this exact JSON — no markdown:
+Respond ONLY in this exact JSON \u2014 no markdown:
 {{"topic":"title","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"intent","meta_description":"meta","image_prompt":"scene","category":"{product_cat['wp_category']}"}}"""}]
     )
 
@@ -301,7 +289,7 @@ STRUCTURE:
 3. Intro 2-3 paragraphs (keyword in first sentence)
 4. H2 - Why these products matter for mental wellness
 5. H2 - How we chose them
-6. H2 per product - 100-150 word review then EXACT product card:
+6. H2 per product - 100-150 word review then EXACT product card HTML:
 {product_card_instructions}
 7. H2 - How to choose the right one (with <ul> list)
 8. FAQ SECTION (MANDATORY):
@@ -312,7 +300,7 @@ STRUCTURE:
 9. Quick links (insert EXACT HTML):
 {quick_links_block}
 10. FINAL CTA:
-   <p><strong>These products support your body. {APP_INLINE_LINK} supports your mind — 24/7, no waiting room required.</strong></p>
+   <p><strong>These products support your body. {APP_INLINE_LINK} supports your mind \u2014 24/7, no waiting room required.</strong></p>
    {GP_CTA_LINK}
 
 MANDATORY LINKS:
@@ -343,7 +331,7 @@ def expand_post(content, topic_data, current_words):
     kw     = topic_data["primary_keyword"]
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
-        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}. Add ~{needed} words. Use EXACT phrase "{kw}" 3+ more times. Return COMPLETE post with EXCERPT.\n\n{content}"""}]
+        messages=[{"role": "user", "content": f"""Post is {current_words} words \u2014 needs {MIN_WORD_COUNT}. Add ~{needed} words. Use EXACT phrase "{kw}" 3+ more times. Return COMPLETE post with EXCERPT.\n\n{content}"""}]
     )
     expanded = response.content[0].text
     print(f"   Expanded to {count_words_in_html(expanded)} words")
@@ -365,7 +353,7 @@ def generate_illustration(image_prompt):
         print("   Cinematic image generated (gpt-image-1)")
         return img
     except Exception as e1:
-        print(f"   gpt-image-1 failed: {e1} — trying dall-e-2...")
+        print(f"   gpt-image-1 failed: {e1} \u2014 trying dall-e-2...")
     try:
         resp = openai_client.images.generate(model="dall-e-2", prompt=prompt[:1000], size="1024x1024", n=1)
         img  = requests.get(resp.data[0].url, timeout=30).content
