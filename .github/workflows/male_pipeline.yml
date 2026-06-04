@@ -1,8 +1,9 @@
 name: Male Video Pipeline
 
-# Schedule: Mon/Wed/Fri/Sat/Sun (5 videos/week)
 # Target landing time: ~9am Malta (UTC+2 summer)
-# Cron fires at 05:00 UTC (7am Malta) -- 2hr buffer for GitHub delay
+# Cron fires at 05:00 UTC (7am Malta) to absorb up to 2hr GitHub delay
+# Schedule: Mon/Wed/Fri/Sat/Sun = 5 videos/week
+# Full fal.ai video generation (~$1.25/video, ~$25/week)
 on:
   workflow_dispatch:
     inputs:
@@ -52,8 +53,8 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Mon/Wed/Fri/Sat/Sun | Cron 05:00 UTC | Target ~9am Malta"
-          echo "Clips: fal.ai Wan 2.5 (full AI video)"
+          echo "Schedule: Mon/Wed/Fri/Sat/Sun | Cron 05:00 UTC = 7am Malta"
+          echo "Video: Full fal.ai (5 clips x Wan 2.5 ~$1.25/video)"
 
       - name: Run Male Cinematic Pipeline
         env:
@@ -98,15 +99,17 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## Male Video Pipeline" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | v7.9 | All clips: fal.ai Wan 2.5" >> $GITHUB_STEP_SUMMARY
+          echo "## Male Video Pipeline v7.9" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | **Full fal.ai** | Mon/Wed/Fri/Sat/Sun" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
             HOOK=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('hook_formula',''))" 2>/dev/null || echo "")
-            echo "**Keyword:** $KW | **Hook:** $HOOK | **Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
+            echo "**Keyword:** $KW | **Hook:** $HOOK" >> $GITHUB_STEP_SUMMARY
+            echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output/upload_result.json" ]; then
+            echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat video_pipeline/output/upload_result.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
