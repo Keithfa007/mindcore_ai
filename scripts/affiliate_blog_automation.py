@@ -20,6 +20,13 @@ HISTORY_FILE   = "scripts/affiliate_blog_history.json"
 PRODUCTS_FILE  = "scripts/affiliate_products.json"
 MIN_WORD_COUNT = 1200
 
+# Browser User-Agent to bypass Hostinger/Cloudflare bot detection
+WP_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
 INTERNAL_LINKS = [
     ("MindCore AI features", "https://mindcoreai.eu/features/"),
     ("our story",            "https://mindcoreai.eu/about-us/"),
@@ -39,13 +46,12 @@ APP_INLINE_LINK = (
     'target="_blank" rel="noopener noreferrer"><strong>MindCore AI</strong></a>'
 )
 
+# Official Google Play badge
 GP_CTA_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
-    'target="_blank" rel="noopener noreferrer" '
-    'style="font-weight:700;color:#07071a;background-color:#3ecfb2;'
-    'padding:0.5rem 1.2rem;border-radius:8px;text-decoration:none;'
-    'display:inline-block;margin-top:0.5rem;">'
-    '<strong>Download MindCore AI on Google Play</strong>'
+    'target="_blank" rel="noopener noreferrer">'
+    '<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" '
+    'alt="Get it on Google Play" style="height:60px;width:auto;display:block;margin-top:0.75rem;">'
     '</a>'
 )
 
@@ -93,8 +99,12 @@ def quick_links_html(products):
 
 # -- Helpers ------------------------------------------------------------------
 def get_wp_auth():
+    """Return auth headers with browser User-Agent to bypass Cloudflare bot detection."""
     token = base64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
-    return {"Authorization": f"Basic {token}"}
+    return {
+        "Authorization": f"Basic {token}",
+        "User-Agent":    WP_USER_AGENT,
+    }
 
 def keyword_to_slug(keyword):
     slug = keyword.lower().strip()
@@ -194,7 +204,7 @@ def research_topic(product_cat, history):
     history_txt = format_history_for_prompt(history)
 
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514", max_tokens=2000,
+        model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO content strategist for mindcoreai.eu.
 
 PRODUCT CATEGORY: {product_cat['category']}
@@ -214,9 +224,9 @@ Tasks:
 2. Write a compelling title that CONTAINS A NUMBER and the keyword
 3. Choose 5 secondary keywords related to this product category + mental wellness
 4. Write a meta description (150-160 chars) containing the primary keyword
-5. Write a DALL-E image prompt for a cinematic-warm lifestyle scene showing someone using or benefiting from this type of product
+5. Write a DALL-E image prompt for a cinematic-warm lifestyle scene
 
-Respond ONLY in this exact JSON \u2014 no markdown:
+Respond ONLY in this exact JSON — no markdown:
 {{"topic":"title with number and keyword","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta containing primary keyword","image_prompt":"specific cinematic-warm lifestyle scene","category":"{product_cat['wp_category']}"}}"""}]
     )
 
@@ -274,7 +284,7 @@ For product {i} ({p['name']}), insert this EXACT HTML product card:
     quick_links_block = quick_links_html(products)
 
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514", max_tokens=7000,
+        model="claude-opus-4-5", max_tokens=7000,
         messages=[{"role": "user", "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
 
 Write a full, publish-ready AFFILIATE REVIEW blog post:
@@ -283,23 +293,21 @@ Write a full, publish-ready AFFILIATE REVIEW blog post:
   Secondary KWs   : {', '.join(topic_data['secondary_keywords'])}
   Search Intent   : {topic_data['search_intent']}
 
-THIS IS AN AFFILIATE REVIEW POST. The structure is different from regular blog posts.
-
 PRODUCTS TO REVIEW:
 {product_details}
 
-CRITICAL KEYWORD RULES (same as main blog):
+CRITICAL KEYWORD RULES:
   1. EXACT phrase "{kw}" in the H1 title
   2. EXACT phrase "{kw}" in the very first sentence
   3. EXACT phrase "{kw}" in at least 3 H2 subheadings
   4. EXACT phrase "{kw}" at least 8-10 times total
-  5. No synonyms or variations \u2014 EXACT phrase only
+  5. No synonyms or variations — EXACT phrase only
   6. Keyword density: 1.0%-1.5%
   7. Minimum 1,200 words
 
 STRUCTURE (follow this EXACTLY):
 
-1. FIRST ELEMENT \u2014 Affiliate Disclosure (insert this EXACT HTML first):
+1. FIRST ELEMENT — Affiliate Disclosure (insert this EXACT HTML first):
 {AFFILIATE_DISCLOSURE}
 
 2. H1 TITLE with keyword and number
@@ -309,28 +317,23 @@ STRUCTURE (follow this EXACTLY):
    - Mention why this product type matters for mental wellness
    - Use "{kw}" in the very first sentence
 
-4. H2 \u2014 "Why [Product Type] Matter for Mental Wellness"
+4. H2 — "Why [Product Type] Matter for Mental Wellness"
    - Explain the connection between this product and mental health
-   - Include research or evidence where possible
-   - Use "{kw}" naturally
 
-5. H2 \u2014 "How We Chose the {len(products)} Best [Products]"
-   - Brief methodology: what criteria were used
-   - Mention comfort, value, effectiveness for mental wellness
+5. H2 — "How We Chose the {len(products)} Best [Products]"
+   - Brief methodology
 
-6. H2 \u2014 Each product gets its own H2 section:
-   For each product write 100-150 words of genuine review text THEN insert the product card HTML.
-   The product card HTML MUST be inserted EXACTLY as provided below \u2014 do not modify it.
+6. H2 — Each product gets its own H2 section:
+   For each product write 100-150 words of genuine review THEN insert the product card HTML EXACTLY as provided:
 {product_card_instructions}
 
-7. H2 \u2014 "How to Choose the Right [Product] for You"
-   - Buying guide with practical advice
-   - Include a <ul> list of factors to consider
+7. H2 — "How to Choose the Right [Product] for You"
+   - Buying guide with <ul> list of factors
 
-8. H2 \u2014 FAQ section:
+8. FAQ SECTION (MANDATORY):
    <h2>Frequently Asked Questions About {kw.title()}</h2>
    5 questions using <h3> tags:
-   - At least 2 questions must include the exact phrase "{kw}"
+   - At least 2 questions include exact phrase "{kw}"
    - Answers 2-4 sentences each
    - One answer mentions MindCore AI naturally
 
@@ -338,10 +341,9 @@ STRUCTURE (follow this EXACTLY):
 {quick_links_block}
 
 10. FINAL CTA:
-   - Brief paragraph connecting physical wellness products to mental wellness
-   - "These products support your body. MindCore AI supports your mind."
-   - Use this inline link once: {APP_INLINE_LINK}
-   - End with this CTA button: {GP_CTA_LINK}
+   - Bold paragraph: <p><strong>These products support your body. {APP_INLINE_LINK} supports your mind — 24/7, no waiting room required.</strong></p>
+   - Then this EXACT Google Play badge:
+   {GP_CTA_LINK}
 
 MANDATORY LINKS:
   Internal (include ALL 3):
@@ -352,8 +354,8 @@ MANDATORY LINKS:
 {cross_link_block}
 TONE:
   Honest, practical, trustworthy. Like a knowledgeable friend recommending products
-  they actually use. Never salesy or pushy. Acknowledge that products alone don't
-  fix mental health \u2014 they support a broader wellness practice.
+  they actually use. Never salesy. Acknowledge that products alone don't fix mental
+  health — they support a broader wellness practice.
 
 FORMAT:
   - Clean WordPress HTML: h1 h2 h3 p ul li strong em a div
@@ -379,9 +381,9 @@ def expand_post(content, topic_data, current_words):
     needed = MIN_WORD_COUNT - current_words
     kw     = topic_data["primary_keyword"]
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514", max_tokens=3000,
-        messages=[{"role": "user", "content": f"""Post is {current_words} words \u2014 needs {MIN_WORD_COUNT}.
-Add ~{needed} words by expanding product reviews or adding buying guide detail.
+        model="claude-opus-4-5", max_tokens=3000,
+        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}.
+Add ~{needed} words by expanding product reviews or buying guide.
 Use EXACT phrase "{kw}" at least 3 more times. Return COMPLETE post with EXCERPT.
 
 {content}"""}]
@@ -408,18 +410,14 @@ def generate_illustration(image_prompt):
             size="1536x1024", quality="high", n=1,
         )
         data = resp.data[0]
-        if getattr(data, "url", None):
-            img = requests.get(data.url, timeout=30).content
-        else:
-            img = base64.b64decode(data.b64_json)
+        img  = requests.get(data.url, timeout=30).content if getattr(data, "url", None) else base64.b64decode(data.b64_json)
         print("   Cinematic image generated (gpt-image-1)")
         return img
     except Exception as e1:
-        print(f"   gpt-image-1 failed: {e1} \u2014 trying dall-e-2...")
+        print(f"   gpt-image-1 failed: {e1} — trying dall-e-2...")
     try:
         resp = openai_client.images.generate(
-            model="dall-e-2", prompt=cinematic_prompt[:1000],
-            size="1024x1024", n=1,
+            model="dall-e-2", prompt=cinematic_prompt[:1000], size="1024x1024", n=1,
         )
         img = requests.get(resp.data[0].url, timeout=30).content
         print("   Cinematic image generated (dall-e-2 fallback)")
@@ -437,7 +435,7 @@ def upload_image_to_wordpress(image_data, alt_text=""):
     upload_headers["Content-Type"]        = "image/png"
     resp = requests.post(f"{WP_URL}/wp-json/wp/v2/media", headers=upload_headers, data=image_data, timeout=60)
     if resp.status_code != 201:
-        print(f"   Upload failed ({resp.status_code}): {resp.text}")
+        print(f"   Upload failed ({resp.status_code}): {resp.text[:200]}")
         return None, None
     media     = resp.json()
     media_id  = media["id"]
@@ -450,6 +448,7 @@ def upload_image_to_wordpress(image_data, alt_text=""):
             headers={**auth, "Content-Type": "application/json"},
             json={"alt_text": alt_text, "caption": alt_text}, timeout=15,
         )
+        print(f"   Alt text set: '{alt_text}'")
     return media_id, media_url
 
 
@@ -533,7 +532,7 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
             print(f"   Rate limited - waiting {wait}s...")
             time.sleep(wait)
             continue
-        raise RuntimeError(f"WordPress publish failed ({resp.status_code}): {resp.text}")
+        raise RuntimeError(f"WordPress publish failed ({resp.status_code}): {resp.text[:300]}")
     else:
         raise RuntimeError("WordPress publish failed after 4 attempts")
     post    = resp.json()
