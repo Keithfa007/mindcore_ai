@@ -1,9 +1,9 @@
 name: Male Video Pipeline
 
-# Target landing time: ~9am Malta (UTC+2 summer)
-# Cron fires at 05:00 UTC (7am Malta) to absorb up to 2hr GitHub delay
-# Schedule: Mon/Wed/Fri/Sat/Sun = 5 videos/week
-# Full fal.ai video generation (~$1.25/video, ~$25/week)
+# SCHEDULE: Weekend only (Sat + Sun), two slots
+# Morning slot:   cron 03:00 UTC (5am Malta) --> absorbs 8hr delay --> lands ~9am Malta
+# Afternoon slot: cron 07:00 UTC (9am Malta) --> absorbs 8hr delay --> lands ~1pm Malta
+# Full fal.ai video (~$1.25/video, 4 videos/weekend)
 on:
   workflow_dispatch:
     inputs:
@@ -17,7 +17,8 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 5 * * 0,1,3,5,6"  # Sun/Mon/Wed/Fri/Sat -- 05:00 UTC = 7am Malta
+    - cron: "0 3 * * 6,0"  # Sat/Sun morning: 5am Malta --> ~9am landing
+    - cron: "0 7 * * 6,0"  # Sat/Sun afternoon: 9am Malta --> ~1pm landing
 
 jobs:
   generate-male-video:
@@ -53,7 +54,7 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Mon/Wed/Fri/Sat/Sun | Cron 05:00 UTC = 7am Malta"
+          echo "Schedule: Sat/Sun | Morning 03:00 UTC + Afternoon 07:00 UTC"
           echo "Video: Full fal.ai (5 clips x Wan 2.5 ~$1.25/video)"
 
       - name: Run Male Cinematic Pipeline
@@ -100,7 +101,7 @@ jobs:
         if: always()
         run: |
           echo "## Male Video Pipeline v7.9" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | **Full fal.ai** | Mon/Wed/Fri/Sat/Sun" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | Sat/Sun morning + afternoon" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
