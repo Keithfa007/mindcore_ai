@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v3.8
+MindCore AI -- Female Cinematic Pipeline v3.9
 =============================================
-CHANGES (v3.8):
-  - FIX: POWER_WORDS expanded with payoff words identified from /watch
-    competitor analysis. Words that were missing: wound, depleted,
-    difference, flaw, earned, rooms, wrong, apologize, perception, rehearse.
-    These are the exact words that carry the diagnostic reframe payoff
-    but were not flashing because they weren't in the set.
-  - FIX: Timing reverted to single daily cron 07:00 UTC = 9am Malta.
-
-All v3.7 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
+CHANGES (v3.9):
+  - ADD: fal.ai Wan 2.5 hook clip generation via fal_hook.py.
+    The hook clip is now AI-generated -- no Pexels for the hook.
+    Eliminates trauma-coded imagery problem. Falls back to Pexels
+    if FAL_KEY not set or generation fails.
+  - ADD: 'glass' to POWER_WORDS.
+  - Cost: ~$0.25 per hook clip.
+All v3.8 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
 """
 
 import json
@@ -31,6 +30,7 @@ FISH_AUDIO_API_KEY  = os.environ.get("FISH_AUDIO_API_KEY", "")
 PEXELS_API_KEY      = os.environ.get("PEXELS_API_KEY", "")
 SERP_API_KEY        = os.environ.get("SERP_API_KEY", "")
 UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
+FAL_KEY             = os.environ.get("FAL_KEY", "")
 GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
 FISH_AUDIO_TTS_URL  = "https://api.fish.audio/v1/tts"
@@ -97,26 +97,19 @@ WORD_FLASH_STOPWORDS = {
 }
 
 POWER_WORDS = {
-    # Core emotional pain
     'broken','tired','alone','lost','numb','empty','heavy','dark','scared',
     'hurt','pain','shame','guilt','anger','grief','fear','doubt','silence',
     'hollow','drained','invisible','worthless','hopeless','desperate','trapped',
-    # Mental health & recovery
     'healing','depression','anxiety','trauma','burnout','exhausted',
     'overwhelmed','suffocating','withdrawn','sensitive','anxious',
-    # Action & identity
     'fight','carry','hold','fall','rise','change','truth','real',
     'survive','breathe','pretend','mask','hide','quit','disappear',
-    # Worth & self
     'enough','worthy','seen','heard','free','strong','silent',
     'soul','heart','weight','burden','purpose','missing','love',
-    # Present-tense emotional states
     'pretending','performing','disappearing','shrinking','drowning','fading',
     'pleasing','hiding','carrying','protecting','managing','fixing',
-    # v3.8: payoff words from /watch competitor analysis -- these carry the
-    # diagnostic reframe punchlines but were missing from the flash set
     'wound','depleted','difference','flaw','earned','rooms','wrong',
-    'apologize','perception','rehearse',
+    'apologize','perception','rehearse','glass',
 }
 
 HOOK_FORMULAS = [
@@ -346,14 +339,14 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING HERSELF: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- end with EITHER: (a) an emotional resolution payoff that drives saves and shares -- "You're not alone." / "You kept showing up, and that matters." / "This is for the ones disappearing in silence." -- choose this when the script is deeply confessional or raw; OR (b) a community engagement trigger -- "Comment SEEN if this is you" / "Comment TIRED if you know this feeling" / "Comment INVISIBLE if you've felt this way" -- choose this when the script is more direct or empowering. Match the ending to the emotional tone. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING HERSELF: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- end with EITHER: (a) an emotional resolution -- "You're not alone." / "You kept showing up, and that matters." -- choose when script is confessional; OR (b) a comment trigger -- "Comment SEEN if this is you" -- choose when more direct. Match the tone. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt,client,max_tokens=800)
 
 def generate_ad_script(app_facts, niche, client):
     ad_topic=random.choice(AD_TOPICS); formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     print(f"  AD: pain point: {ad_topic['pain_point'][:65]}...")
     lo_prob,hi_prob=WORD_TARGETS_AD["problem"]; lo_story,hi_story=WORD_TARGETS_AD["story"]; lo_cta,hi_cta=WORD_TARGETS_AD["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI targeting women. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT -- every word must earn its place):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly, then end with EITHER an emotional resolution ("You're not alone in this.") OR an engagement trigger ("Comment SEEN if you need this" / "Comment HEALING if you're ready"). Match the tone.\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI targeting women. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly, then end with EITHER an emotional resolution ("You're not alone in this.") OR an engagement trigger ("Comment SEEN if you need this"). Match the tone.\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt,client,max_tokens=800)
 
 def build_full_script(script):
@@ -366,7 +359,6 @@ def build_full_script(script):
 
 
 def pick_power_word(words_in_chunk):
-    """Pick the most emotionally resonant word from a subtitle chunk."""
     candidates = [
         w for w in words_in_chunk
         if len(w["word"].strip()) > 2
@@ -565,7 +557,9 @@ def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=Non
     print(f"  Assembled: {w}x{h} | {size_mb:.1f} MB")
     if ass_path: burn_subtitles_into_video(output_path,ass_path)
 
-def render_cinematic_video(script_text, mood, niche):
+def render_cinematic_video(script_text, mood, niche, script=None):
+    """Render full video. Hook clip is AI-generated via fal.ai if FAL_KEY set."""
+    from video_pipeline.fal_hook import generate_hook_clip_fal
     print("\n  [TTS] Generating voiceover...")
     audio_path=str(OUTPUT_DIR/"voiceover_female.mp3"); generate_fish_audio_tts(script_text,audio_path)
     print("\n  [Subtitles] Transcribing with Whisper...")
@@ -574,9 +568,17 @@ def render_cinematic_video(script_text, mood, niche):
     print("\n  [Pexels] Fetching scene-matched clips...")
     clips=fetch_scene_matched_clips(mood,niche)
     if not clips: raise RuntimeError("No Pexels clips found")
-    clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True); raw_clip_paths=[]; scene_types=[]
+    clips_dir=OUTPUT_DIR/"clips"; clips_dir.mkdir(exist_ok=True)
+    raw_clip_paths=[]; scene_types=[]
     for i,clip in enumerate(clips):
         clip_path=str(clips_dir/f"raw_{i}.mp4")
+        if i == 0 and FAL_KEY and script:
+            hook_vo = script.get("hook", {}).get("voiceover", "")
+            fal_path = generate_hook_clip_fal(hook_vo, niche["name"], clip_path, FAL_KEY)
+            if fal_path:
+                raw_clip_paths.append(fal_path)
+                scene_types.append("hook")
+                continue
         try:
             download_clip(clip["url"],clip_path)
             raw_clip_paths.append(clip_path)
@@ -606,7 +608,7 @@ def generate_upload_guide(script, mode, niche, client):
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
     niche_tags=" ".join(niche.get("hashtags",[]))
-    prompt=f"""Social media expert for women's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- first_comment: A single punchy question or invitation (max 150 chars) posted as the first comment the moment the video goes live. Must spark replies. Match the emotional tone of the hook. Examples: "Which part of this hit you hardest? \U0001f447", "Drop a word that describes this feeling \U0001f447", "Tag someone who needs to hear this \U0001f499". Do NOT repeat the video CTA.\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
+    prompt=f"""Social media expert for women's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- first_comment: punchy question or invitation (max 150 chars). Must spark replies. Do NOT repeat the video CTA.\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1000,messages=[{"role":"user","content":prompt}])
@@ -651,7 +653,7 @@ def upload_to_platforms(video_path, metadata, cfg):
 def save_upload_guide(guide_text, script, mode, run_number, niche):
     generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER); est_duration=round(total_words/130*60)
-    header=f"MINDCORE AI FEMALE UPLOAD GUIDE -- Run #{run_number} | {generated_at}\nNiche: {niche['name']} | Format: CINEMATIC | ~{est_duration}s | {total_words} words\n\nFULL SCRIPT\n"
+    header=f"MINDCORE AI FEMALE UPLOAD GUIDE -- Run #{run_number} | {generated_at}\nNiche: {niche['name']} | ~{est_duration}s | {total_words} words\n\nFULL SCRIPT\n"
     for scene in SCENE_ORDER: header+=f"[{scene.upper()}] {script[scene]['voiceover']}\n\n"
     (OUTPUT_DIR/"upload_guide_female.txt").write_text(header+guide_text,encoding="utf-8"); print("  Upload guide saved")
 
@@ -664,10 +666,10 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.8")
-    print(f"  Run #{GITHUB_RUN_NUMBER} -- Mode: {mode.upper()} | Pexels page: {((GITHUB_RUN_NUMBER-1)%20)+1}")
-    print(f"  Niche: {niche['name']} | Target: 25-35s | Colour: COLD(hook/problem) WARM(story/cta)")
-    print(f"  Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
+    fal_status = f"ENABLED (~$0.25/hook)" if FAL_KEY else "DISABLED (no FAL_KEY)"
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v3.9")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Hook AI: {fal_status}")
+    print(f"  Niche: {niche['name']} | Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")
     if mode=="ad": script=generate_ad_script(load_app_facts(),niche,client)
@@ -678,7 +680,7 @@ def main():
     total_words=sum(len(script[s]["voiceover"].split()) for s in SCENE_ORDER); est_duration=round(total_words/130*60)
     print(f"\n  ~{est_duration}s | Hook formula: {script.get('hook_formula','?')}")
     for scene in SCENE_ORDER: print(f"  [{scene:15s}] {script[scene]['voiceover'][:85]}...")
-    final_path=render_cinematic_video(build_full_script(script),mood,niche)
+    final_path=render_cinematic_video(build_full_script(script),mood,niche,script=script)
     guide_text=generate_upload_guide(script,mode,niche,client); save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,niche)
     upload_metadata=generate_upload_metadata(script,mode,niche,client); (OUTPUT_DIR/"upload_metadata_female.json").write_text(json.dumps(upload_metadata,indent=2))
     if upload_enabled:
