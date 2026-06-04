@@ -3,6 +3,7 @@ name: MindCore AI — Affiliate Blog Automation
 on:
   schedule:
     - cron: '0 10 * * 3'   # Every Wednesday at 10:00 AM UTC (12:00 Malta)
+    - cron: '0 10 * * 5'   # Every Friday at 10:00 AM UTC (12:00 Malta)
   workflow_dispatch:        # Manual trigger from GitHub UI
 
 jobs:
