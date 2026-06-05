@@ -1,0 +1,94 @@
+name: Carousel Image Post Pipeline
+
+# Partner-directed 5-image carousel posts
+# TikTok Photo Mode + Instagram carousel
+# Format: 5 cinematic images + long-form prose caption
+# Schedule: daily 07:00 UTC (9am Malta) --> lands ~2pm Malta
+# Cost: ~$0.20/post (5 x gpt-image-1 medium)
+on:
+  workflow_dispatch:
+    inputs:
+      run_note:
+        description: "Optional note"
+        required: false
+        default: "manual"
+
+  schedule:
+    - cron: "0 7 * * *"  # Daily 07:00 UTC = 9am Malta --> ~2pm Malta landing
+
+jobs:
+  generate-carousel:
+    name: Generate + Upload 5-Slide Carousel Post
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install anthropic requests openai pillow
+
+      - name: Show run info
+        run: |
+          echo "Pipeline: Carousel Image Post v1.0"
+          echo "Format: 5-slide partner-directed carousel"
+          echo "Images: gpt-image-1 medium (~$0.04/image)"
+          echo "Platforms: TikTok + Instagram"
+          echo "Schedule: Daily 07:00 UTC = 9am Malta"
+
+      - name: Run Carousel Pipeline
+        env:
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
+          GITHUB_RUN_NUMBER:    ${{ github.run_number }}
+        run: python scripts/carousel_pipeline.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: carousel-run-${{ github.run_number }}
+          path: |
+            scripts/output_carousel/slide_1.jpg
+            scripts/output_carousel/slide_2.jpg
+            scripts/output_carousel/slide_3.jpg
+            scripts/output_carousel/slide_4.jpg
+            scripts/output_carousel/slide_5.jpg
+            scripts/output_carousel/carousel_caption.txt
+            scripts/output_carousel/carousel_script.json
+            scripts/output_carousel/carousel_upload_result.json
+          retention-days: 30
+
+      - name: Upload debug on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: carousel-debug-${{ github.run_number }}
+          path: scripts/output_carousel/
+          retention-days: 7
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Carousel Image Post Pipeline" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | 5 slides | TikTok + Instagram" >> $GITHUB_STEP_SUMMARY
+          if [ -f "scripts/output_carousel/carousel_script.json" ]; then
+            TOPIC=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
+            H1=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('headline_line1',''))" 2>/dev/null || echo "")
+            H2=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('headline_line2',''))" 2>/dev/null || echo "")
+            echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
+            echo "**Headline:** $H1 / $H2" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f "scripts/output_carousel/carousel_upload_result.json" ]; then
+            echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat scripts/output_carousel/carousel_upload_result.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
