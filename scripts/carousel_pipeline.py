@@ -258,7 +258,6 @@ def wrap_text(text, font, max_w):
     return lines or [""]
 
 def draw_text_with_stroke(draw, cx, y, text, font, color, stroke_color=(0,0,0), stroke_w=3):
-    """Draw text centered at cx, top at y, with black stroke for readability."""
     for dx in range(-stroke_w, stroke_w+1):
         for dy in range(-stroke_w, stroke_w+1):
             if dx or dy:
@@ -266,7 +265,6 @@ def draw_text_with_stroke(draw, cx, y, text, font, color, stroke_color=(0,0,0), 
     draw.text((cx, y), text, font=font, fill=color, anchor="mt")
 
 def draw_text_block(draw, cx, y, lines, font, color, stroke_w=3):
-    """Draw multiple lines, return bottom y."""
     lh = line_height(font)
     for line in lines:
         draw_text_with_stroke(draw, cx, y, line, font, color, stroke_w=stroke_w)
@@ -274,7 +272,6 @@ def draw_text_block(draw, cx, y, lines, font, color, stroke_w=3):
     return y
 
 def draw_brush_stroke(draw, cx, y_top, text, font, brush_color):
-    """Draw neon brush stroke behind hero text. Returns text bounds."""
     try:
         bb = font.getbbox(text)
         tw = bb[2] - bb[0]; th = bb[3] - bb[1]
@@ -291,7 +288,6 @@ def draw_brush_stroke(draw, cx, y_top, text, font, brush_color):
     draw.polygon(pts, fill=brush_color)
 
 def add_gradient_overlay(img, text_start_y):
-    """Darken the text zone with a gradient so white text is always readable."""
     overlay = Image.new("RGBA", (IMAGE_WIDTH, IMAGE_HEIGHT), (0, 0, 0, 0))
     draw    = ImageDraw.Draw(overlay)
     zone_h  = IMAGE_HEIGHT - text_start_y
@@ -363,7 +359,6 @@ Return ONLY valid JSON:
 
     result = _call_claude(prompt, client, max_tokens=2000)
 
-    # Hard trim
     for key in ["s1_hero","s2_hero","s3_hero","s4_hero","s5_hero"]:
         w = result.get(key,"").split()
         if len(w) > 5: result[key] = " ".join(w[:4])
@@ -380,7 +375,7 @@ Return ONLY valid JSON:
 
     print(f"  Topic: {result.get('topic')}")
     for i in range(1,6):
-        cmd = result.get(f"s{i}_command","")
+        cmd  = result.get(f"s{i}_command","")
         hero = result.get(f"s{i}_hero","")
         body = result.get(f"s{i}_body","")
         print(f"  Slide {i}: [{cmd}] | [{hero}] | {body[:40] if body else '—'}")
@@ -431,20 +426,17 @@ def resize_to_tiktok(img_bytes):
 # Step 4: Render text overlay on image
 # ---------------------------------------------------------------------------
 def render_hook_slide(img, script, brush_color):
-    """Slide 1: command (small gray) + hero (large + brush stroke). No body."""
     text_start = int(IMAGE_HEIGHT * TEXT_START_HOOK)
     img = add_gradient_overlay(img, text_start)
     draw = ImageDraw.Draw(img)
     cx = IMAGE_WIDTH // 2
     y  = text_start + 30
 
-    # Command (small, gray)
     cmd_font  = get_font(CMD_SIZE, bold=False)
     cmd_lines = wrap_text(script["s1_command"], cmd_font, MAX_TEXT_W)
     y = draw_text_block(draw, cx, y, cmd_lines, cmd_font, CMD_COLOR, stroke_w=2)
     y += int(SECTION_GAP * 0.7)
 
-    # Hero with brush stroke (large, dark text ON neon stroke)
     hero_font  = get_font(HERO_SIZE, bold=True)
     hero_lines = wrap_text(script["s1_hero"], hero_font, MAX_TEXT_W)
     lh = line_height(hero_font)
@@ -455,7 +447,6 @@ def render_hook_slide(img, script, brush_color):
     return img
 
 def render_content_slide(img, script, slide_num, brush_color):
-    """Slides 2-5: command + hero (brush) + body + bold punchline."""
     n = str(slide_num)
     text_start = int(IMAGE_HEIGHT * TEXT_START_CONTENT)
     img = add_gradient_overlay(img, text_start)
@@ -463,13 +454,11 @@ def render_content_slide(img, script, slide_num, brush_color):
     cx = IMAGE_WIDTH // 2
     y  = text_start + 25
 
-    # Command
     cmd_font  = get_font(CMD_SIZE, bold=False)
     cmd_lines = wrap_text(script[f"s{n}_command"], cmd_font, MAX_TEXT_W)
     y = draw_text_block(draw, cx, y, cmd_lines, cmd_font, CMD_COLOR, stroke_w=2)
     y += int(SECTION_GAP * 0.5)
 
-    # Hero with brush stroke
     hero_font  = get_font(HERO_SIZE, bold=True)
     hero_lines = wrap_text(script[f"s{n}_hero"], hero_font, MAX_TEXT_W)
     lh = line_height(hero_font)
@@ -479,7 +468,6 @@ def render_content_slide(img, script, slide_num, brush_color):
         y += lh + LINE_GAP
     y += SECTION_GAP
 
-    # Body text (white, readable)
     body_text = script.get(f"s{n}_body", "")
     if body_text:
         body_font  = get_font(BODY_SIZE, bold=False)
@@ -487,7 +475,6 @@ def render_content_slide(img, script, slide_num, brush_color):
         y = draw_text_block(draw, cx, y, body_lines, body_font, BODY_COLOR, stroke_w=3)
         y += int(LINE_GAP * 0.5)
 
-    # Bold punchline (white, larger, stronger stroke)
     bold_text = script.get(f"s{n}_bold", "")
     if bold_text:
         bold_font  = get_font(BOLD_SIZE, bold=True)
@@ -496,20 +483,17 @@ def render_content_slide(img, script, slide_num, brush_color):
     return img
 
 def render_cta_slide(img, script, brush_color):
-    """Slide 6: CTA -- trigger + MindCore AI + download + URL."""
     text_start = int(IMAGE_HEIGHT * TEXT_START_CTA)
     img = add_gradient_overlay(img, max(text_start - 120, 0))
     draw = ImageDraw.Draw(img)
     cx = IMAGE_WIDTH // 2
     y  = text_start
 
-    # Comment trigger
     trig_font  = get_font(CTA_TRIG, bold=True)
     trig_lines = wrap_text(script.get("cta_trigger","Comment SAVED if you needed this 👇"), trig_font, MAX_TEXT_W)
     y = draw_text_block(draw, cx, y, trig_lines, trig_font, CTA_COLOR, stroke_w=3)
     y += SECTION_GAP
 
-    # "MindCore AI" with brush stroke
     app_font = get_font(CTA_APP, bold=True)
     app_text = "MindCore AI"
     lh_app   = line_height(app_font)
@@ -517,18 +501,15 @@ def render_cta_slide(img, script, brush_color):
     draw.text((cx, y), app_text, font=app_font, fill=HERO_COLOR, anchor="mt")
     y += lh_app + SECTION_GAP
 
-    # "Download for free"
     dl_font  = get_font(CTA_DL, bold=False)
     dl_lines = wrap_text("Download for free", dl_font, MAX_TEXT_W)
     y = draw_text_block(draw, cx, y, dl_lines, dl_font, CTA_COLOR, stroke_w=2)
 
-    # "on Google Play" (bold)
     gp_font  = get_font(CTA_DL, bold=True)
     gp_lines = wrap_text("on Google Play", gp_font, MAX_TEXT_W)
     y = draw_text_block(draw, cx, y, gp_lines, gp_font, CTA_COLOR, stroke_w=3)
     y += int(LINE_GAP * 1.5)
 
-    # URL
     url_font = get_font(CTA_URL, bold=False)
     draw_text_with_stroke(draw, cx, y, "mindcoreai.eu/app", url_font, URL_COLOR, stroke_w=2)
     return img
@@ -607,17 +588,22 @@ def main():
     cfg_path = Path("video_pipeline/heygen_config.json")
     if cfg_path.exists():
         with open(cfg_path) as f: cfg = json.load(f)
-    upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
+
+    # ----------------------------------------------------------------
+    # TESTING MODE -- upload disabled while v2.1 is being reviewed.
+    # When slides look good, change this back to:
+    #   upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
+    upload_enabled = False
+    # ----------------------------------------------------------------
 
     history = load_history()
 
     print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Cinematic photos + text hierarchy | ~$0.48")
     print(f"  Text: 3 sizes (command/hero+brush/body+bold) | Max 10w/slide")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok draft + Facebook")
+    print(f"  Upload: DISABLED (testing mode -- enable when slides confirmed good)")
     print("=" * 60)
 
-    # Script
     print("\n  Generating partner-directed script...")
     script = generate_carousel_script(client, history)
     (OUTPUT_DIR / "carousel_script.json").write_text(json.dumps(script, indent=2), encoding="utf-8")
@@ -629,11 +615,9 @@ def main():
         print(f"\n  ── {slide_key.upper()} ──")
         brush_color = BRUSH_PALETTE[idx]
 
-        # Generate cinematic image
         img_bytes = generate_slide_image(openai_client, slide_key, script.get("topic",""))
         img = resize_to_tiktok(img_bytes)
 
-        # Render text overlay
         if slide_key == "slide_1":
             img = render_hook_slide(img, script, brush_color)
         elif slide_key == "slide_6":
@@ -641,14 +625,12 @@ def main():
         else:
             img = render_content_slide(img, script, int(slide_key[-1]), brush_color)
 
-        # Save
         out_path = str(OUTPUT_DIR / f"{slide_key}.jpg")
         img.save(out_path, format="JPEG", quality=94)
         image_paths.append(out_path)
         print(f"  Saved: {Path(out_path).stat().st_size // 1024:.0f} KB")
         time.sleep(0.5)
 
-    # Caption
     tiktok_title, description = build_tiktok_content(script)
     (OUTPUT_DIR / "carousel_caption.txt").write_text(
         f"TITLE ({len(tiktok_title)} chars):\n{tiktok_title}\n\n"
@@ -657,15 +639,9 @@ def main():
     )
     print(f"\n  Title: {tiktok_title}")
     print(f"  Description: {description[:80]}...")
-
-    # Upload
-    if upload_enabled:
-        print("\n  Uploading 6 slides to TikTok (draft) + Facebook...")
-        result = upload_carousel(image_paths, tiktok_title, description, cfg)
-        (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
-    else:
-        print("\n  Upload DISABLED -- slides saved to output_carousel/")
-        (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped": True}))
+    print(f"\n  Upload DISABLED -- download artifacts to review slides")
+    print(f"  When happy with the look, re-enable upload in the code.")
+    (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped": True, "reason": "testing mode"}))
 
     save_history(history, {
         "date":     datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -674,10 +650,7 @@ def main():
         "run":      GITHUB_RUN_NUMBER,
     })
 
-    print(f"\n  DONE | {script.get('topic')} | 6 slides | ~$0.48")
-    if upload_enabled:
-        print("  Facebook: posted directly")
-        print("  TikTok: in inbox -- open app, pick slow music, publish")
+    print(f"\n  DONE | {script.get('topic')} | 6 slides generated | ~$0.48")
 
 
 if __name__ == "__main__":
