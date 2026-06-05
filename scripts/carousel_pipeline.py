@@ -1,29 +1,24 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.5
+MindCore AI -- Carousel Image Post Pipeline v2.6
 =================================================
 Hybrid: cinematic gpt-image-1 photography + 3-size text hierarchy.
 Alternates MALE / FEMALE content daily.
 
-SCHEDULING APPROACH (v2.5):
+SCHEDULING APPROACH:
   Pipeline generates at 02:00 UTC (4am Malta) -- GitHub delay irrelevant.
-  Upload-Post receives the content and schedules it for POST_HOUR_UTC = 21:00 UTC (9pm Malta).
-  Post fires at EXACTLY 9pm Malta every night regardless of when GitHub ran.
-  No more clashes with video pipeline. No manual publishing needed.
+  Upload-Post receives the content and schedules it for POST_HOUR_UTC = 11:00 UTC (1pm Malta).
+  Post fires at EXACTLY 1pm Malta every day regardless of when GitHub ran.
 
-MODE: DIRECT_POST + scheduled_date (not MEDIA_UPLOAD/drafts).
-  TikTok and Facebook both post automatically at the scheduled time.
-  auto_add_music = true handles music automatically.
-
-v2.5: Upload-Post scheduling (scheduled_date) -- exact 9pm Malta posting
-v2.4: Upload enabled, cron 19:00 UTC
-v2.3: Male/female daily alternation
-v2.2: Fixed black bars
-v2.1: THREE font sizes + brush strokes + gradient + 6 slides + CTA
+v2.6: POST_HOUR_UTC = 11 (1pm Malta) -- lunchtime slot, between video landings
+v2.5: scheduled_date DIRECT_POST approach
+v2.4: upload enabled
+v2.3: male/female daily alternation
+v2.2: fixed black bars
 
 Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
 Cron: 02:00 UTC = 4am Malta (generates overnight)
-Post: 21:00 UTC = 9pm Malta (Upload-Post scheduled_date, exact)
+Post: 11:00 UTC = 1pm Malta (Upload-Post scheduled_date, exact)
 """
 
 import base64
@@ -70,15 +65,14 @@ CLAUDE_RETRY_BASE  = 30
 # ---------------------------------------------------------------------------
 # Scheduling
 # ---------------------------------------------------------------------------
-# Upload-Post will publish the carousel at exactly this UTC hour every day.
-# 21:00 UTC = 23:00 Malta (CEST, UTC+2) -- peak mental health content window.
-# Change this to adjust the posting time without touching the cron.
-POST_HOUR_UTC = 21   # 9pm Malta (CEST)
+# 11:00 UTC = 13:00 Malta (CEST) -- lunchtime, clean gap between video pipelines
+# Change this single value to adjust the posting time without touching cron.
+POST_HOUR_UTC = 11   # 1pm Malta (CEST = UTC+2)
 
 def get_scheduled_post_time():
-    """Return ISO-8601 UTC timestamp for tonight at POST_HOUR_UTC.
-    If already past that hour, schedules for tomorrow instead.
-    Pipeline runs at 02:00 UTC -- always 19 hours before posting time.
+    """Return ISO-8601 UTC for today at POST_HOUR_UTC.
+    Pipeline generates at 02:00 UTC -- always 9 hours before 11:00 UTC posting.
+    If somehow past that hour, schedules for tomorrow.
     """
     now    = datetime.now(timezone.utc)
     target = now.replace(hour=POST_HOUR_UTC, minute=0, second=0, microsecond=0)
@@ -537,14 +531,9 @@ def build_tiktok_content(script):
     return title, desc[:TIKTOK_DESC_LIMIT]
 
 # ---------------------------------------------------------------------------
-# Step 6: Upload with scheduled_date -- posts at exactly POST_HOUR_UTC
+# Step 6: Upload with scheduled_date
 # ---------------------------------------------------------------------------
 def upload_carousel(image_paths, tiktok_title, description, cfg, scheduled_date):
-    """Upload photos to Upload-Post with scheduled_date.
-    Posts to TikTok + Facebook at exactly the scheduled time.
-    No GitHub timing dependency -- pipeline can run anytime.
-    Docs: https://docs.upload-post.com/api/upload-photo
-    """
     if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
     user = cfg.get("upload_post_user","")
     if not user: return {"skipped": True, "reason": "no user configured"}
@@ -556,10 +545,10 @@ def upload_carousel(image_paths, tiktok_title, description, cfg, scheduled_date)
         ("platform[]",        "facebook"),
         ("tiktok_title",      tiktok_title),
         ("description",       description),
-        ("post_mode",         "DIRECT_POST"),   # Direct post at scheduled time
+        ("post_mode",         "DIRECT_POST"),
         ("auto_add_music",    "true"),
         ("photo_cover_index", "0"),
-        ("scheduled_date",    scheduled_date),  # Upload-Post holds and fires at exact time
+        ("scheduled_date",    scheduled_date),
     ]
     files = []
     try:
@@ -594,13 +583,13 @@ def main():
         with open(cfg_path) as f: cfg = json.load(f)
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    gender        = get_gender_mode()
-    history       = load_history()
+    gender         = get_gender_mode()
+    history        = load_history()
     scheduled_date = get_scheduled_post_time()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.5")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Gender: {gender.upper()} | ~$0.48")
-    print(f"  Generates: now (4am Malta) | Posts: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta (scheduled)")
+    print(f"  Generates: 4am Malta | Posts: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta = 1pm Malta")
     print(f"  {'Direct-address to men' if gender == 'male' else 'Partner-directed (female)'}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | DIRECT_POST scheduled via Upload-Post")
     print("=" * 60)
