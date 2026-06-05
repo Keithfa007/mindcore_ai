@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.3
+MindCore AI -- Carousel Image Post Pipeline v2.4
 =================================================
 Hybrid: cinematic gpt-image-1 photography + 3-size text hierarchy.
-Now alternates MALE / FEMALE content daily.
+Alternates MALE / FEMALE content daily.
 
   MALE  (odd  UTC day): Direct-address TO struggling men. Male images.
   FEMALE (even UTC day): Partner-directed. Female images.
 
-Mirrors the video pipeline gender split.
-
+v2.4: Upload ENABLED. Cron moved to 17:00 UTC = 7pm Malta (peak engagement)
 v2.3: Male/female daily alternation
 v2.2: Fixed black bars (scale-to-fill resize)
 v2.1: THREE font sizes + brush strokes + gradient + 6 slides + CTA
 
 Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
-Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta)
+Schedule: daily 17:00 UTC = 7pm Malta (peak mental health content window)
 """
 
 import base64
@@ -79,9 +78,9 @@ CTA_COLOR  = (255, 255, 255)
 URL_COLOR  = (190, 190, 190)
 
 BRUSH_PALETTE = [
-    (168, 224, 99),   # lime green
-    (78,  205, 196),  # cyan
-    (255, 209, 102),  # yellow
+    (168, 224, 99),
+    (78,  205, 196),
+    (255, 209, 102),
     (168, 224, 99),
     (78,  205, 196),
     (255, 209, 102),
@@ -139,7 +138,7 @@ MALE_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# FEMALE image prompts -- warm, cinematic, women
+# FEMALE image prompts
 # ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS_FEMALE = {
     "slide_1": (
@@ -183,7 +182,7 @@ SLIDE_IMAGE_PROMPTS_FEMALE = {
 }
 
 # ---------------------------------------------------------------------------
-# MALE image prompts -- same cinematic warmth, men
+# MALE image prompts
 # ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS_MALE = {
     "slide_1": (
@@ -228,11 +227,10 @@ SLIDE_IMAGE_PROMPTS_MALE = {
 
 
 # ---------------------------------------------------------------------------
-# Gender selection -- alternates daily (odd UTC day = male, even = female)
+# Gender selection
 # ---------------------------------------------------------------------------
 def get_gender_mode():
-    day = datetime.now(timezone.utc).day
-    return "male" if day % 2 == 1 else "female"
+    return "male" if datetime.now(timezone.utc).day % 2 == 1 else "female"
 
 
 # ---------------------------------------------------------------------------
@@ -335,26 +333,22 @@ def draw_brush_stroke(draw, cx, y_top, text, font, brush_color):
     pad_x, pad_y, skew = 26, 10, 8
     x1 = cx - tw//2 - pad_x; x2 = cx + tw//2 + pad_x
     y1 = y_top - pad_y;      y2 = y_top + th + pad_y
-    pts = [
-        (x1+skew, y1-3), (x2+skew, y1+4),
-        (x2-skew, y2+4), (x1-skew, y2-3),
-    ]
+    pts = [(x1+skew,y1-3),(x2+skew,y1+4),(x2-skew,y2+4),(x1-skew,y2-3)]
     draw.polygon(pts, fill=brush_color)
 
 def add_gradient_overlay(img, text_start_y):
-    overlay = Image.new("RGBA", (IMAGE_WIDTH, IMAGE_HEIGHT), (0, 0, 0, 0))
+    overlay = Image.new("RGBA", (IMAGE_WIDTH, IMAGE_HEIGHT), (0,0,0,0))
     draw    = ImageDraw.Draw(overlay)
     zone_h  = IMAGE_HEIGHT - text_start_y
     for y in range(text_start_y, IMAGE_HEIGHT):
         progress = (y - text_start_y) / zone_h
         alpha = int(GRADIENT_MAX_ALPHA * min(progress * 1.6, 1.0))
-        draw.line([(0, y), (IMAGE_WIDTH, y)], fill=(0, 0, 0, alpha))
-    composited = Image.alpha_composite(img.convert("RGBA"), overlay)
-    return composited.convert("RGB")
+        draw.line([(0,y),(IMAGE_WIDTH,y)], fill=(0,0,0,alpha))
+    return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Generate script -- tone changes per gender
+# Step 1: Script
 # ---------------------------------------------------------------------------
 def generate_carousel_script(client, history, gender):
     used  = [e.get("topic","") for e in history]
@@ -382,51 +376,36 @@ def generate_carousel_script(client, history, gender):
 
 {audience_instruction}
 
-Each slide has THREE text layers over a beautiful cinematic image:
-  1. COMMAND (small gray label, 2-5 words): sets the context
-  2. HERO (large bold concept, 2-4 words): the KEY IDEA on a neon highlight
-  3. BODY (1-2 sentences, 18 words max): explains the concept
-  4. BOLD (1 sentence, 7 words max): the punchline / most quotable line
+Each slide has THREE text layers over a cinematic image:
+  1. COMMAND (small gray label, 2-5 words): sets context
+  2. HERO (large bold, 2-4 words): KEY IDEA on neon highlight
+  3. BODY (1-2 sentences, 18 words max): explains
+  4. BOLD (1 sentence, 7 words max): quotable punchline
 
 SEED TOPIC: "{seed}"
-AVOID (recently used): {avoid}
+AVOID: {avoid}
 
-WORD LIMITS (strictly enforced):
-  s1: command 4-7w, hero 2-4w ending "..." -- NO body or bold on slide 1
-  s2/s3/s4/s5: command 2-4w, hero 2-4w, body 18w max, bold 7w max
-  s4_bold = THE most screenshot-worthy, quotable line in the whole carousel
+WORD LIMITS:
+  s1: command 4-7w, hero 2-4w ending "..." -- NO body/bold on slide 1
+  s2-s5: command 2-4w, hero 2-4w, body 18w max, bold 7w max
+  s4_bold = THE most screenshot-worthy line in the carousel
   cta_trigger = "Comment [WORD] if [emotional statement] 👇" (WORD: SAVED/SAME/THIS/YES/REAL)
 
 Return ONLY valid JSON:
 {{
   "topic": "...",
   "tiktok_title": "...(max 80 chars)...",
-  "s1_command": "...",
-  "s1_hero": "...(ends with ...)...",
-  "s2_command": "...",
-  "s2_hero": "...",
-  "s2_body": "...",
-  "s2_bold": "...",
-  "s3_command": "...",
-  "s3_hero": "...",
-  "s3_body": "...",
-  "s3_bold": "...",
-  "s4_command": "...",
-  "s4_hero": "...",
-  "s4_body": "...",
-  "s4_bold": "...",
-  "s5_command": "...",
-  "s5_hero": "...",
-  "s5_body": "...",
-  "s5_bold": "...",
+  "s1_command": "...", "s1_hero": "...(ends with ...)...",
+  "s2_command": "...", "s2_hero": "...", "s2_body": "...", "s2_bold": "...",
+  "s3_command": "...", "s3_hero": "...", "s3_body": "...", "s3_bold": "...",
+  "s4_command": "...", "s4_hero": "...", "s4_body": "...", "s4_bold": "...",
+  "s5_command": "...", "s5_hero": "...", "s5_body": "...", "s5_bold": "...",
   "cta_trigger": "...",
   "full_prose_caption": "200-280 word prose, no bullets, ends: Save this for the moments when you need a reminder.",
   "hashtag_topic": "..."
 }}"""
 
     result = _call_claude(prompt, client, max_tokens=2000)
-
-    # Hard trim all fields
     for key in ["s1_hero","s2_hero","s3_hero","s4_hero","s5_hero"]:
         w = result.get(key,"").split()
         if len(w) > 5: result[key] = " ".join(w[:4])
@@ -440,7 +419,6 @@ Return ONLY valid JSON:
         if len(w) > 20:
             result[key] = " ".join(w[:18])
             if result[key][-1] not in ".!?": result[key] += "."
-
     print(f"  Topic: {result.get('topic')}")
     for i in range(1,6):
         body = result.get(f"s{i}_body","")
@@ -449,7 +427,7 @@ Return ONLY valid JSON:
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Generate cinematic image (gender-specific prompts)
+# Step 2: Image
 # ---------------------------------------------------------------------------
 def generate_slide_image(openai_client, slide_key, topic, gender):
     prompts = SLIDE_IMAGE_PROMPTS_MALE if gender == "male" else SLIDE_IMAGE_PROMPTS_FEMALE
@@ -458,82 +436,63 @@ def generate_slide_image(openai_client, slide_key, topic, gender):
         prompt = f"{prompt} Emotional theme: {topic}."
     print(f"  [gpt-image-1 HIGH] {slide_key} generating...")
     response = openai_client.images.generate(
-        model="gpt-image-1", prompt=prompt,
-        size="1024x1536", quality="high", n=1,
+        model="gpt-image-1", prompt=prompt, size="1024x1536", quality="high", n=1,
     )
     data = response.data[0]
-    img_bytes = (
-        requests.get(data.url, timeout=60).content
-        if getattr(data, "url", None)
-        else base64.b64decode(data.b64_json)
-    )
+    img_bytes = requests.get(data.url, timeout=60).content if getattr(data,"url",None) else base64.b64decode(data.b64_json)
     print(f"  [gpt-image-1 HIGH] {slide_key} ready ({len(img_bytes)//1024:.0f} KB)")
     return img_bytes
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Resize -- scale to FILL canvas (no black bars)
+# Step 3: Resize (scale-to-fill, no black bars)
 # ---------------------------------------------------------------------------
 def resize_to_tiktok(img_bytes):
     img   = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    scale = max(IMAGE_WIDTH / img.width, IMAGE_HEIGHT / img.height)
-    new_w = int(img.width  * scale)
-    new_h = int(img.height * scale)
-    img   = img.resize((new_w, new_h), Image.LANCZOS)
-    left  = (new_w - IMAGE_WIDTH)  // 2
-    top   = (new_h - IMAGE_HEIGHT) // 2
-    img   = img.crop((left, top, left + IMAGE_WIDTH, top + IMAGE_HEIGHT))
-    return img
+    scale = max(IMAGE_WIDTH/img.width, IMAGE_HEIGHT/img.height)
+    new_w, new_h = int(img.width*scale), int(img.height*scale)
+    img   = img.resize((new_w,new_h), Image.LANCZOS)
+    left  = (new_w-IMAGE_WIDTH)//2
+    top   = (new_h-IMAGE_HEIGHT)//2
+    return img.crop((left,top,left+IMAGE_WIDTH,top+IMAGE_HEIGHT))
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Render text overlay
+# Step 4: Render
 # ---------------------------------------------------------------------------
 def render_hook_slide(img, script, brush_color):
     text_start = int(IMAGE_HEIGHT * TEXT_START_HOOK)
-    img  = add_gradient_overlay(img, text_start)
-    draw = ImageDraw.Draw(img)
-    cx   = IMAGE_WIDTH // 2
-    y    = text_start + 30
-
-    cmd_font  = get_font(CMD_SIZE, bold=False)
+    img = add_gradient_overlay(img, text_start)
+    draw = ImageDraw.Draw(img); cx = IMAGE_WIDTH//2; y = text_start+30
+    cmd_font = get_font(CMD_SIZE, bold=False)
     y = draw_text_block(draw, cx, y, wrap_text(script["s1_command"], cmd_font, MAX_TEXT_W), cmd_font, CMD_COLOR, stroke_w=2)
-    y += int(SECTION_GAP * 0.7)
-
-    hero_font  = get_font(HERO_SIZE, bold=True)
-    lh = line_height(hero_font)
+    y += int(SECTION_GAP*0.7)
+    hero_font = get_font(HERO_SIZE, bold=True); lh = line_height(hero_font)
     for line in wrap_text(script["s1_hero"], hero_font, MAX_TEXT_W):
         draw_brush_stroke(draw, cx, y, line, hero_font, brush_color)
-        draw.text((cx, y), line, font=hero_font, fill=HERO_COLOR, anchor="mt")
-        y += lh + LINE_GAP
+        draw.text((cx,y), line, font=hero_font, fill=HERO_COLOR, anchor="mt")
+        y += lh+LINE_GAP
     return img
 
 def render_content_slide(img, script, slide_num, brush_color):
-    n    = str(slide_num)
+    n = str(slide_num)
     text_start = int(IMAGE_HEIGHT * TEXT_START_CONTENT)
-    img  = add_gradient_overlay(img, text_start)
-    draw = ImageDraw.Draw(img)
-    cx   = IMAGE_WIDTH // 2
-    y    = text_start + 25
-
+    img = add_gradient_overlay(img, text_start)
+    draw = ImageDraw.Draw(img); cx = IMAGE_WIDTH//2; y = text_start+25
     cmd_font = get_font(CMD_SIZE, bold=False)
     y = draw_text_block(draw, cx, y, wrap_text(script[f"s{n}_command"], cmd_font, MAX_TEXT_W), cmd_font, CMD_COLOR, stroke_w=2)
-    y += int(SECTION_GAP * 0.5)
-
-    hero_font = get_font(HERO_SIZE, bold=True)
-    lh = line_height(hero_font)
+    y += int(SECTION_GAP*0.5)
+    hero_font = get_font(HERO_SIZE, bold=True); lh = line_height(hero_font)
     for line in wrap_text(script[f"s{n}_hero"], hero_font, MAX_TEXT_W):
         draw_brush_stroke(draw, cx, y, line, hero_font, brush_color)
-        draw.text((cx, y), line, font=hero_font, fill=HERO_COLOR, anchor="mt")
-        y += lh + LINE_GAP
+        draw.text((cx,y), line, font=hero_font, fill=HERO_COLOR, anchor="mt")
+        y += lh+LINE_GAP
     y += SECTION_GAP
-
     body_text = script.get(f"s{n}_body","")
     if body_text:
         body_font = get_font(BODY_SIZE, bold=False)
         y = draw_text_block(draw, cx, y, wrap_text(body_text, body_font, MAX_TEXT_W), body_font, BODY_COLOR, stroke_w=3)
-        y += int(LINE_GAP * 0.5)
-
+        y += int(LINE_GAP*0.5)
     bold_text = script.get(f"s{n}_bold","")
     if bold_text:
         bold_font = get_font(BOLD_SIZE, bold=True)
@@ -542,28 +501,20 @@ def render_content_slide(img, script, slide_num, brush_color):
 
 def render_cta_slide(img, script, brush_color):
     text_start = int(IMAGE_HEIGHT * TEXT_START_CTA)
-    img  = add_gradient_overlay(img, max(text_start - 120, 0))
-    draw = ImageDraw.Draw(img)
-    cx   = IMAGE_WIDTH // 2
-    y    = text_start
-
+    img = add_gradient_overlay(img, max(text_start-120, 0))
+    draw = ImageDraw.Draw(img); cx = IMAGE_WIDTH//2; y = text_start
     trig_font = get_font(CTA_TRIG, bold=True)
     y = draw_text_block(draw, cx, y, wrap_text(script.get("cta_trigger","Comment SAVED if you needed this 👇"), trig_font, MAX_TEXT_W), trig_font, CTA_COLOR, stroke_w=3)
     y += SECTION_GAP
-
-    app_font = get_font(CTA_APP, bold=True)
-    lh_app   = line_height(app_font)
+    app_font = get_font(CTA_APP, bold=True); lh_app = line_height(app_font)
     draw_brush_stroke(draw, cx, y, "MindCore AI", app_font, brush_color)
-    draw.text((cx, y), "MindCore AI", font=app_font, fill=HERO_COLOR, anchor="mt")
-    y += lh_app + SECTION_GAP
-
+    draw.text((cx,y), "MindCore AI", font=app_font, fill=HERO_COLOR, anchor="mt")
+    y += lh_app+SECTION_GAP
     dl_font = get_font(CTA_DL, bold=False)
     y = draw_text_block(draw, cx, y, wrap_text("Download for free", dl_font, MAX_TEXT_W), dl_font, CTA_COLOR, stroke_w=2)
-
     gp_font = get_font(CTA_DL, bold=True)
     y = draw_text_block(draw, cx, y, wrap_text("on Google Play", gp_font, MAX_TEXT_W), gp_font, CTA_COLOR, stroke_w=3)
-    y += int(LINE_GAP * 1.5)
-
+    y += int(LINE_GAP*1.5)
     url_font = get_font(CTA_URL, bold=False)
     draw_text_with_stroke(draw, cx, y, "mindcoreai.eu/app", url_font, URL_COLOR, stroke_w=2)
     return img
@@ -586,39 +537,30 @@ def build_tiktok_content(script):
 # Step 6: Upload
 # ---------------------------------------------------------------------------
 def upload_carousel(image_paths, tiktok_title, description, cfg):
-    if not UPLOAD_POST_API_KEY:
-        return {"skipped": True, "reason": "no API key"}
+    if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
     user = cfg.get("upload_post_user","")
-    if not user:
-        return {"skipped": True, "reason": "no user configured"}
-
+    if not user: return {"skipped": True, "reason": "no user configured"}
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
     data = [
-        ("user",              user),
-        ("platform[]",        "tiktok"),
-        ("platform[]",        "facebook"),
-        ("tiktok_title",      tiktok_title),
-        ("description",       description),
-        ("post_mode",         "MEDIA_UPLOAD"),
-        ("auto_add_music",    "true"),
-        ("photo_cover_index", "0"),
+        ("user",user),("platform[]","tiktok"),("platform[]","facebook"),
+        ("tiktok_title",tiktok_title),("description",description),
+        ("post_mode","MEDIA_UPLOAD"),("auto_add_music","true"),("photo_cover_index","0"),
     ]
     files = []
     try:
         for i, path in enumerate(image_paths):
-            f = open(path, "rb")
-            files.append(("photos[]", (f"slide_{i+1}.jpg", f, "image/jpeg")))
+            f = open(path,"rb")
+            files.append(("photos[]",(f"slide_{i+1}.jpg",f,"image/jpeg")))
         resp = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, files=files, data=data, timeout=180)
-        result = resp.json() if resp.headers.get("content-type","").startswith("application/json") else {"raw": resp.text}
+        result = resp.json() if resp.headers.get("content-type","").startswith("application/json") else {"raw":resp.text}
         result["status_code"] = resp.status_code
         print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
         if not resp.ok: print(f"  {resp.text[:400]}")
         return result
     except Exception as e:
-        print(f"  Upload failed: {e}")
-        return {"error": str(e)}
+        print(f"  Upload failed: {e}"); return {"error":str(e)}
     finally:
-        for _, (_, f, _) in files:
+        for _,(_, f,_) in files:
             try: f.close()
             except: pass
 
@@ -636,46 +578,38 @@ def main():
     if cfg_path.exists():
         with open(cfg_path) as f: cfg = json.load(f)
 
-    # ----------------------------------------------------------------
-    # TESTING MODE -- upload disabled while being reviewed.
-    # Re-enable: upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
-    upload_enabled = False
-    # ----------------------------------------------------------------
+    # Upload ENABLED -- controlled by heygen_config.json upload_enabled flag
+    upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
     gender  = get_gender_mode()
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.3")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.4")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Gender: {gender.upper()} | ~$0.48")
-    print(f"  {'Direct-address to men (struggling man)' if gender == 'male' else 'Partner-directed (loving someone who struggles)'}")
-    print(f"  Upload: DISABLED (testing mode)")
+    print(f"  Schedule: 17:00 UTC = 7pm Malta | Peak mental health content window")
+    print(f"  {'Direct-address to men' if gender == 'male' else 'Partner-directed (female)'}")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok draft + Facebook")
     print("=" * 60)
 
     print(f"\n  Generating {gender} script...")
     script = generate_carousel_script(client, history, gender)
     (OUTPUT_DIR / "carousel_script.json").write_text(json.dumps(script, indent=2), encoding="utf-8")
 
-    slide_keys  = ["slide_1","slide_2","slide_3","slide_4","slide_5","slide_6"]
+    slide_keys = ["slide_1","slide_2","slide_3","slide_4","slide_5","slide_6"]
     image_paths = []
 
     for idx, slide_key in enumerate(slide_keys):
-        print(f"\n  ── {slide_key.upper()} ──")
+        print(f"\n  -- {slide_key.upper()} --")
         brush_color = BRUSH_PALETTE[idx]
-
         img_bytes = generate_slide_image(openai_client, slide_key, script.get("topic",""), gender)
         img = resize_to_tiktok(img_bytes)
-
-        if slide_key == "slide_1":
-            img = render_hook_slide(img, script, brush_color)
-        elif slide_key == "slide_6":
-            img = render_cta_slide(img, script, brush_color)
-        else:
-            img = render_content_slide(img, script, int(slide_key[-1]), brush_color)
-
+        if slide_key == "slide_1":    img = render_hook_slide(img, script, brush_color)
+        elif slide_key == "slide_6": img = render_cta_slide(img, script, brush_color)
+        else: img = render_content_slide(img, script, int(slide_key[-1]), brush_color)
         out_path = str(OUTPUT_DIR / f"{slide_key}.jpg")
         img.save(out_path, format="JPEG", quality=94)
         image_paths.append(out_path)
-        print(f"  Saved: {Path(out_path).stat().st_size // 1024:.0f} KB")
+        print(f"  Saved: {Path(out_path).stat().st_size//1024:.0f} KB")
         time.sleep(0.5)
 
     tiktok_title, description = build_tiktok_content(script)
@@ -685,8 +619,17 @@ def main():
     )
     print(f"\n  Title: {tiktok_title}")
     print(f"  Description: {description[:80]}...")
-    print(f"\n  Upload DISABLED -- download artifacts to review slides")
-    (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped": True, "reason": "testing mode", "gender": gender}))
+
+    if upload_enabled:
+        print(f"\n  Uploading {gender} carousel to TikTok (draft) + Facebook...")
+        result = upload_carousel(image_paths, tiktok_title, description, cfg)
+        (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
+        if result.get("status_code") == 200:
+            print("  Facebook: posted directly")
+            print("  TikTok: in inbox -- open app, pick slow music, publish")
+    else:
+        print("\n  Upload DISABLED (upload_enabled=false in heygen_config.json)")
+        (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped":True}))
 
     save_history(history, {
         "date":     datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -695,7 +638,6 @@ def main():
         "headline": f"{script.get('s1_command')} / {script.get('s1_hero')}",
         "run":      GITHUB_RUN_NUMBER,
     })
-
     print(f"\n  DONE | {gender.upper()} | {script.get('topic')} | 6 slides | ~$0.48")
 
 
