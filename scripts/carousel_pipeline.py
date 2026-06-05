@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.4
+MindCore AI -- Carousel Image Post Pipeline v2.5
 =================================================
 Hybrid: cinematic gpt-image-1 photography + 3-size text hierarchy.
 Alternates MALE / FEMALE content daily.
 
-  MALE  (odd  UTC day): Direct-address TO struggling men. Male images.
-  FEMALE (even UTC day): Partner-directed. Female images.
+SCHEDULING APPROACH (v2.5):
+  Pipeline generates at 02:00 UTC (4am Malta) -- GitHub delay irrelevant.
+  Upload-Post receives the content and schedules it for POST_HOUR_UTC = 21:00 UTC (9pm Malta).
+  Post fires at EXACTLY 9pm Malta every night regardless of when GitHub ran.
+  No more clashes with video pipeline. No manual publishing needed.
 
-v2.4: Upload ENABLED. Cron moved to 17:00 UTC = 7pm Malta (peak engagement)
+MODE: DIRECT_POST + scheduled_date (not MEDIA_UPLOAD/drafts).
+  TikTok and Facebook both post automatically at the scheduled time.
+  auto_add_music = true handles music automatically.
+
+v2.5: Upload-Post scheduling (scheduled_date) -- exact 9pm Malta posting
+v2.4: Upload enabled, cron 19:00 UTC
 v2.3: Male/female daily alternation
-v2.2: Fixed black bars (scale-to-fill resize)
+v2.2: Fixed black bars
 v2.1: THREE font sizes + brush strokes + gradient + 6 slides + CTA
 
 Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
-Schedule: daily 17:00 UTC = 7pm Malta (peak mental health content window)
+Cron: 02:00 UTC = 4am Malta (generates overnight)
+Post: 21:00 UTC = 9pm Malta (Upload-Post scheduled_date, exact)
 """
 
 import base64
@@ -23,7 +32,7 @@ import json
 import os
 import random
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import anthropic
@@ -57,6 +66,27 @@ TIKTOK_TITLE_LIMIT = 90
 TIKTOK_DESC_LIMIT  = 4000
 CLAUDE_MAX_RETRIES = 8
 CLAUDE_RETRY_BASE  = 30
+
+# ---------------------------------------------------------------------------
+# Scheduling
+# ---------------------------------------------------------------------------
+# Upload-Post will publish the carousel at exactly this UTC hour every day.
+# 21:00 UTC = 23:00 Malta (CEST, UTC+2) -- peak mental health content window.
+# Change this to adjust the posting time without touching the cron.
+POST_HOUR_UTC = 21   # 9pm Malta (CEST)
+
+def get_scheduled_post_time():
+    """Return ISO-8601 UTC timestamp for tonight at POST_HOUR_UTC.
+    If already past that hour, schedules for tomorrow instead.
+    Pipeline runs at 02:00 UTC -- always 19 hours before posting time.
+    """
+    now    = datetime.now(timezone.utc)
+    target = now.replace(hour=POST_HOUR_UTC, minute=0, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    scheduled = target.strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"  Scheduled post time: {scheduled} ({POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta)")
+    return scheduled
 
 # ---------------------------------------------------------------------------
 # Text design
@@ -94,9 +124,8 @@ LINE_GAP           = 14
 SECTION_GAP        = 38
 GRADIENT_MAX_ALPHA = 155
 
-
 # ---------------------------------------------------------------------------
-# FEMALE topic seeds -- partner-directed
+# Seeds
 # ---------------------------------------------------------------------------
 FEMALE_SEEDS = [
     "loving someone with anxiety",
@@ -116,9 +145,6 @@ FEMALE_SEEDS = [
     "loving someone who has never felt like enough",
 ]
 
-# ---------------------------------------------------------------------------
-# MALE topic seeds -- direct-address TO the struggling man
-# ---------------------------------------------------------------------------
 MALE_SEEDS = [
     "what men carry alone in silence",
     "when a man goes quiet and disappears inside himself",
@@ -138,7 +164,7 @@ MALE_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# FEMALE image prompts
+# Image prompts
 # ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS_FEMALE = {
     "slide_1": (
@@ -152,8 +178,7 @@ SLIDE_IMAGE_PROMPTS_FEMALE = {
         "Cinematic portrait photography, 9:16 vertical format. "
         "A woman sitting alone near a rain-streaked window at dusk, "
         "warm soft ambient interior light, peaceful contemplative expression. "
-        "Intimate quiet mood, slightly warm dim interior. "
-        "Photorealistic, no text, no logos."
+        "Intimate quiet mood, slightly warm dim interior. Photorealistic, no text."
     ),
     "slide_3": (
         "Cinematic portrait photography, 9:16 vertical format. "
@@ -165,7 +190,7 @@ SLIDE_IMAGE_PROMPTS_FEMALE = {
         "Cinematic portrait photography, 9:16 vertical format. "
         "A woman looking upward toward soft warm natural light through a window, "
         "face peaceful and hopeful, golden light touching skin gently. "
-        "Warm transitional mood. Photorealistic, no text, no logos."
+        "Warm transitional mood. Photorealistic, no text."
     ),
     "slide_5": (
         "Cinematic portrait photography, 9:16 vertical format. "
@@ -177,13 +202,10 @@ SLIDE_IMAGE_PROMPTS_FEMALE = {
         "Cinematic portrait photography, 9:16 vertical format. "
         "A smartphone face-up on a warm wooden table, soft golden ambient glow, "
         "minimal and inviting, candlelight warmth, intimate and calm. "
-        "Warm amber grade. Photorealistic, no text, no logos."
+        "Warm amber grade. Photorealistic, no text."
     ),
 }
 
-# ---------------------------------------------------------------------------
-# MALE image prompts
-# ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS_MALE = {
     "slide_1": (
         "Cinematic portrait photography, 9:16 vertical format. "
@@ -196,8 +218,7 @@ SLIDE_IMAGE_PROMPTS_MALE = {
         "Cinematic portrait photography, 9:16 vertical format. "
         "A man sitting alone at a rain-streaked window at night, "
         "warm interior ambient light, head slightly bowed, hands clasped. "
-        "Dark moody interior, heavy contemplative weight. "
-        "Photorealistic, no text, no logos."
+        "Dark moody interior, heavy contemplative weight. Photorealistic, no text."
     ),
     "slide_3": (
         "Cinematic portrait photography, 9:16 vertical format. "
@@ -209,7 +230,7 @@ SLIDE_IMAGE_PROMPTS_MALE = {
         "Cinematic portrait photography, 9:16 vertical format. "
         "A man looking upward toward soft warm natural light through a window, "
         "face calm and quietly hopeful, golden light on strong features. "
-        "Warm transitional mood. Photorealistic, no text, no logos."
+        "Warm transitional mood. Photorealistic, no text."
     ),
     "slide_5": (
         "Cinematic portrait photography, 9:16 vertical format. "
@@ -221,17 +242,15 @@ SLIDE_IMAGE_PROMPTS_MALE = {
         "Cinematic portrait photography, 9:16 vertical format. "
         "A smartphone face-up on a warm wooden table, soft golden ambient glow, "
         "minimal and inviting, candlelight warmth, intimate and calm. "
-        "Warm amber grade. Photorealistic, no text, no logos."
+        "Warm amber grade. Photorealistic, no text."
     ),
 }
 
-
 # ---------------------------------------------------------------------------
-# Gender selection
+# Gender
 # ---------------------------------------------------------------------------
 def get_gender_mode():
     return "male" if datetime.now(timezone.utc).day % 2 == 1 else "female"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -292,8 +311,7 @@ def get_font(size, bold=True):
     return ImageFont.load_default()
 
 def line_height(font):
-    try:
-        bb = font.getbbox("Ag"); return bb[3] - bb[1]
+    try: bb = font.getbbox("Ag"); return bb[3] - bb[1]
     except: return getattr(font, "size", 40)
 
 def wrap_text(text, font, max_w):
@@ -325,27 +343,22 @@ def draw_text_block(draw, cx, y, lines, font, color, stroke_w=3):
 
 def draw_brush_stroke(draw, cx, y_top, text, font, brush_color):
     try:
-        bb = font.getbbox(text)
-        tw = bb[2] - bb[0]; th = bb[3] - bb[1]
+        bb = font.getbbox(text); tw = bb[2]-bb[0]; th = bb[3]-bb[1]
     except:
-        tw = len(text) * getattr(font, "size", 40) * 0.55
-        th = getattr(font, "size", 40)
+        tw = len(text) * getattr(font,"size",40) * 0.55; th = getattr(font,"size",40)
     pad_x, pad_y, skew = 26, 10, 8
-    x1 = cx - tw//2 - pad_x; x2 = cx + tw//2 + pad_x
-    y1 = y_top - pad_y;      y2 = y_top + th + pad_y
-    pts = [(x1+skew,y1-3),(x2+skew,y1+4),(x2-skew,y2+4),(x1-skew,y2-3)]
-    draw.polygon(pts, fill=brush_color)
+    x1 = cx-tw//2-pad_x; x2 = cx+tw//2+pad_x; y1 = y_top-pad_y; y2 = y_top+th+pad_y
+    draw.polygon([(x1+skew,y1-3),(x2+skew,y1+4),(x2-skew,y2+4),(x1-skew,y2-3)], fill=brush_color)
 
 def add_gradient_overlay(img, text_start_y):
     overlay = Image.new("RGBA", (IMAGE_WIDTH, IMAGE_HEIGHT), (0,0,0,0))
-    draw    = ImageDraw.Draw(overlay)
-    zone_h  = IMAGE_HEIGHT - text_start_y
+    draw = ImageDraw.Draw(overlay)
+    zone_h = IMAGE_HEIGHT - text_start_y
     for y in range(text_start_y, IMAGE_HEIGHT):
         progress = (y - text_start_y) / zone_h
         alpha = int(GRADIENT_MAX_ALPHA * min(progress * 1.6, 1.0))
         draw.line([(0,y),(IMAGE_WIDTH,y)], fill=(0,0,0,alpha))
     return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-
 
 # ---------------------------------------------------------------------------
 # Step 1: Script
@@ -361,7 +374,6 @@ def generate_carousel_script(client, history, gender):
             "Write a 5-content-slide carousel that speaks DIRECTLY TO a man who is struggling.\n"
             "Address him as 'you'. Validate his experience without preaching.\n"
             "Tone: direct, honest, no softening. Like a friend who has been there.\n"
-            "Not therapy speak. Not motivational poster. Real and raw and warm.\n"
             "Example voice: 'You're not falling apart. You've been holding everything together for too long.'"
         )
     else:
@@ -393,8 +405,7 @@ WORD LIMITS:
 
 Return ONLY valid JSON:
 {{
-  "topic": "...",
-  "tiktok_title": "...(max 80 chars)...",
+  "topic": "...", "tiktok_title": "...(max 80 chars)...",
   "s1_command": "...", "s1_hero": "...(ends with ...)...",
   "s2_command": "...", "s2_hero": "...", "s2_body": "...", "s2_bold": "...",
   "s3_command": "...", "s3_hero": "...", "s3_body": "...", "s3_bold": "...",
@@ -425,15 +436,13 @@ Return ONLY valid JSON:
         print(f"  Slide {i}: [{result.get(f's{i}_command','')}] | [{result.get(f's{i}_hero','')}] | {body[:40] if body else '—'}")
     return result
 
-
 # ---------------------------------------------------------------------------
 # Step 2: Image
 # ---------------------------------------------------------------------------
 def generate_slide_image(openai_client, slide_key, topic, gender):
     prompts = SLIDE_IMAGE_PROMPTS_MALE if gender == "male" else SLIDE_IMAGE_PROMPTS_FEMALE
     prompt  = prompts.get(slide_key, prompts["slide_5"])
-    if slide_key == "slide_1":
-        prompt = f"{prompt} Emotional theme: {topic}."
+    if slide_key == "slide_1": prompt = f"{prompt} Emotional theme: {topic}."
     print(f"  [gpt-image-1 HIGH] {slide_key} generating...")
     response = openai_client.images.generate(
         model="gpt-image-1", prompt=prompt, size="1024x1536", quality="high", n=1,
@@ -443,19 +452,16 @@ def generate_slide_image(openai_client, slide_key, topic, gender):
     print(f"  [gpt-image-1 HIGH] {slide_key} ready ({len(img_bytes)//1024:.0f} KB)")
     return img_bytes
 
-
 # ---------------------------------------------------------------------------
-# Step 3: Resize (scale-to-fill, no black bars)
+# Step 3: Resize
 # ---------------------------------------------------------------------------
 def resize_to_tiktok(img_bytes):
-    img   = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     scale = max(IMAGE_WIDTH/img.width, IMAGE_HEIGHT/img.height)
     new_w, new_h = int(img.width*scale), int(img.height*scale)
-    img   = img.resize((new_w,new_h), Image.LANCZOS)
-    left  = (new_w-IMAGE_WIDTH)//2
-    top   = (new_h-IMAGE_HEIGHT)//2
+    img = img.resize((new_w,new_h), Image.LANCZOS)
+    left = (new_w-IMAGE_WIDTH)//2; top = (new_h-IMAGE_HEIGHT)//2
     return img.crop((left,top,left+IMAGE_WIDTH,top+IMAGE_HEIGHT))
-
 
 # ---------------------------------------------------------------------------
 # Step 4: Render
@@ -519,7 +525,6 @@ def render_cta_slide(img, script, brush_color):
     draw_text_with_stroke(draw, cx, y, "mindcoreai.eu/app", url_font, URL_COLOR, stroke_w=2)
     return img
 
-
 # ---------------------------------------------------------------------------
 # Step 5: Caption
 # ---------------------------------------------------------------------------
@@ -528,23 +533,33 @@ def build_tiktok_content(script):
     prose = script.get("full_prose_caption","")
     tag   = f"#{script.get('hashtag_topic','mentalwellness')}"
     desc  = f"{prose}\n\n{tag} {HASHTAGS}"
-    if REQUIRED_BRAND_HASHTAG.lower() not in desc.lower():
-        desc += f" {REQUIRED_BRAND_HASHTAG}"
+    if REQUIRED_BRAND_HASHTAG.lower() not in desc.lower(): desc += f" {REQUIRED_BRAND_HASHTAG}"
     return title, desc[:TIKTOK_DESC_LIMIT]
 
-
 # ---------------------------------------------------------------------------
-# Step 6: Upload
+# Step 6: Upload with scheduled_date -- posts at exactly POST_HOUR_UTC
 # ---------------------------------------------------------------------------
-def upload_carousel(image_paths, tiktok_title, description, cfg):
+def upload_carousel(image_paths, tiktok_title, description, cfg, scheduled_date):
+    """Upload photos to Upload-Post with scheduled_date.
+    Posts to TikTok + Facebook at exactly the scheduled time.
+    No GitHub timing dependency -- pipeline can run anytime.
+    Docs: https://docs.upload-post.com/api/upload-photo
+    """
     if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
     user = cfg.get("upload_post_user","")
     if not user: return {"skipped": True, "reason": "no user configured"}
+
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
     data = [
-        ("user",user),("platform[]","tiktok"),("platform[]","facebook"),
-        ("tiktok_title",tiktok_title),("description",description),
-        ("post_mode","MEDIA_UPLOAD"),("auto_add_music","true"),("photo_cover_index","0"),
+        ("user",              user),
+        ("platform[]",        "tiktok"),
+        ("platform[]",        "facebook"),
+        ("tiktok_title",      tiktok_title),
+        ("description",       description),
+        ("post_mode",         "DIRECT_POST"),   # Direct post at scheduled time
+        ("auto_add_music",    "true"),
+        ("photo_cover_index", "0"),
+        ("scheduled_date",    scheduled_date),  # Upload-Post holds and fires at exact time
     ]
     files = []
     try:
@@ -554,6 +569,7 @@ def upload_carousel(image_paths, tiktok_title, description, cfg):
         resp = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, files=files, data=data, timeout=180)
         result = resp.json() if resp.headers.get("content-type","").startswith("application/json") else {"raw":resp.text}
         result["status_code"] = resp.status_code
+        result["scheduled_date"] = scheduled_date
         print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
         if not resp.ok: print(f"  {resp.text[:400]}")
         return result
@@ -563,7 +579,6 @@ def upload_carousel(image_paths, tiktok_title, description, cfg):
         for _,(_, f,_) in files:
             try: f.close()
             except: pass
-
 
 # ---------------------------------------------------------------------------
 # Main
@@ -577,18 +592,17 @@ def main():
     cfg_path = Path("video_pipeline/heygen_config.json")
     if cfg_path.exists():
         with open(cfg_path) as f: cfg = json.load(f)
-
-    # Upload ENABLED -- controlled by heygen_config.json upload_enabled flag
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
-    gender  = get_gender_mode()
-    history = load_history()
+    gender        = get_gender_mode()
+    history       = load_history()
+    scheduled_date = get_scheduled_post_time()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.4")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Gender: {gender.upper()} | ~$0.48")
-    print(f"  Schedule: 17:00 UTC = 7pm Malta | Peak mental health content window")
+    print(f"  Generates: now (4am Malta) | Posts: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta (scheduled)")
     print(f"  {'Direct-address to men' if gender == 'male' else 'Partner-directed (female)'}")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok draft + Facebook")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | DIRECT_POST scheduled via Upload-Post")
     print("=" * 60)
 
     print(f"\n  Generating {gender} script...")
@@ -597,7 +611,6 @@ def main():
 
     slide_keys = ["slide_1","slide_2","slide_3","slide_4","slide_5","slide_6"]
     image_paths = []
-
     for idx, slide_key in enumerate(slide_keys):
         print(f"\n  -- {slide_key.upper()} --")
         brush_color = BRUSH_PALETTE[idx]
@@ -614,31 +627,32 @@ def main():
 
     tiktok_title, description = build_tiktok_content(script)
     (OUTPUT_DIR / "carousel_caption.txt").write_text(
-        f"GENDER: {gender.upper()}\nTITLE ({len(tiktok_title)} chars):\n{tiktok_title}\n\n"
+        f"GENDER: {gender.upper()}\nSCHEDULED: {scheduled_date}\n"
+        f"TITLE ({len(tiktok_title)} chars):\n{tiktok_title}\n\n"
         f"DESCRIPTION ({len(description)} chars):\n{description}", encoding="utf-8"
     )
     print(f"\n  Title: {tiktok_title}")
-    print(f"  Description: {description[:80]}...")
+    print(f"  Scheduled for: {scheduled_date}")
 
     if upload_enabled:
-        print(f"\n  Uploading {gender} carousel to TikTok (draft) + Facebook...")
-        result = upload_carousel(image_paths, tiktok_title, description, cfg)
+        print(f"\n  Uploading {gender} carousel -- scheduled for {scheduled_date}...")
+        result = upload_carousel(image_paths, tiktok_title, description, cfg, scheduled_date)
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
         if result.get("status_code") == 200:
-            print("  Facebook: posted directly")
-            print("  TikTok: in inbox -- open app, pick slow music, publish")
+            print(f"  Scheduled OK -- fires at {scheduled_date} (TikTok + Facebook)")
     else:
         print("\n  Upload DISABLED (upload_enabled=false in heygen_config.json)")
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped":True}))
 
     save_history(history, {
-        "date":     datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "topic":    script.get("topic",""),
-        "gender":   gender,
-        "headline": f"{script.get('s1_command')} / {script.get('s1_hero')}",
-        "run":      GITHUB_RUN_NUMBER,
+        "date":           datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "topic":          script.get("topic",""),
+        "gender":         gender,
+        "headline":       f"{script.get('s1_command')} / {script.get('s1_hero')}",
+        "scheduled_date": scheduled_date,
+        "run":            GITHUB_RUN_NUMBER,
     })
-    print(f"\n  DONE | {gender.upper()} | {script.get('topic')} | 6 slides | ~$0.48")
+    print(f"\n  DONE | {gender.upper()} | {script.get('topic')} | fires at {scheduled_date}")
 
 
 if __name__ == "__main__":

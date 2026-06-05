@@ -1,21 +1,15 @@
 name: Carousel Image Post Pipeline
 
-# Male/female alternating partner-directed + direct-address carousels
-# TikTok Photo Mode (draft) + Facebook direct
+# Male/female alternating carousels with Upload-Post scheduled posting.
 #
-# SCHEDULE: 19:00 UTC = 9pm Malta
-# -----------------------------------------------
-# Female video cron: 09:00 UTC --> worst case lands ~7pm Malta (8hr delay)
-# Carousel at 19:00 UTC is AFTER the female video's absolute worst case.
-# No clash possible at any GitHub delay level.
+# HOW IT WORKS (v2.5):
+#   1. Pipeline generates content at 02:00 UTC = 4am Malta (overnight).
+#   2. Upload-Post receives content and holds it.
+#   3. Upload-Post fires at exactly 21:00 UTC = 11pm Malta.
+#   GitHub delay is IRRELEVANT -- posting time is controlled by Upload-Post.
 #
-# 9pm Malta is within the 7pm-10pm European mental health peak window.
-#
-# Full daily content schedule (Malta time):
-#   ~11am-3pm  : Female video (typical landing)
-#   ~7pm       : Female video worst case
-#   9:10pm     : Carousel (this pipeline -- precise, 10min generation)
-#   Sat/Sun AM : Male videos A + B
+# To change posting time: edit POST_HOUR_UTC in carousel_pipeline.py.
+# No cron change needed.
 #
 # Cost: ~$0.48/post (6 x gpt-image-1 high)
 on:
@@ -27,11 +21,11 @@ on:
         default: "manual"
 
   schedule:
-    - cron: "0 19 * * *"  # 19:00 UTC = 9pm Malta -- safely after female video worst case
+    - cron: "0 2 * * *"  # 02:00 UTC = 4am Malta -- generates overnight, posts at 9pm via scheduled_date
 
 jobs:
   generate-carousel:
-    name: Generate + Upload 6-Slide Carousel (Male/Female Alternating)
+    name: Generate + Schedule 6-Slide Carousel (Male/Female Alternating)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -54,12 +48,11 @@ jobs:
 
       - name: Show run info
         run: |
-          echo "Pipeline: Carousel Image Post v2.4"
-          echo "Endpoint: /api/upload_photos (photos[] + MEDIA_UPLOAD)"
-          echo "Format: 6-slide male/female alternating carousel"
-          echo "Images: gpt-image-1 high (~$0.08/image)"
-          echo "Platforms: TikTok (draft) + Facebook (direct)"
-          echo "Schedule: 19:00 UTC = 9pm Malta (after female video worst case)"
+          echo "Pipeline: Carousel Image Post v2.5"
+          echo "Generate: 02:00 UTC = 4am Malta (now)"
+          echo "Post: 21:00 UTC = 11pm Malta (Upload-Post scheduled_date)"
+          echo "Platforms: TikTok + Facebook (DIRECT_POST, scheduled)"
+          echo "Format: 6-slide male/female alternating"
 
       - name: Run Carousel Pipeline
         env:
@@ -97,8 +90,8 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## Carousel Image Post Pipeline v2.4" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | 6 slides | 9pm Malta | TikTok draft + Facebook" >> $GITHUB_STEP_SUMMARY
+          echo "## Carousel Image Post Pipeline v2.5" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | 6 slides | Scheduled: 21:00 UTC" >> $GITHUB_STEP_SUMMARY
           if [ -f "scripts/output_carousel/carousel_script.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             H1=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('s1_command',''))" 2>/dev/null || echo "")
