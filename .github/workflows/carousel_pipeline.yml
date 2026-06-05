@@ -2,8 +2,25 @@ name: Carousel Image Post Pipeline
 
 # Male/female alternating partner-directed + direct-address carousels
 # TikTok Photo Mode (draft) + Facebook direct
-# Timing: 17:00 UTC = 7pm Malta = peak mental health content engagement window
-# Data: European mental health audiences peak 7pm-10pm (Sprout Social 2026)
+#
+# SCHEDULE RATIONALE -- 13:00 UTC = 3pm Malta
+# -----------------------------------------------
+# Female video cron: 09:00 UTC --> typically lands 11am-1pm Malta
+# Male videos cron:  03:00 + 07:00 UTC (Sat/Sun) --> lands 5am-11am Malta
+# Carousel: 13:00 UTC --> live 3:10pm Malta (10min generation, no delay)
+#
+# This places the carousel BETWEEN the typical video landings:
+#   - 2hr gap after female video (normal case)
+#   - 4hr gap before female video worst case (7pm)
+#   - Well after male videos (weekends)
+#   - Peak TikTok engagement window: 2pm-6pm local (Sprout Social 2026)
+#
+# Full daily content schedule (Malta time):
+#   ~11am-1pm  : Female video (09:00 UTC cron + generation)
+#   ~3pm       : Carousel (this pipeline, precise)
+#   ~7pm       : Female video worst case / target
+#   Sat/Sun AM : Male videos A + B
+#
 # Cost: ~$0.48/post (6 x gpt-image-1 high)
 on:
   workflow_dispatch:
@@ -14,7 +31,7 @@ on:
         default: "manual"
 
   schedule:
-    - cron: "0 17 * * *"  # 17:00 UTC = 7pm Malta = peak engagement window
+    - cron: "0 13 * * *"  # 13:00 UTC = 3pm Malta -- clean gap between video landings
 
 jobs:
   generate-carousel:
@@ -46,7 +63,7 @@ jobs:
           echo "Format: 6-slide male/female alternating carousel"
           echo "Images: gpt-image-1 high (~$0.08/image)"
           echo "Platforms: TikTok (draft) + Facebook (direct)"
-          echo "Schedule: 17:00 UTC = 7pm Malta"
+          echo "Schedule: 13:00 UTC = 3pm Malta (safe gap from video pipelines)"
 
       - name: Run Carousel Pipeline
         env:
@@ -85,9 +102,8 @@ jobs:
         if: always()
         run: |
           echo "## Carousel Image Post Pipeline v2.4" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | 6 slides | TikTok draft + Facebook" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | 6 slides | 3pm Malta | TikTok draft + Facebook" >> $GITHUB_STEP_SUMMARY
           if [ -f "scripts/output_carousel/carousel_script.json" ]; then
-            GENDER=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print('N/A')" 2>/dev/null || echo "")
             TOPIC=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             H1=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('s1_command',''))" 2>/dev/null || echo "")
             H2=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('s1_hero',''))" 2>/dev/null || echo "")
