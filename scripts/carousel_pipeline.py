@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v1.5
+MindCore AI -- Carousel Image Post Pipeline v1.6
 =================================================
 Generates 5-image TikTok Photo Mode carousel posts.
 Partner-directed scripts drive saves and shares.
 
 Format:
   - 5 cinematic images (gpt-image-1 HIGH, 1080x1920)
-  - Bold text overlay centred on each slide (PIL)
+  - QUOTE CARD format: 1 bold sentence per slide, max 12 words
+  - Large font -- readable in 2-3 seconds at TikTok auto-scroll speed
+  - Text centred vertically on all slides
   - Full prose script as TikTok description (max 4,000 chars)
-  - Uploaded via Upload-Post /api/upload_photos
-  - post_mode = MEDIA_UPLOAD (sends to TikTok inbox/drafts)
-    --> Keith opens in TikTok app, picks slow ambient music,
-        controls slide timing, then publishes manually (30 seconds)
+  - MEDIA_UPLOAD mode -- lands in TikTok drafts for music selection
 
 Cost: ~$0.40/post (5 x gpt-image-1 high @ ~$0.08)
 Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta landing)
 
-v1.5: Text centred (0.50) on all slides. MEDIA_UPLOAD mode so
-      slide speed is controlled by music chosen in TikTok app.
-v1.4: Correct endpoint /api/upload_photos, photos[], auto_add_music
-v1.3: Slideshow video workaround (superseded)
+v1.6: Quote-card format -- max 12 words per slide, bigger fonts
+v1.5: Text centred, MEDIA_UPLOAD mode
+v1.4: Correct endpoint /api/upload_photos
 """
 
 import base64
@@ -131,15 +129,16 @@ SLIDE_IMAGE_PROMPTS = {
     ),
 }
 
+# Larger fonts -- less text needs more visual weight
 SLIDE_FONT_SIZES = {
-    "slide_1": 62,
-    "slide_2": 48,
-    "slide_3": 48,
-    "slide_4": 66,
-    "slide_5": 54,
+    "slide_1": 72,   # Headline -- big and bold
+    "slide_2": 62,   # Single punchy line
+    "slide_3": 62,   # Single punchy line
+    "slide_4": 76,   # Payoff -- the biggest, most quotable
+    "slide_5": 64,   # Warm close
 }
 
-# All slides: text centred vertically at 0.50
+# All slides: text centred vertically
 SLIDE_TEXT_POSITIONS = {
     "slide_1": 0.50,
     "slide_2": 0.50,
@@ -188,41 +187,45 @@ def _call_claude(prompt, client, max_tokens=1500):
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Generate script
+# Step 1: Generate script -- QUOTE CARD format, max 12 words per slide
 # ---------------------------------------------------------------------------
 def generate_carousel_script(client, history):
     used_topics = [e.get("topic", "") for e in history]
     seed = random.choice(PARTNER_SEEDS)
     avoid = ", ".join(used_topics[-10:]) if used_topics else "none"
 
-    prompt = f"""You are a senior mental wellness content writer specialising in TikTok carousel posts.
+    prompt = f"""You are a senior mental wellness content writer for TikTok quote-card carousels.
 
-Write a 5-slide carousel post in the partner-directed style.
-This content speaks TO the person who loves someone with a mental health struggle --
-not to the person who is struggling. This doubles the audience because:
-  - The struggling person shares it to their partner ("this is me")
-  - The partner saves it ("I need to remember this")
+Write a 5-slide QUOTE CARD carousel in the partner-directed style.
+This speaks TO the person who loves someone with a mental health struggle.
 
 SEED TOPIC: "{seed}"
 AVOID (already used): {avoid}
 
-TONE: Warm, empathetic, validating. Like advice from a wise friend who has been there.
-Never preachy. Never clinical. No lists. Pure flowing prose.
+CRITICAL FORMAT RULE -- WORD LIMITS:
+Each slide displays for only 2-3 seconds. The viewer must be able to read
+the ENTIRE slide in one glance. This means:
 
-FORMAT RULES:
-  - headline_line1: First line. Ends mid-sentence for cliffhanger.
+  - headline_line1: 3-5 words. Ends mid-sentence. No full stop.
     Example: "Loving someone with anxiety"
-  - headline_line2: Second line. MUST end with "..." for read-more impulse.
-    Example: "means remembering this..."
-  - tiktok_title: Max 80 chars. Short punchy version of headline for TikTok title field.
-    Example: "Loving someone with anxiety means remembering this"
-  - slide_2_text: 3-4 sentences naming the invisible reality of their struggle.
-  - slide_3_text: 3-4 sentences. The deeper truth. Begin to shift the frame.
-  - slide_4_text: 1-2 sentences MAXIMUM. The screenshot-worthy payoff reframe.
-    Example: "You don't have to fix their thoughts. Just stand beside them while they face them."
-  - slide_5_text: 2-3 sentences warm resolution. Reader feels seen and capable.
+  - headline_line2: 3-5 words. MUST end with "..." Example: "means this..."
+  - slide_2_text: EXACTLY 1 sentence. MAX 10 words. Name the core truth.
+    Example: "Their mind never gets a day off."
+  - slide_3_text: EXACTLY 1 sentence. MAX 10 words. The deeper reframe.
+    Example: "That silence isn't distance. It's exhaustion."
+  - slide_4_text: EXACTLY 1 sentence. MAX 8 words. The screenshot-worthy payoff.
+    THE MOST IMPORTANT LINE. Must be quotable and memorable.
+    Example: "You don't have to fix it. Just stay."
+  - slide_5_text: EXACTLY 1 sentence. MAX 10 words. Warm, earned resolution.
+    Example: "That's what love actually looks like."
+
+TONE: Warm, emotionally precise. Like a line from a poem someone saves forever.
+Every word must earn its place. If it can be cut, cut it.
+
+  - tiktok_title: Max 80 chars. Punchy version of the headline.
   - full_prose_caption: 200-280 word flowing prose. No bullets. No headers.
-    Start with the headline concept. End with soft save trigger like
+    This is read at the viewer's own pace in the caption section.
+    Start with the headline concept. End with:
     "Save this for the moments when you need a reminder."
   - topic: 4-7 word description
   - hashtag_topic: single hashtag without # (e.g. anxietysupport)
@@ -242,9 +245,24 @@ Return ONLY valid JSON:
 }}"""
 
     result = _call_claude(prompt, client, max_tokens=1500)
+
+    # Enforce word limits -- trim if Claude over-generates
+    for key, limit in [("slide_2_text", 10), ("slide_3_text", 10),
+                       ("slide_4_text", 8), ("slide_5_text", 10)]:
+        text = result.get(key, "")
+        words = text.split()
+        if len(words) > limit:
+            result[key] = " ".join(words[:limit])
+            if not result[key].endswith((".", "!", "?")):
+                result[key] = result[key].rstrip(",;") + "."
+            print(f"  TRIMMED [{key}]: {len(words)} -> {limit} words")
+
     print(f"  Topic: {result.get('topic')}")
-    print(f"  TikTok title: {result.get('tiktok_title')}")
-    print(f"  Headline: {result.get('headline_line1')} / {result.get('headline_line2')}")
+    print(f"  Slide 1: {result.get('headline_line1')} / {result.get('headline_line2')}")
+    print(f"  Slide 2: {result.get('slide_2_text')} ({len(result.get('slide_2_text','').split())}w)")
+    print(f"  Slide 3: {result.get('slide_3_text')} ({len(result.get('slide_3_text','').split())}w)")
+    print(f"  Slide 4: {result.get('slide_4_text')} ({len(result.get('slide_4_text','').split())}w)")
+    print(f"  Slide 5: {result.get('slide_5_text')} ({len(result.get('slide_5_text','').split())}w)")
     return result
 
 
@@ -284,14 +302,14 @@ def resize_to_tiktok(img_bytes):
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Text overlay -- centred on all slides
+# Step 4: Text overlay -- centred, large font, quote-card style
 # ---------------------------------------------------------------------------
 def wrap_text(text, font, max_width):
     words = text.split(); lines = []; current = []
     for word in words:
         test = " ".join(current + [word])
         try: w = font.getbbox(test)[2] - font.getbbox(test)[0]
-        except: w = len(test) * 30
+        except: w = len(test) * 35
         if w <= max_width: current.append(word)
         else:
             if current: lines.append(" ".join(current))
@@ -315,12 +333,11 @@ def add_text_overlay(img, text_lines, slide_key):
     font_size = SLIDE_FONT_SIZES[slide_key]
     font = load_font(font_size)
     max_w = int(IMAGE_WIDTH * 0.85)
-    stroke = max(3, font_size // 18)
-    spacing = int(font_size * 1.35)
+    stroke = max(4, font_size // 16)
+    spacing = int(font_size * 1.40)
     wrapped = []
     for line in text_lines:
         wrapped.extend(wrap_text(line, font, max_w))
-    # Centre the text block vertically
     total_h = len(wrapped) * spacing
     start_y = int(IMAGE_HEIGHT * SLIDE_TEXT_POSITIONS[slide_key]) - total_h // 2
     cx = IMAGE_WIDTH // 2
@@ -357,12 +374,11 @@ def build_tiktok_content(script):
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Upload -- MEDIA_UPLOAD mode (sends to TikTok drafts/inbox)
+# Step 6: Upload -- MEDIA_UPLOAD sends to TikTok drafts
 # ---------------------------------------------------------------------------
 def upload_carousel(image_paths, tiktok_title, description, cfg):
-    """Upload 5 images to TikTok inbox as a draft (MEDIA_UPLOAD).
-    Keith opens in TikTok app, picks slow ambient music to control
-    slide timing, then publishes manually.
+    """Upload 5 images to TikTok inbox as draft (MEDIA_UPLOAD).
+    Open in TikTok app to pick slow ambient music, then publish.
     Docs: https://docs.upload-post.com/api/upload-photo
     """
     if not UPLOAD_POST_API_KEY:
@@ -377,7 +393,7 @@ def upload_carousel(image_paths, tiktok_title, description, cfg):
         ("platform[]",        "tiktok"),
         ("tiktok_title",      tiktok_title),
         ("description",       description),
-        ("post_mode",         "MEDIA_UPLOAD"),   # --> TikTok inbox/draft
+        ("post_mode",         "MEDIA_UPLOAD"),
         ("auto_add_music",    "true"),
         ("photo_cover_index", "0"),
     ]
@@ -387,13 +403,9 @@ def upload_carousel(image_paths, tiktok_title, description, cfg):
         for i, path in enumerate(image_paths):
             f = open(path, "rb")
             files.append(("photos[]", (f"slide_{i+1}.jpg", f, "image/jpeg")))
-
         resp = requests.post(
-            UPLOAD_POST_PHOTOS_URL,
-            headers=headers,
-            files=files,
-            data=data,
-            timeout=180
+            UPLOAD_POST_PHOTOS_URL, headers=headers,
+            files=files, data=data, timeout=180
         )
         result = (
             resp.json()
@@ -429,13 +441,13 @@ def main():
 
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.5")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.6")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides | gpt-image-1 HIGH | ~$0.40/post")
-    print(f"  Text: centred on all slides | Mode: MEDIA_UPLOAD (TikTok drafts)")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok inbox")
+    print(f"  Format: quote-card (max 10 words/slide) | Font: 62-76px")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok drafts")
     print("=" * 60)
 
-    print("\n  Generating partner-directed script...")
+    print("\n  Generating quote-card script...")
     script = generate_carousel_script(client, history)
     (OUTPUT_DIR / "carousel_script.json").write_text(json.dumps(script, indent=2), encoding="utf-8")
 
@@ -463,7 +475,7 @@ def main():
     print(f"  Description ({len(description)} chars): {description[:80]}...")
 
     if upload_enabled:
-        print("\n  Sending to TikTok inbox (MEDIA_UPLOAD -- opens as draft)...")
+        print("\n  Sending to TikTok inbox (draft)...")
         result = upload_carousel(image_paths, tiktok_title, description, cfg)
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
     else:
@@ -479,7 +491,7 @@ def main():
 
     print(f"\n  DONE | {script.get('topic')} | 5 slides | ~$0.40")
     if upload_enabled:
-        print("  Sent to TikTok inbox -- open TikTok app, pick slow music, publish")
+        print("  In TikTok inbox -- open app, pick slow music, publish")
 
 
 if __name__ == "__main__":
