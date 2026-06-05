@@ -3,22 +3,18 @@ name: Carousel Image Post Pipeline
 # Male/female alternating partner-directed + direct-address carousels
 # TikTok Photo Mode (draft) + Facebook direct
 #
-# SCHEDULE RATIONALE -- 13:00 UTC = 3pm Malta
+# SCHEDULE: 19:00 UTC = 9pm Malta
 # -----------------------------------------------
-# Female video cron: 09:00 UTC --> typically lands 11am-1pm Malta
-# Male videos cron:  03:00 + 07:00 UTC (Sat/Sun) --> lands 5am-11am Malta
-# Carousel: 13:00 UTC --> live 3:10pm Malta (10min generation, no delay)
+# Female video cron: 09:00 UTC --> worst case lands ~7pm Malta (8hr delay)
+# Carousel at 19:00 UTC is AFTER the female video's absolute worst case.
+# No clash possible at any GitHub delay level.
 #
-# This places the carousel BETWEEN the typical video landings:
-#   - 2hr gap after female video (normal case)
-#   - 4hr gap before female video worst case (7pm)
-#   - Well after male videos (weekends)
-#   - Peak TikTok engagement window: 2pm-6pm local (Sprout Social 2026)
+# 9pm Malta is within the 7pm-10pm European mental health peak window.
 #
 # Full daily content schedule (Malta time):
-#   ~11am-1pm  : Female video (09:00 UTC cron + generation)
-#   ~3pm       : Carousel (this pipeline, precise)
-#   ~7pm       : Female video worst case / target
+#   ~11am-3pm  : Female video (typical landing)
+#   ~7pm       : Female video worst case
+#   9:10pm     : Carousel (this pipeline -- precise, 10min generation)
 #   Sat/Sun AM : Male videos A + B
 #
 # Cost: ~$0.48/post (6 x gpt-image-1 high)
@@ -31,7 +27,7 @@ on:
         default: "manual"
 
   schedule:
-    - cron: "0 13 * * *"  # 13:00 UTC = 3pm Malta -- clean gap between video landings
+    - cron: "0 19 * * *"  # 19:00 UTC = 9pm Malta -- safely after female video worst case
 
 jobs:
   generate-carousel:
@@ -63,7 +59,7 @@ jobs:
           echo "Format: 6-slide male/female alternating carousel"
           echo "Images: gpt-image-1 high (~$0.08/image)"
           echo "Platforms: TikTok (draft) + Facebook (direct)"
-          echo "Schedule: 13:00 UTC = 3pm Malta (safe gap from video pipelines)"
+          echo "Schedule: 19:00 UTC = 9pm Malta (after female video worst case)"
 
       - name: Run Carousel Pipeline
         env:
@@ -102,7 +98,7 @@ jobs:
         if: always()
         run: |
           echo "## Carousel Image Post Pipeline v2.4" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | 6 slides | 3pm Malta | TikTok draft + Facebook" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | 6 slides | 9pm Malta | TikTok draft + Facebook" >> $GITHUB_STEP_SUMMARY
           if [ -f "scripts/output_carousel/carousel_script.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             H1=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('s1_command',''))" 2>/dev/null || echo "")
