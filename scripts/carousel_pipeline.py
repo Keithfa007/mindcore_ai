@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.0
+MindCore AI -- Carousel Image Post Pipeline v2.1
 =================================================
-Complete redesign inspired by high-performing carousel analysis.
+Hybrid: beautiful cinematic gpt-image-1 photography (v1.7 images)
++ proper text hierarchy from v2.0 analysis.
 
-Format:
-  - WHITE background with dark text (maximum readability)
-  - Pen & ink sketch illustrations in bottom ~55% of each slide
-  - THREE font sizes per slide: command (small gray) / hero (large bold + brush stroke) / body (medium)
-  - Colored brush-stroke highlight behind hero concept word
-  - 6 slides: 5 content slides + 1 CTA slide
-  - Partner-directed scripts drive saves and shares
-  - CTA: "Download for free on Google Play"
-  - MEDIA_UPLOAD to TikTok drafts + direct to Facebook
+What changed vs v1.7:
+  - THREE font sizes per slide: command (gray, small) / hero (large + neon brush stroke) / body+bold (medium)
+  - Gradient dark overlay in text zone -- white text always readable regardless of image
+  - Max 10 words per slide (hard enforced)
+  - Script structure: command + hero + body + bold line
+  - 6 slides (5 content + 1 CTA)
+  - CTA: "Comment X..." + "MindCore AI" + "Download for free on Google Play"
 
-Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08) + Claude
-Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta landing)
+What's the same as v1.7:
+  - Beautiful cinematic gpt-image-1 HIGH photography (NOT pen sketches)
+  - Dark moody images, warm light, real people
+  - TikTok + Facebook upload
+  - MEDIA_UPLOAD mode (TikTok drafts)
+  - Partner-directed scripts
 
-v2.0: Full redesign -- white bg, pen sketches, 3 font sizes, brush strokes, CTA slide
-v1.7: TikTok + Facebook, 5 cinematic dark image slides
+Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
+Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta)
 """
 
 import base64
@@ -63,45 +66,46 @@ CLAUDE_MAX_RETRIES = 8
 CLAUDE_RETRY_BASE  = 30
 
 # ---------------------------------------------------------------------------
-# Design tokens
+# Text design -- three hierarchy levels
 # ---------------------------------------------------------------------------
-CANVAS_BG   = (255, 255, 255)   # pure white
-TEXT_DARK   = (15, 15, 15)      # near black (hero, bold)
-TEXT_GRAY   = (110, 110, 110)   # medium gray (command labels)
-TEXT_BODY   = (50, 50, 50)      # dark gray (body lines)
-TEXT_BOLD   = (10, 10, 10)      # near black (bold emphasis)
-TEXT_URL    = (140, 140, 140)   # light gray (URL on CTA)
+CMD_SIZE   = 50    # command label (small, light gray)
+HERO_SIZE  = 88    # hero concept (large, bold, on brush stroke)
+BODY_SIZE  = 42    # body explanation
+BOLD_SIZE  = 48    # bold punchline
+CTA_TRIG   = 60    # CTA comment trigger
+CTA_APP    = 84    # "MindCore AI"
+CTA_DL     = 50    # "Download for free on Google Play"
+CTA_URL    = 38    # URL
 
-# Brush stroke palette -- rotates per slide
+# Text colors
+CMD_COLOR  = (200, 200, 200)  # light gray -- command label
+HERO_COLOR = (10,  10,  10)   # near black -- ON the neon brush stroke
+BODY_COLOR = (255, 255, 255)  # white -- body text
+BOLD_COLOR = (255, 255, 255)  # white -- bold punchline
+CTA_COLOR  = (255, 255, 255)  # white -- CTA text
+URL_COLOR  = (190, 190, 190)  # light gray -- URL
+
+# Brush stroke palette (rotates per slide) -- vivid on dark images
 BRUSH_PALETTE = [
     (168, 224, 99),   # lime green  #A8E063
     (78,  205, 196),  # cyan        #4ECDC4
     (255, 209, 102),  # yellow      #FFD166
-    (168, 224, 99),   # lime green  (repeat)
-    (78,  205, 196),  # cyan        (repeat)
-    (255, 209, 102),  # yellow      (CTA slide)
+    (168, 224, 99),
+    (78,  205, 196),
+    (255, 209, 102),
 ]
 
-# Font sizes for three hierarchy levels
-CMD_SIZE  = 56    # command / label (small gray)
-HERO_SIZE = 94    # hero concept (large bold + brush stroke)
-BODY_SIZE = 44    # body explanation text
-BOLD_SIZE = 50    # bold emphasis line within body
-CTA_TRIGGER_SIZE = 62  # "Comment X if..." trigger
-CTA_APP_SIZE     = 86  # "MindCore AI" on CTA slide
-CTA_DL_SIZE      = 52  # "Download for free on Google Play"
-CTA_URL_SIZE     = 40  # URL
+# Text zone vertical positions (fraction of image height -- where text block starts)
+TEXT_START_HOOK    = 0.55   # slide 1 -- lower portion, leave upper image clean
+TEXT_START_CONTENT = 0.50   # slides 2-5
+TEXT_START_CTA     = 0.38   # CTA slide -- more text, starts higher
 
-MAX_TEXT_W  = int(IMAGE_WIDTH * 0.88)  # 950px -- text wraps within this
-TOP_PADDING = 95
-LINE_GAP    = 18   # space between lines of same size
-SECTION_GAP = 42   # space between text sections
+MAX_TEXT_W = int(IMAGE_WIDTH * 0.87)  # 940px max text width
+LINE_GAP   = 14
+SECTION_GAP = 38
 
-# Illustration starts at this y (text fills above)
-# Calculated dynamically per slide, these are soft minimums
-MIN_ILLUS_Y_CONTENT = 820
-MIN_ILLUS_Y_HOOK    = 720
-MIN_ILLUS_Y_CTA     = 880
+# Gradient overlay alpha range in text zone
+GRADIENT_MAX_ALPHA = 155  # 0-255, how dark the text zone gets
 
 # ---------------------------------------------------------------------------
 # Partner-directed topic seeds
@@ -125,50 +129,54 @@ PARTNER_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Pen-sketch illustration prompts per slide (white background, black ink)
+# Cinematic image prompts -- SAME beautiful style as v1.7
 # ---------------------------------------------------------------------------
-ILLUS_PROMPTS = {
+SLIDE_IMAGE_PROMPTS = {
     "slide_1": (
-        "Dramatic expressive pen and ink sketch illustration. "
-        "A person tenderly holding another in a gentle protective embrace, "
-        "one figure supporting the other with warmth and care. "
-        "Intricate cross-hatching, expressive fine line work. "
-        "Pure white background, black ink only. "
-        "High artistic quality, deeply emotional. No text, no watermarks."
+        "Cinematic portrait photography, 9:16 vertical format. "
+        "A person floating peacefully on their back in warm golden-hour water, "
+        "face serene and eyes closed, hair fanned out around their head. "
+        "Soft pink and lavender sunset reflections shimmering on the water. "
+        "Warm aspirational wellness aesthetic, safe and beautiful. "
+        "High-key warm grade, photorealistic, no text, no logos."
     ),
     "slide_2": (
-        "Dramatic expressive pen and ink sketch illustration. "
-        "A solitary figure sitting with head slightly bowed, surrounded by "
-        "swirling spiral lines suggesting a restless overthinking mind. "
-        "Heavy, contemplative mood. Fine line work and cross-hatching. "
-        "Pure white background, black ink only. No text, no watermarks."
+        "Cinematic portrait photography, 9:16 vertical format. "
+        "A person sitting alone near a rain-streaked window at dusk, "
+        "warm soft ambient interior light casting a gentle glow, "
+        "peaceful contemplative expression, hands in lap. "
+        "Intimate quiet mood, slightly warm dim interior. "
+        "Photorealistic, no text, no logos."
     ),
     "slide_3": (
-        "Dramatic expressive pen and ink sketch illustration. "
-        "Two hands nearly touching but not quite, fingers reaching toward "
-        "each other with tender vulnerability. Delicate fine line work. "
-        "Pure white background, black ink only. No text, no watermarks."
+        "Cinematic portrait photography, 9:16 vertical format. "
+        "Two hands gently holding each other on a warm wooden table, "
+        "soft golden afternoon light, simple and tender connection. "
+        "Warm amber colour grade, quiet intimacy. "
+        "Photorealistic, no text, no logos."
     ),
     "slide_4": (
-        "Dramatic expressive pen and ink sketch illustration. "
-        "A figure with eyes gently closed, chin slightly tilted upward, "
-        "expression of quiet realisation and inner peace. "
-        "Soft radiating lines suggesting calm. Fine cross-hatching. "
-        "Pure white background, black ink only. No text, no watermarks."
+        "Cinematic portrait photography, 9:16 vertical format. "
+        "A person looking upward toward soft warm natural light "
+        "streaming through a window, face peaceful and hopeful, "
+        "golden light touching skin gently. "
+        "Warm transitional mood, beginning of resolution. "
+        "Photorealistic, no text, no logos."
     ),
     "slide_5": (
-        "Dramatic expressive pen and ink sketch illustration. "
-        "A figure standing with arms slightly open at sides, grounded "
-        "and resolved, a sense of quiet strength and acceptance. "
-        "Expressive flowing line work. "
-        "Pure white background, black ink only. No text, no watermarks."
+        "Cinematic portrait photography, 9:16 vertical format. "
+        "Soft golden sunrise light filtering through sheer white curtains, "
+        "peaceful bedroom scene, warm amber and ivory tones, "
+        "a sense of safety, serenity, and gentle hope. "
+        "Full warm golden resolution mood. "
+        "Photorealistic, no text, no logos."
     ),
     "slide_6": (
-        "Dramatic expressive pen and ink sketch illustration. "
-        "A modern smartphone with a stylised brain and gentle heartbeat "
-        "line on its screen, surrounded by small radiating lines of calm "
-        "energy. Minimalist and clean. Fine line work. "
-        "Pure white background, black ink only. No text, no watermarks."
+        "Cinematic portrait photography, 9:16 vertical format. "
+        "A smartphone face-up on a warm wooden table, soft golden ambient "
+        "glow on the screen, minimal and inviting, candlelight warmth, "
+        "intimate and calm. Warm amber grade. "
+        "Photorealistic, no text, no logos."
     ),
 }
 
@@ -191,8 +199,7 @@ def _call_claude(prompt, client, max_tokens=2000):
     for attempt in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             msg = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=max_tokens,
+                model="claude-sonnet-4-6", max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}]
             )
             raw = msg.content[0].text.strip()
@@ -211,7 +218,6 @@ def _call_claude(prompt, client, max_tokens=2000):
     raise RuntimeError("Claude failed after all retries")
 
 def get_font(size, bold=True):
-    """Load Liberation Sans bold or regular."""
     bold_paths = [
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -227,140 +233,113 @@ def get_font(size, bold=True):
         if Path(path).exists():
             try: return ImageFont.truetype(path, size)
             except: pass
-    # Fallback: try the other weight
     for path in (reg_paths if bold else bold_paths):
         if Path(path).exists():
             try: return ImageFont.truetype(path, size)
             except: pass
     return ImageFont.load_default()
 
-def wrap_text(text, font, max_width):
-    """Word-wrap text to fit within max_width pixels."""
-    words = text.split(); lines = []; current = []
+def line_height(font):
+    try:
+        bb = font.getbbox("Ag"); return bb[3] - bb[1]
+    except: return getattr(font, "size", 40)
+
+def wrap_text(text, font, max_w):
+    words = text.split(); lines = []; cur = []
     for word in words:
-        test = " ".join(current + [word])
+        test = " ".join(cur + [word])
         try: w = font.getbbox(test)[2] - font.getbbox(test)[0]
-        except: w = len(test) * (font.size if hasattr(font, "size") else 30)
-        if w <= max_width:
-            current.append(word)
+        except: w = len(test) * 30
+        if w <= max_w: cur.append(word)
         else:
-            if current: lines.append(" ".join(current))
-            current = [word]
-    if current: lines.append(" ".join(current))
+            if cur: lines.append(" ".join(cur))
+            cur = [word]
+    if cur: lines.append(" ".join(cur))
     return lines or [""]
 
-def text_line_height(font):
-    """Approximate height of one line of text."""
-    try:
-        bbox = font.getbbox("Ag")
-        return bbox[3] - bbox[1]
-    except:
-        return getattr(font, "size", 40)
+def draw_text_with_stroke(draw, cx, y, text, font, color, stroke_color=(0,0,0), stroke_w=3):
+    """Draw text centered at cx, top at y, with black stroke for readability."""
+    for dx in range(-stroke_w, stroke_w+1):
+        for dy in range(-stroke_w, stroke_w+1):
+            if dx or dy:
+                draw.text((cx+dx, y+dy), text, font=font, fill=stroke_color, anchor="mt")
+    draw.text((cx, y), text, font=font, fill=color, anchor="mt")
 
-def draw_text_block(draw, lines, font, cx, y, color):
-    """Draw multiple text lines centered at cx, starting at y. Returns new y."""
-    lh = text_line_height(font)
+def draw_text_block(draw, cx, y, lines, font, color, stroke_w=3):
+    """Draw multiple lines, return bottom y."""
+    lh = line_height(font)
     for line in lines:
-        draw.text((cx, y), line, font=font, fill=color, anchor="mt")
+        draw_text_with_stroke(draw, cx, y, line, font, color, stroke_w=stroke_w)
         y += lh + LINE_GAP
     return y
 
-def draw_brush_stroke(draw, cx, y_top, text, font, color):
-    """Draw irregular parallelogram behind text as brush stroke highlight."""
+def draw_brush_stroke(draw, cx, y_top, text, font, brush_color):
+    """Draw neon brush stroke behind hero text. Returns text bounds."""
     try:
-        bbox = font.getbbox(text)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
+        bb = font.getbbox(text)
+        tw = bb[2] - bb[0]; th = bb[3] - bb[1]
     except:
         tw = len(text) * getattr(font, "size", 40) * 0.55
         th = getattr(font, "size", 40)
-    pad_x, pad_y, skew = 28, 10, 9
-    x1 = cx - tw // 2 - pad_x
-    x2 = cx + tw // 2 + pad_x
-    y1 = y_top - pad_y
-    y2 = y_top + th + pad_y
+    pad_x, pad_y, skew = 26, 10, 8
+    x1 = cx - tw//2 - pad_x; x2 = cx + tw//2 + pad_x
+    y1 = y_top - pad_y;      y2 = y_top + th + pad_y
     pts = [
-        (x1 + skew, y1 - 3),
-        (x2 + skew, y1 + 4),
-        (x2 - skew, y2 + 4),
-        (x1 - skew, y2 - 3),
+        (x1+skew, y1-3), (x2+skew, y1+4),
+        (x2-skew, y2+4), (x1-skew, y2-3),
     ]
-    draw.polygon(pts, fill=color)
+    draw.polygon(pts, fill=brush_color)
 
-def paste_illustration(canvas, illus_bytes, y_start):
-    """Open illustration, resize to canvas width, paste at y_start."""
-    illus = Image.open(io.BytesIO(illus_bytes)).convert("RGBA")
-    # Scale to canvas width
-    scale = IMAGE_WIDTH / illus.width
-    new_h = int(illus.height * scale)
-    illus = illus.resize((IMAGE_WIDTH, new_h), Image.LANCZOS)
-    # Available vertical space
-    avail_h = IMAGE_HEIGHT - y_start
-    if new_h > avail_h:
-        illus = illus.crop((0, 0, IMAGE_WIDTH, avail_h))
-    # Paste -- white bg so RGBA blending is clean
-    bg = Image.new("RGBA", (IMAGE_WIDTH, IMAGE_HEIGHT), (255, 255, 255, 255))
-    bg.paste(canvas.convert("RGBA"), (0, 0))
-    bg.paste(illus, (0, y_start), illus)
-    return bg.convert("RGB")
+def add_gradient_overlay(img, text_start_y):
+    """Darken the text zone with a gradient so white text is always readable."""
+    overlay = Image.new("RGBA", (IMAGE_WIDTH, IMAGE_HEIGHT), (0, 0, 0, 0))
+    draw    = ImageDraw.Draw(overlay)
+    zone_h  = IMAGE_HEIGHT - text_start_y
+    for y in range(text_start_y, IMAGE_HEIGHT):
+        progress = (y - text_start_y) / zone_h
+        alpha = int(GRADIENT_MAX_ALPHA * min(progress * 1.6, 1.0))
+        draw.line([(0, y), (IMAGE_WIDTH, y)], fill=(0, 0, 0, alpha))
+    img_rgba = img.convert("RGBA")
+    composited = Image.alpha_composite(img_rgba, overlay)
+    return composited.convert("RGB")
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Generate 6-slide script
+# Step 1: Generate script
 # ---------------------------------------------------------------------------
 def generate_carousel_script(client, history):
-    used = [e.get("topic", "") for e in history]
-    seed = random.choice(PARTNER_SEEDS)
+    used  = [e.get("topic","") for e in history]
+    seed  = random.choice(PARTNER_SEEDS)
     avoid = ", ".join(used[-10:]) if used else "none"
 
-    prompt = f"""You are a senior TikTok carousel copywriter for a mental wellness brand.
+    prompt = f"""You are a TikTok carousel copywriter for a mental wellness brand.
 
-Write a 5-content-slide carousel in the PARTNER-DIRECTED style.
+Write a 5-content-slide PARTNER-DIRECTED carousel.
 Speak TO the person who loves someone with a mental health struggle.
-This doubles the audience: the struggling person shares it ("this is me"),
-the partner saves it ("I need to remember this").
+Each slide has THREE text layers laid over a beautiful image:
+
+  1. COMMAND (small gray label, 2-5 words): sets the context
+  2. HERO (large bold concept, 2-4 words): the KEY IDEA on a neon highlight
+  3. BODY (1-2 sentences, 18 words max): explains the concept
+  4. BOLD (1 sentence, 7 words max): the punchline / most quotable line
 
 SEED TOPIC: "{seed}"
 AVOID (recently used): {avoid}
 
-SLIDE STRUCTURE -- Each slide has THREE text layers:
-1. COMMAND (small, gray): 2-5 word setup phrase -- the context setter
-2. HERO (large, bold, highlighted): 2-4 words -- the KEY CONCEPT on a brush stroke
-3. BODY (medium): 1-2 SHORT sentences (20 words max). Then a BOLD LINE (8 words max).
+WORD LIMITS (strictly enforced -- images auto-scroll):
+  s1: command 4-7w, hero 2-4w ending "..." -- NO body or bold on slide 1
+  s2/s3/s4/s5: command 2-4w, hero 2-4w, body 18w max, bold 7w max
+  s4_bold = THE most quotable, screenshot-worthy line in the whole carousel
+  cta_trigger = "Comment [WORD] if [emotional statement] 👇" (WORD: SAVED/SAME/THIS/YES/REAL)
 
-TONE: Warm, emotionally precise. Every word earns its place.
-Like a line from a poem someone screenshots and saves.
-
-RULES:
-  s1_command: 4-7 words. Emotional setup. Ends mid-thought. ("Loving someone with anxiety")
-  s1_hero: 2-4 words. The cliffhanger concept. Ends "..." ("means THIS...")
-  (slide 1 has NO body -- just command + hero + illustration)
-
-  s2/s3/s4/s5_command: 2-4 words. The label/setup. ("Their mind", "What looks like", "The truth is")
-  s2/s3/s4/s5_hero: 2-4 words. The KEY CONCEPT on the highlight. ("never stops", "distance", "just stay")
-  s2/s3_body: 1-2 sentences, 20 words max. Explains the concept.
-  s2/s3_bold: 1 sentence, 8 words MAX. The bold punchline below the body.
-  s4_body: 1 sentence, 15 words max. Build toward the payoff.
-  s4_bold: 1 sentence, 8 words MAX. THE most quotable line in the whole carousel.
-  s5_body: 1-2 warm sentences, 20 words max. Resolution.
-  s5_bold: 1 sentence, 8 words MAX. Warm close.
-
-  cta_trigger: "Comment [WORD] if [2nd person emotional statement] 👇"
-    WORD options: SAVED / SAME / THIS / YES / REAL / NEEDED
-    Example: "Comment SAVED if you needed to read this 👇"
-
-  tiktok_title: Max 80 chars. The hook as a title.
-  full_prose_caption: 200-280 word flowing prose. No bullets/headers.
-    Start with the hero concept. End: "Save this for the moments when you need a reminder."
-  topic: 4-7 word description
-  hashtag_topic: one hashtag without # (e.g. anxietysupport)
+TONE: Warm, precise, like a poem someone saves forever.
 
 Return ONLY valid JSON:
 {{
   "topic": "...",
-  "tiktok_title": "...",
+  "tiktok_title": "...(max 80 chars)...",
   "s1_command": "...",
-  "s1_hero": "...",
+  "s1_hero": "...(ends with ...)...",
   "s2_command": "...",
   "s2_hero": "...",
   "s2_body": "...",
@@ -378,45 +357,47 @@ Return ONLY valid JSON:
   "s5_body": "...",
   "s5_bold": "...",
   "cta_trigger": "...",
-  "full_prose_caption": "...",
+  "full_prose_caption": "200-280 word prose, no bullets, ends: Save this for the moments when you need a reminder.",
   "hashtag_topic": "..."
 }}"""
 
     result = _call_claude(prompt, client, max_tokens=2000)
 
-    # Hard trim hero fields to max 4 words
+    # Hard trim
     for key in ["s1_hero","s2_hero","s3_hero","s4_hero","s5_hero"]:
-        words = result.get(key,"").split()
-        if len(words) > 5:
-            result[key] = " ".join(words[:4])
-
-    # Hard trim bold lines to max 8 words
+        w = result.get(key,"").split()
+        if len(w) > 5: result[key] = " ".join(w[:4])
     for key in ["s2_bold","s3_bold","s4_bold","s5_bold"]:
-        words = result.get(key,"").split()
-        if len(words) > 8:
-            result[key] = " ".join(words[:8])
-            if not result[key][-1] in ".!?": result[key] += "."
+        w = result.get(key,"").split()
+        if len(w) > 8:
+            result[key] = " ".join(w[:7])
+            if result[key][-1] not in ".!?": result[key] += "."
+    for key in ["s2_body","s3_body","s4_body","s5_body"]:
+        w = result.get(key,"").split()
+        if len(w) > 20:
+            result[key] = " ".join(w[:18])
+            if result[key][-1] not in ".!?": result[key] += "."
 
     print(f"  Topic: {result.get('topic')}")
     for i in range(1,6):
-        print(f"  Slide {i}: [{result.get(f's{i}_command')}] + [{result.get(f's{i}_hero')}]")
+        cmd = result.get(f"s{i}_command","")
+        hero = result.get(f"s{i}_hero","")
+        body = result.get(f"s{i}_body","")
+        print(f"  Slide {i}: [{cmd}] | [{hero}] | {body[:40] if body else '—'}")
     return result
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Generate pen-sketch illustration
+# Step 2: Generate cinematic image
 # ---------------------------------------------------------------------------
-def generate_illustration(openai_client, slide_key, topic):
-    prompt = ILLUS_PROMPTS.get(slide_key, ILLUS_PROMPTS["slide_1"])
+def generate_slide_image(openai_client, slide_key, topic):
+    prompt = SLIDE_IMAGE_PROMPTS.get(slide_key, SLIDE_IMAGE_PROMPTS["slide_5"])
     if slide_key == "slide_1":
-        prompt += f" Emotional theme: {topic}."
-    print(f"  [gpt-image-1 HIGH] {slide_key} illustration generating...")
+        prompt = f"{prompt} Emotional theme: {topic}."
+    print(f"  [gpt-image-1 HIGH] {slide_key} generating...")
     response = openai_client.images.generate(
-        model="gpt-image-1",
-        prompt=prompt,
-        size="1024x1536",
-        quality="high",
-        n=1,
+        model="gpt-image-1", prompt=prompt,
+        size="1024x1536", quality="high", n=1,
     )
     data = response.data[0]
     img_bytes = (
@@ -429,125 +410,136 @@ def generate_illustration(openai_client, slide_key, topic):
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Render each slide
+# Step 3: Resize image to 1080x1920
 # ---------------------------------------------------------------------------
-def render_hook_slide(script, illus_bytes, brush_color):
-    """Slide 1: command + large hero with brush stroke + illustration."""
-    canvas = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), CANVAS_BG)
-    draw   = ImageDraw.Draw(canvas)
-    cx     = IMAGE_WIDTH // 2
-    y      = TOP_PADDING
+def resize_to_tiktok(img_bytes):
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    scale = IMAGE_WIDTH / img.width
+    new_h = int(img.height * scale)
+    img = img.resize((IMAGE_WIDTH, new_h), Image.LANCZOS)
+    if img.height >= IMAGE_HEIGHT:
+        top = (img.height - IMAGE_HEIGHT) // 2
+        img = img.crop((0, top, IMAGE_WIDTH, top + IMAGE_HEIGHT))
+    else:
+        pad = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), (0,0,0))
+        pad.paste(img, (0, (IMAGE_HEIGHT - img.height)//2))
+        img = pad
+    return img
 
-    # Command line (small, gray)
+
+# ---------------------------------------------------------------------------
+# Step 4: Render text overlay on image
+# ---------------------------------------------------------------------------
+def render_hook_slide(img, script, brush_color):
+    """Slide 1: command (small gray) + hero (large + brush stroke). No body."""
+    text_start = int(IMAGE_HEIGHT * TEXT_START_HOOK)
+    img = add_gradient_overlay(img, text_start)
+    draw = ImageDraw.Draw(img)
+    cx = IMAGE_WIDTH // 2
+    y  = text_start + 30
+
+    # Command (small, gray)
     cmd_font  = get_font(CMD_SIZE, bold=False)
     cmd_lines = wrap_text(script["s1_command"], cmd_font, MAX_TEXT_W)
-    y = draw_text_block(draw, cmd_lines, cmd_font, cx, y, TEXT_GRAY)
-    y += SECTION_GAP
+    y = draw_text_block(draw, cx, y, cmd_lines, cmd_font, CMD_COLOR, stroke_w=2)
+    y += int(SECTION_GAP * 0.7)
 
-    # Hero with brush stroke
+    # Hero with brush stroke (large, dark text ON neon stroke)
     hero_font  = get_font(HERO_SIZE, bold=True)
     hero_lines = wrap_text(script["s1_hero"], hero_font, MAX_TEXT_W)
-    lh = text_line_height(hero_font)
+    lh = line_height(hero_font)
     for line in hero_lines:
         draw_brush_stroke(draw, cx, y, line, hero_font, brush_color)
-        draw.text((cx, y), line, font=hero_font, fill=TEXT_DARK, anchor="mt")
+        draw.text((cx, y), line, font=hero_font, fill=HERO_COLOR, anchor="mt")
         y += lh + LINE_GAP
+    return img
 
-    illus_y = max(y + SECTION_GAP + 30, MIN_ILLUS_Y_HOOK)
-    return paste_illustration(canvas, illus_bytes, illus_y)
-
-
-def render_content_slide(script, slide_num, illus_bytes, brush_color):
-    """Slides 2-5: command + hero (brush) + body + bold line + illustration."""
-    canvas = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), CANVAS_BG)
-    draw   = ImageDraw.Draw(canvas)
-    cx     = IMAGE_WIDTH // 2
-    y      = TOP_PADDING
-
+def render_content_slide(img, script, slide_num, brush_color):
+    """Slides 2-5: command + hero (brush) + body + bold punchline."""
     n = str(slide_num)
+    text_start = int(IMAGE_HEIGHT * TEXT_START_CONTENT)
+    img = add_gradient_overlay(img, text_start)
+    draw = ImageDraw.Draw(img)
+    cx = IMAGE_WIDTH // 2
+    y  = text_start + 25
 
     # Command
     cmd_font  = get_font(CMD_SIZE, bold=False)
     cmd_lines = wrap_text(script[f"s{n}_command"], cmd_font, MAX_TEXT_W)
-    y = draw_text_block(draw, cmd_lines, cmd_font, cx, y, TEXT_GRAY)
-    y += int(SECTION_GAP * 0.6)
+    y = draw_text_block(draw, cx, y, cmd_lines, cmd_font, CMD_COLOR, stroke_w=2)
+    y += int(SECTION_GAP * 0.5)
 
     # Hero with brush stroke
     hero_font  = get_font(HERO_SIZE, bold=True)
     hero_lines = wrap_text(script[f"s{n}_hero"], hero_font, MAX_TEXT_W)
-    lh_hero = text_line_height(hero_font)
+    lh = line_height(hero_font)
     for line in hero_lines:
         draw_brush_stroke(draw, cx, y, line, hero_font, brush_color)
-        draw.text((cx, y), line, font=hero_font, fill=TEXT_DARK, anchor="mt")
-        y += lh_hero + LINE_GAP
+        draw.text((cx, y), line, font=hero_font, fill=HERO_COLOR, anchor="mt")
+        y += lh + LINE_GAP
     y += SECTION_GAP
 
-    # Body text (regular, smaller)
+    # Body text (white, readable)
     body_text = script.get(f"s{n}_body", "")
     if body_text:
         body_font  = get_font(BODY_SIZE, bold=False)
         body_lines = wrap_text(body_text, body_font, MAX_TEXT_W)
-        y = draw_text_block(draw, body_lines, body_font, cx, y, TEXT_BODY)
+        y = draw_text_block(draw, cx, y, body_lines, body_font, BODY_COLOR, stroke_w=3)
         y += int(LINE_GAP * 0.5)
 
-    # Bold punchline
+    # Bold punchline (white, larger, stronger stroke)
     bold_text = script.get(f"s{n}_bold", "")
     if bold_text:
         bold_font  = get_font(BOLD_SIZE, bold=True)
         bold_lines = wrap_text(bold_text, bold_font, MAX_TEXT_W)
-        y = draw_text_block(draw, bold_lines, bold_font, cx, y, TEXT_BOLD)
+        draw_text_block(draw, cx, y, bold_lines, bold_font, BOLD_COLOR, stroke_w=4)
+    return img
 
-    illus_y = max(y + SECTION_GAP, MIN_ILLUS_Y_CONTENT)
-    return paste_illustration(canvas, illus_bytes, illus_y)
-
-
-def render_cta_slide(script, illus_bytes, brush_color):
-    """Slide 6: CTA -- trigger + MindCore AI brand + download + URL."""
-    canvas = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), CANVAS_BG)
-    draw   = ImageDraw.Draw(canvas)
-    cx     = IMAGE_WIDTH // 2
-    y      = TOP_PADDING
+def render_cta_slide(img, script, brush_color):
+    """Slide 6: CTA -- trigger + MindCore AI + download + URL."""
+    text_start = int(IMAGE_HEIGHT * TEXT_START_CTA)
+    img = add_gradient_overlay(img, max(text_start - 120, 0))
+    draw = ImageDraw.Draw(img)
+    cx = IMAGE_WIDTH // 2
+    y  = text_start
 
     # Comment trigger
-    trig_font  = get_font(CTA_TRIGGER_SIZE, bold=True)
+    trig_font  = get_font(CTA_TRIG, bold=True)
     trig_lines = wrap_text(script.get("cta_trigger","Comment SAVED if you needed this 👇"), trig_font, MAX_TEXT_W)
-    y = draw_text_block(draw, trig_lines, trig_font, cx, y, TEXT_DARK)
+    y = draw_text_block(draw, cx, y, trig_lines, trig_font, CTA_COLOR, stroke_w=3)
     y += SECTION_GAP
 
     # "MindCore AI" with brush stroke
-    app_font  = get_font(CTA_APP_SIZE, bold=True)
-    app_text  = "MindCore AI"
-    lh_app    = text_line_height(app_font)
+    app_font = get_font(CTA_APP, bold=True)
+    app_text = "MindCore AI"
+    lh_app   = line_height(app_font)
     draw_brush_stroke(draw, cx, y, app_text, app_font, brush_color)
-    draw.text((cx, y), app_text, font=app_font, fill=TEXT_DARK, anchor="mt")
+    draw.text((cx, y), app_text, font=app_font, fill=HERO_COLOR, anchor="mt")
     y += lh_app + SECTION_GAP
 
     # "Download for free"
-    dl_font  = get_font(CTA_DL_SIZE, bold=False)
+    dl_font  = get_font(CTA_DL, bold=False)
     dl_lines = wrap_text("Download for free", dl_font, MAX_TEXT_W)
-    y = draw_text_block(draw, dl_lines, dl_font, cx, y, TEXT_BODY)
+    y = draw_text_block(draw, cx, y, dl_lines, dl_font, CTA_COLOR, stroke_w=2)
 
     # "on Google Play" (bold)
-    gp_font  = get_font(CTA_DL_SIZE, bold=True)
+    gp_font  = get_font(CTA_DL, bold=True)
     gp_lines = wrap_text("on Google Play", gp_font, MAX_TEXT_W)
-    y = draw_text_block(draw, gp_lines, gp_font, cx, y, TEXT_DARK)
+    y = draw_text_block(draw, cx, y, gp_lines, gp_font, CTA_COLOR, stroke_w=3)
     y += int(LINE_GAP * 1.5)
 
     # URL
-    url_font = get_font(CTA_URL_SIZE, bold=False)
-    draw.text((cx, y), "mindcoreai.eu/app", font=url_font, fill=TEXT_URL, anchor="mt")
-    y += text_line_height(url_font) + SECTION_GAP
-
-    illus_y = max(y + 20, MIN_ILLUS_Y_CTA)
-    return paste_illustration(canvas, illus_bytes, illus_y)
+    url_font = get_font(CTA_URL, bold=False)
+    draw_text_with_stroke(draw, cx, y, "mindcoreai.eu/app", url_font, URL_COLOR, stroke_w=2)
+    return img
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Build TikTok caption
+# Step 5: Build caption
 # ---------------------------------------------------------------------------
 def build_tiktok_content(script):
-    title = script.get("tiktok_title", "")[:TIKTOK_TITLE_LIMIT]
-    prose = script.get("full_prose_caption", "")
+    title = script.get("tiktok_title","")[:TIKTOK_TITLE_LIMIT]
+    prose = script.get("full_prose_caption","")
     tag   = f"#{script.get('hashtag_topic','mentalwellness')}"
     desc  = f"{prose}\n\n{tag} {HASHTAGS}"
     if REQUIRED_BRAND_HASHTAG.lower() not in desc.lower():
@@ -556,15 +548,12 @@ def build_tiktok_content(script):
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Upload to TikTok + Facebook
+# Step 6: Upload to TikTok + Facebook
 # ---------------------------------------------------------------------------
 def upload_carousel(image_paths, tiktok_title, description, cfg):
-    """Upload 6 images to TikTok (draft) + Facebook (direct).
-    TikTok MEDIA_UPLOAD: opens in TikTok app to pick slow ambient music.
-    """
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
-    user = cfg.get("upload_post_user", "")
+    user = cfg.get("upload_post_user","")
     if not user:
         return {"skipped": True, "reason": "no user configured"}
 
@@ -622,9 +611,9 @@ def main():
 
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.0")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | gpt-image-1 HIGH | ~$0.48/post")
-    print(f"  White bg + pen sketches + 3 font sizes + brush strokes + CTA slide")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.1")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Cinematic photos + text hierarchy | ~$0.48")
+    print(f"  Text: 3 sizes (command/hero+brush/body+bold) | Max 10w/slide")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok draft + Facebook")
     print("=" * 60)
 
@@ -633,32 +622,31 @@ def main():
     script = generate_carousel_script(client, history)
     (OUTPUT_DIR / "carousel_script.json").write_text(json.dumps(script, indent=2), encoding="utf-8")
 
-    # Build slides
-    slide_keys    = ["slide_1","slide_2","slide_3","slide_4","slide_5","slide_6"]
-    image_paths   = []
+    slide_keys  = ["slide_1","slide_2","slide_3","slide_4","slide_5","slide_6"]
+    image_paths = []
 
     for idx, slide_key in enumerate(slide_keys):
         print(f"\n  ── {slide_key.upper()} ──")
         brush_color = BRUSH_PALETTE[idx]
 
-        # Generate pen sketch illustration
-        illus_bytes = generate_illustration(openai_client, slide_key, script.get("topic",""))
-        time.sleep(0.5)
+        # Generate cinematic image
+        img_bytes = generate_slide_image(openai_client, slide_key, script.get("topic",""))
+        img = resize_to_tiktok(img_bytes)
 
-        # Render slide
+        # Render text overlay
         if slide_key == "slide_1":
-            img = render_hook_slide(script, illus_bytes, brush_color)
+            img = render_hook_slide(img, script, brush_color)
         elif slide_key == "slide_6":
-            img = render_cta_slide(script, illus_bytes, brush_color)
+            img = render_cta_slide(img, script, brush_color)
         else:
-            slide_num = int(slide_key[-1])
-            img = render_content_slide(script, slide_num, illus_bytes, brush_color)
+            img = render_content_slide(img, script, int(slide_key[-1]), brush_color)
 
         # Save
         out_path = str(OUTPUT_DIR / f"{slide_key}.jpg")
         img.save(out_path, format="JPEG", quality=94)
         image_paths.append(out_path)
         print(f"  Saved: {Path(out_path).stat().st_size // 1024:.0f} KB")
+        time.sleep(0.5)
 
     # Caption
     tiktok_title, description = build_tiktok_content(script)
@@ -667,7 +655,7 @@ def main():
         f"DESCRIPTION ({len(description)} chars):\n{description}",
         encoding="utf-8"
     )
-    print(f"\n  Title ({len(tiktok_title)} chars): {tiktok_title}")
+    print(f"\n  Title: {tiktok_title}")
     print(f"  Description: {description[:80]}...")
 
     # Upload
@@ -689,7 +677,7 @@ def main():
     print(f"\n  DONE | {script.get('topic')} | 6 slides | ~$0.48")
     if upload_enabled:
         print("  Facebook: posted directly")
-        print("  TikTok: in inbox -- open app, pick slow ambient music, publish")
+        print("  TikTok: in inbox -- open app, pick slow music, publish")
 
 
 if __name__ == "__main__":
