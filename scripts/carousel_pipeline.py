@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v1.6
+MindCore AI -- Carousel Image Post Pipeline v1.7
 =================================================
-Generates 5-image TikTok Photo Mode carousel posts.
+Generates 5-image TikTok Photo Mode + Facebook carousel posts.
 Partner-directed scripts drive saves and shares.
 
 Format:
   - 5 cinematic images (gpt-image-1 HIGH, 1080x1920)
-  - QUOTE CARD format: 1 bold sentence per slide, max 12 words
+  - QUOTE CARD format: 1 bold sentence per slide, max 10 words
   - Large font -- readable in 2-3 seconds at TikTok auto-scroll speed
   - Text centred vertically on all slides
-  - Full prose script as TikTok description (max 4,000 chars)
+  - Full prose script as caption
   - MEDIA_UPLOAD mode -- lands in TikTok drafts for music selection
+  - Posted to TikTok + Facebook simultaneously
 
 Cost: ~$0.40/post (5 x gpt-image-1 high @ ~$0.08)
 Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta landing)
 
-v1.6: Quote-card format -- max 12 words per slide, bigger fonts
+v1.7: Added Facebook to upload (TikTok + Facebook)
+v1.6: Quote-card format, max 10 words/slide, bigger fonts
 v1.5: Text centred, MEDIA_UPLOAD mode
 v1.4: Correct endpoint /api/upload_photos
 """
@@ -129,16 +131,14 @@ SLIDE_IMAGE_PROMPTS = {
     ),
 }
 
-# Larger fonts -- less text needs more visual weight
 SLIDE_FONT_SIZES = {
-    "slide_1": 72,   # Headline -- big and bold
-    "slide_2": 62,   # Single punchy line
-    "slide_3": 62,   # Single punchy line
-    "slide_4": 76,   # Payoff -- the biggest, most quotable
-    "slide_5": 64,   # Warm close
+    "slide_1": 72,
+    "slide_2": 62,
+    "slide_3": 62,
+    "slide_4": 76,
+    "slide_5": 64,
 }
 
-# All slides: text centred vertically
 SLIDE_TEXT_POSITIONS = {
     "slide_1": 0.50,
     "slide_2": 0.50,
@@ -187,7 +187,7 @@ def _call_claude(prompt, client, max_tokens=1500):
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Generate script -- QUOTE CARD format, max 12 words per slide
+# Step 1: Generate script -- QUOTE CARD format, max 10 words per slide
 # ---------------------------------------------------------------------------
 def generate_carousel_script(client, history):
     used_topics = [e.get("topic", "") for e in history]
@@ -203,12 +203,13 @@ SEED TOPIC: "{seed}"
 AVOID (already used): {avoid}
 
 CRITICAL FORMAT RULE -- WORD LIMITS:
-Each slide displays for only 2-3 seconds. The viewer must be able to read
-the ENTIRE slide in one glance. This means:
+Each slide displays for only 2-3 seconds. The viewer must read
+the ENTIRE slide in one glance. Every word must earn its place.
 
   - headline_line1: 3-5 words. Ends mid-sentence. No full stop.
     Example: "Loving someone with anxiety"
-  - headline_line2: 3-5 words. MUST end with "..." Example: "means this..."
+  - headline_line2: 3-5 words. MUST end with "..."
+    Example: "means this..."
   - slide_2_text: EXACTLY 1 sentence. MAX 10 words. Name the core truth.
     Example: "Their mind never gets a day off."
   - slide_3_text: EXACTLY 1 sentence. MAX 10 words. The deeper reframe.
@@ -216,11 +217,11 @@ the ENTIRE slide in one glance. This means:
   - slide_4_text: EXACTLY 1 sentence. MAX 8 words. The screenshot-worthy payoff.
     THE MOST IMPORTANT LINE. Must be quotable and memorable.
     Example: "You don't have to fix it. Just stay."
-  - slide_5_text: EXACTLY 1 sentence. MAX 10 words. Warm, earned resolution.
+  - slide_5_text: EXACTLY 1 sentence. MAX 10 words. Warm earned resolution.
     Example: "That's what love actually looks like."
 
 TONE: Warm, emotionally precise. Like a line from a poem someone saves forever.
-Every word must earn its place. If it can be cut, cut it.
+If it can be cut, cut it.
 
   - tiktok_title: Max 80 chars. Punchy version of the headline.
   - full_prose_caption: 200-280 word flowing prose. No bullets. No headers.
@@ -246,7 +247,7 @@ Return ONLY valid JSON:
 
     result = _call_claude(prompt, client, max_tokens=1500)
 
-    # Enforce word limits -- trim if Claude over-generates
+    # Hard trim if Claude over-generates
     for key, limit in [("slide_2_text", 10), ("slide_3_text", 10),
                        ("slide_4_text", 8), ("slide_5_text", 10)]:
         text = result.get(key, "")
@@ -374,11 +375,15 @@ def build_tiktok_content(script):
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Upload -- MEDIA_UPLOAD sends to TikTok drafts
+# Step 6: Upload to TikTok + Facebook via Upload-Post
 # ---------------------------------------------------------------------------
 def upload_carousel(image_paths, tiktok_title, description, cfg):
-    """Upload 5 images to TikTok inbox as draft (MEDIA_UPLOAD).
-    Open in TikTok app to pick slow ambient music, then publish.
+    """Upload 5 images to TikTok (draft) + Facebook (direct post).
+
+    TikTok: MEDIA_UPLOAD mode -- lands in inbox as draft.
+            Open app, pick slow ambient music, then publish.
+    Facebook: DIRECT_POST -- auto-detects connected page.
+
     Docs: https://docs.upload-post.com/api/upload-photo
     """
     if not UPLOAD_POST_API_KEY:
@@ -391,11 +396,14 @@ def upload_carousel(image_paths, tiktok_title, description, cfg):
     data = [
         ("user",              user),
         ("platform[]",        "tiktok"),
+        ("platform[]",        "facebook"),
         ("tiktok_title",      tiktok_title),
         ("description",       description),
-        ("post_mode",         "MEDIA_UPLOAD"),
+        ("post_mode",         "MEDIA_UPLOAD"),   # TikTok -> inbox/draft
         ("auto_add_music",    "true"),
         ("photo_cover_index", "0"),
+        # Facebook uses description as caption automatically
+        # If multiple pages connected, add: ("facebook_page_id", "YOUR_PAGE_ID")
     ]
 
     files = []
@@ -441,10 +449,10 @@ def main():
 
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.6")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides | gpt-image-1 HIGH | ~$0.40/post")
-    print(f"  Format: quote-card (max 10 words/slide) | Font: 62-76px")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok drafts")
+    print(f"  Format: quote-card (max 10 words/slide) | Platforms: TikTok + Facebook")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("=" * 60)
 
     print("\n  Generating quote-card script...")
@@ -475,7 +483,7 @@ def main():
     print(f"  Description ({len(description)} chars): {description[:80]}...")
 
     if upload_enabled:
-        print("\n  Sending to TikTok inbox (draft)...")
+        print("\n  Uploading to TikTok (draft) + Facebook...")
         result = upload_carousel(image_paths, tiktok_title, description, cfg)
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
     else:
@@ -491,7 +499,8 @@ def main():
 
     print(f"\n  DONE | {script.get('topic')} | 5 slides | ~$0.40")
     if upload_enabled:
-        print("  In TikTok inbox -- open app, pick slow music, publish")
+        print("  Facebook: posted directly")
+        print("  TikTok: in inbox -- open app, pick slow music, publish")
 
 
 if __name__ == "__main__":
