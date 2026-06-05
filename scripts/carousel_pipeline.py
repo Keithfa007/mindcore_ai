@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.1
+MindCore AI -- Carousel Image Post Pipeline v2.2
 =================================================
 Hybrid: beautiful cinematic gpt-image-1 photography (v1.7 images)
 + proper text hierarchy from v2.0 analysis.
 
-What changed vs v1.7:
-  - THREE font sizes per slide: command (gray, small) / hero (large + neon brush stroke) / body+bold (medium)
-  - Gradient dark overlay in text zone -- white text always readable regardless of image
-  - Max 10 words per slide (hard enforced)
-  - Script structure: command + hero + body + bold line
-  - 6 slides (5 content + 1 CTA)
-  - CTA: "Comment X..." + "MindCore AI" + "Download for free on Google Play"
-
-What's the same as v1.7:
-  - Beautiful cinematic gpt-image-1 HIGH photography (NOT pen sketches)
-  - Dark moody images, warm light, real people
-  - TikTok + Facebook upload
-  - MEDIA_UPLOAD mode (TikTok drafts)
-  - Partner-directed scripts
+v2.2: Fixed black bars -- resize_to_tiktok now scales to FILL canvas (centre-crop)
+v2.1: THREE font sizes + neon brush strokes + gradient overlay + 6 slides + CTA
+v1.7: TikTok + Facebook, 5 cinematic dark image slides
 
 Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
 Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta)
@@ -68,44 +57,39 @@ CLAUDE_RETRY_BASE  = 30
 # ---------------------------------------------------------------------------
 # Text design -- three hierarchy levels
 # ---------------------------------------------------------------------------
-CMD_SIZE   = 50    # command label (small, light gray)
-HERO_SIZE  = 88    # hero concept (large, bold, on brush stroke)
-BODY_SIZE  = 42    # body explanation
-BOLD_SIZE  = 48    # bold punchline
-CTA_TRIG   = 60    # CTA comment trigger
-CTA_APP    = 84    # "MindCore AI"
-CTA_DL     = 50    # "Download for free on Google Play"
-CTA_URL    = 38    # URL
+CMD_SIZE   = 50
+HERO_SIZE  = 88
+BODY_SIZE  = 42
+BOLD_SIZE  = 48
+CTA_TRIG   = 60
+CTA_APP    = 84
+CTA_DL     = 50
+CTA_URL    = 38
 
-# Text colors
-CMD_COLOR  = (200, 200, 200)  # light gray -- command label
-HERO_COLOR = (10,  10,  10)   # near black -- ON the neon brush stroke
-BODY_COLOR = (255, 255, 255)  # white -- body text
-BOLD_COLOR = (255, 255, 255)  # white -- bold punchline
-CTA_COLOR  = (255, 255, 255)  # white -- CTA text
-URL_COLOR  = (190, 190, 190)  # light gray -- URL
+CMD_COLOR  = (200, 200, 200)
+HERO_COLOR = (10,  10,  10)
+BODY_COLOR = (255, 255, 255)
+BOLD_COLOR = (255, 255, 255)
+CTA_COLOR  = (255, 255, 255)
+URL_COLOR  = (190, 190, 190)
 
-# Brush stroke palette (rotates per slide) -- vivid on dark images
 BRUSH_PALETTE = [
-    (168, 224, 99),   # lime green  #A8E063
-    (78,  205, 196),  # cyan        #4ECDC4
-    (255, 209, 102),  # yellow      #FFD166
+    (168, 224, 99),
+    (78,  205, 196),
+    (255, 209, 102),
     (168, 224, 99),
     (78,  205, 196),
     (255, 209, 102),
 ]
 
-# Text zone vertical positions (fraction of image height -- where text block starts)
-TEXT_START_HOOK    = 0.55   # slide 1 -- lower portion, leave upper image clean
-TEXT_START_CONTENT = 0.50   # slides 2-5
-TEXT_START_CTA     = 0.38   # CTA slide -- more text, starts higher
+TEXT_START_HOOK    = 0.55
+TEXT_START_CONTENT = 0.50
+TEXT_START_CTA     = 0.38
 
-MAX_TEXT_W = int(IMAGE_WIDTH * 0.87)  # 940px max text width
-LINE_GAP   = 14
-SECTION_GAP = 38
-
-# Gradient overlay alpha range in text zone
-GRADIENT_MAX_ALPHA = 155  # 0-255, how dark the text zone gets
+MAX_TEXT_W      = int(IMAGE_WIDTH * 0.87)
+LINE_GAP        = 14
+SECTION_GAP     = 38
+GRADIENT_MAX_ALPHA = 155
 
 # ---------------------------------------------------------------------------
 # Partner-directed topic seeds
@@ -129,7 +113,7 @@ PARTNER_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Cinematic image prompts -- SAME beautiful style as v1.7
+# Cinematic image prompts
 # ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS = {
     "slide_1": (
@@ -405,20 +389,21 @@ def generate_slide_image(openai_client, slide_key, topic):
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Resize image to 1080x1920
+# Step 3: Resize image to 1080x1920 -- SCALE TO FILL (no black bars)
 # ---------------------------------------------------------------------------
 def resize_to_tiktok(img_bytes):
+    """Scale to fill the full 1080x1920 canvas, centre-crop any overflow.
+    Uses max(scale_w, scale_h) so the image always covers the entire canvas.
+    No black bars, no letterboxing.
+    """
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    scale = IMAGE_WIDTH / img.width
+    scale = max(IMAGE_WIDTH / img.width, IMAGE_HEIGHT / img.height)
+    new_w = int(img.width  * scale)
     new_h = int(img.height * scale)
-    img = img.resize((IMAGE_WIDTH, new_h), Image.LANCZOS)
-    if img.height >= IMAGE_HEIGHT:
-        top = (img.height - IMAGE_HEIGHT) // 2
-        img = img.crop((0, top, IMAGE_WIDTH, top + IMAGE_HEIGHT))
-    else:
-        pad = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), (0,0,0))
-        pad.paste(img, (0, (IMAGE_HEIGHT - img.height)//2))
-        img = pad
+    img   = img.resize((new_w, new_h), Image.LANCZOS)
+    left  = (new_w - IMAGE_WIDTH)  // 2
+    top   = (new_h - IMAGE_HEIGHT) // 2
+    img   = img.crop((left, top, left + IMAGE_WIDTH, top + IMAGE_HEIGHT))
     return img
 
 
@@ -590,7 +575,7 @@ def main():
         with open(cfg_path) as f: cfg = json.load(f)
 
     # ----------------------------------------------------------------
-    # TESTING MODE -- upload disabled while v2.1 is being reviewed.
+    # TESTING MODE -- upload disabled while v2.2 is being reviewed.
     # When slides look good, change this back to:
     #   upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
     upload_enabled = False
@@ -598,10 +583,10 @@ def main():
 
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.1")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Cinematic photos + text hierarchy | ~$0.48")
-    print(f"  Text: 3 sizes (command/hero+brush/body+bold) | Max 10w/slide")
-    print(f"  Upload: DISABLED (testing mode -- enable when slides confirmed good)")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.2")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | No black bars | ~$0.48")
+    print(f"  Fix: scale-to-fill resize (max scale) eliminates black bars")
+    print(f"  Upload: DISABLED (testing mode)")
     print("=" * 60)
 
     print("\n  Generating partner-directed script...")
@@ -640,8 +625,9 @@ def main():
     print(f"\n  Title: {tiktok_title}")
     print(f"  Description: {description[:80]}...")
     print(f"\n  Upload DISABLED -- download artifacts to review slides")
-    print(f"  When happy with the look, re-enable upload in the code.")
-    (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped": True, "reason": "testing mode"}))
+    (OUTPUT_DIR / "carousel_upload_result.json").write_text(
+        json.dumps({"skipped": True, "reason": "testing mode"})
+    )
 
     save_history(history, {
         "date":     datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -650,7 +636,7 @@ def main():
         "run":      GITHUB_RUN_NUMBER,
     })
 
-    print(f"\n  DONE | {script.get('topic')} | 6 slides generated | ~$0.48")
+    print(f"\n  DONE | {script.get('topic')} | 6 slides | ~$0.48")
 
 
 if __name__ == "__main__":
