@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v1.4
+MindCore AI -- Carousel Image Post Pipeline v1.5
 =================================================
 Generates 5-image TikTok Photo Mode carousel posts.
 Partner-directed scripts drive saves and shares.
 
 Format:
   - 5 cinematic images (gpt-image-1 HIGH, 1080x1920)
-  - Bold text overlay per slide (PIL)
+  - Bold text overlay centred on each slide (PIL)
   - Full prose script as TikTok description (max 4,000 chars)
-  - Uploaded via Upload-Post /api/upload_photos (correct endpoint)
-  - auto_add_music = true
-  - TikTok Photo Mode -- users swipe between slides
+  - Uploaded via Upload-Post /api/upload_photos
+  - post_mode = MEDIA_UPLOAD (sends to TikTok inbox/drafts)
+    --> Keith opens in TikTok app, picks slow ambient music,
+        controls slide timing, then publishes manually (30 seconds)
 
 Cost: ~$0.40/post (5 x gpt-image-1 high @ ~$0.08)
 Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta landing)
 
-v1.4: Correct endpoint /api/upload_photos with photos[] and auto_add_music
+v1.5: Text centred (0.50) on all slides. MEDIA_UPLOAD mode so
+      slide speed is controlled by music chosen in TikTok app.
+v1.4: Correct endpoint /api/upload_photos, photos[], auto_add_music
 v1.3: Slideshow video workaround (superseded)
-v1.2: gpt-image-1 high quality
-v1.1: TikTok only
 """
 
 import base64
@@ -44,7 +45,6 @@ OPENAI_API_KEY      = os.environ["OPENAI_API_KEY"]
 UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
 GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
-# Correct endpoint for photo/carousel uploads
 UPLOAD_POST_PHOTOS_URL = "https://api.upload-post.com/api/upload_photos"
 
 OUTPUT_DIR   = Path("scripts/output_carousel")
@@ -59,8 +59,8 @@ HASHTAGS = (
 
 IMAGE_WIDTH  = 1080
 IMAGE_HEIGHT = 1920
-TIKTOK_TITLE_LIMIT = 90      # TikTok title max 90 chars
-TIKTOK_DESC_LIMIT  = 4000    # TikTok description max 4,000 chars
+TIKTOK_TITLE_LIMIT = 90
+TIKTOK_DESC_LIMIT  = 4000
 
 CLAUDE_MAX_RETRIES = 8
 CLAUDE_RETRY_BASE  = 30
@@ -87,7 +87,7 @@ PARTNER_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Slide image prompts (gpt-image-1 HIGH, cinematic warm wellness)
+# Slide image prompts
 # ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS = {
     "slide_1": (
@@ -139,12 +139,13 @@ SLIDE_FONT_SIZES = {
     "slide_5": 54,
 }
 
+# All slides: text centred vertically at 0.50
 SLIDE_TEXT_POSITIONS = {
-    "slide_1": 0.70,
-    "slide_2": 0.55,
-    "slide_3": 0.60,
-    "slide_4": 0.65,
-    "slide_5": 0.72,
+    "slide_1": 0.50,
+    "slide_2": 0.50,
+    "slide_3": 0.50,
+    "slide_4": 0.50,
+    "slide_5": 0.50,
 }
 
 
@@ -187,7 +188,7 @@ def _call_claude(prompt, client, max_tokens=1500):
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Generate partner-directed script
+# Step 1: Generate script
 # ---------------------------------------------------------------------------
 def generate_carousel_script(client, history):
     used_topics = [e.get("topic", "") for e in history]
@@ -213,7 +214,7 @@ FORMAT RULES:
     Example: "Loving someone with anxiety"
   - headline_line2: Second line. MUST end with "..." for read-more impulse.
     Example: "means remembering this..."
-  - tiktok_title: Max 80 chars. Short punchy version of the headline for TikTok title field.
+  - tiktok_title: Max 80 chars. Short punchy version of headline for TikTok title field.
     Example: "Loving someone with anxiety means remembering this"
   - slide_2_text: 3-4 sentences naming the invisible reality of their struggle.
   - slide_3_text: 3-4 sentences. The deeper truth. Begin to shift the frame.
@@ -248,7 +249,7 @@ Return ONLY valid JSON:
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Generate images via gpt-image-1 HIGH
+# Step 2: Generate images
 # ---------------------------------------------------------------------------
 def generate_slide_image(openai_client, slide_key, script):
     base_prompt = SLIDE_IMAGE_PROMPTS[slide_key]
@@ -283,7 +284,7 @@ def resize_to_tiktok(img_bytes):
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Text overlay
+# Step 4: Text overlay -- centred on all slides
 # ---------------------------------------------------------------------------
 def wrap_text(text, font, max_width):
     words = text.split(); lines = []; current = []
@@ -319,7 +320,9 @@ def add_text_overlay(img, text_lines, slide_key):
     wrapped = []
     for line in text_lines:
         wrapped.extend(wrap_text(line, font, max_w))
-    start_y = int(IMAGE_HEIGHT * SLIDE_TEXT_POSITIONS[slide_key]) - (len(wrapped) * spacing) // 2
+    # Centre the text block vertically
+    total_h = len(wrapped) * spacing
+    start_y = int(IMAGE_HEIGHT * SLIDE_TEXT_POSITIONS[slide_key]) - total_h // 2
     cx = IMAGE_WIDTH // 2
     for i, line in enumerate(wrapped):
         y = start_y + i * spacing
@@ -341,30 +344,25 @@ def build_slide_texts(script):
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Build TikTok title and description
+# Step 5: TikTok title and description
 # ---------------------------------------------------------------------------
 def build_tiktok_content(script):
-    """Returns (tiktok_title, description) per Upload-Post docs."""
-    # Title: max 90 chars
     title = script.get("tiktok_title", "")[:TIKTOK_TITLE_LIMIT]
-
-    # Description: full prose + hashtags, max 4,000 chars
     prose = script.get("full_prose_caption", "")
     topic_tag = f"#{script.get('hashtag_topic', 'mentalwellness')}"
     description = f"{prose}\n\n{topic_tag} {HASHTAGS}"
     if REQUIRED_BRAND_HASHTAG.lower() not in description.lower():
         description += f" {REQUIRED_BRAND_HASHTAG}"
-    description = description[:TIKTOK_DESC_LIMIT]
-
-    return title, description
+    return title, description[:TIKTOK_DESC_LIMIT]
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Upload photos via correct Upload-Post endpoint
+# Step 6: Upload -- MEDIA_UPLOAD mode (sends to TikTok drafts/inbox)
 # ---------------------------------------------------------------------------
 def upload_carousel(image_paths, tiktok_title, description, cfg):
-    """Upload 5 images as TikTok Photo Mode carousel.
-    Endpoint: POST /api/upload_photos
+    """Upload 5 images to TikTok inbox as a draft (MEDIA_UPLOAD).
+    Keith opens in TikTok app, picks slow ambient music to control
+    slide timing, then publishes manually.
     Docs: https://docs.upload-post.com/api/upload-photo
     """
     if not UPLOAD_POST_API_KEY:
@@ -375,12 +373,13 @@ def upload_carousel(image_paths, tiktok_title, description, cfg):
 
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
     data = [
-        ("user",             user),
-        ("platform[]",       "tiktok"),
-        ("tiktok_title",     tiktok_title),
-        ("description",      description),
-        ("auto_add_music",   "true"),
-        ("photo_cover_index","0"),
+        ("user",              user),
+        ("platform[]",        "tiktok"),
+        ("tiktok_title",      tiktok_title),
+        ("description",       description),
+        ("post_mode",         "MEDIA_UPLOAD"),   # --> TikTok inbox/draft
+        ("auto_add_music",    "true"),
+        ("photo_cover_index", "0"),
     ]
 
     files = []
@@ -430,18 +429,16 @@ def main():
 
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.4")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides | gpt-image-1 HIGH | ~$0.40/post")
-    print(f"  Endpoint: /api/upload_photos | photos[] | auto_add_music")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok Photo Mode")
+    print(f"  Text: centred on all slides | Mode: MEDIA_UPLOAD (TikTok drafts)")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok inbox")
     print("=" * 60)
 
-    # Script
     print("\n  Generating partner-directed script...")
     script = generate_carousel_script(client, history)
     (OUTPUT_DIR / "carousel_script.json").write_text(json.dumps(script, indent=2), encoding="utf-8")
 
-    # Images
     slide_keys  = ["slide_1", "slide_2", "slide_3", "slide_4", "slide_5"]
     slide_texts = build_slide_texts(script)
     image_paths = []
@@ -457,7 +454,6 @@ def main():
         print(f"  Saved: {Path(out_path).stat().st_size // 1024:.0f} KB")
         time.sleep(1)
 
-    # TikTok content
     tiktok_title, description = build_tiktok_content(script)
     (OUTPUT_DIR / "carousel_caption.txt").write_text(
         f"TITLE ({len(tiktok_title)} chars):\n{tiktok_title}\n\nDESCRIPTION ({len(description)} chars):\n{description}",
@@ -466,9 +462,8 @@ def main():
     print(f"\n  Title ({len(tiktok_title)} chars): {tiktok_title}")
     print(f"  Description ({len(description)} chars): {description[:80]}...")
 
-    # Upload
     if upload_enabled:
-        print("\n  Uploading to TikTok Photo Mode via /api/upload_photos...")
+        print("\n  Sending to TikTok inbox (MEDIA_UPLOAD -- opens as draft)...")
         result = upload_carousel(image_paths, tiktok_title, description, cfg)
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
     else:
@@ -483,7 +478,8 @@ def main():
     })
 
     print(f"\n  DONE | {script.get('topic')} | 5 slides | ~$0.40")
-    if upload_enabled: print("  Posted: TikTok Photo Mode (swipeable carousel)")
+    if upload_enabled:
+        print("  Sent to TikTok inbox -- open TikTok app, pick slow music, publish")
 
 
 if __name__ == "__main__":
