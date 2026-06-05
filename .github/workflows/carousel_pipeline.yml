@@ -1,7 +1,7 @@
 name: Carousel Image Post Pipeline
 
 # Partner-directed 5-image carousel posts
-# TikTok Photo Mode + Instagram carousel
+# TikTok Photo Mode only (Instagram not connected)
 # Format: 5 cinematic images + long-form prose caption
 # Schedule: daily 07:00 UTC (9am Malta) --> lands ~2pm Malta
 # Cost: ~$0.20/post (5 x gpt-image-1 medium)
@@ -36,10 +36,10 @@ jobs:
 
       - name: Show run info
         run: |
-          echo "Pipeline: Carousel Image Post v1.0"
+          echo "Pipeline: Carousel Image Post v1.1"
           echo "Format: 5-slide partner-directed carousel"
           echo "Images: gpt-image-1 medium (~$0.04/image)"
-          echo "Platforms: TikTok + Instagram"
+          echo "Platform: TikTok only"
           echo "Schedule: Daily 07:00 UTC = 9am Malta"
 
       - name: Run Carousel Pipeline
@@ -77,8 +77,8 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## Carousel Image Post Pipeline" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | 5 slides | TikTok + Instagram" >> $GITHUB_STEP_SUMMARY
+          echo "## Carousel Image Post Pipeline v1.1" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | 5 slides | TikTok only" >> $GITHUB_STEP_SUMMARY
           if [ -f "scripts/output_carousel/carousel_script.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             H1=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('headline_line1',''))" 2>/dev/null || echo "")

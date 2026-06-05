@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v1.0
+MindCore AI -- Carousel Image Post Pipeline v1.1
 =================================================
-Generates 5-image TikTok/Instagram carousel posts.
+Generates 5-image TikTok carousel posts.
 Partner-directed scripts ('Loving someone with anxiety...')
 drive saves and shares rather than watch-time.
 
@@ -11,10 +11,12 @@ Format:
   - Bold text overlay per slide (PIL)
   - Full prose script as caption
   - tiktokAutoAddMusic = true
-  - Uploaded via Upload-Post to TikTok + Instagram
+  - Uploaded via Upload-Post to TikTok only
 
 Cost: ~$0.20/post (5 x gpt-image-1 medium @ ~$0.04)
 Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta landing)
+
+v1.1: TikTok only (Instagram removed -- not connected)
 """
 
 import base64
@@ -22,7 +24,6 @@ import io
 import json
 import os
 import random
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,9 +43,9 @@ GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
 UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 
-OUTPUT_DIR        = Path("scripts/output_carousel")
-PIPELINE_DIR      = Path("scripts")
-HISTORY_PATH      = PIPELINE_DIR / "carousel_history.json"
+OUTPUT_DIR   = Path("scripts/output_carousel")
+PIPELINE_DIR = Path("scripts")
+HISTORY_PATH = PIPELINE_DIR / "carousel_history.json"
 
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 HASHTAGS = (
@@ -59,7 +60,7 @@ CLAUDE_MAX_RETRIES = 8
 CLAUDE_RETRY_BASE  = 30
 
 # ---------------------------------------------------------------------------
-# Partner-directed topic seeds (Claude uses these -- no SERP to save quota)
+# Partner-directed topic seeds (Claude only -- no SERP to preserve free quota)
 # ---------------------------------------------------------------------------
 PARTNER_SEEDS = [
     "loving someone with anxiety",
@@ -124,7 +125,6 @@ SLIDE_IMAGE_PROMPTS = {
     ),
 }
 
-# Text size per slide (larger for headline/payoff, medium for prose)
 SLIDE_FONT_SIZES = {
     "slide_1": 62,
     "slide_2": 48,
@@ -133,13 +133,12 @@ SLIDE_FONT_SIZES = {
     "slide_5": 54,
 }
 
-# Text vertical position per slide (fraction of image height)
 SLIDE_TEXT_POSITIONS = {
-    "slide_1": 0.70,  # Lower third
-    "slide_2": 0.55,  # Middle
-    "slide_3": 0.60,  # Middle
-    "slide_4": 0.65,  # Lower middle
-    "slide_5": 0.72,  # Lower third
+    "slide_1": 0.70,
+    "slide_2": 0.55,
+    "slide_3": 0.60,
+    "slide_4": 0.65,
+    "slide_5": 0.72,
 }
 
 
@@ -185,7 +184,6 @@ def _call_claude(prompt, client, max_tokens=1500):
 # Step 1: Generate partner-directed script
 # ---------------------------------------------------------------------------
 def generate_carousel_script(client, history):
-    """Generate a 5-slide partner-directed prose script."""
     used_topics = [e.get("topic", "") for e in history]
     seed = random.choice(PARTNER_SEEDS)
     avoid = ", ".join(used_topics[-10:]) if used_topics else "none"
@@ -205,26 +203,21 @@ TONE: Warm, empathetic, validating. Like advice from a wise friend who has been 
 Never preachy. Never clinical. No lists. Pure flowing prose.
 
 FORMAT RULES:
-  - slide_1_headline: 2 lines max. Line 1 ends mid-sentence (creates cliffhanger).
-    Example: "Loving someone with anxiety" / "means remembering this..."
-    The "..." is MANDATORY on line 2. Creates the read-more impulse.
+  - headline_line1: First line of headline. Ends mid-sentence for cliffhanger.
+    Example: "Loving someone with anxiety"
+  - headline_line2: Second line. MUST end with "..." to create read-more impulse.
+    Example: "means remembering this..."
   - slide_2_text: 3-4 sentences. Name the invisible reality of their struggle.
-    What the partner sees that others don't.
-  - slide_3_text: 3-4 sentences. The deeper truth. What's underneath the behaviour.
-    Begin to shift the frame -- not blaming, not excusing, just explaining.
-  - slide_4_text: 1-2 sentences MAXIMUM. The single payoff reframe.
-    This is the screenshot-worthy line. Make it quotable.
+  - slide_3_text: 3-4 sentences. The deeper truth. Begin to shift the frame.
+  - slide_4_text: 1-2 sentences MAXIMUM. The single screenshot-worthy payoff reframe.
     Example: "You don't have to fix their thoughts. Just stand beside them while they face them."
-  - slide_5_text: 2-3 sentences. Warm resolution. What love actually looks like here.
-    End with something that makes the reader feel seen and capable.
-
-  - full_prose_caption: The complete 200-280 word version as flowing prose.
-    This goes as the TikTok caption text. No bullet points. No headers.
-    Start with the headline concept. End with a soft save trigger:
-    ("Save this for the moments when you need a reminder." or similar.)
-
-  - topic: 4-7 word description of what this post is about
-  - hashtag_topic: single relevant hashtag without # symbol (e.g. anxietysupport)
+  - slide_5_text: 2-3 sentences. Warm resolution. End with something that makes the reader
+    feel seen and capable.
+  - full_prose_caption: 200-280 word flowing prose. No bullets. No headers.
+    Start with the headline concept. End with soft save trigger like
+    "Save this for the moments when you need a reminder."
+  - topic: 4-7 word description
+  - hashtag_topic: single hashtag without # symbol (e.g. anxietysupport)
 
 Return ONLY valid JSON:
 {{
@@ -249,18 +242,13 @@ Return ONLY valid JSON:
 # Step 2: Generate images via gpt-image-1
 # ---------------------------------------------------------------------------
 def generate_slide_image(openai_client, slide_key, script):
-    """Generate a cinematic image for a specific slide."""
     base_prompt = SLIDE_IMAGE_PROMPTS[slide_key]
-
-    # Add script context to slide 1 for emotional accuracy
     if slide_key == "slide_1":
-        context = f"Theme: {script.get('topic', '')}"
-        prompt = f"{base_prompt} Context: {context}"
+        prompt = f"{base_prompt} Theme: {script.get('topic', '')}"
     else:
         prompt = base_prompt
 
     print(f"  [gpt-image-1] {slide_key} generating...")
-
     response = openai_client.images.generate(
         model="gpt-image-1",
         prompt=prompt,
@@ -268,13 +256,11 @@ def generate_slide_image(openai_client, slide_key, script):
         quality="medium",
         n=1,
     )
-
     data = response.data[0]
     if getattr(data, "url", None):
         img_bytes = requests.get(data.url, timeout=30).content
     else:
         img_bytes = base64.b64decode(data.b64_json)
-
     print(f"  [gpt-image-1] {slide_key} ready ({len(img_bytes)//1024:.0f} KB)")
     return img_bytes
 
@@ -283,33 +269,25 @@ def generate_slide_image(openai_client, slide_key, script):
 # Step 3: Resize to 1080x1920
 # ---------------------------------------------------------------------------
 def resize_to_tiktok(img_bytes):
-    """Resize and centre-crop image to 1080x1920 (9:16)."""
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-
-    # Scale width to 1080, maintain aspect ratio
     scale = IMAGE_WIDTH / img.width
     new_h = int(img.height * scale)
     img = img.resize((IMAGE_WIDTH, new_h), Image.LANCZOS)
-
-    # Centre-crop to 1920 height
     if img.height >= IMAGE_HEIGHT:
         top = (img.height - IMAGE_HEIGHT) // 2
         img = img.crop((0, top, IMAGE_WIDTH, top + IMAGE_HEIGHT))
     else:
-        # Pad with black if too short
         padded = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), (0, 0, 0))
         offset = (IMAGE_HEIGHT - img.height) // 2
         padded.paste(img, (0, offset))
         img = padded
-
     return img
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Add text overlay via PIL
+# Step 4: Text overlay via PIL
 # ---------------------------------------------------------------------------
 def wrap_text(text, font, max_width):
-    """Word-wrap text to fit within max_width pixels."""
     words = text.split()
     lines = []
     current = []
@@ -319,7 +297,7 @@ def wrap_text(text, font, max_width):
             bbox = font.getbbox(test)
             w = bbox[2] - bbox[0]
         except:
-            w = len(test) * 30  # fallback estimate
+            w = len(test) * 30
         if w <= max_width:
             current.append(word)
         else:
@@ -331,55 +309,39 @@ def wrap_text(text, font, max_width):
     return lines
 
 def load_font(size):
-    """Load font with fallbacks."""
-    font_paths = [
+    for path in [
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/ubuntu/Ubuntu-Bold.ttf",
-    ]
-    for path in font_paths:
+    ]:
         if Path(path).exists():
-            try:
-                return ImageFont.truetype(path, size)
+            try: return ImageFont.truetype(path, size)
             except: pass
     return ImageFont.load_default()
 
 def add_text_overlay(img, text_lines, slide_key):
-    """Add bold white text with black stroke to the image."""
     draw = ImageDraw.Draw(img)
     font_size = SLIDE_FONT_SIZES[slide_key]
     font = load_font(font_size)
     max_text_width = int(IMAGE_WIDTH * 0.85)
     stroke_width = max(3, font_size // 18)
     line_spacing = int(font_size * 1.35)
-
-    # Wrap all lines
     wrapped = []
     for line in text_lines:
         wrapped.extend(wrap_text(line, font, max_text_width))
-
-    # Calculate total block height
     total_height = len(wrapped) * line_spacing
     start_y = int(IMAGE_HEIGHT * SLIDE_TEXT_POSITIONS[slide_key]) - total_height // 2
     center_x = IMAGE_WIDTH // 2
-
     for i, line in enumerate(wrapped):
         y = start_y + i * line_spacing
-        # Black stroke
         for dx in range(-stroke_width, stroke_width + 1):
             for dy in range(-stroke_width, stroke_width + 1):
                 if dx != 0 or dy != 0:
-                    draw.text(
-                        (center_x + dx, y + dy), line,
-                        font=font, fill=(0, 0, 0), anchor="mm"
-                    )
-        # White text
-        draw.text((center_x, y), line, font=font, fill=(255, 255, 255), anchor="mm")
-
+                    draw.text((center_x+dx, y+dy), line, font=font, fill=(0,0,0), anchor="mm")
+        draw.text((center_x, y), line, font=font, fill=(255,255,255), anchor="mm")
     return img
 
 def build_slide_texts(script):
-    """Return text lines for each slide."""
     return {
         "slide_1": [script["headline_line1"], script["headline_line2"]],
         "slide_2": [script["slide_2_text"]],
@@ -390,7 +352,7 @@ def build_slide_texts(script):
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Build caption
+# Step 5: Caption
 # ---------------------------------------------------------------------------
 def build_caption(script):
     prose = script.get("full_prose_caption", "")
@@ -402,13 +364,11 @@ def build_caption(script):
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Upload to Upload-Post
+# Step 6: Upload to TikTok only via Upload-Post
 # ---------------------------------------------------------------------------
 def upload_carousel(image_paths, caption, cfg):
-    """Upload 5-image carousel to TikTok + Instagram via Upload-Post."""
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
-
     user = cfg.get("upload_post_user", "")
     if not user:
         return {"skipped": True, "reason": "no user configured"}
@@ -417,7 +377,6 @@ def upload_carousel(image_paths, caption, cfg):
     data = [
         ("user",               user),
         ("platform[]",         "tiktok"),
-        ("platform[]",         "instagram"),
         ("title",              caption[:2200]),
         ("tiktokAutoAddMusic", "true"),
     ]
@@ -427,15 +386,10 @@ def upload_carousel(image_paths, caption, cfg):
         for i, path in enumerate(image_paths):
             f = open(path, "rb")
             files.append(("images[]", (f"slide_{i+1}.jpg", f, "image/jpeg")))
-
         resp = requests.post(
-            UPLOAD_POST_API_URL,
-            headers=headers,
-            files=files,
-            data=data,
-            timeout=180
+            UPLOAD_POST_API_URL, headers=headers,
+            files=files, data=data, timeout=180
         )
-
         result = (
             resp.json()
             if resp.headers.get("content-type", "").startswith("application/json")
@@ -443,10 +397,8 @@ def upload_carousel(image_paths, caption, cfg):
         )
         result["status_code"] = resp.status_code
         print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
-        if not resp.ok:
-            print(f"  {resp.text[:300]}")
+        if not resp.ok: print(f"  {resp.text[:300]}")
         return result
-
     except Exception as e:
         print(f"  Upload failed: {e}")
         return {"error": str(e)}
@@ -461,80 +413,62 @@ def upload_carousel(image_paths, caption, cfg):
 # ---------------------------------------------------------------------------
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
     client        = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
     cfg = {}
     cfg_path = Path("video_pipeline/heygen_config.json")
     if cfg_path.exists():
-        with open(cfg_path) as f:
-            cfg = json.load(f)
+        with open(cfg_path) as f: cfg = json.load(f)
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.0")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides | gpt-image-1 medium | ~$0.20/post")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok + Instagram")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok only")
     print("=" * 60)
 
-    # -- Script
     print("\n  Generating partner-directed script...")
     script = generate_carousel_script(client, history)
-    (OUTPUT_DIR / "carousel_script.json").write_text(
-        json.dumps(script, indent=2), encoding="utf-8"
-    )
+    (OUTPUT_DIR / "carousel_script.json").write_text(json.dumps(script, indent=2), encoding="utf-8")
 
-    # -- Images
-    slide_keys = ["slide_1", "slide_2", "slide_3", "slide_4", "slide_5"]
+    slide_keys  = ["slide_1", "slide_2", "slide_3", "slide_4", "slide_5"]
     slide_texts = build_slide_texts(script)
     image_paths = []
 
     for slide_key in slide_keys:
         print(f"\n  [{slide_key.upper()}]")
-        # Generate image
         img_bytes = generate_slide_image(openai_client, slide_key, script)
-        # Resize to 9:16
         img = resize_to_tiktok(img_bytes)
-        # Add text overlay
         img = add_text_overlay(img, slide_texts[slide_key], slide_key)
-        # Save
         out_path = str(OUTPUT_DIR / f"{slide_key}.jpg")
         img.save(out_path, format="JPEG", quality=92)
         image_paths.append(out_path)
-        print(f"  Saved: {out_path} ({Path(out_path).stat().st_size // 1024:.0f} KB)")
-        time.sleep(1)  # small pause between API calls
+        print(f"  Saved: {Path(out_path).stat().st_size // 1024:.0f} KB")
+        time.sleep(1)
 
-    # -- Caption
     caption = build_caption(script)
     (OUTPUT_DIR / "carousel_caption.txt").write_text(caption, encoding="utf-8")
     print(f"\n  Caption ({len(caption)} chars): {caption[:80]}...")
 
-    # -- Upload
     if upload_enabled:
-        print("\n  Uploading carousel to TikTok + Instagram...")
+        print("\n  Uploading carousel to TikTok...")
         result = upload_carousel(image_paths, caption, cfg)
-        (OUTPUT_DIR / "carousel_upload_result.json").write_text(
-            json.dumps(result, indent=2)
-        )
+        (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
     else:
         print("\n  Upload DISABLED -- images saved to output_carousel/")
-        (OUTPUT_DIR / "carousel_upload_result.json").write_text(
-            json.dumps({"skipped": True})
-        )
+        (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped": True}))
 
-    # -- History
     save_history(history, {
-        "date":  datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "topic": script.get("topic", ""),
+        "date":     datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "topic":    script.get("topic", ""),
         "headline": f"{script.get('headline_line1')} / {script.get('headline_line2')}",
-        "run":   GITHUB_RUN_NUMBER,
+        "run":      GITHUB_RUN_NUMBER,
     })
 
     print(f"\n  DONE | {script.get('topic')} | 5 slides | ~$0.20")
-    if upload_enabled:
-        print("  Posted: TikTok + Instagram")
+    if upload_enabled: print("  Posted: TikTok")
 
 
 if __name__ == "__main__":
