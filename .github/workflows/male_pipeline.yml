@@ -1,8 +1,10 @@
 name: Male Video Pipeline
 
-# SCHEDULE: Weekend only (Sat + Sun), two slots
-# Morning slot:   cron 03:00 UTC (5am Malta) --> absorbs 8hr delay --> lands ~9am Malta
-# Afternoon slot: cron 07:00 UTC (9am Malta) --> absorbs 8hr delay --> lands ~1pm Malta
+# SCHEDULE v2 -- overnight generation + Upload-Post scheduled posting
+# Both slots generate at ~2am Malta. Upload-Post fires at exact target times.
+# Slot A: cron 00:00 UTC = 2am Malta -> posts at 09:00 UTC = 11am Malta
+# Slot B: cron 01:00 UTC = 3am Malta -> posts at 13:00 UTC = 3pm Malta
+# schedule_utils.py auto-detects slot from current UTC hour
 # Full fal.ai video (~$1.25/video, 4 videos/weekend)
 on:
   workflow_dispatch:
@@ -17,12 +19,12 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 3 * * 6,0"  # Sat/Sun morning: 5am Malta --> ~9am landing
-    - cron: "0 7 * * 6,0"  # Sat/Sun afternoon: 9am Malta --> ~1pm landing
+    - cron: "0 0 * * 6,0"  # Sat/Sun 00:00 UTC = 2am Malta -> Slot A -> posts 11am Malta
+    - cron: "0 1 * * 6,0"  # Sat/Sun 01:00 UTC = 3am Malta -> Slot B -> posts 3pm Malta
 
 jobs:
   generate-male-video:
-    name: Generate + Upload Male Cinematic Video (9:16)
+    name: Generate + Schedule Male Cinematic Video (9:16)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -54,7 +56,8 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Sat/Sun | Morning 03:00 UTC + Afternoon 07:00 UTC"
+          echo "Slot A (00:00 UTC): generates 2am Malta -> posts 11am Malta"
+          echo "Slot B (01:00 UTC): generates 3am Malta -> posts 3pm Malta"
           echo "Video: Full fal.ai (5 clips x Wan 2.5 ~$1.25/video)"
 
       - name: Run Male Cinematic Pipeline
@@ -102,7 +105,7 @@ jobs:
         if: always()
         run: |
           echo "## Male Video Pipeline v7.9" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | Sat/Sun morning + afternoon" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | Slot A->11am or Slot B->3pm Malta (scheduled)" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output/script.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output/script.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")

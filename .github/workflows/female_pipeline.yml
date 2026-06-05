@@ -1,8 +1,9 @@
 name: Female Video Pipeline
 
-# SCHEDULE: Every day (daily evening slot)
-# Cron fires at 09:00 UTC (11am Malta)
-# Absorbs up to 8hr GitHub delay --> lands ~7pm Malta
+# SCHEDULE v2 -- overnight generation + Upload-Post scheduled posting
+# Pipeline generates at 00:00 UTC = 2am Malta (overnight, GitHub delay irrelevant)
+# Upload-Post fires at exactly 17:00 UTC = 19:00 Malta (7pm -- after work slot)
+# schedule_utils.py calculates the scheduled_date automatically
 # Full fal.ai video (~$1.25/video, 7 videos/week)
 on:
   workflow_dispatch:
@@ -17,11 +18,11 @@ on:
         default: ""
 
   schedule:
-    - cron: "0 9 * * *"  # Daily: 09:00 UTC = 11am Malta --> targets ~7pm Malta landing
+    - cron: "0 0 * * *"  # 00:00 UTC = 2am Malta -- generates overnight, posts at 7pm via scheduled_date
 
 jobs:
   generate-female-video:
-    name: Generate + Upload Female Cinematic Video (9:16)
+    name: Generate + Schedule Female Cinematic Video (9:16)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -53,7 +54,8 @@ jobs:
           else
             echo "Mode: AUTO (ad every 10th run)"
           fi
-          echo "Schedule: Daily | Cron 09:00 UTC = 11am Malta --> target ~7pm Malta"
+          echo "Generate: 00:00 UTC = 2am Malta (now)"
+          echo "Post: 17:00 UTC = 7pm Malta (Upload-Post scheduled_date)"
           echo "Video: Full fal.ai (5 clips x Wan 2.5 ~$1.25/video)"
 
       - name: Run Female Cinematic Pipeline
@@ -101,12 +103,11 @@ jobs:
         if: always()
         run: |
           echo "## Female Video Pipeline v4.0" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | Daily evening | 09:00 UTC" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | Generates: 2am Malta | Posts: 7pm Malta (scheduled)" >> $GITHUB_STEP_SUMMARY
           if [ -f "video_pipeline/output_female/script_female.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
-            HOOK=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('hook_formula',''))" 2>/dev/null || echo "")
-            echo "**Keyword:** $KW | **Hook:** $HOOK" >> $GITHUB_STEP_SUMMARY
+            echo "**Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
             echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f "video_pipeline/output_female/upload_result_female.json" ]; then
