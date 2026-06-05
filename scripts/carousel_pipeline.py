@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v1.1
+MindCore AI -- Carousel Image Post Pipeline v1.2
 =================================================
 Generates 5-image TikTok carousel posts.
 Partner-directed scripts ('Loving someone with anxiety...')
 drive saves and shares rather than watch-time.
 
 Format:
-  - 5 cinematic images (gpt-image-1, 1024x1536 --> cropped 1080x1920)
+  - 5 cinematic images (gpt-image-1 HIGH quality, 1024x1536 --> cropped 1080x1920)
   - Bold text overlay per slide (PIL)
   - Full prose script as caption
   - tiktokAutoAddMusic = true
   - Uploaded via Upload-Post to TikTok only
 
-Cost: ~$0.20/post (5 x gpt-image-1 medium @ ~$0.04)
+Cost: ~$0.40/post (5 x gpt-image-1 high @ ~$0.08)
 Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta landing)
 
+v1.2: Switched to gpt-image-1 high quality for better scroll-stopping images
 v1.1: TikTok only (Instagram removed -- not connected)
 """
 
@@ -81,7 +82,7 @@ PARTNER_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Slide image prompts (gpt-image-1, cinematic warm wellness aesthetic)
+# Slide image prompts (gpt-image-1 HIGH, cinematic warm wellness aesthetic)
 # ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS = {
     "slide_1": (
@@ -239,7 +240,7 @@ Return ONLY valid JSON:
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Generate images via gpt-image-1
+# Step 2: Generate images via gpt-image-1 HIGH quality
 # ---------------------------------------------------------------------------
 def generate_slide_image(openai_client, slide_key, script):
     base_prompt = SLIDE_IMAGE_PROMPTS[slide_key]
@@ -248,12 +249,12 @@ def generate_slide_image(openai_client, slide_key, script):
     else:
         prompt = base_prompt
 
-    print(f"  [gpt-image-1] {slide_key} generating...")
+    print(f"  [gpt-image-1 HIGH] {slide_key} generating...")
     response = openai_client.images.generate(
         model="gpt-image-1",
         prompt=prompt,
         size="1024x1536",
-        quality="medium",
+        quality="high",
         n=1,
     )
     data = response.data[0]
@@ -261,7 +262,7 @@ def generate_slide_image(openai_client, slide_key, script):
         img_bytes = requests.get(data.url, timeout=30).content
     else:
         img_bytes = base64.b64decode(data.b64_json)
-    print(f"  [gpt-image-1] {slide_key} ready ({len(img_bytes)//1024:.0f} KB)")
+    print(f"  [gpt-image-1 HIGH] {slide_key} ready ({len(img_bytes)//1024:.0f} KB)")
     return img_bytes
 
 
@@ -424,8 +425,8 @@ def main():
 
     history = load_history()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.1")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides | gpt-image-1 medium | ~$0.20/post")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.2")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides | gpt-image-1 HIGH | ~$0.40/post")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok only")
     print("=" * 60)
 
@@ -467,7 +468,7 @@ def main():
         "run":      GITHUB_RUN_NUMBER,
     })
 
-    print(f"\n  DONE | {script.get('topic')} | 5 slides | ~$0.20")
+    print(f"\n  DONE | {script.get('topic')} | 5 slides | ~$0.40")
     if upload_enabled: print("  Posted: TikTok")
 
 
