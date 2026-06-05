@@ -1,7 +1,7 @@
 name: Carousel Image Post Pipeline
 
-# Partner-directed 5-slide slideshow video
-# TikTok only -- 50s video (5 images x 10s each) with ambient music
+# Partner-directed 5-slide TikTok Photo Mode carousel
+# Endpoint: /api/upload_photos with photos[] (correct Upload-Post API)
 # Schedule: daily 07:00 UTC (9am Malta) --> lands ~2pm Malta
 # Cost: ~$0.40/post (5 x gpt-image-1 high)
 on:
@@ -17,7 +17,7 @@ on:
 
 jobs:
   generate-carousel:
-    name: Generate + Upload 5-Slide Slideshow
+    name: Generate + Upload 5-Slide Carousel (TikTok Photo Mode)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -30,21 +30,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg + fonts
+      - name: Install fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
-          ffmpeg -version | head -1
+          sudo apt-get install -y --no-install-recommends fonts-liberation
 
       - name: Install Python dependencies
         run: pip install anthropic requests openai pillow
 
       - name: Show run info
         run: |
-          echo "Pipeline: Carousel Slideshow v1.3"
-          echo "Format: 5-slide partner-directed slideshow (50s)"
+          echo "Pipeline: Carousel Image Post v1.4"
+          echo "Endpoint: /api/upload_photos (photos[] + auto_add_music)"
+          echo "Format: 5-slide TikTok Photo Mode carousel"
           echo "Images: gpt-image-1 high (~$0.08/image)"
-          echo "Platform: TikTok only"
+          echo "Platform: TikTok Photo Mode (swipeable)"
           echo "Schedule: Daily 07:00 UTC = 9am Malta"
 
       - name: Run Carousel Pipeline
@@ -66,7 +66,6 @@ jobs:
             scripts/output_carousel/slide_3.jpg
             scripts/output_carousel/slide_4.jpg
             scripts/output_carousel/slide_5.jpg
-            scripts/output_carousel/carousel_slideshow.mp4
             scripts/output_carousel/carousel_caption.txt
             scripts/output_carousel/carousel_script.json
             scripts/output_carousel/carousel_upload_result.json
@@ -83,8 +82,8 @@ jobs:
       - name: Write job summary
         if: always()
         run: |
-          echo "## Carousel Slideshow Pipeline v1.3" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | 5 slides x 10s = 50s | TikTok" >> $GITHUB_STEP_SUMMARY
+          echo "## Carousel Image Post Pipeline v1.4" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }} | 5 slides | TikTok Photo Mode" >> $GITHUB_STEP_SUMMARY
           if [ -f "scripts/output_carousel/carousel_script.json" ]; then
             TOPIC=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
             H1=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('headline_line1',''))" 2>/dev/null || echo "")

@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v1.3
+MindCore AI -- Carousel Image Post Pipeline v1.4
 =================================================
-Generates a 50-second TikTok slideshow video from 5 cinematic images.
+Generates 5-image TikTok Photo Mode carousel posts.
 Partner-directed scripts drive saves and shares.
 
 Format:
   - 5 cinematic images (gpt-image-1 HIGH, 1080x1920)
   - Bold text overlay per slide (PIL)
-  - ffmpeg assembles 50s slideshow video (10s per slide)
-  - Ambient music from video_pipeline/music folder
-  - Full prose script as caption
-  - Uploaded as video via Upload-Post to TikTok
+  - Full prose script as TikTok description (max 4,000 chars)
+  - Uploaded via Upload-Post /api/upload_photos (correct endpoint)
+  - auto_add_music = true
+  - TikTok Photo Mode -- users swipe between slides
 
 Cost: ~$0.40/post (5 x gpt-image-1 high @ ~$0.08)
 Schedule: daily 07:00 UTC (9am Malta --> ~2pm Malta landing)
 
-v1.3: Convert images to slideshow video for Upload-Post compatibility
+v1.4: Correct endpoint /api/upload_photos with photos[] and auto_add_music
+v1.3: Slideshow video workaround (superseded)
 v1.2: gpt-image-1 high quality
 v1.1: TikTok only
 """
@@ -26,7 +27,6 @@ import io
 import json
 import os
 import random
-import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,11 +44,11 @@ OPENAI_API_KEY      = os.environ["OPENAI_API_KEY"]
 UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
 GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
-UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
+# Correct endpoint for photo/carousel uploads
+UPLOAD_POST_PHOTOS_URL = "https://api.upload-post.com/api/upload_photos"
 
 OUTPUT_DIR   = Path("scripts/output_carousel")
 PIPELINE_DIR = Path("scripts")
-MUSIC_DIR    = Path("video_pipeline/music")
 HISTORY_PATH = PIPELINE_DIR / "carousel_history.json"
 
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
@@ -57,10 +57,10 @@ HASHTAGS = (
     "#mentalhealthawareness #anxiety #healing #selfcare"
 )
 
-IMAGE_WIDTH   = 1080
-IMAGE_HEIGHT  = 1920
-SECONDS_PER_SLIDE = 10  # 5 slides x 10s = 50s total
-MUSIC_VOLUME  = 0.08
+IMAGE_WIDTH  = 1080
+IMAGE_HEIGHT = 1920
+TIKTOK_TITLE_LIMIT = 90      # TikTok title max 90 chars
+TIKTOK_DESC_LIMIT  = 4000    # TikTok description max 4,000 chars
 
 CLAUDE_MAX_RETRIES = 8
 CLAUDE_RETRY_BASE  = 30
@@ -87,7 +87,7 @@ PARTNER_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Slide image prompts
+# Slide image prompts (gpt-image-1 HIGH, cinematic warm wellness)
 # ---------------------------------------------------------------------------
 SLIDE_IMAGE_PROMPTS = {
     "slide_1": (
@@ -185,17 +185,9 @@ def _call_claude(prompt, client, max_tokens=1500):
             time.sleep(10)
     raise RuntimeError("Claude failed after all retries")
 
-def pick_music_track():
-    if not MUSIC_DIR.exists(): return None
-    tracks = [t for t in MUSIC_DIR.glob("*.mp3") if t.stem != ".gitkeep"]
-    if not tracks: return None
-    chosen = random.choice(tracks)
-    print(f"  Music: {chosen.name} @ {int(MUSIC_VOLUME*100)}%")
-    return str(chosen)
-
 
 # ---------------------------------------------------------------------------
-# Step 1: Generate script
+# Step 1: Generate partner-directed script
 # ---------------------------------------------------------------------------
 def generate_carousel_script(client, history):
     used_topics = [e.get("topic", "") for e in history]
@@ -221,8 +213,10 @@ FORMAT RULES:
     Example: "Loving someone with anxiety"
   - headline_line2: Second line. MUST end with "..." for read-more impulse.
     Example: "means remembering this..."
+  - tiktok_title: Max 80 chars. Short punchy version of the headline for TikTok title field.
+    Example: "Loving someone with anxiety means remembering this"
   - slide_2_text: 3-4 sentences naming the invisible reality of their struggle.
-  - slide_3_text: 3-4 sentences with the deeper truth. Begin to shift the frame.
+  - slide_3_text: 3-4 sentences. The deeper truth. Begin to shift the frame.
   - slide_4_text: 1-2 sentences MAXIMUM. The screenshot-worthy payoff reframe.
     Example: "You don't have to fix their thoughts. Just stand beside them while they face them."
   - slide_5_text: 2-3 sentences warm resolution. Reader feels seen and capable.
@@ -235,6 +229,7 @@ FORMAT RULES:
 Return ONLY valid JSON:
 {{
   "topic": "...",
+  "tiktok_title": "...",
   "headline_line1": "...",
   "headline_line2": "...\u2026",
   "slide_2_text": "...",
@@ -247,6 +242,7 @@ Return ONLY valid JSON:
 
     result = _call_claude(prompt, client, max_tokens=1500)
     print(f"  Topic: {result.get('topic')}")
+    print(f"  TikTok title: {result.get('tiktok_title')}")
     print(f"  Headline: {result.get('headline_line1')} / {result.get('headline_line2')}")
     return result
 
@@ -345,78 +341,32 @@ def build_slide_texts(script):
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Build slideshow video from images via ffmpeg
+# Step 5: Build TikTok title and description
 # ---------------------------------------------------------------------------
-def build_slideshow_video(image_paths, music_path=None):
-    """Assemble 5 images into a 50-second slideshow video with optional ambient music."""
-    total_duration = len(image_paths) * SECONDS_PER_SLIDE
-    concat_path = str(OUTPUT_DIR / "concat_images.txt")
-    silent_video = str(OUTPUT_DIR / "slideshow_silent.mp4")
-    final_video  = str(OUTPUT_DIR / "carousel_slideshow.mp4")
+def build_tiktok_content(script):
+    """Returns (tiktok_title, description) per Upload-Post docs."""
+    # Title: max 90 chars
+    title = script.get("tiktok_title", "")[:TIKTOK_TITLE_LIMIT]
 
-    # Write concat file -- each image shown for SECONDS_PER_SLIDE
-    with open(concat_path, "w") as f:
-        for path in image_paths:
-            f.write(f"file '{Path(path).resolve()}'\n")
-            f.write(f"duration {SECONDS_PER_SLIDE}\n")
-        # ffmpeg concat needs the last file repeated without duration
-        f.write(f"file '{Path(image_paths[-1]).resolve()}'\n")
-
-    # Build silent slideshow video
-    cmd = [
-        "ffmpeg", "-f", "concat", "-safe", "0", "-i", concat_path,
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,"
-               "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1",
-        "-c:v", "libx264", "-crf", "18", "-preset", "fast",
-        "-pix_fmt", "yuv420p", "-r", "30",
-        "-t", str(total_duration), "-y", silent_video
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg slideshow failed: {result.stderr[-300:]}")
-    print(f"  Slideshow: {total_duration}s video assembled")
-
-    # Add ambient music if available
-    if music_path and Path(music_path).exists():
-        cmd = [
-            "ffmpeg", "-i", silent_video,
-            "-stream_loop", "-1", "-i", music_path,
-            "-filter_complex", f"[1:a]volume={MUSIC_VOLUME}[music];[music]atrim=0:{total_duration}[aout]",
-            "-map", "0:v", "-map", "[aout]",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-            "-t", str(total_duration), "-y", final_video
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"  Music mix failed -- using silent video")
-            Path(silent_video).replace(Path(final_video))
-        else:
-            print(f"  Music added: {Path(music_path).name}")
-    else:
-        Path(silent_video).replace(Path(final_video))
-        print("  No music track found -- silent video")
-
-    size_mb = Path(final_video).stat().st_size / (1024*1024)
-    print(f"  Final video: {size_mb:.1f} MB")
-    return final_video
-
-
-# ---------------------------------------------------------------------------
-# Step 6: Caption
-# ---------------------------------------------------------------------------
-def build_caption(script):
+    # Description: full prose + hashtags, max 4,000 chars
     prose = script.get("full_prose_caption", "")
     topic_tag = f"#{script.get('hashtag_topic', 'mentalwellness')}"
-    caption = f"{prose}\n\n{topic_tag} {HASHTAGS}"
-    if REQUIRED_BRAND_HASHTAG.lower() not in caption.lower():
-        caption += f" {REQUIRED_BRAND_HASHTAG}"
-    return caption
+    description = f"{prose}\n\n{topic_tag} {HASHTAGS}"
+    if REQUIRED_BRAND_HASHTAG.lower() not in description.lower():
+        description += f" {REQUIRED_BRAND_HASHTAG}"
+    description = description[:TIKTOK_DESC_LIMIT]
+
+    return title, description
 
 
 # ---------------------------------------------------------------------------
-# Step 7: Upload video to TikTok via Upload-Post
+# Step 6: Upload photos via correct Upload-Post endpoint
 # ---------------------------------------------------------------------------
-def upload_slideshow(video_path, caption, cfg):
+def upload_carousel(image_paths, tiktok_title, description, cfg):
+    """Upload 5 images as TikTok Photo Mode carousel.
+    Endpoint: POST /api/upload_photos
+    Docs: https://docs.upload-post.com/api/upload-photo
+    """
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
     user = cfg.get("upload_post_user", "")
@@ -425,17 +375,27 @@ def upload_slideshow(video_path, caption, cfg):
 
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
     data = [
-        ("user",       user),
-        ("platform[]", "tiktok"),
-        ("title",      caption[:2200]),
+        ("user",             user),
+        ("platform[]",       "tiktok"),
+        ("tiktok_title",     tiktok_title),
+        ("description",      description),
+        ("auto_add_music",   "true"),
+        ("photo_cover_index","0"),
     ]
+
+    files = []
     try:
-        with open(video_path, "rb") as f:
-            files = [("video", ("carousel_slideshow.mp4", f, "video/mp4"))]
-            resp = requests.post(
-                UPLOAD_POST_API_URL, headers=headers,
-                files=files, data=data, timeout=180
-            )
+        for i, path in enumerate(image_paths):
+            f = open(path, "rb")
+            files.append(("photos[]", (f"slide_{i+1}.jpg", f, "image/jpeg")))
+
+        resp = requests.post(
+            UPLOAD_POST_PHOTOS_URL,
+            headers=headers,
+            files=files,
+            data=data,
+            timeout=180
+        )
         result = (
             resp.json()
             if resp.headers.get("content-type", "").startswith("application/json")
@@ -443,11 +403,15 @@ def upload_slideshow(video_path, caption, cfg):
         )
         result["status_code"] = resp.status_code
         print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
-        if not resp.ok: print(f"  {resp.text[:300]}")
+        if not resp.ok: print(f"  {resp.text[:400]}")
         return result
     except Exception as e:
         print(f"  Upload failed: {e}")
         return {"error": str(e)}
+    finally:
+        for _, (_, f, _) in files:
+            try: f.close()
+            except: pass
 
 
 # ---------------------------------------------------------------------------
@@ -465,11 +429,11 @@ def main():
     upload_enabled = cfg.get("upload_enabled", False) and bool(UPLOAD_POST_API_KEY)
 
     history = load_history()
-    total_duration = 5 * SECONDS_PER_SLIDE
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.3")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides x {SECONDS_PER_SLIDE}s = {total_duration}s | gpt-image-1 HIGH | ~$0.40")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok only")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v1.4")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | 5 slides | gpt-image-1 HIGH | ~$0.40/post")
+    print(f"  Endpoint: /api/upload_photos | photos[] | auto_add_music")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | TikTok Photo Mode")
     print("=" * 60)
 
     # Script
@@ -493,23 +457,22 @@ def main():
         print(f"  Saved: {Path(out_path).stat().st_size // 1024:.0f} KB")
         time.sleep(1)
 
-    # Build slideshow video
-    print("\n  Building slideshow video...")
-    music_path  = pick_music_track()
-    video_path  = build_slideshow_video(image_paths, music_path)
-
-    # Caption
-    caption = build_caption(script)
-    (OUTPUT_DIR / "carousel_caption.txt").write_text(caption, encoding="utf-8")
-    print(f"\n  Caption ({len(caption)} chars): {caption[:80]}...")
+    # TikTok content
+    tiktok_title, description = build_tiktok_content(script)
+    (OUTPUT_DIR / "carousel_caption.txt").write_text(
+        f"TITLE ({len(tiktok_title)} chars):\n{tiktok_title}\n\nDESCRIPTION ({len(description)} chars):\n{description}",
+        encoding="utf-8"
+    )
+    print(f"\n  Title ({len(tiktok_title)} chars): {tiktok_title}")
+    print(f"  Description ({len(description)} chars): {description[:80]}...")
 
     # Upload
     if upload_enabled:
-        print("\n  Uploading slideshow to TikTok...")
-        result = upload_slideshow(video_path, caption, cfg)
+        print("\n  Uploading to TikTok Photo Mode via /api/upload_photos...")
+        result = upload_carousel(image_paths, tiktok_title, description, cfg)
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps(result, indent=2))
     else:
-        print("\n  Upload DISABLED -- video saved to output_carousel/")
+        print("\n  Upload DISABLED -- images saved to output_carousel/")
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped": True}))
 
     save_history(history, {
@@ -519,8 +482,8 @@ def main():
         "run":      GITHUB_RUN_NUMBER,
     })
 
-    print(f"\n  DONE | {script.get('topic')} | {total_duration}s slideshow | ~$0.40")
-    if upload_enabled: print("  Posted: TikTok")
+    print(f"\n  DONE | {script.get('topic')} | 5 slides | ~$0.40")
+    if upload_enabled: print("  Posted: TikTok Photo Mode (swipeable carousel)")
 
 
 if __name__ == "__main__":
