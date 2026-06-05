@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v4.0
+MindCore AI -- Female Cinematic Pipeline v4.1
 =============================================
-CHANGES (v4.0):
-  - FULL fal.ai video: all 5 clips generated via fal.ai Wan 2.5.
-    Scene-specific safe prompts, zero Pexels for clips.
-    Cold-to-warm emotional arc built into prompts.
-  - Schedule: Mon/Wed/Fri/Sat/Sun (5 videos/week, 10 total with male).
-  - Cost: ~$1.25/video, ~$25/week, ~$50/month for 10 videos/week.
+v4.1: Upload-Post scheduled_date -- generates at midnight UTC, posts at
+      17:00 UTC = 19:00 Malta exactly regardless of GitHub delay.
+v4.0: FULL fal.ai video (all 5 clips Wan 2.5, zero Pexels).
 All v3.9 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
 """
 
@@ -18,7 +15,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import anthropic
@@ -148,6 +145,23 @@ BANNED_PHRASE_REPLACEMENTS = [
     (r"download\s+now","find MindCore AI on Google Play"),
     (r"free\s+trial","try MindCore AI"),
 ]
+
+# ---------------------------------------------------------------------------
+# Scheduling -- Upload-Post fires at exact UTC time regardless of GitHub delay
+# ---------------------------------------------------------------------------
+POST_HOUR_UTC = 17   # 19:00 Malta (CEST = UTC+2) -- "after work" evening slot
+
+def get_scheduled_post_time():
+    """Return ISO-8601 UTC for today at POST_HOUR_UTC.
+    Pipeline generates at midnight UTC -- 17hr buffer before 7pm Malta posting.
+    If already past POST_HOUR_UTC, schedules for tomorrow.
+    """
+    now    = datetime.now(timezone.utc)
+    target = now.replace(hour=POST_HOUR_UTC, minute=0, second=0, microsecond=0)
+    if now >= target: target += timedelta(days=1)
+    scheduled = target.strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"  Scheduled: {scheduled} ({POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta)")
+    return scheduled
 
 AD_TOPICS = [
     {"pain_point":"the 3am overthinking spiral that just won't stop","insight":"Most women don't have a place to put their thoughts that isn't someone else's problem.","feature":"MindCore AI gives you a private, calm space to untangle what's going through your head."},
@@ -561,7 +575,11 @@ def generate_upload_metadata(script, mode, niche, client):
             time.sleep(10)
     raise RuntimeError("Unexpected exit")
 
-def upload_to_platforms(video_path, metadata, cfg):
+def upload_to_platforms(video_path, metadata, cfg, scheduled_date=None):
+    """Upload video to TikTok + Facebook + YouTube.
+    If scheduled_date is provided (ISO-8601 UTC), Upload-Post holds and
+    fires at that exact time regardless of when the pipeline ran.
+    """
     if not UPLOAD_POST_API_KEY: return {"skipped":True,"reason":"no API key"}
     user=cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
@@ -574,12 +592,16 @@ def upload_to_platforms(video_path, metadata, cfg):
           ("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),
           ("youtube_tags",metadata.get("youtube_tags","")),
           ("first_comment",metadata.get("first_comment",""))]
+    if scheduled_date:
+        data.append(("scheduled_date", scheduled_date))
     try:
         with open(video_path,"rb") as f:
             files=[("video",("mindcore_female_video.mp4",f,"video/mp4"))]
             resp=requests.post(UPLOAD_POST_API_URL,headers=headers,files=files,data=data,timeout=180)
         result=resp.json() if resp.headers.get("content-type","").startswith("application/json") else {"raw":resp.text}
-        result["status_code"]=resp.status_code; print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        result["status_code"]=resp.status_code
+        if scheduled_date: result["scheduled_date"]=scheduled_date
+        print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
         if not resp.ok: print(f"  {resp.text[:300]}")
         return result
     except Exception as e: print(f"  Upload failed: {e}"); return {"error":str(e)}
@@ -600,9 +622,10 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v4.0")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v4.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Full fal.ai (~$1.25/video)")
-    print(f"  Niche: {niche['name']} | Voice: {FISH_AUDIO_VOICE_ID[:8]}... | Schedule: Mon/Wed/Fri/Sat/Sun")
+    print(f"  Niche: {niche['name']} | Voice: {FISH_AUDIO_VOICE_ID[:8]}...")
+    print(f"  Generate: 00:00 UTC (2am Malta) | Post: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta (scheduled)")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
     print("="*60)
     print("\n  Generating script...")
@@ -618,10 +641,14 @@ def main():
     guide_text=generate_upload_guide(script,mode,niche,client); save_upload_guide(guide_text,script,mode,GITHUB_RUN_NUMBER,niche)
     upload_metadata=generate_upload_metadata(script,mode,niche,client); (OUTPUT_DIR/"upload_metadata_female.json").write_text(json.dumps(upload_metadata,indent=2))
     if upload_enabled:
-        upload_result=upload_to_platforms(final_path,upload_metadata,cfg); (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps(upload_result,indent=2))
+        scheduled_date = get_scheduled_post_time()
+        upload_result=upload_to_platforms(final_path,upload_metadata,cfg,scheduled_date=scheduled_date)
+        (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps(upload_result,indent=2))
+        if upload_result.get("status_code")==200:
+            print(f"  Scheduled OK -- fires at {scheduled_date} (TikTok + Facebook + YouTube)")
     else: (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps({"skipped":True},indent=2))
     print(f"\n  DONE | ~{est_duration}s | {niche['name']}")
-    if upload_enabled: print("  Posted: TikTok + Facebook + YouTube")
+    if upload_enabled: print(f"  Posted: TikTok + Facebook + YouTube (scheduled {POST_HOUR_UTC:02d}:00 UTC)")
 
 if __name__=="__main__":
     try: main()
