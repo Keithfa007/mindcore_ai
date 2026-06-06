@@ -1,25 +1,22 @@
-name: Male Video Pipeline (manual dispatch only)
+name: Male Video Pipeline -- Slot A (11am Malta)
 
-# Scheduled runs are now handled by:
-#   male_pipeline_slot_a.yml  -- Sat/Sun 00:00 UTC -> POST_HOUR_UTC=9  -> 11am Malta
-#   male_pipeline_slot_b.yml  -- Sat/Sun 01:00 UTC -> POST_HOUR_UTC=13 -> 3pm Malta
-#
-# This file is kept for manual dispatch only (e.g. ad-hoc reruns).
+# POST_HOUR_UTC=9 is HARDCODED here.
+# Even if GitHub delays this job by hours, Upload-Post fires at exactly 11am Malta.
+# No slot detection needed -- workflow is the source of truth.
 on:
   workflow_dispatch:
     inputs:
-      slot:
-        description: "Slot to run: 'a' (11am Malta) or 'b' (3pm Malta)"
-        required: true
-        default: "a"
       force_mode:
         description: "'content' or 'ad' (blank = auto)"
         required: false
         default: ""
 
+  schedule:
+    - cron: "0 0 * * 6,0"  # Sat/Sun 00:00 UTC = 2am Malta
+
 jobs:
-  male-manual:
-    name: Male Video Manual Dispatch
+  male-slot-a:
+    name: Male Video Slot A -- posts 11am Malta
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -32,7 +29,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
           pip install anthropic requests openai-whisper fal-client
-      - name: Run pipeline
+      - name: Run Slot A
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           FISH_AUDIO_API_KEY:  ${{ secrets.FISH_AUDIO_API_KEY }}
@@ -42,10 +39,9 @@ jobs:
           FAL_KEY:             ${{ secrets.FAL_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
           PYTHONPATH:          ${{ github.workspace }}
+          POST_HOUR_UTC:       "9"
         run: |
-          SLOT="${{ github.event.inputs.slot }}"
           FORCE="${{ github.event.inputs.force_mode }}"
-          [ "$SLOT" = "b" ] && export POST_HOUR_UTC=13 || export POST_HOUR_UTC=9
           [ "$FORCE" = "ad" ]      && export GITHUB_RUN_NUMBER=10
           [ "$FORCE" = "content" ] && export GITHUB_RUN_NUMBER=1
           python video_pipeline/male_pipeline_patch.py
@@ -53,6 +49,23 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: male-manual-run-${{ github.run_number }}
-          path: video_pipeline/output/
+          name: male-slot-a-run-${{ github.run_number }}
+          path: |
+            video_pipeline/output/mindcore_ai_video.mp4
+            video_pipeline/output/upload_guide.txt
+            video_pipeline/output/script.json
+            video_pipeline/output/upload_result.json
           retention-days: 30
+      - name: Debug on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: male-slot-a-debug-${{ github.run_number }}
+          path: video_pipeline/output/
+          retention-days: 7
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Male Slot A | 11am Malta | POST_HOUR_UTC=9" >> $GITHUB_STEP_SUMMARY
+          echo "Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          [ -f video_pipeline/output/upload_result.json ] && cat video_pipeline/output/upload_result.json >> $GITHUB_STEP_SUMMARY || true
