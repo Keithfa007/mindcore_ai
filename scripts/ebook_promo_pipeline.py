@@ -2,8 +2,9 @@
 """
 MindCore AI — Ebook Promotion Pipeline
 ========================================
-Posts "The Silent Struggle" ebook promo content to Facebook (static image)
-and TikTok (slow-zoom video from cover) with AI-generated captions.
+Posts "The Silent Struggle" ebook promo content to Facebook and TikTok
+with AI-generated captions. Uses the same Upload-Post API pattern as
+the male/female video pipelines.
 
 Schedule: Every Sunday at 08:00 UTC (10:00 Malta)
 """
@@ -14,18 +15,19 @@ from anthropic import Anthropic
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-COVER_IMAGE_URL = "https://mindcoreai.eu/wp-content/uploads/2026/06/MindCore-AI.png"
-PAYHIP_LINK     = "https://payhip.com/b/3HyoE"
-WEBSITE_LINK    = "https://mindcoreai.eu/#ebook"
-EBOOK_TITLE     = "The Silent Struggle"
-EBOOK_SUBTITLE  = "How to Rebuild Your Mental Health from Rock Bottom"
-EBOOK_PRICE     = "€9.99"
+COVER_IMAGE_URL     = "https://mindcoreai.eu/wp-content/uploads/2026/06/MindCore-AI.png"
+PAYHIP_LINK         = "https://payhip.com/b/3HyoE"
+EBOOK_TITLE         = "The Silent Struggle"
+EBOOK_SUBTITLE      = "How to Rebuild Your Mental Health from Rock Bottom"
 
-UPLOAD_POST_API = "https://app.upload-post.com/api/v1"
-ANTHROPIC_MODEL = "claude-sonnet-4-6"
+UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
+UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
+UPLOAD_POST_USER    = "MindCoreAI"
+ANTHROPIC_API_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL     = "claude-sonnet-4-6"
 
-VIDEO_DURATION  = 10   # seconds
-VIDEO_FPS       = 30
+VIDEO_DURATION      = 10   # seconds
+VIDEO_FPS           = 30
 
 
 # ── Promotional Angles ────────────────────────────────────────────────────────
@@ -139,59 +141,10 @@ def create_tiktok_video(image_path, output_path):
     print(f"   TikTok video created ({size_mb:.1f} MB, {VIDEO_DURATION}s)")
 
 
-# ── Upload-Post helpers ───────────────────────────────────────────────────────
+# ── Upload-Post (matches male/female pipeline pattern) ───────────────────────
 
-def upload_media(file_path, api_key):
-    """Upload a media file to Upload-Post and return the media URL."""
-    headers = {"Authorization": f"Bearer {api_key}"}
-    mime = "image/png" if file_path.endswith(".png") else "video/mp4"
-    with open(file_path, "rb") as f:
-        files = {"file": (os.path.basename(file_path), f, mime)}
-        resp = requests.post(
-            f"{UPLOAD_POST_API}/media/upload",
-            headers=headers,
-            files=files,
-            timeout=120,
-        )
-    resp.raise_for_status()
-    data = resp.json()
-    media_url = data.get("url") or data.get("data", {}).get("url")
-    print(f"   Media uploaded: {media_url}")
-    return media_url
-
-
-def create_post(api_key, profile_id, caption, media_url,
-                scheduled_date=None, media_type="image"):
-    """Create a post via Upload-Post API."""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "profile_id": profile_id,
-        "caption": caption,
-        "media_urls": [media_url],
-        "media_type": media_type,
-    }
-    if scheduled_date:
-        payload["scheduled_date"] = scheduled_date
-
-    resp = requests.post(
-        f"{UPLOAD_POST_API}/posts/create",
-        headers=headers,
-        json=payload,
-        timeout=30,
-    )
-    resp.raise_for_status()
-    status = "scheduled" if scheduled_date else "immediate"
-    print(f"   Posted ({status}: {scheduled_date or 'now'})")
-    return resp.json()
-
-
-# ── Scheduling helpers ────────────────────────────────────────────────────────
-
-def next_slot(hour_utc):
-    """Return the next future datetime string for a given UTC hour today/tomorrow."""
+def get_scheduled_time(hour_utc):
+    """Return the next future datetime string for a given UTC hour."""
     now = datetime.datetime.utcnow()
     target = now.replace(hour=hour_utc, minute=0, second=0, microsecond=0)
     if now >= target:
@@ -199,31 +152,78 @@ def next_slot(hour_utc):
     return target.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def upload_to_platforms(video_path, caption, scheduled_date=None):
+    """Upload video to TikTok + Facebook via Upload-Post API.
+
+    Uses the same API pattern as male_pipeline.py / male_pipeline_patch.py:
+    - Endpoint: https://api.upload-post.com/api/upload
+    - Auth: Apikey header
+    - User: MindCoreAI
+    - Multipart form POST with video file + form fields
+    """
+    if not UPLOAD_POST_API_KEY:
+        return {"skipped": True, "reason": "no API key"}
+
+    headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
+
+    # Build form data — same structure as male pipeline
+    data = [
+        ("user",                  UPLOAD_POST_USER),
+        ("platform[]",            "tiktok"),
+        ("platform[]",            "facebook"),
+        ("title",                 caption[:2200]),          # TikTok caption
+        ("facebook_title",        f"{EBOOK_TITLE} — {EBOOK_SUBTITLE}"[:255]),
+        ("facebook_description",  caption + f"\n\nGet your copy: {PAYHIP_LINK}"),
+    ]
+
+    if scheduled_date:
+        data.append(("scheduled_date", scheduled_date))
+
+    try:
+        with open(video_path, "rb") as f:
+            files = [("video", ("ebook_promo.mp4", f, "video/mp4"))]
+            resp = requests.post(
+                UPLOAD_POST_API_URL,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=180,
+            )
+
+        result = (
+            resp.json()
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else {"raw": resp.text}
+        )
+        result["status_code"] = resp.status_code
+        print(f"   Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        if not resp.ok:
+            print(f"   {resp.text[:300]}")
+        return result
+
+    except Exception as e:
+        print(f"   Upload failed: {e}")
+        return {"error": str(e)}
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     print("== MindCore AI — Ebook Promotion Pipeline ==\n")
 
-    # ── Environment variables ─────────────────────────────────────────────
-    api_key           = os.environ.get("ANTHROPIC_API_KEY")
-    upload_key        = os.environ.get("UPLOAD_POST_API_KEY")
-    fb_profile        = os.environ.get("UPLOAD_POST_FB_PROFILE_ID")
-    tiktok_profile    = os.environ.get("UPLOAD_POST_TIKTOK_PROFILE_ID")
-
-    if not api_key:
+    if not ANTHROPIC_API_KEY:
         sys.exit("ERROR: ANTHROPIC_API_KEY not set")
-    if not upload_key:
+    if not UPLOAD_POST_API_KEY:
         sys.exit("ERROR: UPLOAD_POST_API_KEY not set")
 
-    client = Anthropic(api_key=api_key)
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # Scheduled times
-    fb_time     = next_slot(10)   # 10:00 UTC = 12:00 Malta
-    tiktok_time = next_slot(16)   # 16:00 UTC = 18:00 Malta
+    # Schedule for 12:00 Malta (10:00 UTC)
+    scheduled_date = get_scheduled_time(10)
 
     with tempfile.TemporaryDirectory() as tmp:
-        cover  = os.path.join(tmp, "cover.png")
-        video  = os.path.join(tmp, "ebook_promo.mp4")
+        cover = os.path.join(tmp, "cover.png")
+        video = os.path.join(tmp, "ebook_promo.mp4")
 
         # 1 — Download cover image
         print("1. Downloading cover image...")
@@ -234,28 +234,23 @@ def main():
         caption = generate_caption(client)
         print(f"   Caption preview: {caption[:120]}...\n")
 
-        # 3 — Facebook (static image)
-        if fb_profile:
-            print("3. Posting to Facebook (image)...")
-            fb_url = upload_media(cover, upload_key)
-            fb_caption = caption + f"\n\nGet your copy here: {PAYHIP_LINK}"
-            create_post(upload_key, fb_profile, fb_caption, fb_url,
-                        scheduled_date=fb_time, media_type="image")
-        else:
-            print("3. SKIP Facebook — UPLOAD_POST_FB_PROFILE_ID not set")
+        # Append Payhip link to caption for TikTok
+        full_caption = caption + f"\n\nGet your copy: {PAYHIP_LINK}"
 
-        # 4 — TikTok (video from cover)
-        if tiktok_profile:
-            print("4. Creating TikTok video from cover...")
-            create_tiktok_video(cover, video)
+        # 3 — Create video from cover
+        print("3. Creating video from cover image...")
+        create_tiktok_video(cover, video)
 
-            print("5. Posting to TikTok (video)...")
-            tt_url = upload_media(video, upload_key)
-            tt_caption = caption + f"\n\nGet your copy: {PAYHIP_LINK}"
-            create_post(upload_key, tiktok_profile, tt_caption, tt_url,
-                        scheduled_date=tiktok_time, media_type="video")
-        else:
-            print("4. SKIP TikTok — UPLOAD_POST_TIKTOK_PROFILE_ID not set")
+        # 4 — Upload to TikTok + Facebook via Upload-Post
+        print("4. Uploading to TikTok + Facebook...")
+        result = upload_to_platforms(
+            video, full_caption, scheduled_date=scheduled_date
+        )
+
+        if result.get("status_code") == 200:
+            print(f"   Scheduled OK — fires at {scheduled_date}")
+        elif result.get("skipped"):
+            print(f"   Skipped: {result.get('reason')}")
 
     print("\n== Ebook promotion pipeline complete ==")
 
