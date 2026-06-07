@@ -1,0 +1,28 @@
+name: Ebook Promo Pipeline
+
+on:
+  schedule:
+    - cron: '0 8 * * 0'    # Every Sunday 08:00 UTC (10:00 Malta)
+  workflow_dispatch:         # Manual trigger
+
+jobs:
+  ebook-promo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic requests
+
+      - name: Run ebook promo pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          UPLOAD_POST_FB_PROFILE_ID: ${{ secrets.UPLOAD_POST_FB_PROFILE_ID }}
+          UPLOAD_POST_TIKTOK_PROFILE_ID: ${{ secrets.UPLOAD_POST_TIKTOK_PROFILE_ID }}
+        run: python scripts/ebook_promo_pipeline.py
