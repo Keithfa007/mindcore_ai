@@ -19,7 +19,7 @@ PAYHIP_LINK     = "https://payhip.com/b/3HyoE"
 WEBSITE_LINK    = "https://mindcoreai.eu/#ebook"
 EBOOK_TITLE     = "The Silent Struggle"
 EBOOK_SUBTITLE  = "How to Rebuild Your Mental Health from Rock Bottom"
-EBOOK_PRICE     = "\u20ac9.99"
+EBOOK_PRICE     = "€9.99"
 
 UPLOAD_POST_API = "https://app.upload-post.com/api/v1"
 ANTHROPIC_MODEL = "claude-sonnet-4-6"
@@ -48,7 +48,7 @@ def generate_caption(client):
     print(f"   Angle: {angle}")
 
     prompt = f"""You are writing a social media promotional post for an ebook called
-"{EBOOK_TITLE} \u2014 {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
+"{EBOOK_TITLE} — {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
 
 EBOOK DETAILS:
 - 7 chapters about addiction recovery, written by someone with 20 years of
@@ -56,7 +56,7 @@ EBOOK DETAILS:
 - Topics: rock bottom, why willpower alone fails, shame and isolation, the
   first 7 days of recovery, building a mental reset toolkit, handling relapse
   without shame, rebuilding your life
-- This is a deeply personal, honest, raw recovery guide \u2014 NOT a clinical
+- This is a deeply personal, honest, raw recovery guide — NOT a clinical
   self-help book
 
 ANGLE FOR THIS POST: {angle}
@@ -64,17 +64,17 @@ ANGLE FOR THIS POST: {angle}
 Angle descriptions:
 - chapter_teaser: Tease one specific chapter with a hook that makes people
   need to read more
-- personal_story: Lead with Keith's personal story \u2014 20 years addiction,
+- personal_story: Lead with Keith's personal story — 20 years addiction,
   casino manager, 2 years clean, built MindCore AI
-- pain_point: Speak directly to someone who is suffering right now \u2014 3am
+- pain_point: Speak directly to someone who is suffering right now — 3am
   thoughts, carrying everything alone, nobody to talk to
-- transformation: Focus on before/after \u2014 what life looked like during
+- transformation: Focus on before/after — what life looked like during
   addiction vs 2 years into recovery
 - quote_style: Write as if quoting a powerful passage from the book (make it
   original, not an actual quote)
-- urgency: Honest urgency around taking action today \u2014 not aggressive
+- urgency: Honest urgency around taking action today — not aggressive
 - social_proof_style: Frame it as "this is the book I wish someone had given
-  me" \u2014 peer recommendation feel
+  me" — peer recommendation feel
 - raw_honesty: Brutally honest, no filter, the uncomfortable truths about
   addiction and recovery
 
@@ -83,7 +83,7 @@ RULES:
 - Use line breaks between paragraphs
 - NO hashtags
 - NO emojis
-- Tone: raw, honest, human \u2014 not salesy or corporate
+- Tone: raw, honest, human — not salesy or corporate
 - Maximum 200 words
 - Do NOT mention the price
 - Use first person ("I") for personal_story and raw_honesty angles
@@ -202,7 +202,7 @@ def next_slot(hour_utc):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    print("== MindCore AI \u2014 Ebook Promotion Pipeline ==\n")
+    print("== MindCore AI — Ebook Promotion Pipeline ==\n")
 
     # ── Environment variables ─────────────────────────────────────────────
     api_key           = os.environ.get("ANTHROPIC_API_KEY")
@@ -225,37 +225,37 @@ def main():
         cover  = os.path.join(tmp, "cover.png")
         video  = os.path.join(tmp, "ebook_promo.mp4")
 
-        # 1 \u2014 Download cover image
+        # 1 — Download cover image
         print("1. Downloading cover image...")
         download_cover(COVER_IMAGE_URL, cover)
 
-        # 2 \u2014 Generate caption
+        # 2 — Generate caption
         print("2. Generating promotional caption...")
         caption = generate_caption(client)
         print(f"   Caption preview: {caption[:120]}...\n")
 
-        # 3 \u2014 Facebook (static image)
+        # 3 — Facebook (static image)
         if fb_profile:
             print("3. Posting to Facebook (image)...")
             fb_url = upload_media(cover, upload_key)
-            fb_caption = caption + f"\n\nGet your copy here: {WEBSITE_LINK}"
+            fb_caption = caption + f"\n\nGet your copy here: {PAYHIP_LINK}"
             create_post(upload_key, fb_profile, fb_caption, fb_url,
                         scheduled_date=fb_time, media_type="image")
         else:
-            print("3. SKIP Facebook \u2014 UPLOAD_POST_FB_PROFILE_ID not set")
+            print("3. SKIP Facebook — UPLOAD_POST_FB_PROFILE_ID not set")
 
-        # 4 \u2014 TikTok (video from cover)
+        # 4 — TikTok (video from cover)
         if tiktok_profile:
             print("4. Creating TikTok video from cover...")
             create_tiktok_video(cover, video)
 
             print("5. Posting to TikTok (video)...")
             tt_url = upload_media(video, upload_key)
-            tt_caption = caption + "\n\nLink in bio"
+            tt_caption = caption + f"\n\nGet your copy: {PAYHIP_LINK}"
             create_post(upload_key, tiktok_profile, tt_caption, tt_url,
                         scheduled_date=tiktok_time, media_type="video")
         else:
-            print("4. SKIP TikTok \u2014 UPLOAD_POST_TIKTOK_PROFILE_ID not set")
+            print("4. SKIP TikTok — UPLOAD_POST_TIKTOK_PROFILE_ID not set")
 
     print("\n== Ebook promotion pipeline complete ==")
 
