@@ -8,6 +8,7 @@ on:
 jobs:
   ebook-promo:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -17,12 +18,13 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install anthropic requests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          pip install anthropic requests
 
       - name: Run ebook promo pipeline
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
-          UPLOAD_POST_FB_PROFILE_ID: ${{ secrets.UPLOAD_POST_FB_PROFILE_ID }}
-          UPLOAD_POST_TIKTOK_PROFILE_ID: ${{ secrets.UPLOAD_POST_TIKTOK_PROFILE_ID }}
         run: python scripts/ebook_promo_pipeline.py
