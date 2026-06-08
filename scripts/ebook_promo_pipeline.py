@@ -3,8 +3,8 @@
 MindCore AI — Ebook Promotion Pipeline
 ========================================
 Posts "The Silent Struggle" ebook promo content to Facebook and TikTok.
-- TikTok: static image video (no movement, no music)
-- Facebook: static image upload (no video needed)
+- TikTok: static image video + Fish Audio voiceover (no movement)
+- Facebook: static image upload
 
 Schedule: Every Sunday at 08:00 UTC (10:00 Malta)
 """
@@ -26,8 +26,10 @@ UPLOAD_POST_USER    = "MindCoreAI"
 ANTHROPIC_API_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL     = "claude-sonnet-4-6"
 
-VIDEO_DURATION      = 10   # seconds
-VIDEO_FPS           = 30
+# Fish Audio — same male voice as video pipelines
+FISH_AUDIO_API_KEY  = os.environ.get("FISH_AUDIO_API_KEY", "")
+FISH_VOICE_ID       = "eed26f2294d64177911af612473cca98"
+FISH_API_URL        = "https://api.fish.audio/v1/tts"
 
 HASHTAGS            = "#mindcoreai #mentalhealth #recovery #addiction #sobriety #ebook #menswellness #selfhelp #healing #fyp"
 
@@ -82,7 +84,39 @@ Return ONLY the caption text, nothing else."""
     return resp.content[0].text.strip()
 
 
-# ── Image & Video ─────────────────────────────────────────────────────────────
+def generate_voiceover_script(client):
+    """Generate a short voiceover script for TikTok (10-15 seconds spoken)."""
+    angle = random.choice(PROMO_ANGLES)
+    print(f"   Voiceover angle: {angle}")
+
+    prompt = f"""Write a SHORT voiceover script for a TikTok video promoting an ebook called
+"{EBOOK_TITLE} — {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
+
+The ebook is a deeply personal recovery guide written by someone who spent
+20 years in addiction and has been 2 years clean.
+
+ANGLE: {angle}
+
+RULES:
+- Maximum 3-4 sentences that take 10-15 seconds to read aloud
+- Speak as Keith (first person) — raw, honest, direct
+- End with a call to action like "The Silent Struggle. Available now." or
+  "Link in bio." or "Get your copy now."
+- NO emojis, NO hashtags, NO links
+- Write it as SPOKEN WORDS — natural, conversational, like talking to a friend
+- Do NOT start with "Hey" or "What's up" — start with something powerful
+
+Return ONLY the voiceover text, nothing else."""
+
+    resp = client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=200,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.content[0].text.strip()
+
+
+# ── Image, Audio & Video ─────────────────────────────────────────────────────
 
 def download_cover(url, path):
     """Download cover image from WordPress."""
@@ -94,9 +128,73 @@ def download_cover(url, path):
     print(f"   Cover downloaded ({size_kb:.0f} KB)")
 
 
-def create_static_video(image_path, output_path):
-    """Create a STATIC video from cover image — no zoom, no movement, no music.
-    TikTok requires video format but the image stays perfectly still."""
+def generate_voiceover(script_text, output_path):
+    """Generate voiceover audio using Fish Audio TTS."""
+    if not FISH_AUDIO_API_KEY:
+        print("   FISH_AUDIO_API_KEY not set — skipping voiceover")
+        return False
+
+    headers = {
+        "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "text": script_text,
+        "reference_id": FISH_VOICE_ID,
+        "format": "mp3",
+        "mp3_bitrate": 128,
+    }
+
+    try:
+        resp = requests.post(FISH_API_URL, headers=headers, json=payload, timeout=120)
+        if resp.status_code != 200:
+            print(f"   Fish Audio error {resp.status_code}: {resp.text[:200]}")
+            return False
+
+        with open(output_path, "wb") as f:
+            f.write(resp.content)
+        size_kb = len(resp.content) / 1024
+        print(f"   Voiceover generated ({size_kb:.0f} KB)")
+        return True
+
+    except Exception as e:
+        print(f"   Fish Audio failed: {e}")
+        return False
+
+
+def create_static_video_with_voice(image_path, audio_path, output_path):
+    """Create a STATIC video from cover image + voiceover audio.
+    Image stays perfectly still. Audio determines video length."""
+    cmd = [
+        "ffmpeg", "-y",
+        "-loop", "1",
+        "-i", image_path,
+        "-i", audio_path,
+        "-vf", (
+            "scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920"
+        ),
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "18",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-pix_fmt", "yuv420p",
+        "-shortest",
+        output_path,
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"   FFmpeg stderr: {result.stderr[-1500:]}")
+        raise RuntimeError("Failed to create video")
+    size_mb = os.path.getsize(output_path) / (1024 * 1024)
+    print(f"   Static video + voiceover created ({size_mb:.1f} MB, no movement)")
+
+
+def create_static_video_silent(image_path, output_path, duration=10):
+    """Fallback: create a silent static video if voiceover fails."""
     cmd = [
         "ffmpeg", "-y",
         "-loop", "1",
@@ -109,7 +207,7 @@ def create_static_video(image_path, output_path):
         "-preset", "fast",
         "-crf", "18",
         "-pix_fmt", "yuv420p",
-        "-t", str(VIDEO_DURATION),
+        "-t", str(duration),
         output_path,
     ]
 
@@ -118,7 +216,7 @@ def create_static_video(image_path, output_path):
         print(f"   FFmpeg stderr: {result.stderr[-1500:]}")
         raise RuntimeError("Failed to create video")
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    print(f"   Static video created ({size_mb:.1f} MB, {VIDEO_DURATION}s, no movement)")
+    print(f"   Silent static video created ({size_mb:.1f} MB, {duration}s)")
 
 
 # ── Upload-Post ───────────────────────────────────────────────────────────────
@@ -235,31 +333,43 @@ def main():
     scheduled_date = get_scheduled_time(10)
 
     with tempfile.TemporaryDirectory() as tmp:
-        cover = os.path.join(tmp, "cover.png")
-        video = os.path.join(tmp, "ebook_promo.mp4")
+        cover     = os.path.join(tmp, "cover.png")
+        audio     = os.path.join(tmp, "voiceover.mp3")
+        video     = os.path.join(tmp, "ebook_promo.mp4")
 
         # 1 — Download cover image
         print("1. Downloading cover image...")
         download_cover(COVER_IMAGE_URL, cover)
 
-        # 2 — Generate caption
+        # 2 — Generate caption for social posts
         print("2. Generating promotional caption...")
         caption = generate_caption(client)
         print(f"   Caption: {caption}\n")
 
-        # 3 — Build captions with link and hashtags
+        # 3 — Generate voiceover script + audio
+        print("3. Generating voiceover...")
+        vo_script = generate_voiceover_script(client)
+        print(f"   Script: {vo_script}\n")
+        has_voice = generate_voiceover(vo_script, audio)
+
+        # 4 — Create video for TikTok (static image + voiceover)
+        print("4. Creating TikTok video...")
+        if has_voice:
+            create_static_video_with_voice(cover, audio, video)
+        else:
+            print("   No voiceover — falling back to silent video")
+            create_static_video_silent(cover, video)
+
+        # 5 — Build captions with link and hashtags
         tiktok_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{HASHTAGS}"
         fb_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{HASHTAGS}"
 
-        # 4 — Create STATIC video for TikTok (no zoom, no music)
-        print("3. Creating static video for TikTok...")
-        create_static_video(cover, video)
-
-        # 5 — Upload to TikTok (video) and Facebook (image) separately
-        print("4. Uploading to TikTok (static video)...")
+        # 6 — Upload to TikTok (video with voiceover)
+        print("5. Uploading to TikTok (static video + voiceover)...")
         tk_result = upload_tiktok_video(video, tiktok_caption, scheduled_date=scheduled_date)
 
-        print("5. Uploading to Facebook (static image)...")
+        # 7 — Upload to Facebook (image only)
+        print("6. Uploading to Facebook (static image)...")
         fb_result = upload_facebook_image(cover, fb_caption, scheduled_date=scheduled_date)
 
         # Summary
