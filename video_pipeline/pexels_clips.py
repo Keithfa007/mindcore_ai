@@ -1,12 +1,16 @@
 """
-MindCore AI -- Pexels B-roll Clip Fetcher v2.0
+MindCore AI -- Pexels B-roll Clip Fetcher v2.1
 ===============================================
-Replaces fal.ai for video clip generation.
-Real human footage = better engagement, zero cost vs $1.25/video.
+Real human footage + dramatic cinematic atmosphere.
+Scene-specific query pools designed for scroll-stopping visuals.
 
-v2.0: Scene-specific query pools (10 per scene per gender).
-      Rotates using GITHUB_RUN_NUMBER for variety across runs.
-      Portrait-first filtering, HD quality preference.
+v2.1: Dramatic, inspirational, cinematic queries.
+      Mix of human silhouettes + nature metaphors + atmospheric scenes.
+      Designed for emotional resonance, not generic stock footage.
+
+Key insight: best mental health B-roll isn't always people.
+Storm clouds = inner turmoil. Sunrise = hope. Ocean = overwhelm.
+The footage matches the FEELING, not the literal subject.
 """
 
 import os
@@ -19,119 +23,175 @@ PEXELS_VIDEO_URL = "https://api.pexels.com/videos/search"
 PEXELS_API_KEY   = os.environ.get("PEXELS_API_KEY", "")
 
 # ---------------------------------------------------------------------------
-# Scene query pools -- 10 per scene per gender
-# Rotates via (GITHUB_RUN_NUMBER + scene_idx) % 10
-# Short, specific queries that reliably return portrait Pexels results
+# FEMALE -- dramatic, emotional, cinematic
 # ---------------------------------------------------------------------------
 
 FEMALE_SCENE_QUERIES = {
+    # HOOK -- scroll-stopping, dramatic, raw
     "hook": [
-        "woman sad alone night",
-        "woman crying emotional close",
-        "woman window night alone",
-        "woman tired depressed bedroom",
-        "woman lonely dark room",
-        "woman emotional tears face",
-        "woman overwhelmed stressed",
-        "woman anxious worried home",
-        "woman exhausted sitting",
-        "woman alone thinking night",
+        "woman silhouette sunset dramatic",
+        "rain window close up night",
+        "woman underwater swimming dark",
+        "ocean waves storm dramatic",
+        "woman walking rain city night",
+        "crying face close up tears",
+        "storm clouds dramatic sky timelapse",
+        "woman rooftop city night wind",
+        "dark ocean waves crashing rocks",
+        "woman fog alone mysterious",
+        "lightning storm night dramatic",
+        "empty road fog morning dramatic",
+        "woman hair wind dramatic portrait",
+        "waterfall dramatic power nature",
+        "woman standing cliff ocean",
     ],
+
+    # PROBLEM -- weight, isolation, atmospheric tension
     "problem": [
-        "woman sitting floor sad",
-        "woman crying bedroom alone",
-        "woman sad window rain",
-        "woman stressed anxious home",
-        "woman alone dark thinking",
-        "woman depression lonely",
-        "woman tired night city",
-        "woman sad face close",
-        "woman alone night",
-        "woman emotional breakdown",
+        "woman alone window rain night",
+        "dark room single candle flame",
+        "empty street night rain reflections",
+        "woman reflection dark mirror",
+        "fog forest morning mysterious",
+        "hands clasped tight close up",
+        "rain drops glass close up slow",
+        "shadows light wall dramatic",
+        "woman phone dark bedroom night",
+        "rain street lights city night bokeh",
+        "smoke dark room atmospheric",
+        "woman silhouette window dark",
+        "clock ticking close up",
+        "empty chair room sunlight dust",
+        "person walking alone fog",
     ],
+
+    # STORY -- transition, shift, hope beginning to emerge
     "story": [
-        "woman thinking window light",
-        "woman calm reflection quiet",
-        "woman introspective moment",
-        "woman peaceful quiet sitting",
-        "woman breathing calm",
-        "woman thoughtful expression",
-        "woman quiet morning light",
-        "woman contemplating window",
-        "woman mindful peaceful",
-        "woman hopeful looking",
+        "sunrise dramatic clouds timelapse",
+        "light breaking through storm clouds",
+        "woman walking toward light",
+        "birds flying freedom sky",
+        "opening curtains morning sunlight",
+        "forest sunlight rays trees",
+        "calm water reflection morning",
+        "clouds clearing blue sky timelapse",
+        "woman deep breath eyes closed",
+        "morning dew nature close up",
+        "river flowing calm peaceful",
+        "butterfly wings close up",
+        "woman looking up sky hopeful",
+        "candle lighting dark room",
+        "dawn horizon ocean",
     ],
+
+    # CTA -- resolution, warmth, inspiration, beauty
     "solution_cta": [
-        "woman happy morning light",
-        "woman sunrise hope outdoor",
-        "woman smiling natural light",
-        "woman peaceful morning coffee",
-        "woman calm joy",
-        "woman positive morning",
-        "woman confident empowered",
-        "woman relief outdoor",
-        "woman joyful laughing",
-        "woman morning nature calm",
+        "golden hour woman nature peaceful",
+        "woman smiling sunrise morning",
+        "ocean sunset calm peaceful beautiful",
+        "flowers blooming timelapse spring",
+        "mountain top view breathtaking",
+        "peaceful nature morning golden light",
+        "woman happy free outdoor wind",
+        "sunrise beach golden waves",
+        "garden morning sunlight beautiful",
+        "woman laughing genuine happy outdoor",
+        "mountain lake reflection calm",
+        "cherry blossom spring beautiful",
+        "woman arms open freedom sunset",
+        "golden field wheat sunset",
+        "stars night sky peaceful",
     ],
 }
+
+# ---------------------------------------------------------------------------
+# MALE -- dramatic, powerful, raw
+# ---------------------------------------------------------------------------
 
 MALE_SCENE_QUERIES = {
+    # HOOK -- powerful, dramatic, cinematic
     "hook": [
-        "man alone night thinking",
-        "man sad sitting window",
-        "man tired stressed face",
-        "man lonely dark room",
-        "man emotional serious",
-        "man exhausted alone",
-        "man worried anxious",
-        "man sitting alone dark",
-        "man night city alone",
-        "man depressed thinking",
+        "man silhouette sunset dramatic",
+        "rain city night dramatic cinematic",
+        "man walking alone empty road",
+        "ocean storm waves crashing dramatic",
+        "man rooftop city skyline night",
+        "lightning storm night sky dramatic",
+        "empty highway desert dramatic sky",
+        "man face shadow dramatic portrait",
+        "storm clouds building dramatic timelapse",
+        "dark alley night rain atmospheric",
+        "man standing cliff edge ocean",
+        "fog mountain man alone",
+        "waves crashing rocks dramatic power",
+        "man rain standing still",
+        "empty stadium alone dramatic",
     ],
+
+    # PROBLEM -- weight, isolation, pressure
     "problem": [
-        "man sitting alone bedroom",
-        "man stressed work night",
-        "man sad night window",
-        "man alone thinking dark",
-        "man depression lonely",
-        "man tired face close",
-        "man anxious worried home",
-        "man alone park bench",
-        "man emotional face",
-        "man night alone city",
+        "man alone dark room shadow",
+        "rain drops window close up",
+        "empty office night dark",
+        "man hands face stressed close",
+        "fog highway morning dramatic",
+        "abandoned building dark atmospheric",
+        "dark clouds heavy rain",
+        "man sitting alone bench park",
+        "shadows dark room atmospheric",
+        "night city walking alone rain",
+        "man steering wheel car night",
+        "smoke rising dark atmospheric",
+        "clock hands moving close up",
+        "man silhouette window night city",
+        "empty hallway dark dramatic",
     ],
+
+    # STORY -- shift, resolve forming, determination
     "story": [
-        "man thinking window light",
-        "man calm reflection quiet",
-        "man introspective quiet",
-        "man peaceful sitting",
-        "man breathing calm",
-        "man thoughtful expression",
-        "man hopeful looking forward",
-        "man contemplating morning",
-        "man mindful quiet",
-        "man sunrise outdoor",
+        "sunrise dramatic clouds horizon",
+        "light breaking through dark clouds",
+        "man walking toward morning light",
+        "ocean waves calming dawn",
+        "forest morning mist sunlight rays",
+        "dawn breaking horizon dramatic",
+        "man deep breath outdoor",
+        "mountains fog clearing sunrise",
+        "sky clearing after storm timelapse",
+        "eagle flying soaring mountains",
+        "river flowing mountain calm",
+        "man looking up sky clouds",
+        "first light morning window",
+        "road stretching forward sunrise",
+        "campfire night flames close up",
     ],
+
+    # CTA -- strength, resolution, earned peace
     "solution_cta": [
-        "man happy morning outdoor",
-        "man confident sunrise",
-        "man peaceful morning",
-        "man positive outdoor",
-        "man calm joy morning",
-        "man successful confident",
-        "man relief outdoor",
-        "man joyful nature",
-        "man morning light calm",
-        "man empowered walking",
+        "golden hour man nature mountain",
+        "man confident sunrise outdoor",
+        "mountain summit breathtaking view",
+        "ocean sunset peaceful dramatic",
+        "man happy outdoors nature",
+        "warm sunshine morning golden",
+        "nature mountain peaceful calm",
+        "sunrise mountain peak dramatic",
+        "man smiling genuine outdoor",
+        "beach sunrise golden waves",
+        "man walking forward confident road",
+        "lake reflection mountain calm",
+        "stars milky way night peaceful",
+        "man arms spread mountain top",
+        "golden field sunset dramatic",
     ],
 }
 
-# Fallback queries if main query returns no results
+# Fallback queries -- simple, reliable
 FALLBACK_QUERIES = {
-    "hook":         {"woman": "woman sad", "man": "man sad"},
-    "problem":      {"woman": "woman alone", "man": "man alone"},
-    "story":        {"woman": "woman thinking", "man": "man thinking"},
-    "solution_cta": {"woman": "woman happy", "man": "man happy"},
+    "hook":         {"woman": "dramatic storm ocean", "man": "dramatic storm lightning"},
+    "problem":      {"woman": "rain window night", "man": "dark room alone"},
+    "story":        {"woman": "sunrise clouds hope", "man": "sunrise mountain morning"},
+    "solution_cta": {"woman": "golden hour nature", "man": "mountain summit sunrise"},
 }
 
 
@@ -149,14 +209,21 @@ def search_pexels_videos(query: str, orientation: str = "portrait", per_page: in
     try:
         resp = requests.get(PEXELS_VIDEO_URL, headers=headers, params=params, timeout=30)
         resp.raise_for_status()
-        return resp.json().get("videos", [])
+        videos = resp.json().get("videos", [])
+        # If portrait returns nothing, try without orientation filter
+        if not videos:
+            params.pop("orientation", None)
+            resp = requests.get(PEXELS_VIDEO_URL, headers=headers, params=params, timeout=30)
+            resp.raise_for_status()
+            videos = resp.json().get("videos", [])
+        return videos
     except Exception as e:
         print(f"  Pexels search failed ({e})")
         return []
 
 
 def get_best_video_file(video: dict):
-    """Return the best quality portrait video file from a Pexels video object."""
+    """Return the best quality video file, preferring portrait HD."""
     files = video.get("video_files", [])
     # Prefer portrait orientation
     portrait = [f for f in files if f.get("width", 1) < f.get("height", 1)]
@@ -167,7 +234,7 @@ def get_best_video_file(video: dict):
 
 
 def download_pexels_clip(video_url: str, output_path: str) -> str:
-    """Download a Pexels video clip to output_path. Returns output_path."""
+    """Download a Pexels video clip. Returns output_path."""
     resp = requests.get(video_url, stream=True, timeout=120)
     resp.raise_for_status()
     with open(output_path, "wb") as f:
@@ -186,10 +253,10 @@ def fetch_pexels_clip_for_scene(
     github_run_number: int = 1,
     gender: str = "woman",
 ) -> str | None:
-    """Fetch a Pexels clip for a specific scene. Returns output_path or None.
+    """Fetch a dramatic Pexels clip for a specific scene.
 
-    Selects query using (github_run_number + scene_idx) % 10 for variety.
-    Falls back to simpler queries if primary returns no results.
+    Selects query using (github_run_number + scene_idx) % pool_size.
+    Falls back to simpler queries if primary returns nothing.
     """
     gender_key = "woman" if gender == "woman" else "man"
     queries    = FEMALE_SCENE_QUERIES if gender == "woman" else MALE_SCENE_QUERIES
@@ -202,7 +269,7 @@ def fetch_pexels_clip_for_scene(
 
     # Fallback if no results
     if not videos:
-        fallback = FALLBACK_QUERIES.get(scene_name, {}).get(gender_key, gender_key)
+        fallback = FALLBACK_QUERIES.get(scene_name, {}).get(gender_key, "dramatic cinematic")
         print(f"  [Pexels] No results -- fallback: '{fallback}'")
         videos = search_pexels_videos(fallback)
 
@@ -210,8 +277,8 @@ def fetch_pexels_clip_for_scene(
         print(f"  [Pexels] No results for {scene_name} -- skipping")
         return None
 
-    # Pick clip -- rotate by run number for variety within results
-    video     = videos[github_run_number % len(videos)]
+    # Pick clip -- rotate by run number + scene_idx for variety
+    video     = videos[(github_run_number + scene_idx) % len(videos)]
     best_file = get_best_video_file(video)
 
     if not best_file:
