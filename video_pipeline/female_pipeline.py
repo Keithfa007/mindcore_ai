@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v4.1
+MindCore AI -- Female Cinematic Pipeline v5.0
 =============================================
-v4.1: Upload-Post scheduled_date -- generates at midnight UTC, posts at
-      17:00 UTC = 19:00 Malta exactly regardless of GitHub delay.
-v4.0: FULL fal.ai video (all 5 clips Wan 2.5, zero Pexels).
+v5.0: Reverted to Pexels B-roll (real human footage).
+      fal.ai removed -- was $1.25/video for worse engagement than free Pexels.
+      Real faces stop the scroll. AI faces get scrolled past.
+      Uses pexels_clips.py scene-specific query pools for variety.
+v4.1: Upload-Post scheduled_date.
 All v3.9 features preserved (voice ID: 5233336f5f44460ea0902b0802375451).
 """
 
@@ -26,7 +28,6 @@ FISH_AUDIO_API_KEY  = os.environ.get("FISH_AUDIO_API_KEY", "")
 PEXELS_API_KEY      = os.environ.get("PEXELS_API_KEY", "")
 SERP_API_KEY        = os.environ.get("SERP_API_KEY", "")
 UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
-FAL_KEY             = os.environ.get("FAL_KEY", "")
 GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
 FISH_AUDIO_TTS_URL  = "https://api.fish.audio/v1/tts"
@@ -147,15 +148,11 @@ BANNED_PHRASE_REPLACEMENTS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Scheduling -- Upload-Post fires at exact UTC time regardless of GitHub delay
+# Scheduling
 # ---------------------------------------------------------------------------
-POST_HOUR_UTC = 17   # 19:00 Malta (CEST = UTC+2) -- "after work" evening slot
+POST_HOUR_UTC = 17   # 19:00 Malta (CEST = UTC+2)
 
 def get_scheduled_post_time():
-    """Return ISO-8601 UTC for today at POST_HOUR_UTC.
-    Pipeline generates at midnight UTC -- 17hr buffer before 7pm Malta posting.
-    If already past POST_HOUR_UTC, schedules for tomorrow.
-    """
     now    = datetime.now(timezone.utc)
     target = now.replace(hour=POST_HOUR_UTC, minute=0, second=0, microsecond=0)
     if now >= target: target += timedelta(days=1)
@@ -511,8 +508,10 @@ def assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=Non
     if ass_path: burn_subtitles_into_video(output_path,ass_path)
 
 def render_cinematic_video(script_text, mood, niche, script=None):
-    """Render full video -- all 5 clips generated via fal.ai Wan 2.5."""
-    from video_pipeline.fal_clips import generate_scene_clip_fal
+    """Render full video using Pexels B-roll (real human footage, free).
+    Replaced fal.ai -- real faces outperform AI-generated footage on TikTok.
+    """
+    from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
     print("\n  [TTS] Generating voiceover...")
     audio_path=str(OUTPUT_DIR/"voiceover_female.mp3"); generate_fish_audio_tts(script_text,audio_path)
     print("\n  [Subtitles] Transcribing with Whisper...")
@@ -523,16 +522,15 @@ def render_cinematic_video(script_text, mood, niche, script=None):
     scene_plan=[("hook",1),("problem",2),("story",1),("solution_cta",1)]
     clip_idx=0
     for scene_name,count in scene_plan:
-        scene_vo=script.get(scene_name,{}).get("voiceover","") if script else ""
         for j in range(count):
             clip_path=str(clips_dir/f"raw_{clip_idx}.mp4")
-            print(f"  [fal.ai] {scene_name.upper()} {j+1}/{count} (~$0.25)...")
-            fal_path=generate_scene_clip_fal(scene_name,scene_vo,clip_path,FAL_KEY,gender="woman")
-            if fal_path: raw_clip_paths.append(fal_path); scene_types.append(scene_name)
+            print(f"  [Pexels] {scene_name.upper()} {j+1}/{count}...")
+            pexels_path=fetch_pexels_clip_for_scene(scene_name,clip_idx,clip_path,GITHUB_RUN_NUMBER,gender="woman")
+            if pexels_path: raw_clip_paths.append(pexels_path); scene_types.append(scene_name)
             else: print(f"  WARNING: {scene_name} clip {j+1} skipped")
             clip_idx+=1
-    if not raw_clip_paths: raise RuntimeError("All fal.ai generations failed")
-    print(f"\n  Generated {len(raw_clip_paths)}/5 clips (~${len(raw_clip_paths)*0.25:.2f})")
+    if not raw_clip_paths: raise RuntimeError("All Pexels fetches failed")
+    print(f"\n  Fetched {len(raw_clip_paths)}/5 clips (Pexels -- free, real footage)")
     music_path=pick_music_track(); final_path=str(OUTPUT_DIR/"mindcore_female_video.mp4")
     assemble_cinematic_video(raw_clip_paths,audio_path,final_path,music_path,ass_path,scene_types=scene_types)
     return final_path
@@ -576,22 +574,26 @@ def generate_upload_metadata(script, mode, niche, client):
     raise RuntimeError("Unexpected exit")
 
 def upload_to_platforms(video_path, metadata, cfg, scheduled_date=None):
-    """Upload video to TikTok + Facebook + YouTube.
-    If scheduled_date is provided (ISO-8601 UTC), Upload-Post holds and
-    fires at that exact time regardless of when the pipeline ran.
-    """
     if not UPLOAD_POST_API_KEY: return {"skipped":True,"reason":"no API key"}
     user=cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
     headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"}
-    data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),
+    data=[(("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),
           ("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),
           ("facebook_title",metadata.get("facebook_title","")[:255]),
           ("facebook_description",metadata.get("facebook_description","")),
           ("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),
           ("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),
           ("youtube_tags",metadata.get("youtube_tags","")),
-          ("first_comment",metadata.get("first_comment",""))]
+          ("first_comment",metadata.get("first_comment","")))]
+    data = [("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),
+            ("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),
+            ("facebook_title",metadata.get("facebook_title","")[:255]),
+            ("facebook_description",metadata.get("facebook_description","")),
+            ("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),
+            ("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),
+            ("youtube_tags",metadata.get("youtube_tags","")),
+            ("first_comment",metadata.get("first_comment",""))]
     if scheduled_date:
         data.append(("scheduled_date", scheduled_date))
     try:
@@ -622,10 +624,10 @@ def main():
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     music_tracks=list(MUSIC_DIR.glob("*.mp3")) if MUSIC_DIR.exists() else []
     keywords_data=load_keywords_data(); niche=get_niche_for_today(keywords_data); mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v4.1")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Full fal.ai (~$1.25/video)")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v5.0")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Pexels B-roll (real footage, free)")
     print(f"  Niche: {niche['name']} | Voice: {FISH_AUDIO_VOICE_ID[:8]}...")
-    print(f"  Generate: 00:00 UTC (2am Malta) | Post: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta (scheduled)")
+    print(f"  Generate: 00:00 UTC (2am Malta) | Post: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
     print("="*60)
     print("\n  Generating script...")
@@ -648,7 +650,6 @@ def main():
             print(f"  Scheduled OK -- fires at {scheduled_date} (TikTok + Facebook + YouTube)")
     else: (OUTPUT_DIR/"upload_result_female.json").write_text(json.dumps({"skipped":True},indent=2))
     print(f"\n  DONE | ~{est_duration}s | {niche['name']}")
-    if upload_enabled: print(f"  Posted: TikTok + Facebook + YouTube (scheduled {POST_HOUR_UTC:02d}:00 UTC)")
 
 if __name__=="__main__":
     try: main()
