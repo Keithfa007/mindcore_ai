@@ -25,6 +25,7 @@ jobs:
 
       - name: Run ebook promo pipeline
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          FISH_AUDIO_API_KEY:  ${{ secrets.FISH_AUDIO_API_KEY }}
         run: python scripts/ebook_promo_pipeline.py
