@@ -143,6 +143,42 @@
           "commission": "4%"
         }
       ]
+    },
+    {
+      "category": "Noise-Cancelling Headphones",
+      "blog_keyword": "best noise cancelling headphones for meditation",
+      "blog_title_template": "Best Noise-Cancelling Headphones for Meditation and Focus in 2026",
+      "audience": "neutral",
+      "wp_category": "AI & Wellness",
+      "products": [
+        {
+          "name": "Bose QuietComfort Ultra Earbuds (2nd Gen)",
+          "affiliate_link": "https://amzn.to/4us73ml",
+          "price_range": "$249-299",
+          "weight": "N/A",
+          "best_for": "Immersive noise cancelling, compact earbuds, IPX4 waterproof",
+          "highlight": "World-class ANC in earbud form, immersive spatial audio, 6-hour battery, USB-C charging",
+          "commission": "3%"
+        },
+        {
+          "name": "Sony WH-1000XM6 Wireless Headphones",
+          "affiliate_link": "https://amzn.to/4eaIowE",
+          "price_range": "$349-399",
+          "weight": "N/A",
+          "best_for": "Best-in-class noise cancelling, 30-hour battery, studio quality",
+          "highlight": "HD NC Processor QN3, 12 microphones, adaptive noise cancelling, mastered by Sony engineers",
+          "commission": "3%"
+        },
+        {
+          "name": "Sennheiser Momentum 4 Wireless",
+          "affiliate_link": "https://amzn.to/4etnIRB",
+          "price_range": "$299-379",
+          "weight": "N/A",
+          "best_for": "Audiophile sound quality, 60-hour battery, folding design",
+          "highlight": "Crystal-clear calls, adaptive ANC, premium sound signature, foldable for travel",
+          "commission": "3%"
+        }
+      ]
     }
   ]
 }
