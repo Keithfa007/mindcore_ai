@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.6
+MindCore AI -- Carousel Image Post Pipeline v2.7
 =================================================
 Hybrid: cinematic gpt-image-1 photography + 3-size text hierarchy.
 Alternates MALE / FEMALE content daily.
 
-SCHEDULING APPROACH:
-  Pipeline generates at 02:00 UTC (4am Malta) -- GitHub delay irrelevant.
-  Upload-Post receives the content and schedules it for POST_HOUR_UTC = 11:00 UTC (1pm Malta).
-  Post fires at EXACTLY 1pm Malta every day regardless of when GitHub ran.
-
-v2.6: POST_HOUR_UTC = 11 (1pm Malta) -- lunchtime slot, between video landings
-v2.5: scheduled_date DIRECT_POST approach
-v2.4: upload enabled
-v2.3: male/female daily alternation
-v2.2: fixed black bars
+v2.7: Full image variety pools -- 10 prompts per slide per gender.
+      Hook slides are cinematic and scroll-stopping.
+      Rotates daily using GITHUB_RUN_NUMBER so no two carousels look identical.
+v2.6: POST_HOUR_UTC = 11 (1pm Malta)
+v2.5: scheduled_date DIRECT_POST
 
 Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
-Cron: 02:00 UTC = 4am Malta (generates overnight)
+Cron: 02:00 UTC = 4am Malta
 Post: 11:00 UTC = 1pm Malta (Upload-Post scheduled_date, exact)
 """
 
@@ -65,21 +60,15 @@ CLAUDE_RETRY_BASE  = 30
 # ---------------------------------------------------------------------------
 # Scheduling
 # ---------------------------------------------------------------------------
-# 11:00 UTC = 13:00 Malta (CEST) -- lunchtime, clean gap between video pipelines
-# Change this single value to adjust the posting time without touching cron.
 POST_HOUR_UTC = 11   # 1pm Malta (CEST = UTC+2)
 
 def get_scheduled_post_time():
-    """Return ISO-8601 UTC for today at POST_HOUR_UTC.
-    Pipeline generates at 02:00 UTC -- always 9 hours before 11:00 UTC posting.
-    If somehow past that hour, schedules for tomorrow.
-    """
     now    = datetime.now(timezone.utc)
     target = now.replace(hour=POST_HOUR_UTC, minute=0, second=0, microsecond=0)
     if now >= target:
         target += timedelta(days=1)
     scheduled = target.strftime("%Y-%m-%dT%H:%M:%SZ")
-    print(f"  Scheduled post time: {scheduled} ({POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta)")
+    print(f"  Scheduled: {scheduled} ({POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta)")
     return scheduled
 
 # ---------------------------------------------------------------------------
@@ -158,87 +147,204 @@ MALE_SEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Image prompts
+# IMAGE POOLS -- 10 per slide per gender, rotates daily
+# Pool index: (GITHUB_RUN_NUMBER + slide_num - 1) % len(pool)
 # ---------------------------------------------------------------------------
-SLIDE_IMAGE_PROMPTS_FEMALE = {
-    "slide_1": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A woman floating peacefully on her back in warm golden-hour water, "
-        "face serene and eyes closed, hair fanned out around her head. "
-        "Soft pink and lavender sunset reflections shimmering on the water. "
-        "Warm aspirational wellness aesthetic. Photorealistic, no text."
-    ),
-    "slide_2": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A woman sitting alone near a rain-streaked window at dusk, "
-        "warm soft ambient interior light, peaceful contemplative expression. "
-        "Intimate quiet mood, slightly warm dim interior. Photorealistic, no text."
-    ),
-    "slide_3": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "Two hands gently holding each other on a warm wooden table, "
-        "soft golden afternoon light, tender connection. "
-        "Warm amber colour grade, quiet intimacy. Photorealistic, no text."
-    ),
-    "slide_4": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A woman looking upward toward soft warm natural light through a window, "
-        "face peaceful and hopeful, golden light touching skin gently. "
-        "Warm transitional mood. Photorealistic, no text."
-    ),
-    "slide_5": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "Soft golden sunrise light filtering through sheer white curtains, "
-        "peaceful bedroom scene, warm amber tones, safety and gentle hope. "
-        "Full warm golden resolution mood. Photorealistic, no text."
-    ),
-    "slide_6": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A smartphone face-up on a warm wooden table, soft golden ambient glow, "
-        "minimal and inviting, candlelight warmth, intimate and calm. "
-        "Warm amber grade. Photorealistic, no text."
-    ),
+
+# Shared base strings
+_C = "Cinematic portrait photography, 9:16 vertical format. Photorealistic, no text, no watermark, no logos. "
+_F = "Caucasian Western European woman. "
+_M = "Caucasian Western European man. "
+
+IMAGE_POOLS_FEMALE = {
+
+    # SLIDE 1 -- hook. Must be scroll-stopping. Dramatic, eye-catching, unexpected.
+    "slide_1": [
+        _C + "A " + _F + "floating peacefully on her back in warm golden-hour water, face serene, eyes closed, hair fanned around her head. Pink and lavender sunset reflections shimmering across the surface. Dreamy aspirational warmth.",
+        _C + "A " + _F + "standing alone at the edge of a dramatic cliff, back to camera, looking out at a vast stormy ocean. Dark churning waves below, incredible dramatic sky above. Raw power and isolation.",
+        _C + "Extreme close-up of a " + _F + "face in falling rain, eyes closed, head tilted slightly upward. Rain droplets catching light on skin, blurred city lights behind her. Vulnerable and raw.",
+        _C + "A " + _F + "walking alone on an empty beach at dusk, from behind, small against vast ocean and dramatic orange-pink sky. Waves rushing in. Cinematic wide shot. Solitude.",
+        _C + "A " + _F + "pressing her forehead against a rain-streaked window at night. Inside is dark. Outside: blurred city lights. Her breath slightly fogging the glass. Incredibly intimate.",
+        _C + "A " + _F + "silhouette standing in a doorway flooded with warm golden light. Dark foreground, brilliant backlight. She pauses, threshold between two worlds. Dramatic contrast.",
+        _C + "A " + _F + "lying in tall golden grass, looking up at a dramatic stormy sky with rays of light breaking through clouds. Golden hour. Dreamy and emotional.",
+        _C + "Extreme close-up of a " + _F + "eyes -- one half in deep shadow, one lit by a single candle. No smile. Intense emotional depth. Shallow depth of field, blurred background.",
+        _C + "A " + _F + "alone on a misty wooden pier at dawn, fog surrounding her on all sides, soft diffused grey light. Small and still against the vast quiet.",
+        _C + "Dramatic wide shot: a " + _F + "standing completely still on an empty road, dark storm clouds building behind her, light breaking through above. Cinematic and epic.",
+    ],
+
+    # SLIDE 2 -- emotional weight, intimate, contemplative
+    "slide_2": [
+        _C + "A " + _F + "sitting alone near a rain-streaked window at dusk, warm soft interior ambient light, peaceful contemplative expression. Intimate quiet mood.",
+        _C + "Extreme close-up of a " + _F + "hands gently pressed to her own chest. Soft warm side light. The gesture of self-holding. Tender and raw.",
+        _C + "A " + _F + "sitting in a darkened room, face partially lit by blue phone light from below. The rest in shadow. Late at night. Alone.",
+        _C + "Two " + _F + "hands -- one reaching slowly toward the other but not quite touching. Warm table, golden light. The gap between them holds the whole emotion.",
+        _C + "A " + _F + "looking at her own reflection in a steamed bathroom mirror, face slightly obscured by steam. Dim warm light. Who is looking back?",
+        _C + "A " + _F + "sitting on the floor, back against her bed, knees up, arms resting on knees, staring at something just off camera. Dim lamp. Heavy stillness.",
+        _C + "Extreme close-up profile of a " + _F + "face, single candle light from one side. Eyes downcast, deep in thought. Sharp detail on eyelashes and skin.",
+        _C + "A " + _F + "alone at a kitchen table late at night, both hands cupped around a mug, staring at nothing. City light from the window. Complete stillness.",
+        _C + "A " + _F + "lying on her side in bed, not sleeping, eyes open, staring at nothing. Room in darkness except for faint light under a door. Awake at 3am.",
+        _C + "Close-up of a " + _F + "hands in her lap, fingers interlaced loosely. Soft warm light from one side. The weight of waiting. Still.",
+    ],
+
+    # SLIDE 3 -- connection, presence, relationship
+    "slide_3": [
+        _C + "Two hands gently holding each other on a warm wooden table. Soft golden afternoon light. Tender quiet connection. No faces visible.",
+        _C + "A " + _F + "hand reaching out slowly toward someone just off camera. Soft warm light. The act of reaching. Close-up.",
+        _C + "Two Caucasian Western European people from behind, sitting together at a window, shoulders almost touching. Soft grey morning light.",
+        _C + "Close-up of a long warm embrace -- just shoulders and arms, no faces. Deep amber light. The kind of hug that lasts.",
+        _C + "A " + _F + "hands cupped around a warm steaming mug. Golden afternoon light. Simple, intimate, grounding.",
+        _C + "Two Caucasian Western European people's intertwined hands on a wooden surface, one thumb gently over the other. Warm side light.",
+        _C + "A Caucasian Western European couple from behind, sitting together on steps outside, close but not touching. Evening light. Comfortable silence.",
+        _C + "A " + _F + "hand gently placed on another person's arm -- just the hands and arms visible. Warm light. Small gesture, enormous meaning.",
+        _C + "Two Caucasian Western European people's feet, side by side on a wooden floor. Soft warm light from a low angle. Simple togetherness.",
+        _C + "An empty chair beside a " + _F + "hand resting on an armrest. Warm side light. The presence felt through absence.",
+    ],
+
+    # SLIDE 4 -- transition, beginning to shift, slight warmth
+    "slide_4": [
+        _C + "A " + _F + "looking upward toward soft warm natural light streaming through a window. Face peaceful and quietly hopeful. Warm light touching skin gently.",
+        _C + "A " + _F + "walking slowly toward a door with golden light streaming through the gap. From behind. Moving toward something.",
+        _C + "A " + _F + "standing at a window, one hand on the glass, looking out at the first pale light of dawn. Interior still dark behind her.",
+        _C + "Extreme close-up of a " + _F + "face with the very beginning of a quiet genuine expression -- not a smile yet, but something opening. Warm light from the side.",
+        _C + "A " + _F + "sitting on the edge of a bed, dawn light slowly crossing the floor toward her feet. She watches it come. Hopeful stillness.",
+        _C + "A " + _F + "reaching up to open curtains -- golden morning light beginning to pour through. Her face caught in the first warmth.",
+        _C + "A " + _F + "turning to look over her shoulder back toward the camera. Behind her: warm golden light. She is between the dark and the light.",
+        _C + "A beam of golden morning light falling across the floor of an otherwise empty room. Dust motes drifting. No person -- just the light arriving.",
+        _C + "A " + _F + "sitting at a wooden table, hands flat on the surface, breathing. First morning light on her face. Beginning of a new day.",
+        _C + "A " + _F + "standing still in a doorway, soft warm light from the room ahead. She is about to step through. Threshold moment.",
+    ],
+
+    # SLIDE 5 -- warm resolution, peace, safety
+    "slide_5": [
+        _C + "Soft golden sunrise light filtering through sheer white curtains into a peaceful bedroom. Warm amber tones, sense of safety and gentle hope.",
+        _C + "A " + _F + "standing in a warm kitchen in early morning light, hands around a coffee cup, looking out the window calmly. Amber light fills the room.",
+        _C + "A " + _F + "sitting in a garden in early morning sun, eyes closed, face tilted to the warmth. Golden light on skin. Complete peace.",
+        _C + "Extreme close-up of a " + _F + "hands gently opening -- fingers uncurling and releasing. Soft warm amber light. The physical act of letting go.",
+        _C + "A single warm candle on a wooden table in an otherwise dim room. The flame steady. Intimate, resolved, calm.",
+        _C + "A " + _F + "lying on her back, arms relaxed at her sides, golden dawn light slowly crossing the ceiling above her. Peaceful and present.",
+        _C + "Empty bedroom in golden morning light -- rumpled sheets, open window, sheer curtains moving. The sense of someone who finally rested.",
+        _C + "A " + _F + "sitting beside a window with a book open in her lap, warm golden afternoon light. Not reading -- just resting. Safe.",
+        _C + "Warm amber firelight on a " + _F + "face and hands as she sits quietly. Fireplace glow, evening, resolved.",
+        _C + "Close-up of a " + _F + "face in full warm golden morning light. Eyes closed, a quiet exhale. The weight finally lifting.",
+    ],
+
+    # SLIDE 6 -- CTA, app, warm and inviting
+    "slide_6": [
+        _C + "A smartphone face-up on a warm wooden table, soft golden ambient glow, minimal and inviting. Candlelight warmth.",
+        _C + "A " + _F + "hands gently holding a phone, warm amber light. Soft expression. The moment of reaching for help.",
+        _C + "A phone on a marble surface beside a coffee cup, morning light, steam rising gently. Calm and clean.",
+        _C + "A phone face-up on soft bedsheets, pale dawn light, minimal. An invitation to open it.",
+        _C + "A phone on a dark wooden desk with a single lamp creating a warm pool of light. Evening, intimate.",
+        _C + "A phone lying face-up on a windowsill, golden afternoon light streaming across it. Simple and warm.",
+        _C + "Close-up of a " + _F + "finger about to touch the phone screen. Warm light. The moment of decision.",
+        _C + "A phone on a wooden tray with a candle and a warm mug. Cosy, safe, inviting evening setup.",
+        _C + "A phone screen glowing softly on a bedside table in a dark room. The only warm light. A presence.",
+        _C + "A phone face-up on a garden table in golden afternoon light, surrounded by soft nature. Peaceful.",
+    ],
 }
 
-SLIDE_IMAGE_PROMPTS_MALE = {
-    "slide_1": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A man floating peacefully on his back in calm water at golden hour, "
-        "face serene, eyes closed, arms slightly open at his sides. "
-        "Warm amber and orange sunset reflections on the water. "
-        "Safe, peaceful, masculine warmth. Photorealistic, no text."
-    ),
-    "slide_2": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A man sitting alone at a rain-streaked window at night, "
-        "warm interior ambient light, head slightly bowed, hands clasped. "
-        "Dark moody interior, heavy contemplative weight. Photorealistic, no text."
-    ),
-    "slide_3": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "Two hands gently resting together on a warm wooden table, "
-        "soft golden afternoon light, quiet connection and steadiness. "
-        "Warm amber colour grade. Photorealistic, no text."
-    ),
-    "slide_4": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A man looking upward toward soft warm natural light through a window, "
-        "face calm and quietly hopeful, golden light on strong features. "
-        "Warm transitional mood. Photorealistic, no text."
-    ),
-    "slide_5": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A man sitting in a peaceful golden morning light, "
-        "warm amber tones, quiet resolve, a sense of rest and earned calm. "
-        "Full warm resolution mood. Photorealistic, no text."
-    ),
-    "slide_6": (
-        "Cinematic portrait photography, 9:16 vertical format. "
-        "A smartphone face-up on a warm wooden table, soft golden ambient glow, "
-        "minimal and inviting, candlelight warmth, intimate and calm. "
-        "Warm amber grade. Photorealistic, no text."
-    ),
+IMAGE_POOLS_MALE = {
+
+    # SLIDE 1 -- hook. Dramatic, cinematic, masculine, scroll-stopping.
+    "slide_1": [
+        _C + "A " + _M + "floating on his back in dark water at night, eyes open, looking up at a sky full of stars. Stars reflected in the water around him. Profound isolation and wonder.",
+        _C + "A " + _M + "standing at the edge of a dramatic cliff, back to camera, looking out at a vast dark ocean. Waves far below, enormous stormy sky. Raw masculine isolation.",
+        _C + "A " + _M + "walking alone on an empty highway stretching to the horizon at sunset. From behind. Small figure against a vast burning sky. Solitude.",
+        _C + "Extreme close-up of a " + _M + "weathered hands, clasped tightly together. Knuckles prominent. Strong hands that carry things. Shallow depth of field, warm side light.",
+        _C + "A " + _M + "sitting in a parked car at night, rain on the windscreen, streetlights blurred behind the glass. Hands on the wheel. Staring forward. Not going anywhere.",
+        _C + "A " + _M + "silhouette standing on a rooftop against a dramatic city skyline at dusk. Orange and purple sky. Man alone above it all.",
+        _C + "A " + _M + "standing completely still in heavy rain on an empty street, head slightly bowed. Not running. Not sheltering. Just standing in it.",
+        _C + "Extreme close-up of a " + _M + "face, one half deep in shadow, one half lit by a single hard side light. Strong jaw, tired eyes. Cinematic and raw.",
+        _C + "A " + _M + "alone on an empty park bench in thick morning fog. The city barely visible behind him. He sits perfectly still. The fog holds everything.",
+        _C + "Dramatic wide shot: a " + _M + "standing in the middle of an empty industrial space or warehouse, a single shaft of light from above falling on him. Everything else in darkness.",
+    ],
+
+    # SLIDE 2 -- emotional weight, alone, carrying it
+    "slide_2": [
+        _C + "A " + _M + "sitting alone at a rain-streaked window at night, warm interior ambient light, head slightly bowed, hands clasped. Dark moody weight.",
+        _C + "Close-up of a " + _M + "hands gripping the steering wheel of a parked car at night. Knuckles white. Rain on the windscreen. Not driving. Just holding.",
+        _C + "A " + _M + "sitting at a kitchen table at 2am, both hands around a mug, staring at nothing. City light from the window. Total stillness.",
+        _C + "A " + _M + "leaning against a brick wall outside at night, arms crossed, head back slightly, looking up. Street light from one side. Alone in the city.",
+        _C + "Extreme close-up of a " + _M + "eyes -- tired, slightly red-rimmed, unfocused, staring at something that isn't there. Hard side light. Emotionally exhausted.",
+        _C + "A " + _M + "sitting on the floor in a dark room, back against the wall, knees up, arms resting on knees. Staring forward at nothing. The floor as the only option.",
+        _C + "A " + _M + "at a work desk late at night, slumped slightly, screen off, head dropped forward. Single desk lamp. The end of something.",
+        _C + "A " + _M + "standing at a bathroom sink, both hands gripping the basin edge, looking down at the drain. Dim light. Weight in his shoulders.",
+        _C + "A " + _M + "lying fully clothed on his bed at night, staring at the ceiling. Arms at sides. Not sleeping. Just there. Room in darkness.",
+        _C + "A " + _M + "sitting on a staircase in low light, elbows on knees, head bowed forward, looking at the step below. Shadows across his face.",
+    ],
+
+    # SLIDE 3 -- connection, support, brotherhood
+    "slide_3": [
+        _C + "Two hands gently resting together on a warm wooden table. Golden afternoon light. Quiet connection. No faces needed.",
+        _C + "A " + _M + "hand reaching out toward someone just off camera. Warm light. The act of reaching. Close-up.",
+        _C + "Two Caucasian Western European men from behind, one with his hand on the other's shoulder. Evening light. Standing together.",
+        _C + "Close-up of a firm handshake becoming a longer hold -- fingers clasping. Warm amber light. The moment it becomes real support.",
+        _C + "A " + _M + "hands cupped around a warm steaming mug. Golden light. Simple, grounding, present.",
+        _C + "Two Caucasian Western European men sitting side by side on concrete steps outside, shoulders touching, looking forward. Evening light. No words needed.",
+        _C + "Close-up of a strong warm embrace -- just shoulders and arms, no faces. Dark warm light. The kind of hug men rarely allow themselves.",
+        _C + "A " + _M + "hand firmly placed on another man's shoulder from behind. Warm side light. A single gesture that says everything.",
+        _C + "Two pairs of Caucasian Western European men's shoes on a wooden floor side by side. Warm light from a low angle. Simple presence.",
+        _C + "An empty chair beside a " + _M + "hand resting on an armrest. The presence of someone who stayed. Warm light.",
+    ],
+
+    # SLIDE 4 -- beginning to shift, quiet resolve forming
+    "slide_4": [
+        _C + "A " + _M + "looking upward toward soft warm natural light through a window. Face calm and quietly resolving. Golden light on strong features.",
+        _C + "A " + _M + "walking slowly toward a door with warm golden light streaming through. From behind. Moving toward something.",
+        _C + "A " + _M + "standing at a window, one hand on the glass, watching the first pale dawn light arrive. Interior still dark. He waited for this.",
+        _C + "Extreme close-up of a " + _M + "face, the very beginning of something settling -- not a smile, but a jaw unclenching. Warm side light.",
+        _C + "A " + _M + "sitting on the edge of his bed, dawn light slowly crossing the floor toward him. He watches it come. A shift.",
+        _C + "A " + _M + "reaching to open a window -- first morning air coming in, curtains beginning to move. His face in the first warmth.",
+        _C + "A " + _M + "turning to look over his shoulder back toward the camera. Behind him: warm golden light. In front: where he came from.",
+        _C + "A beam of golden morning light falling across the floor of an otherwise empty room. Dust motes drifting in the light. Something arriving.",
+        _C + "A " + _M + "sitting at a wooden table, both hands flat on the surface. First morning light on his face. Breathing. Beginning.",
+        _C + "An empty road stretching forward into dramatic golden light at the far end. Dark on the sides, light dead ahead. Direction found.",
+    ],
+
+    # SLIDE 5 -- warm resolution, earned peace
+    "slide_5": [
+        _C + "A " + _M + "standing in a warm kitchen in early morning light, hands around a coffee mug, looking out the window calmly. Amber light fills the room.",
+        _C + "A " + _M + "sitting in a garden in early morning sun, eyes closed, face tilted to the warmth. Golden light. Complete peace. Earned.",
+        _C + "Extreme close-up of a " + _M + "hands gently opening -- fingers uncurling, releasing. Warm amber light. The physical act of letting go.",
+        _C + "A " + _M + "lying on his back in bed, arms relaxed, golden dawn light slowly crossing the ceiling above him. Awake but at rest.",
+        _C + "A " + _M + "sitting in a leather armchair beside a fireplace, warm amber firelight. Evening. Quiet. He made it through the day.",
+        _C + "Empty room with warm golden morning light crossing the floor. Work boots by the door. A man who went out and came back.",
+        _C + "A " + _M + "sitting on a wooden porch step in early morning sun, coffee in both hands, looking out at something calm.",
+        _C + "Close-up of a " + _M + "face in full warm golden morning light. Eyes closed. A single quiet exhale. The weight finally lighter.",
+        _C + "A " + _M + "and another person from behind, side by side, watching a peaceful sunrise. Shoulders almost touching. They made it.",
+        _C + "A " + _M + "standing at a window in full warm morning light, one hand on the frame. Looking out. Resolved. Present.",
+    ],
+
+    # SLIDE 6 -- CTA, warm and inviting
+    "slide_6": [
+        _C + "A smartphone face-up on a warm wooden table, soft golden ambient glow. Candlelight warmth. Minimal and inviting.",
+        _C + "A " + _M + "hands holding a phone, warm amber light from the side. The moment of reaching for something that helps.",
+        _C + "A phone on a dark leather surface beside a coffee cup, morning light. Masculine, clean, calm.",
+        _C + "A phone face-up on a wooden desk, single lamp creating a warm pool of light around it. Evening. Intimate.",
+        _C + "A phone on a wooden tray with a warm mug, firelight nearby. Evening. Grounded. Safe to open it.",
+        _C + "A phone lying face-up on a windowsill, golden afternoon light across it. Simple. An invitation.",
+        _C + "Close-up of a " + _M + "finger about to touch the phone screen. Warm light. The moment of choosing to reach out.",
+        _C + "A phone screen glowing softly on a bedside table in a dark room. The only warm light. A presence when it's quiet.",
+        _C + "A phone face-up on a garden table in golden late afternoon light. Peaceful. Ready.",
+        _C + "A phone on a wooden surface with keys and a watch beside it. End of day. The choice to open it.",
+    ],
 }
+
+
+def get_image_prompt(slide_key: str, gender: str, topic: str = "") -> str:
+    """Select an image prompt from the rotating pool.
+    Uses (GITHUB_RUN_NUMBER + slide_num - 1) % pool_size so each run
+    gets a different set and slides within a run are all different.
+    """
+    pools = IMAGE_POOLS_MALE if gender == "male" else IMAGE_POOLS_FEMALE
+    pool  = pools.get(slide_key, pools["slide_5"])
+    slide_num = int(slide_key.split("_")[1])
+    idx   = (GITHUB_RUN_NUMBER + slide_num - 1) % len(pool)
+    prompt = pool[idx]
+    if slide_key == "slide_1" and topic:
+        prompt = f"{prompt} Emotional theme: {topic}."
+    return prompt
+
 
 # ---------------------------------------------------------------------------
 # Gender
@@ -434,10 +540,11 @@ Return ONLY valid JSON:
 # Step 2: Image
 # ---------------------------------------------------------------------------
 def generate_slide_image(openai_client, slide_key, topic, gender):
-    prompts = SLIDE_IMAGE_PROMPTS_MALE if gender == "male" else SLIDE_IMAGE_PROMPTS_FEMALE
-    prompt  = prompts.get(slide_key, prompts["slide_5"])
-    if slide_key == "slide_1": prompt = f"{prompt} Emotional theme: {topic}."
-    print(f"  [gpt-image-1 HIGH] {slide_key} generating...")
+    prompt = get_image_prompt(slide_key, gender, topic)
+    pool_size = len(IMAGE_POOLS_MALE[slide_key] if gender == "male" else IMAGE_POOLS_FEMALE[slide_key])
+    slide_num = int(slide_key.split("_")[1])
+    idx = (GITHUB_RUN_NUMBER + slide_num - 1) % pool_size
+    print(f"  [gpt-image-1 HIGH] {slide_key} generating... (pool idx {idx}/{pool_size-1})")
     response = openai_client.images.generate(
         model="gpt-image-1", prompt=prompt, size="1024x1536", quality="high", n=1,
     )
@@ -537,7 +644,6 @@ def upload_carousel(image_paths, tiktok_title, description, cfg, scheduled_date)
     if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
     user = cfg.get("upload_post_user","")
     if not user: return {"skipped": True, "reason": "no user configured"}
-
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
     data = [
         ("user",              user),
@@ -587,11 +693,11 @@ def main():
     history        = load_history()
     scheduled_date = get_scheduled_post_time()
 
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.6")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Gender: {gender.upper()} | ~$0.48")
-    print(f"  Generates: 4am Malta | Posts: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta = 1pm Malta")
-    print(f"  {'Direct-address to men' if gender == 'male' else 'Partner-directed (female)'}")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | DIRECT_POST scheduled via Upload-Post")
+    print(f"  Image pools: 10 prompts per slide -- no two carousels look the same")
+    print(f"  Generates: 4am Malta | Posts: {POST_HOUR_UTC:02d}:00 UTC = {POST_HOUR_UTC+2:02d}:00 Malta")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("=" * 60)
 
     print(f"\n  Generating {gender} script...")
@@ -630,7 +736,7 @@ def main():
         if result.get("status_code") == 200:
             print(f"  Scheduled OK -- fires at {scheduled_date} (TikTok + Facebook)")
     else:
-        print("\n  Upload DISABLED (upload_enabled=false in heygen_config.json)")
+        print("\n  Upload DISABLED")
         (OUTPUT_DIR / "carousel_upload_result.json").write_text(json.dumps({"skipped":True}))
 
     save_history(history, {
