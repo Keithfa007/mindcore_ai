@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v1.1
+MindCore AI -- Male Pipeline Patch v2.0
 =======================================
-v1.1: POST_HOUR_UTC read from env variable hardcoded in the workflow.
-      No hour-based slot detection. Workflow is the source of truth.
-      Slot A workflow: POST_HOUR_UTC=9  -> 09:00 UTC = 11am Malta
-      Slot B workflow: POST_HOUR_UTC=13 -> 13:00 UTC = 3pm Malta
+v2.0: Pexels restored -- fal.ai removed.
+      Also patches render_cinematic_video to use Pexels B-roll.
+      Real human footage = better engagement, $0 vs $1.25/video.
+v1.1: POST_HOUR_UTC from env (no hour-based detection).
 """
 import json
 import os
@@ -16,16 +16,13 @@ import requests
 import video_pipeline.male_pipeline as pipeline
 
 
+# ---------------------------------------------------------------------------
+# Scheduling
+# ---------------------------------------------------------------------------
 def get_scheduled_post_time():
-    """Read POST_HOUR_UTC from env (set by workflow) and return ISO-8601 UTC.
-    Raises clearly if the env var is missing so the mistake is obvious in logs.
-    """
     env_hour = os.environ.get("POST_HOUR_UTC")
     if not env_hour:
-        raise RuntimeError(
-            "POST_HOUR_UTC env variable is not set. "
-            "Set it in the workflow (e.g. POST_HOUR_UTC: \"9\")."
-        )
+        raise RuntimeError("POST_HOUR_UTC env variable not set.")
     post_hour  = int(env_hour)
     now        = datetime.now(timezone.utc)
     target     = now.replace(hour=post_hour, minute=0, second=0, microsecond=0)
@@ -38,6 +35,62 @@ def get_scheduled_post_time():
     return scheduled
 
 
+# ---------------------------------------------------------------------------
+# Patch 1: render_cinematic_video -- Pexels instead of fal.ai
+# ---------------------------------------------------------------------------
+def _patched_render_cinematic_video(script_text, mood, niche, script=None):
+    """Render full video using Pexels B-roll (real footage, free)."""
+    from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
+
+    print("\n  [TTS] Generating voiceover...")
+    audio_path = str(pipeline.OUTPUT_DIR / "voiceover.mp3")
+    pipeline.generate_fish_audio_tts(script_text, audio_path)
+
+    print("\n  [Subtitles] Transcribing with Whisper...")
+    ass_path = str(pipeline.OUTPUT_DIR / "subtitles_cinematic.ass")
+    words = pipeline.transcribe_audio_whisper(audio_path)
+    if not pipeline.generate_ass_subtitles(words, ass_path):
+        ass_path = None
+
+    clips_dir = pipeline.OUTPUT_DIR / "clips"
+    clips_dir.mkdir(exist_ok=True)
+    raw_clip_paths = []
+    scene_types    = []
+
+    scene_plan = [("hook", 1), ("problem", 2), ("story", 1), ("solution_cta", 1)]
+    clip_idx   = 0
+
+    for scene_name, count in scene_plan:
+        for j in range(count):
+            clip_path  = str(clips_dir / f"raw_{clip_idx}.mp4")
+            print(f"  [Pexels] {scene_name.upper()} {j+1}/{count}...")
+            pexels_path = fetch_pexels_clip_for_scene(
+                scene_name, clip_idx, clip_path,
+                pipeline.GITHUB_RUN_NUMBER, gender="man"
+            )
+            if pexels_path:
+                raw_clip_paths.append(pexels_path)
+                scene_types.append(scene_name)
+            else:
+                print(f"  WARNING: {scene_name} clip {j+1} skipped")
+            clip_idx += 1
+
+    if not raw_clip_paths:
+        raise RuntimeError("All Pexels fetches failed")
+
+    print(f"\n  Fetched {len(raw_clip_paths)}/5 clips (Pexels -- free, real footage)")
+    music_path = pipeline.pick_music_track()
+    final_path = str(pipeline.OUTPUT_DIR / "mindcore_ai_video.mp4")
+    pipeline.assemble_cinematic_video(
+        raw_clip_paths, audio_path, final_path,
+        music_path, ass_path, scene_types=scene_types
+    )
+    return final_path
+
+
+# ---------------------------------------------------------------------------
+# Patch 2: upload_to_platforms -- adds scheduled_date
+# ---------------------------------------------------------------------------
 def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
     if not pipeline.UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
@@ -84,9 +137,14 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
         return {"error": str(e)}
 
 
-pipeline.upload_to_platforms = _patched_upload
+# Apply patches
+pipeline.render_cinematic_video = _patched_render_cinematic_video
+pipeline.upload_to_platforms    = _patched_upload
 
 
+# ---------------------------------------------------------------------------
+# Patched main
+# ---------------------------------------------------------------------------
 def main():
     OUTPUT_DIR   = pipeline.OUTPUT_DIR
     PIPELINE_DIR = pipeline.PIPELINE_DIR
@@ -113,8 +171,8 @@ def main():
 
     print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.0")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Slot {slot_label}")
-    print(f"  Niche: {niche['name']} | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
-    print(f"  Music: {len(music_tracks)} tracks | fal.ai (~$1.25/video)")
+    print(f"  Niche: {niche['name']} | Pexels B-roll (real footage, free)")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
     print("=" * 60)
 
     print("\n  Generating script...")

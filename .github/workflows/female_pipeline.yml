@@ -1,83 +1,61 @@
 name: Female Video Pipeline
 
 # SCHEDULE v2 -- overnight generation + Upload-Post scheduled posting
-# Pipeline generates at 00:00 UTC = 2am Malta (overnight, GitHub delay irrelevant)
-# Upload-Post fires at exactly 17:00 UTC = 19:00 Malta (7pm -- after work slot)
-# schedule_utils.py calculates the scheduled_date automatically
-# Full fal.ai video (~$1.25/video, 7 videos/week)
+# Pipeline generates at 00:00 UTC = 2am Malta
+# Upload-Post fires at exactly 17:00 UTC = 19:00 Malta (7pm)
+# v5.0: Pexels B-roll restored -- fal.ai removed
 on:
   workflow_dispatch:
     inputs:
       run_note:
-        description: "Optional note for this run"
+        description: "Optional note"
         required: false
         default: "manual"
       force_mode:
-        description: "Force mode: 'content' or 'ad' (blank = automatic)"
+        description: "'content' or 'ad' (blank = auto)"
         required: false
         default: ""
 
   schedule:
-    - cron: "0 0 * * *"  # 00:00 UTC = 2am Malta -- generates overnight, posts at 7pm via scheduled_date
+    - cron: "0 0 * * *"  # 00:00 UTC = 2am Malta
 
 jobs:
   generate-female-video:
-    name: Generate + Schedule Female Cinematic Video (9:16)
+    name: Generate + Schedule Female Cinematic Video (Pexels)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install FFmpeg + fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
-          ffmpeg -version | head -1
-
       - name: Install Python dependencies
-        run: pip install anthropic requests openai-whisper fal-client
-
+        run: pip install anthropic requests openai-whisper
       - name: Show run info
         run: |
-          FORCE="${{ github.event.inputs.force_mode }}"
-          if [ "$FORCE" = "ad" ]; then
-            echo "Mode: FORCED AD"
-          elif [ "$FORCE" = "content" ]; then
-            echo "Mode: FORCED CONTENT"
-          else
-            echo "Mode: AUTO (ad every 10th run)"
-          fi
-          echo "Generate: 00:00 UTC = 2am Malta (now)"
+          echo "Pipeline: Female Cinematic v5.0 (Pexels)"
+          echo "Generate: 00:00 UTC = 2am Malta"
           echo "Post: 17:00 UTC = 7pm Malta (Upload-Post scheduled_date)"
-          echo "Video: Full fal.ai (5 clips x Wan 2.5 ~$1.25/video)"
-
-      - name: Run Female Cinematic Pipeline
+      - name: Run Female Pipeline
         env:
           ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
           FISH_AUDIO_API_KEY:   ${{ secrets.FISH_AUDIO_API_KEY }}
           PEXELS_API_KEY:       ${{ secrets.PEXELS_API_KEY }}
           SERP_API_KEY:         ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
-          FAL_KEY:              ${{ secrets.FAL_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
           PYTHONPATH:           ${{ github.workspace }}
         run: |
           FORCE="${{ github.event.inputs.force_mode }}"
-          if [ "$FORCE" = "ad" ]; then
-            export GITHUB_RUN_NUMBER=10
-          elif [ "$FORCE" = "content" ]; then
-            export GITHUB_RUN_NUMBER=1
-          fi
+          [ "$FORCE" = "ad" ]      && export GITHUB_RUN_NUMBER=10
+          [ "$FORCE" = "content" ] && export GITHUB_RUN_NUMBER=1
           python video_pipeline/female_pipeline.py
-
-      - name: Upload post bundle
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -86,33 +64,12 @@ jobs:
             video_pipeline/output_female/mindcore_female_video.mp4
             video_pipeline/output_female/upload_guide_female.txt
             video_pipeline/output_female/script_female.json
-            video_pipeline/output_female/upload_metadata_female.json
             video_pipeline/output_female/upload_result_female.json
-            video_pipeline/output_female/keyword_research.json
           retention-days: 30
-
-      - name: Upload debug on failure
+      - name: Debug on failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: mindcore-female-debug-${{ github.run_number }}
           path: video_pipeline/output_female/
           retention-days: 7
-
-      - name: Write job summary
-        if: always()
-        run: |
-          echo "## Female Video Pipeline v4.0" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | Generates: 2am Malta | Posts: 7pm Malta (scheduled)" >> $GITHUB_STEP_SUMMARY
-          if [ -f "video_pipeline/output_female/script_female.json" ]; then
-            TOPIC=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
-            KW=$(python3 -c "import json; d=json.load(open('video_pipeline/output_female/script_female.json')); print(d.get('seo_keyword',''))" 2>/dev/null || echo "")
-            echo "**Keyword:** $KW" >> $GITHUB_STEP_SUMMARY
-            echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
-          fi
-          if [ -f "video_pipeline/output_female/upload_result_female.json" ]; then
-            echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat video_pipeline/output_female/upload_result_female.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
