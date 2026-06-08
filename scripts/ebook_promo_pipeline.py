@@ -2,19 +2,20 @@
 """
 MindCore AI — Ebook Promotion Pipeline
 ========================================
-Posts "The Silent Struggle" ebook promo content to Facebook and TikTok
-with AI-generated captions, background music, and hashtags.
+Posts "The Silent Struggle" ebook promo content to Facebook and TikTok.
+- TikTok: static image video (no movement, no music)
+- Facebook: static image upload (no video needed)
 
 Schedule: Every Sunday at 08:00 UTC (10:00 Malta)
 """
 
-import os, sys, json, random, glob, requests, subprocess, tempfile, datetime
+import os, sys, json, random, requests, subprocess, tempfile, datetime
 
 from anthropic import Anthropic
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-COVER_IMAGE_URL     = "https://mindcoreai.eu/wp-content/uploads/2026/06/MindCore-AI.png"
+COVER_IMAGE_URL     = "https://mindcoreai.eu/wp-content/uploads/2026/06/Poster-The-Silent-Struggle-Rise-from-Rock-Bottom.png"
 PAYHIP_LINK         = "https://payhip.com/b/3HyoE"
 EBOOK_TITLE         = "The Silent Struggle"
 EBOOK_SUBTITLE      = "How to Rebuild Your Mental Health from Rock Bottom"
@@ -24,9 +25,6 @@ UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
 UPLOAD_POST_USER    = "MindCoreAI"
 ANTHROPIC_API_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL     = "claude-sonnet-4-6"
-
-MUSIC_DIR           = "video_pipeline/music"
-MUSIC_VOLUME        = 0.08
 
 VIDEO_DURATION      = 10   # seconds
 VIDEO_FPS           = 30
@@ -49,7 +47,7 @@ PROMO_ANGLES = [
 
 
 def generate_caption(client):
-    """Generate a short, punchy promotional caption with hashtags."""
+    """Generate a short, punchy promotional caption."""
     angle = random.choice(PROMO_ANGLES)
     print(f"   Angle: {angle}")
 
@@ -96,74 +94,34 @@ def download_cover(url, path):
     print(f"   Cover downloaded ({size_kb:.0f} KB)")
 
 
-def pick_music_track():
-    """Pick a random music track from video_pipeline/music/."""
-    tracks = glob.glob(os.path.join(MUSIC_DIR, "*.mp3"))
-    if not tracks:
-        print("   No music tracks found")
-        return None
-    track = random.choice(tracks)
-    print(f"   Music: {os.path.basename(track)}")
-    return track
-
-
-def create_video_with_music(image_path, music_path, output_path):
-    """Create video from cover image with slow zoom and background music."""
-    total_frames = VIDEO_DURATION * VIDEO_FPS
-
-    if music_path and os.path.exists(music_path):
-        # Video from image + music overlay at low volume
-        cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1",
-            "-i", image_path,
-            "-i", music_path,
-            "-vf", (
-                "scale=1080:1920:force_original_aspect_ratio=increase,"
-                "crop=1080:1920,"
-                f"zoompan=z='min(zoom+0.001\\,1.2)'"
-                f":d={total_frames}:s=1080x1920:fps={VIDEO_FPS}"
-            ),
-            "-af", f"volume={MUSIC_VOLUME},afade=t=out:st={VIDEO_DURATION - 2}:d=2",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "18",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-pix_fmt", "yuv420p",
-            "-t", str(VIDEO_DURATION),
-            "-shortest",
-            output_path,
-        ]
-    else:
-        # Fallback: video without music
-        cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1",
-            "-i", image_path,
-            "-vf", (
-                "scale=1080:1920:force_original_aspect_ratio=increase,"
-                "crop=1080:1920,"
-                f"zoompan=z='min(zoom+0.001\\,1.2)'"
-                f":d={total_frames}:s=1080x1920:fps={VIDEO_FPS}"
-            ),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "18",
-            "-pix_fmt", "yuv420p",
-            "-t", str(VIDEO_DURATION),
-            output_path,
-        ]
+def create_static_video(image_path, output_path):
+    """Create a STATIC video from cover image — no zoom, no movement, no music.
+    TikTok requires video format but the image stays perfectly still."""
+    cmd = [
+        "ffmpeg", "-y",
+        "-loop", "1",
+        "-i", image_path,
+        "-vf", (
+            "scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920"
+        ),
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-t", str(VIDEO_DURATION),
+        output_path,
+    ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"   FFmpeg stderr: {result.stderr[-1500:]}")
         raise RuntimeError("Failed to create video")
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    print(f"   Video created ({size_mb:.1f} MB, {VIDEO_DURATION}s)")
+    print(f"   Static video created ({size_mb:.1f} MB, {VIDEO_DURATION}s, no movement)")
 
 
-# ── Upload-Post (matches male/female pipeline pattern) ───────────────────────
+# ── Upload-Post ───────────────────────────────────────────────────────────────
 
 def get_scheduled_time(hour_utc):
     """Return the next future datetime string for a given UTC hour."""
@@ -174,20 +132,17 @@ def get_scheduled_time(hour_utc):
     return target.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def upload_to_platforms(video_path, tiktok_caption, fb_caption, scheduled_date=None):
-    """Upload video to TikTok + Facebook via Upload-Post API."""
+def upload_tiktok_video(video_path, caption, scheduled_date=None):
+    """Upload static video to TikTok via Upload-Post API."""
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
 
     headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
 
     data = [
-        ("user",                  UPLOAD_POST_USER),
-        ("platform[]",            "tiktok"),
-        ("platform[]",            "facebook"),
-        ("title",                 tiktok_caption[:2200]),
-        ("facebook_title",        f"{EBOOK_TITLE}"[:255]),
-        ("facebook_description",  fb_caption),
+        ("user",       UPLOAD_POST_USER),
+        ("platform[]", "tiktok"),
+        ("title",      caption[:2200]),
     ]
 
     if scheduled_date:
@@ -210,13 +165,57 @@ def upload_to_platforms(video_path, tiktok_caption, fb_caption, scheduled_date=N
             else {"raw": resp.text}
         )
         result["status_code"] = resp.status_code
-        print(f"   Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        print(f"   TikTok upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
         if not resp.ok:
             print(f"   {resp.text[:300]}")
         return result
 
     except Exception as e:
-        print(f"   Upload failed: {e}")
+        print(f"   TikTok upload failed: {e}")
+        return {"error": str(e)}
+
+
+def upload_facebook_image(image_path, caption, scheduled_date=None):
+    """Upload static image to Facebook via Upload-Post API."""
+    if not UPLOAD_POST_API_KEY:
+        return {"skipped": True, "reason": "no API key"}
+
+    headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
+
+    data = [
+        ("user",                  UPLOAD_POST_USER),
+        ("platform[]",            "facebook"),
+        ("facebook_title",        EBOOK_TITLE[:255]),
+        ("facebook_description",  caption),
+    ]
+
+    if scheduled_date:
+        data.append(("scheduled_date", scheduled_date))
+
+    try:
+        with open(image_path, "rb") as f:
+            files = [("image", ("ebook_cover.png", f, "image/png"))]
+            resp = requests.post(
+                UPLOAD_POST_API_URL,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=180,
+            )
+
+        result = (
+            resp.json()
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else {"raw": resp.text}
+        )
+        result["status_code"] = resp.status_code
+        print(f"   Facebook upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        if not resp.ok:
+            print(f"   {resp.text[:300]}")
+        return result
+
+    except Exception as e:
+        print(f"   Facebook upload failed: {e}")
         return {"error": str(e)}
 
 
@@ -252,24 +251,25 @@ def main():
         tiktok_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{HASHTAGS}"
         fb_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{HASHTAGS}"
 
-        # 4 — Pick background music
-        print("3. Selecting background music...")
-        music_track = pick_music_track()
+        # 4 — Create STATIC video for TikTok (no zoom, no music)
+        print("3. Creating static video for TikTok...")
+        create_static_video(cover, video)
 
-        # 5 — Create video with music
-        print("4. Creating video from cover image...")
-        create_video_with_music(cover, music_track, video)
+        # 5 — Upload to TikTok (video) and Facebook (image) separately
+        print("4. Uploading to TikTok (static video)...")
+        tk_result = upload_tiktok_video(video, tiktok_caption, scheduled_date=scheduled_date)
 
-        # 6 — Upload to TikTok + Facebook
-        print("5. Uploading to TikTok + Facebook...")
-        result = upload_to_platforms(
-            video, tiktok_caption, fb_caption, scheduled_date=scheduled_date
-        )
+        print("5. Uploading to Facebook (static image)...")
+        fb_result = upload_facebook_image(cover, fb_caption, scheduled_date=scheduled_date)
 
-        if result.get("status_code") in (200, 202):
-            print(f"   Scheduled OK — fires at {scheduled_date}")
-        elif result.get("skipped"):
-            print(f"   Skipped: {result.get('reason')}")
+        # Summary
+        for platform, result in [("TikTok", tk_result), ("Facebook", fb_result)]:
+            if result.get("status_code") in (200, 202):
+                print(f"   {platform}: Scheduled OK — fires at {scheduled_date}")
+            elif result.get("skipped"):
+                print(f"   {platform}: Skipped — {result.get('reason')}")
+            else:
+                print(f"   {platform}: Check result — {result.get('status_code', 'unknown')}")
 
     print("\n== Ebook promotion pipeline complete ==")
 
