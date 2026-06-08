@@ -15,7 +15,7 @@ from anthropic import Anthropic
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-COVER_IMAGE_URL     = "https://mindcoreai.eu/wp-content/uploads/2026/06/Poster-The-Silent-Struggle-Rise-from-Rock-Bottom.png"
+COVER_IMAGE_URL     = "https://mindcoreai.eu/wp-content/uploads/2026/06/Poster-The-Silent-Struggle-Rise-from-Rock-Bottom-1.png"
 PAYHIP_LINK         = "https://payhip.com/b/3HyoE"
 EBOOK_TITLE         = "The Silent Struggle"
 EBOOK_SUBTITLE      = "How to Rebuild Your Mental Health from Rock Bottom"
