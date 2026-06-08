@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.0
+MindCore AI -- Male Pipeline Patch v2.1
 =======================================
-v2.0: Pexels restored -- fal.ai removed.
-      Also patches render_cinematic_video to use Pexels B-roll.
-      Real human footage = better engagement, $0 vs $1.25/video.
-v1.1: POST_HOUR_UTC from env (no hour-based detection).
+v2.1: No background music -- voice only.
+      TikTok adds its own audio. FB/YouTube get raw authentic voice.
+v2.0: Pexels restored, fal.ai removed.
+v1.1: POST_HOUR_UTC from env.
 """
 import json
 import os
@@ -16,9 +16,6 @@ import requests
 import video_pipeline.male_pipeline as pipeline
 
 
-# ---------------------------------------------------------------------------
-# Scheduling
-# ---------------------------------------------------------------------------
 def get_scheduled_post_time():
     env_hour = os.environ.get("POST_HOUR_UTC")
     if not env_hour:
@@ -35,11 +32,8 @@ def get_scheduled_post_time():
     return scheduled
 
 
-# ---------------------------------------------------------------------------
-# Patch 1: render_cinematic_video -- Pexels instead of fal.ai
-# ---------------------------------------------------------------------------
 def _patched_render_cinematic_video(script_text, mood, niche, script=None):
-    """Render full video using Pexels B-roll (real footage, free)."""
+    """Render video with Pexels B-roll, voice only (no background music)."""
     from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
 
     print("\n  [TTS] Generating voiceover...")
@@ -79,7 +73,7 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
         raise RuntimeError("All Pexels fetches failed")
 
     print(f"\n  Fetched {len(raw_clip_paths)}/5 clips (Pexels -- free, real footage)")
-    music_path = pipeline.pick_music_track()
+    music_path = None  # Voice only -- no background music. TikTok adds its own.
     final_path = str(pipeline.OUTPUT_DIR / "mindcore_ai_video.mp4")
     pipeline.assemble_cinematic_video(
         raw_clip_paths, audio_path, final_path,
@@ -88,9 +82,6 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
     return final_path
 
 
-# ---------------------------------------------------------------------------
-# Patch 2: upload_to_platforms -- adds scheduled_date
-# ---------------------------------------------------------------------------
 def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
     if not pipeline.UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
@@ -137,14 +128,10 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
         return {"error": str(e)}
 
 
-# Apply patches
 pipeline.render_cinematic_video = _patched_render_cinematic_video
 pipeline.upload_to_platforms    = _patched_upload
 
 
-# ---------------------------------------------------------------------------
-# Patched main
-# ---------------------------------------------------------------------------
 def main():
     OUTPUT_DIR   = pipeline.OUTPUT_DIR
     PIPELINE_DIR = pipeline.PIPELINE_DIR
@@ -163,7 +150,6 @@ def main():
             cfg = json.load(f)
 
     upload_enabled = cfg.get("upload_enabled", False) and bool(pipeline.UPLOAD_POST_API_KEY)
-    music_tracks   = list(pipeline.MUSIC_DIR.glob("*.mp3")) if pipeline.MUSIC_DIR.exists() else []
     keywords_data  = pipeline.load_keywords_data()
     niche          = pipeline.get_niche_for_today(keywords_data)
     mood           = pipeline.pick_visual_mood(niche)
@@ -171,8 +157,8 @@ def main():
 
     print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.0")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Slot {slot_label}")
-    print(f"  Niche: {niche['name']} | Pexels B-roll (real footage, free)")
-    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'} | Music: {len(music_tracks)} tracks")
+    print(f"  Niche: {niche['name']} | Pexels B-roll | Voice only (no music)")
+    print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("=" * 60)
 
     print("\n  Generating script...")
@@ -215,8 +201,6 @@ def main():
         (OUTPUT_DIR / "upload_result.json").write_text(json.dumps({"skipped": True}, indent=2))
 
     print(f"\n  DONE | ~{est_duration}s | {niche['name']}")
-    if upload_enabled:
-        print("  Posted: TikTok + Facebook + YouTube (scheduled via Upload-Post)")
 
 
 if __name__ == "__main__":
