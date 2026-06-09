@@ -1,33 +1,24 @@
 """
-MindCore AI -- Pexels B-roll Clip Fetcher v2.1
+MindCore AI -- Pexels B-roll Clip Fetcher v2.2
 ===============================================
-Real human footage + dramatic cinematic atmosphere.
-Scene-specific query pools designed for scroll-stopping visuals.
-
-v2.1: Dramatic, inspirational, cinematic queries.
-      Mix of human silhouettes + nature metaphors + atmospheric scenes.
-      Designed for emotional resonance, not generic stock footage.
-
-Key insight: best mental health B-roll isn't always people.
-Storm clouds = inner turmoil. Sunrise = hope. Ocean = overwhelm.
-The footage matches the FEELING, not the literal subject.
+v2.2: Deduplication -- tracks used video IDs within a run.
+      No clip repeats within the same video. Tries up to 3 different
+      queries per scene before falling back. Logs unique clip count.
+v2.1: Dramatic cinematic queries, nature metaphors.
 """
 
 import os
 import random
 from pathlib import Path
-
 import requests
 
 PEXELS_VIDEO_URL = "https://api.pexels.com/videos/search"
 PEXELS_API_KEY   = os.environ.get("PEXELS_API_KEY", "")
 
-# ---------------------------------------------------------------------------
-# FEMALE -- dramatic, emotional, cinematic
-# ---------------------------------------------------------------------------
+# Track used video IDs within a single pipeline run -- prevents duplicate clips
+_used_video_ids = set()
 
 FEMALE_SCENE_QUERIES = {
-    # HOOK -- scroll-stopping, dramatic, raw
     "hook": [
         "woman silhouette sunset dramatic",
         "rain window close up night",
@@ -45,8 +36,6 @@ FEMALE_SCENE_QUERIES = {
         "waterfall dramatic power nature",
         "woman standing cliff ocean",
     ],
-
-    # PROBLEM -- weight, isolation, atmospheric tension
     "problem": [
         "woman alone window rain night",
         "dark room single candle flame",
@@ -64,8 +53,6 @@ FEMALE_SCENE_QUERIES = {
         "empty chair room sunlight dust",
         "person walking alone fog",
     ],
-
-    # STORY -- transition, shift, hope beginning to emerge
     "story": [
         "sunrise dramatic clouds timelapse",
         "light breaking through storm clouds",
@@ -83,8 +70,6 @@ FEMALE_SCENE_QUERIES = {
         "candle lighting dark room",
         "dawn horizon ocean",
     ],
-
-    # CTA -- resolution, warmth, inspiration, beauty
     "solution_cta": [
         "golden hour woman nature peaceful",
         "woman smiling sunrise morning",
@@ -104,12 +89,7 @@ FEMALE_SCENE_QUERIES = {
     ],
 }
 
-# ---------------------------------------------------------------------------
-# MALE -- dramatic, powerful, raw
-# ---------------------------------------------------------------------------
-
 MALE_SCENE_QUERIES = {
-    # HOOK -- powerful, dramatic, cinematic
     "hook": [
         "man silhouette sunset dramatic",
         "rain city night dramatic cinematic",
@@ -127,8 +107,6 @@ MALE_SCENE_QUERIES = {
         "man rain standing still",
         "empty stadium alone dramatic",
     ],
-
-    # PROBLEM -- weight, isolation, pressure
     "problem": [
         "man alone dark room shadow",
         "rain drops window close up",
@@ -146,8 +124,6 @@ MALE_SCENE_QUERIES = {
         "man silhouette window night city",
         "empty hallway dark dramatic",
     ],
-
-    # STORY -- shift, resolve forming, determination
     "story": [
         "sunrise dramatic clouds horizon",
         "light breaking through dark clouds",
@@ -165,8 +141,6 @@ MALE_SCENE_QUERIES = {
         "road stretching forward sunrise",
         "campfire night flames close up",
     ],
-
-    # CTA -- strength, resolution, earned peace
     "solution_cta": [
         "golden hour man nature mountain",
         "man confident sunrise outdoor",
@@ -186,7 +160,6 @@ MALE_SCENE_QUERIES = {
     ],
 }
 
-# Fallback queries -- simple, reliable
 FALLBACK_QUERIES = {
     "hook":         {"woman": "dramatic storm ocean", "man": "dramatic storm lightning"},
     "problem":      {"woman": "rain window night", "man": "dark room alone"},
@@ -195,22 +168,14 @@ FALLBACK_QUERIES = {
 }
 
 
-def search_pexels_videos(query: str, orientation: str = "portrait", per_page: int = 15):
-    """Search Pexels for videos. Returns list of video objects."""
-    if not PEXELS_API_KEY:
-        return []
+def search_pexels_videos(query, orientation="portrait", per_page=15):
+    if not PEXELS_API_KEY: return []
     headers = {"Authorization": PEXELS_API_KEY}
-    params  = {
-        "query":       query,
-        "orientation": orientation,
-        "per_page":    per_page,
-        "size":        "medium",
-    }
+    params = {"query": query, "orientation": orientation, "per_page": per_page, "size": "medium"}
     try:
         resp = requests.get(PEXELS_VIDEO_URL, headers=headers, params=params, timeout=30)
         resp.raise_for_status()
         videos = resp.json().get("videos", [])
-        # If portrait returns nothing, try without orientation filter
         if not videos:
             params.pop("orientation", None)
             resp = requests.get(PEXELS_VIDEO_URL, headers=headers, params=params, timeout=30)
@@ -218,75 +183,90 @@ def search_pexels_videos(query: str, orientation: str = "portrait", per_page: in
             videos = resp.json().get("videos", [])
         return videos
     except Exception as e:
-        print(f"  Pexels search failed ({e})")
-        return []
+        print(f"  Pexels search failed ({e})"); return []
 
 
-def get_best_video_file(video: dict):
-    """Return the best quality video file, preferring portrait HD."""
+def get_best_video_file(video):
     files = video.get("video_files", [])
-    # Prefer portrait orientation
     portrait = [f for f in files if f.get("width", 1) < f.get("height", 1)]
     pool = portrait if portrait else files
-    # Sort by resolution descending -- prefer HD
     pool.sort(key=lambda f: f.get("height", 0), reverse=True)
     return pool[0] if pool else None
 
 
-def download_pexels_clip(video_url: str, output_path: str) -> str:
-    """Download a Pexels video clip. Returns output_path."""
+def download_pexels_clip(video_url, output_path):
     resp = requests.get(video_url, stream=True, timeout=120)
     resp.raise_for_status()
     with open(output_path, "wb") as f:
         for chunk in resp.iter_content(chunk_size=65_536):
-            if chunk:
-                f.write(chunk)
-    size_kb = Path(output_path).stat().st_size / 1024
-    print(f"  Pexels: downloaded {size_kb:.0f} KB")
+            if chunk: f.write(chunk)
+    print(f"  Pexels: downloaded {Path(output_path).stat().st_size / 1024:.0f} KB")
     return output_path
 
 
-def fetch_pexels_clip_for_scene(
-    scene_name: str,
-    scene_idx:  int,
-    output_path: str,
-    github_run_number: int = 1,
-    gender: str = "woman",
-) -> str | None:
-    """Fetch a dramatic Pexels clip for a specific scene.
+def fetch_pexels_clip_for_scene(scene_name, scene_idx, output_path, github_run_number=1, gender="woman"):
+    """Fetch a UNIQUE Pexels clip for a scene.
 
-    Selects query using (github_run_number + scene_idx) % pool_size.
-    Falls back to simpler queries if primary returns nothing.
+    v2.2: Deduplication -- tracks used video IDs across all scenes in a run.
+    Tries up to 3 different queries before falling back.
+    Never reuses a clip unless absolutely no alternatives exist.
     """
+    global _used_video_ids
+
     gender_key = "woman" if gender == "woman" else "man"
-    queries    = FEMALE_SCENE_QUERIES if gender == "woman" else MALE_SCENE_QUERIES
-    pool       = queries.get(scene_name, queries["problem"])
-    query_idx  = (github_run_number + scene_idx) % len(pool)
-    query      = pool[query_idx]
+    queries = FEMALE_SCENE_QUERIES if gender == "woman" else MALE_SCENE_QUERIES
+    pool = queries.get(scene_name, queries["problem"])
 
-    print(f"  [Pexels] {scene_name.upper()} -- '{query}'")
-    videos = search_pexels_videos(query)
+    # Try up to 3 different queries to find a unique clip
+    for attempt in range(3):
+        query_idx = (github_run_number + scene_idx + attempt) % len(pool)
+        query = pool[query_idx]
 
-    # Fallback if no results
+        label = f" (retry {attempt+1})" if attempt else ""
+        print(f"  [Pexels] {scene_name.upper()} -- '{query}'{label}")
+        videos = search_pexels_videos(query)
+        if not videos: continue
+
+        # Filter out already-used videos
+        unique = [v for v in videos if v.get("id") not in _used_video_ids]
+        if not unique: continue
+
+        video = unique[(github_run_number + scene_idx) % len(unique)]
+        best = get_best_video_file(video)
+        if not best: continue
+
+        try:
+            result = download_pexels_clip(best["link"], output_path)
+            _used_video_ids.add(video["id"])
+            print(f"  [Pexels] Video ID {video['id']} -- unique ({len(_used_video_ids)} clips total)")
+            return result
+        except Exception as e:
+            print(f"  [Pexels] Download failed ({e})"); continue
+
+    # Fallback: try a completely different query
+    fallback = FALLBACK_QUERIES.get(scene_name, {}).get(gender_key, "dramatic cinematic")
+    print(f"  [Pexels] Primary queries exhausted -- fallback: '{fallback}'")
+    videos = search_pexels_videos(fallback)
     if not videos:
-        fallback = FALLBACK_QUERIES.get(scene_name, {}).get(gender_key, "dramatic cinematic")
-        print(f"  [Pexels] No results -- fallback: '{fallback}'")
-        videos = search_pexels_videos(fallback)
+        print(f"  [Pexels] No results for {scene_name} -- skipping"); return None
 
-    if not videos:
-        print(f"  [Pexels] No results for {scene_name} -- skipping")
-        return None
-
-    # Pick clip -- rotate by run number + scene_idx for variety
-    video     = videos[(github_run_number + scene_idx) % len(videos)]
-    best_file = get_best_video_file(video)
-
-    if not best_file:
-        print(f"  [Pexels] No suitable file found for {scene_name}")
-        return None
+    # Prefer unique, accept duplicate only as last resort
+    unique = [v for v in videos if v.get("id") not in _used_video_ids]
+    pick = unique if unique else videos
+    video = pick[(github_run_number + scene_idx) % len(pick)]
+    best = get_best_video_file(video)
+    if not best: return None
 
     try:
-        return download_pexels_clip(best_file["link"], output_path)
+        result = download_pexels_clip(best["link"], output_path)
+        _used_video_ids.add(video["id"])
+        if not unique: print(f"  [Pexels] WARNING: duplicate clip (no unique alternatives)")
+        return result
     except Exception as e:
-        print(f"  [Pexels] Download failed for {scene_name} ({e})")
-        return None
+        print(f"  [Pexels] Fallback failed ({e})"); return None
+
+
+def reset_used_videos():
+    """Call at the start of a new pipeline run to clear the dedup tracker."""
+    global _used_video_ids
+    _used_video_ids = set()
