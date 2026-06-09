@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v5.1
+MindCore AI -- Female Cinematic Pipeline v5.2
 =============================================
-v5.1: Fixed power word flashes (imports from word_flash.py) + softened ad CTA.
-v5.0: Pexels B-roll restored, fal.ai removed, no background music.
+v5.2: SERP targets GB (reads serp_country from niche_keywords_female.json).
+v5.1: Fixed power word flashes + softened ad CTA.
+v5.0: Pexels B-roll, no background music.
 """
 
 import json, os, random, re, subprocess, sys, time
@@ -40,7 +41,14 @@ TIKTOK_CAPTION_LIMIT=2200;YOUTUBE_TITLE_LIMIT=100;YOUTUBE_DESCRIPTION_LIMIT=5000
 TOPIC_HISTORY_SIZE=5;REQUIRED_BRAND_HASHTAG="#mindcoreai"
 GLOBAL_HASHTAGS="#mentalhealth #fyp #foryou #mentalhealthawareness #selfcare #healing"
 
-HOOK_FORMULAS=[{"name":"confession_ladder","instruction":"Open at the emotional floor with a 3-4 beat escalating confession. Each beat names one dimension of exhaustion (emotional, mental, physical, spiritual). Drop the viewer mid-confession -- zero setup, zero preamble.","example":"Emotionally, I'm completely empty. Mentally, I can't hold one more thought. And physically? I'm so tired I can't even cry anymore.","rule":"Each beat must name a different dimension. The ladder MUST escalate in emotional weight. Open as if mid-confession -- no 'Have you ever felt' or any setup."},{"name":"pattern_interrupt","instruction":"Open with a statement that contradicts what the viewer expects. No setup.","example":"Nobody talks about what actually happens when you stop people-pleasing.","rule":"The surprising statement IS the hook. No preamble, no context."},{"name":"counter_intuitive","instruction":"State something true that feels wrong at first.","example":"Anxiety in women doesn't always look like panic. It looks like over-preparing for everything.","rule":"Must feel like a reframe."},{"name":"uncomfortable_admission","instruction":"Say something the viewer has felt but never heard spoken out loud.","example":"I used to apologise for taking up space in my own life.","rule":"First person or universal. Never preachy."},{"name":"specific_moment","instruction":"Drop the viewer into an exact moment they recognise.","example":"It's 11pm and you're still running through the conversation you had this morning.","rule":"Name the time, place, detail. Specific moments stop scrolls."},{"name":"direct_challenge","instruction":"Challenge a belief without shaming. Create a gap.","example":"The reason you can't rest isn't that you're busy. It's something else entirely.","rule":"Must create urgency."},{"name":"name_the_feeling","instruction":"Name an emotion with precision the viewer has never heard named.","example":"That thing where you're surrounded by people who love you and still feel invisible.","rule":"Specific enough that only the target viewer recognises it."},{"name":"reveal","instruction":"Promise something being withheld.","example":"There's one thing that happens when women finally stop holding everything together.","rule":"The promised reveal MUST actually be delivered."},{"name":"bold_reframe","instruction":"Bold statement that reframes how the viewer sees themselves.","example":"You're not too sensitive. You've just been in environments that treated sensitivity as a flaw.","rule":"Must feel earned and true."},{"name":"direct_address","instruction":"Speak directly to one specific person in one specific situation.","example":"If you've spent years being the person everyone leans on and you don't remember the last time someone asked how you were -- this is for you.","rule":"Name the situation, not just the feeling."},{"name":"rhetorical_hit","instruction":"Ask a question the viewer has asked themselves.","example":"When was the last time you put yourself on the list?","rule":"Rhetorical -- not a quiz."},{"name":"contrast","instruction":"Two short sentences. What others see vs what's happening.","example":"Everyone thinks you have it together. You know how much that's costing you.","rule":"Two sentences maximum."},{"name":"unspoken_truth","instruction":"Say the one thing the viewer has felt but never heard articulated.","example":"You're not tired from doing too much. You're tired from disappearing too long.","rule":"Must be viscerally recognisable on first hearing."},{"name":"specific_number","instruction":"Open with a specific unexpected statistic.","example":"7 in 10 women feel like they're performing a version of themselves every single day.","rule":"Use odd, specific numbers."}]
+# Read SERP country from keywords JSON (default gb for European audience)
+def _get_serp_country():
+    try:
+        with open(KEYWORDS_PATH) as f: return json.load(f).get("serp_country","gb")
+    except: return "gb"
+SERP_COUNTRY=_get_serp_country()
+
+HOOK_FORMULAS=[{"name":"confession_ladder","instruction":"Open at the emotional floor with a 3-4 beat escalating confession. Each beat names one dimension of exhaustion.","example":"Emotionally, I'm completely empty. Mentally, I can't hold one more thought. And physically? I'm so tired I can't even cry anymore.","rule":"Each beat must name a different dimension. The ladder MUST escalate. Open as if mid-confession."},{"name":"pattern_interrupt","instruction":"Open with a statement that contradicts what the viewer expects.","example":"Nobody talks about what actually happens when you stop people-pleasing.","rule":"The surprising statement IS the hook."},{"name":"counter_intuitive","instruction":"State something true that feels wrong at first.","example":"Anxiety in women doesn't always look like panic. It looks like over-preparing for everything.","rule":"Must feel like a reframe."},{"name":"uncomfortable_admission","instruction":"Say something the viewer has felt but never heard spoken out loud.","example":"I used to apologise for taking up space in my own life.","rule":"First person or universal. Never preachy."},{"name":"specific_moment","instruction":"Drop the viewer into an exact moment they recognise.","example":"It's 11pm and you're still running through the conversation you had this morning.","rule":"Name the time, place, detail."},{"name":"direct_challenge","instruction":"Challenge a belief without shaming. Create a gap.","example":"The reason you can't rest isn't that you're busy. It's something else entirely.","rule":"Must create urgency."},{"name":"name_the_feeling","instruction":"Name an emotion with precision the viewer has never heard named.","example":"That thing where you're surrounded by people who love you and still feel invisible.","rule":"Specific enough that only the target viewer recognises it."},{"name":"reveal","instruction":"Promise something being withheld.","example":"There's one thing that happens when women finally stop holding everything together.","rule":"The promised reveal MUST actually be delivered."},{"name":"bold_reframe","instruction":"Bold statement that reframes how the viewer sees themselves.","example":"You're not too sensitive. You've just been in environments that treated sensitivity as a flaw.","rule":"Must feel earned and true."},{"name":"direct_address","instruction":"Speak directly to one specific person in one specific situation.","example":"If you've spent years being the person everyone leans on and you don't remember the last time someone asked how you were -- this is for you.","rule":"Name the situation, not just the feeling."},{"name":"rhetorical_hit","instruction":"Ask a question the viewer has asked themselves.","example":"When was the last time you put yourself on the list?","rule":"Rhetorical -- not a quiz."},{"name":"contrast","instruction":"Two short sentences. What others see vs what's happening.","example":"Everyone thinks you have it together. You know how much that's costing you.","rule":"Two sentences maximum."},{"name":"unspoken_truth","instruction":"Say the one thing the viewer has felt but never heard articulated.","example":"You're not tired from doing too much. You're tired from disappearing too long.","rule":"Must be viscerally recognisable on first hearing."},{"name":"specific_number","instruction":"Open with a specific unexpected statistic.","example":"7 in 10 women feel like they're performing a version of themselves every single day.","rule":"Use odd, specific numbers."}]
 BANNED_HOOK_OPENERS=["I remember sitting at my kid","I remember sitting at a","I was sitting at","There I was, sitting","Picture this","Let me tell you something","Here's the thing","Great question","That's a great","So today we're talking about","In this video","There's something important","Most people don't realise","Let me ask you something","If you're watching this","Have you ever felt","Today I want to talk about","Something that doesn't get talked about","This is for anyone who","The truth is,","I want to share something","What if I told you","Here's what nobody tells you","We need to talk about","It's time to talk about"]
 WORD_TARGETS_AD={"hook":(8,12),"problem":(15,22),"story":(18,25),"solution_cta":(7,10)}
 WORD_TARGETS_CONTENT={"hook":(8,12),"problem":(18,25),"story":(20,28),"solution_cta":(7,10)}
@@ -91,7 +99,7 @@ def determine_mode():return"ad"if GITHUB_RUN_NUMBER%10==0 else"content"
 def load_app_facts():
     with open(PIPELINE_DIR/"app_facts.json") as f:return json.load(f)
 def load_keywords_data():
-    if not KEYWORDS_PATH.exists():return{"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s carrying everything for everyone.","seed_queries":["women mental health tips"],"hashtags":[],"visual_moods":[{"name":"default","description":"soft warm","pexels_queries":[]}]}}}
+    if not KEYWORDS_PATH.exists():return{"schedule":{},"niches":{"default":{"name":"Women's Mental Health","viewer_persona":"A woman in her 30s.","seed_queries":["women mental health tips"],"hashtags":[]}}}
     with open(KEYWORDS_PATH) as f:return json.load(f)
 def get_niche_for_today(kd):
     days=["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];today=days[datetime.now(timezone.utc).weekday()]
@@ -100,9 +108,9 @@ def pick_visual_mood(nd):
     moods=nd.get("visual_moods",[])
     if not moods:return{"name":"default","description":"warm cinematic","pexels_queries":[]}
     mi=GITHUB_RUN_NUMBER%len(moods);m=moods[mi];print(f"  Visual mood: {m['name']} ({mi+1}/{len(moods)})");return m
-def _serp_google_query(seed):r=requests.get(SERP_API_URL,params={"engine":"google","q":seed,"api_key":SERP_API_KEY,"num":10,"hl":"en","gl":"us"},timeout=30);r.raise_for_status();return r.json()
+def _serp_google_query(seed):r=requests.get(SERP_API_URL,params={"engine":"google","q":seed,"api_key":SERP_API_KEY,"num":10,"hl":"en","gl":SERP_COUNTRY},timeout=30);r.raise_for_status();return r.json()
 def _serp_autocomplete_query(seed):
-    try:r=requests.get(SERP_API_URL,params={"engine":"google_autocomplete","q":seed,"api_key":SERP_API_KEY,"hl":"en","gl":"us"},timeout=30);r.raise_for_status();return[s.get("value","").strip() for s in r.json().get("suggestions",[]) if s.get("value")]
+    try:r=requests.get(SERP_API_URL,params={"engine":"google_autocomplete","q":seed,"api_key":SERP_API_KEY,"hl":"en","gl":SERP_COUNTRY},timeout=30);r.raise_for_status();return[s.get("value","").strip() for s in r.json().get("suggestions",[]) if s.get("value")]
     except Exception as e:print(f"  Autocomplete failed: {e}");return[]
 def _word_count(t):return len(t.split())
 def _keyword_type(t):wc=_word_count(t);return"short_tail"if wc<=3 else("mid_tail"if wc<=5 else"long_tail")
@@ -121,7 +129,7 @@ def research_keyword_candidates_from_serp(seeds):
             for org in data.get("organic_results",[])[:3]:
                 t=org.get("title","").strip()
                 if t and t.lower() not in seen and len(t)<120:seen.add(t.lower());candidates.append({"text":t,"source":"organic_title","tail_type":_keyword_type(t),"word_count":_word_count(t),"seed":seed,"total_results":total})
-            print(f"  [GOOGLE] '{seed[:45]}': {paa} PAA | {rs} related | {total:,} results");time.sleep(0.5)
+            print(f"  [GOOGLE {SERP_COUNTRY.upper()}] '{seed[:45]}': {paa} PAA | {rs} related | {total:,} results");time.sleep(0.5)
         except Exception as e:print(f"  SERP failed for '{seed}': {e}")
     bases=[]
     for s in seeds:w=s.split();bases.extend([" ".join(w[:2])," ".join(w[:3])] if len(w)>=3 else[s])
@@ -129,7 +137,7 @@ def research_keyword_candidates_from_serp(seeds):
         ac_count=0
         for t in _serp_autocomplete_query(ac):
             if t and t.lower() not in seen and _word_count(t)<=6:seen.add(t.lower());candidates.append({"text":t,"source":"autocomplete","tail_type":_keyword_type(t),"word_count":_word_count(t),"seed":ac,"total_results":0});ac_count+=1
-        if ac_count:print(f"  [AUTOCOMPLETE] '{ac}': {ac_count} suggestions");time.sleep(0.5)
+        if ac_count:print(f"  [AUTOCOMPLETE {SERP_COUNTRY.upper()}] '{ac}': {ac_count} suggestions");time.sleep(0.5)
     s=sum(1 for c in candidates if c["tail_type"]=="short_tail");m=sum(1 for c in candidates if c["tail_type"]=="mid_tail");l=sum(1 for c in candidates if c["tail_type"]=="long_tail")
     print(f"  Candidates: {len(candidates)} ({s} short | {m} mid | {l} long)");return candidates
 
@@ -170,17 +178,17 @@ def generate_content_script(topic,niche,client):
     return _call_claude_raw(prompt,client,max_tokens=800)
 
 def generate_ad_script(app_facts,niche,client):
-    """Ad script v2 -- emotional resolution ending. No 'Play now' or 'Google Play' in voiceover."""
     at=random.choice(AD_TOPICS);f=random.choice(HOOK_FORMULAS);hb=_build_hook_block(f);print(f"  AD: {at['pain_point'][:65]}...")
     lp,hp=WORD_TARGETS_AD["problem"];ls,hs=WORD_TARGETS_AD["story"];lc,hc=WORD_TARGETS_AD["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI targeting women. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {at['pain_point']}\nINSIGHT: {at['insight']}\nFEATURE: {at['feature']}\n\n{hb}\n\nSCENES (KEEP TIGHT):\nhook -> problem ({lp}-{hp} words) -> story ({ls}-{hs} words -- mention MindCore AI ONCE, naturally, as "a space that listens" or "somewhere that doesn't judge" or "a place that takes you seriously". NEVER say download, play, Google Play.) -> solution_cta ({lc}-{hc} words -- end on PURE EMOTIONAL RESOLUTION. The last sentence must be emotional and saveable, NOT transactional. Examples: "You deserve to be heard." / "That space exists now." / "You don't have to carry this alone anymore." NEVER say "Play now" or "Download now" or "Google Play" -- the app CTA goes in the caption, not the voiceover.)\nBANNED IN VOICEOVER: "free trial", "first week free", "download now", "play now", "Google Play", "on Google Play"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{at['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{f['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI targeting women. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {at['pain_point']}\nINSIGHT: {at['insight']}\nFEATURE: {at['feature']}\n\n{hb}\n\nSCENES (KEEP TIGHT):\nhook -> problem ({lp}-{hp} words) -> story ({ls}-{hs} words -- mention MindCore AI ONCE as "a space that listens". NEVER say download, play, Google Play.) -> solution_cta ({lc}-{hc} words -- end on PURE EMOTIONAL RESOLUTION. NEVER say "Play now" or "Download now" or "Google Play".)\nBANNED IN VOICEOVER: "free trial", "first week free", "download now", "play now", "Google Play", "on Google Play"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{at['pain_point'][:55]}","seo_keyword":"AI mental health companion for women","render_format":"cinematic","hook_formula":"{f['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt,client,max_tokens=800)
 
 def build_full_script(script):
     parts=[]
-    for s in SCENE_ORDER:vo=script[s]["voiceover"].strip();
-    if vo and vo[-1] not in ".!?":vo+="."
-    parts.append(vo)
+    for s in SCENE_ORDER:
+        vo=script[s]["voiceover"].strip()
+        if vo and vo[-1] not in ".!?":vo+="."
+        parts.append(vo)
     return"  ".join(parts)
 
 def transcribe_audio_whisper(mp):
@@ -287,7 +295,7 @@ def generate_upload_guide(script,mode,niche,client):
     raise RuntimeError("Could not generate upload guide")
 def generate_upload_metadata(script,mode,niche,client):
     nt=" ".join(niche.get("hashtags",[]))
-    prompt=f"""Social media expert for women's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {script.get('video_type',mode).upper()} | SEO KEYWORD: {script.get('seo_keyword','')} | HOOK: {script.get('hook',{}).get('voiceover','')}\nCRITICAL: ORIGINAL sentences only.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {nt} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords\n- first_comment: punchy question (max 150 chars).\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
+    prompt=f"""Social media expert for women's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {script.get('video_type',mode).upper()} | SEO KEYWORD: {script.get('seo_keyword','')} | HOOK: {script.get('hook',{}).get('voiceover','')}\nCRITICAL: ORIGINAL sentences only.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. MUST include {REQUIRED_BRAND_HASHTAG} #womensmentalhealth {nt} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords\n- first_comment: punchy question (max 150 chars).\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
     for a in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             raw=client.messages.create(model="claude-sonnet-4-6",max_tokens=1000,messages=[{"role":"user","content":prompt}]).content[0].text.strip()
@@ -325,8 +333,8 @@ def main():
         with open(cp) as f:cfg=json.load(f)
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     kd=load_keywords_data();niche=get_niche_for_today(kd);mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v5.1")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Pexels | Voice only | Fixed word flashes")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v5.2")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Pexels | Voice only | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Niche: {niche['name']} | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")
