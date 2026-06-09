@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.2
+MindCore AI -- Male Pipeline Patch v2.3
 =======================================
+v2.3: SERP targets GB (European audience). Reads serp_country from niche_keywords.json.
 v2.2: Fixed power word flashes + softened ad CTA.
-      - Apostrophe bug fixed (ISN'T now matches stopword 'isnt')
-      - Expanded stopwords (no more flashing ACTUALLY, SAID, STOPPED)
-      - Expanded power words (DISMISSED, FLINCH, HEARD now flash)
-      - Ad CTA moved off-screen -- ends on emotional resolution
 v2.1: No background music.
 v2.0: Pexels restored.
-v1.1: POST_HOUR_UTC from env.
 """
 import json, os, sys, random
 from datetime import datetime, timedelta, timezone
@@ -19,10 +15,40 @@ from video_pipeline.word_flash import pick_power_word as fixed_pick_power_word
 from video_pipeline.word_flash import WORD_FLASH_STOPWORDS as FIXED_STOPWORDS
 from video_pipeline.word_flash import POWER_WORDS as FIXED_POWER_WORDS
 
-# Patch word flash into the pipeline module
+# Patch word flash
 pipeline.pick_power_word = fixed_pick_power_word
 pipeline.WORD_FLASH_STOPWORDS = FIXED_STOPWORDS
 pipeline.POWER_WORDS = FIXED_POWER_WORDS
+
+# Read SERP country from keywords JSON (default gb for European audience)
+_kd = pipeline.load_keywords_data()
+SERP_COUNTRY = _kd.get("serp_country", "gb")
+print(f"  SERP country: {SERP_COUNTRY}")
+
+
+# Patch SERP functions to use European targeting
+def _patched_serp_google_query(seed):
+    r = requests.get(pipeline.SERP_API_URL, params={
+        "engine": "google", "q": seed, "api_key": pipeline.SERP_API_KEY,
+        "num": 10, "hl": "en", "gl": SERP_COUNTRY
+    }, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+def _patched_serp_autocomplete_query(seed):
+    try:
+        r = requests.get(pipeline.SERP_API_URL, params={
+            "engine": "google_autocomplete", "q": seed,
+            "api_key": pipeline.SERP_API_KEY, "hl": "en", "gl": SERP_COUNTRY
+        }, timeout=30)
+        r.raise_for_status()
+        return [s.get("value", "").strip() for s in r.json().get("suggestions", []) if s.get("value")]
+    except Exception as e:
+        print(f"  Autocomplete failed: {e}")
+        return []
+
+pipeline._serp_google_query = _patched_serp_google_query
+pipeline._serp_autocomplete_query = _patched_serp_autocomplete_query
 
 
 def get_scheduled_post_time():
@@ -33,7 +59,7 @@ def get_scheduled_post_time():
     if now >= target: target += timedelta(days=1)
     scheduled = target.strftime("%Y-%m-%dT%H:%M:%SZ")
     slot = "A (11am Malta)" if post_hour == 9 else "B (3pm Malta)"
-    print(f"  [v8.0] Slot {slot} | {post_hour:02d}:00 UTC = {post_hour+2:02d}:00 Malta | Fires: {scheduled}")
+    print(f"  Slot {slot} | {post_hour:02d}:00 UTC = {post_hour+2:02d}:00 Malta | Fires: {scheduled}")
     return scheduled
 
 
@@ -62,7 +88,6 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
 
 
 def _patched_generate_ad_script(app_facts, niche, client):
-    """Ad script with softened CTA -- emotional resolution on screen, app CTA in caption only."""
     ad_topic = random.choice(pipeline.AD_TOPICS)
     formula = random.choice(pipeline.HOOK_FORMULAS)
     hook_block = pipeline._build_hook_block(formula)
@@ -80,7 +105,7 @@ FEATURE: {ad_topic['feature']}
 {hook_block}
 
 SCENES (KEEP TIGHT):
-hook -> problem ({lp}-{hp} words) -> story ({ls}-{hs} words -- mention MindCore AI ONCE, naturally, as "a space that listens" or "somewhere that doesn't judge" or "a place that takes you seriously". NEVER say download, play, Google Play.) -> solution_cta ({lc}-{hc} words -- end on PURE EMOTIONAL RESOLUTION. The last sentence must be emotional and saveable, NOT transactional. Examples: "You deserve to be heard." / "That space exists now." / "You don't have to carry this alone anymore." NEVER say "Play now" or "Download now" or "Google Play" -- the app CTA goes in the caption, not the voiceover.)
+hook -> problem ({lp}-{hp} words) -> story ({ls}-{hs} words -- mention MindCore AI ONCE as "a space that listens" or "somewhere that doesn't judge". NEVER say download, play, Google Play.) -> solution_cta ({lc}-{hc} words -- end on PURE EMOTIONAL RESOLUTION. NEVER say "Play now" or "Download now" or "Google Play".)
 BANNED IN VOICEOVER: "free trial", "first week free", "download now", "play now", "Google Play", "on Google Play"
 
 Return ONLY valid JSON:
@@ -92,7 +117,6 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
     if not pipeline.UPLOAD_POST_API_KEY: return {"skipped":True,"reason":"no API key"}
     user = cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
-    headers = {"Authorization": f"Apikey {pipeline.UPLOAD_POST_API_KEY}"}
     data = [
         ("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),
         ("title",metadata.get("tiktok_caption","")[:pipeline.TIKTOK_CAPTION_LIMIT]),
@@ -106,7 +130,7 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
     if scheduled_date: data.append(("scheduled_date",scheduled_date))
     try:
         with open(video_path,"rb") as f:
-            resp = requests.post(pipeline.UPLOAD_POST_API_URL,headers=headers,files=[("video",("mindcore_ai_video.mp4",f,"video/mp4"))],data=data,timeout=180)
+            resp = requests.post(pipeline.UPLOAD_POST_API_URL,headers={"Authorization":f"Apikey {pipeline.UPLOAD_POST_API_KEY}"},files=[("video",("mindcore_ai_video.mp4",f,"video/mp4"))],data=data,timeout=180)
         result = resp.json() if resp.headers.get("content-type","").startswith("application/json") else {"raw":resp.text}
         result["status_code"] = resp.status_code
         if scheduled_date: result["scheduled_date"] = scheduled_date
@@ -134,9 +158,9 @@ def main():
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
     slot_label = "A (11am Malta)" if os.environ.get("POST_HOUR_UTC")=="9" else "B (3pm Malta)"
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.0")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.1")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Slot {slot_label}")
-    print(f"  Pexels B-roll | Voice only | Fixed word flashes | Soft ad CTA")
+    print(f"  Pexels | Voice only | SERP country: {SERP_COUNTRY} | SEO keywords")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")
