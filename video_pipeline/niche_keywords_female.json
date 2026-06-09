@@ -1,4 +1,5 @@
 {
+  "serp_country": "gb",
   "schedule": {
     "monday": "perimenopause_wellness",
     "tuesday": "ai_companion",
@@ -11,310 +12,91 @@
   "niches": {
     "perimenopause_wellness": {
       "name": "Perimenopause & Women's Wellness",
-      "viewer_persona": "A woman in her 40s to mid-50s who feels like a stranger in her own life. Her mood shifts without warning. She is exhausted in a way sleep does not fix. She loves her family but feels invisible inside it. She would not describe herself as struggling. She would say she is just going through a lot right now.",
+      "viewer_persona": "A woman in her 40s to mid-50s who feels like a stranger in her own life. Her mood shifts without warning. She is exhausted in a way sleep does not fix. She loves her family but feels invisible inside it.",
       "seed_queries": [
-        "serious women",
-        "surviving instead of living",
-        "lowkey tired",
-        "feeling weak",
-        "always overthinking",
-        "if you are feeling disheartened",
-        "corrective emotional experience",
-        "expressionless women",
-        "im genuinely drained",
-        "feeling mentally tired",
-        "finding myself again and healing",
-        "feeling myself again",
-        "starting to heal myself",
-        "mental health journey",
-        "i need time to heal"
+        "perimenopause anxiety symptoms women",
+        "perimenopause mood swings what helps",
+        "why am I so exhausted in my 40s as a woman",
+        "hormonal anxiety in women over 40",
+        "perimenopause brain fog is it normal",
+        "feeling like a different person in perimenopause",
+        "perimenopause rage and anger why",
+        "body changes in perimenopause what is normal",
+        "perimenopause insomnia what helps",
+        "feeling invisible in midlife as a woman",
+        "perimenopause depression vs clinical depression",
+        "losing yourself in midlife how to cope",
+        "why perimenopause is not taken seriously",
+        "hormonal changes affecting mental health women",
+        "midlife exhaustion in women causes"
       ],
-      "hashtags": ["#perimenopause","#midlifewomen","#womenswellness","#hormonalhealth","#menopauseawareness"],
-      "hook_queries": [
-        "woman face close up tired looking away",
-        "close up woman hands dark morning",
-        "woman face shadow looking down tired",
-        "close up woman eyes tired morning light",
-        "woman alone kitchen morning tired close",
-        "woman face close up alone dark thoughtful"
-      ],
-      "problem_queries": [
-        "woman alone kitchen window morning tired",
-        "woman mirror reflection alone dark",
-        "woman hands lap alone dark room",
-        "woman staring window rain alone",
-        "woman tired bed morning dark",
-        "woman alone couch dark evening",
-        "woman hands tea cup alone dark",
-        "woman head down shadow dark"
-      ],
-      "story_queries": [
-        "aerial drone coastline sea sunrise wide",
-        "drone flight island coast morning golden",
-        "aerial ocean calm waves drone morning",
-        "drone wide landscape sunrise peaceful",
-        "woman walking garden morning alone",
-        "woman breath window morning light"
-      ],
-      "cta_queries": [
-        "aerial coastline sunrise golden drone wide",
-        "drone sea morning calm golden light",
-        "aerial island coast sunrise drone",
-        "drone ocean waves soft morning calm",
-        "aerial cliffs sea morning golden drone",
-        "drone wide open sea sunrise peaceful"
-      ],
-      "visual_moods": [
-        {
-          "name": "soft_morning",
-          "description": "warm early morning light, intimate domestic stillness, quiet before the world needs her",
-          "pexels_queries": ["woman morning light window soft","woman hands tea cup morning","soft morning light bedroom woman","woman sitting quiet kitchen morning","curtain light morning bedroom","woman reading morning soft light","morning window light warm bedroom","woman alone morning coffee warm"]
-        },
-        {
-          "name": "garden_nature",
-          "description": "woman in outdoor natural light, garden, growth, quiet solitude in nature",
-          "pexels_queries": ["woman alone garden peaceful","woman walking nature alone","woman flowers garden close","woman outdoor peaceful alone","woman forest path alone","woman sitting garden sunlight","woman nature peaceful quiet","woman trees light alone"]
-        },
-        {
-          "name": "reflective_moment",
-          "description": "a woman pausing, looking, being with herself: quiet introspection",
-          "pexels_queries": ["woman looking window alone","woman mirror reflection close","woman sitting quiet reflection","woman gazing distance alone","woman profile window light","woman alone chair quiet","woman thinking alone soft light","woman close up face peaceful"]
-        },
-        {
-          "name": "intimate_detail",
-          "description": "close-up details that carry warmth and meaning: hands, objects, textures",
-          "pexels_queries": ["aerial drone sea sunrise golden","drone coastline morning wide","aerial island ocean drone morning","woman hands close up warm","hands holding mug close warm","journal pen hands close up","candle warm light close up","woman hand window light"]
-        }
-      ]
+      "hashtags": ["#perimenopause","#midlifewomen","#womenswellness","#hormonalhealth","#menopauseawareness"]
     },
     "ai_companion": {
       "name": "AI Companion",
-      "viewer_persona": "A woman in her late 30s to early 50s who is the emotional centre of everyone around her but has no one to fill that role for her. She is highly functioning. She helps everyone. She carries things alone. She would be quietly curious about an AI that simply listens with no advice, no judgment, no one to worry about in return.",
+      "viewer_persona": "A woman in her late 30s to early 50s who is the emotional centre of everyone around her but has no one to fill that role for her. She carries things alone. She would be quietly curious about an AI that simply listens.",
       "seed_queries": [
-        "helping boyfriend with his mental health",
-        "surviving instead of living",
-        "night feeling",
-        "im feeling",
-        "lowkey tired",
-        "when she stops showing interest",
-        "always overthinking",
-        "corrective emotional experience",
-        "realizing how lonely you are",
-        "when nobody listens to you",
-        "being alone again",
-        "emotionally intelligent conversation"
+        "who to talk to when you feel alone as a woman",
+        "feeling like no one listens to me",
+        "always being the strong one is exhausting",
+        "nobody asks how I am feeling",
+        "emotional labour in relationships",
+        "feeling alone even when surrounded by family",
+        "affordable alternatives to therapy for women",
+        "why do I feel so disconnected from everyone",
+        "carrying everyone else emotions but my own",
+        "the invisible load women carry",
+        "emotional exhaustion from always giving",
+        "being the therapist friend is draining",
+        "what to do when you have no emotional support",
+        "women who hold everything together for everyone",
+        "feeling unheard in your own home"
       ],
-      "hashtags": ["#aimentalhealth","#mentalwellnessapp","#womenswellness","#selfcareapp"],
-      "hook_queries": [
-        "woman face phone glow dark night close",
-        "close up woman face alone thinking night",
-        "woman alone window night city lights close",
-        "close up woman face looking down dark",
-        "woman eyes dark night alone close up",
-        "woman face close up tired alone night"
-      ],
-      "problem_queries": [
-        "woman phone alone night dark room",
-        "woman bed dark night phone glow",
-        "woman sitting alone dark room night",
-        "woman looking window city night alone",
-        "woman alone coffee shop window rain",
-        "woman headphones dark alone",
-        "woman bench night city alone",
-        "woman hands lap dark alone night"
-      ],
-      "story_queries": [
-        "aerial drone city lights night wide",
-        "drone coastline night stars sea aerial",
-        "aerial sea calm night drone wide",
-        "drone flight island coast night",
-        "woman reaching toward warmth light",
-        "woman door warm light ahead"
-      ],
-      "cta_queries": [
-        "aerial sunrise sea drone morning golden",
-        "drone coastline morning light aerial wide",
-        "aerial island sunrise drone golden calm",
-        "drone ocean sunrise wide morning peaceful",
-        "aerial city dawn golden light drone",
-        "drone sea morning calm sunrise aerial"
-      ],
-      "visual_moods": [
-        {
-          "name": "night_stillness",
-          "description": "a woman alone at night with her phone, the quiet after everyone else is asleep",
-          "pexels_queries": ["woman phone night alone","woman screen glow dark room","woman bed phone night","person phone night quiet","woman alone dark room light","woman night alone thinking","phone glow woman dark","woman night window alone"]
-        },
-        {
-          "name": "soft_connection",
-          "description": "reaching toward warmth, openness, the possibility of being understood",
-          "pexels_queries": ["woman hand reaching light","woman window warm light","woman hands open soft light","woman looking up light","woman peaceful eyes closed light","woman reaching forward soft","woman doorway warm light","woman sunlight reaching"]
-        },
-        {
-          "name": "urban_alone",
-          "description": "alone in public, the invisible woman among people",
-          "pexels_queries": ["woman alone coffee shop window","woman alone city street","woman bench alone park","woman crowd alone blur","woman alone restaurant window","woman walking city alone","woman station alone quiet","woman alone urban evening"]
-        },
-        {
-          "name": "abstract_warmth",
-          "description": "warm aerial views as visual metaphor for connection and perspective",
-          "pexels_queries": ["aerial drone sea sunrise golden","drone coastline morning aerial wide","aerial island sunrise warm drone","drone ocean morning golden calm","warm light soft background","sunlight through curtain soft","amber light warm background","gentle morning light soft"]
-        }
-      ]
+      "hashtags": ["#aimentalhealth","#mentalwellnessapp","#womenswellness","#selfcareapp"]
     },
     "womens_mental_health": {
       "name": "Women's Mental Health",
-      "viewer_persona": "A woman 25 to 45 who has been told her feelings are too much for most of her life. She overthinks at night. She rehearses conversations. She apologises reflexively. She knows something is not quite right but does not feel she deserves help because others have it worse.",
+      "viewer_persona": "A woman 25 to 45 who has been told her feelings are too much for most of her life. She overthinks at night. She rehearses conversations. She apologises reflexively. She knows something is not right but does not feel she deserves help.",
       "seed_queries": [
-        "always overthinking",
-        "when she's sensitive",
-        "feeling like she's losing feelings",
-        "being sensitive in a relationship",
-        "serious women",
-        "expressionless women",
-        "surviving instead of living",
-        "corrective emotional experience",
-        "if you are feeling disheartened",
-        "emotional distress in relationships",
-        "feelings in relationships",
-        "being sad and alone",
-        "the feeling of never being enough",
-        "emotional expression in relationships",
-        "how do you feel right now"
+        "signs of depression in women over 30",
+        "high functioning anxiety in women symptoms",
+        "why do women apologise for everything",
+        "people pleasing and mental health effects",
+        "anxiety that looks like perfectionism",
+        "overthinking at night how to stop",
+        "feeling like you are never enough as a woman",
+        "emotional exhaustion from being everything for everyone",
+        "women who carry the mental load for the whole family",
+        "burnout in women symptoms and signs",
+        "setting boundaries without feeling guilty",
+        "why women feel guilty for resting",
+        "women who hide their depression",
+        "imposter syndrome and anxiety in women",
+        "emotional shutdown in women causes"
       ],
-      "hashtags": ["#womenhealing","#selfcompassion","#healingjourney","#womenswellness","#emotionalwellness"],
-      "hook_queries": [
-        "woman face close up shadow thoughtful alone",
-        "close up woman hands together dark",
-        "woman face looking away dark shadow close",
-        "close up woman tired face dark alone",
-        "woman head bowed alone dark room close",
-        "woman face close up alone thoughtful sad"
-      ],
-      "problem_queries": [
-        "woman sitting floor alone dark",
-        "woman journal closed dark alone",
-        "woman window rain grey alone",
-        "woman staring ceiling alone dark",
-        "woman hands face shadow close",
-        "woman alone bed morning dark",
-        "woman clutch knees floor alone dark",
-        "rain window woman alone dark"
-      ],
-      "story_queries": [
-        "aerial drone sea cliffs coast wide",
-        "drone flight coastline sunrise woman",
-        "aerial ocean waves calm morning drone",
-        "drone wide open landscape sunrise",
-        "woman walking nature path alone",
-        "woman looking up sky light"
-      ],
-      "cta_queries": [
-        "aerial coastline sunrise golden drone",
-        "drone sea morning wide calm",
-        "aerial island coast sunrise drone",
-        "drone ocean sunrise soft morning",
-        "aerial cliffs sunrise drone wide golden",
-        "drone sea horizon morning peaceful"
-      ],
-      "visual_moods": [
-        {
-          "name": "quiet_introspection",
-          "description": "a woman alone with her thoughts, soft and still",
-          "pexels_queries": ["woman journaling soft light","woman writing alone quiet","woman reading alone window","woman sitting floor alone","woman bedroom alone thoughtful","woman quiet moment alone","woman pen paper close","woman desk writing soft light"]
-        },
-        {
-          "name": "emotional_weather",
-          "description": "mood as environment: rain, grey light, overcast softness",
-          "pexels_queries": ["woman rain window alone","woman grey sky alone","rain window close up","woman overcast day alone","grey light woman thinking","woman fog morning alone","rain drops close up dark","woman cloudy day window"]
-        },
-        {
-          "name": "small_sanctuary",
-          "description": "a private space: bath, bed, bedroom: the last place that is hers",
-          "pexels_queries": ["woman bath candle peaceful","woman bed morning alone","woman couch quiet blanket","woman floor pillow alone","cosy room woman alone","woman blanket window","woman alone bedroom light","woman sitting floor quiet room"]
-        },
-        {
-          "name": "movement_release",
-          "description": "aerial perspective and movement: the body and the world opening up after being closed in",
-          "pexels_queries": ["aerial drone coastline woman morning","drone sea sunrise wide aerial","aerial ocean calm drone morning","drone wide landscape sunrise open","woman walking beach alone","woman forest walk peaceful","woman exercise alone morning","woman outdoor movement calm"]
-        }
-      ]
+      "hashtags": ["#womenhealing","#selfcompassion","#healingjourney","#womenswellness","#emotionalwellness"]
     },
     "anxiety_sos": {
       "name": "Anxiety & SOS Relief",
-      "viewer_persona": "A woman who knows what anxiety feels like from the inside but does not match the clinical description. Her anxiety looks like hypervigilance, people-pleasing, difficulty resting. She is functional. She is also exhausted in a very specific way she cannot explain to people who have not felt it.",
+      "viewer_persona": "A woman who knows what anxiety feels like from the inside but does not match the clinical description. Her anxiety looks like hypervigilance, people-pleasing, difficulty resting. She is functional. She is also exhausted.",
       "seed_queries": [
-        "always overthinking",
-        "night feeling",
-        "if you are feeling disheartened",
-        "when you don't care anymore in a relationship",
-        "surviving instead of living",
-        "lowkey tired",
-        "im genuinely drained",
-        "feeling weak",
-        "corrective emotional experience",
-        "i need time to heal",
-        "the silence after overthinking",
-        "how do you feel right now",
-        "tired and overwhelmed"
+        "how to calm anxiety at night quickly",
+        "physical symptoms of anxiety in women",
+        "anxiety chest tightness how to relieve",
+        "grounding techniques for anxiety attacks",
+        "why does anxiety get worse at night",
+        "somatic anxiety symptoms in women",
+        "breathing exercises for panic attacks",
+        "anxiety and stomach problems connection",
+        "how to stop an anxiety spiral",
+        "high functioning anxiety nobody can tell",
+        "anxiety from people pleasing",
+        "hypervigilance in women causes",
+        "nervous system dysregulation symptoms",
+        "why cant I relax even when nothing is wrong",
+        "physical signs your body is holding stress"
       ],
-      "hashtags": ["#anxietyrelief","#anxietysupport","#stressrelief","#calmingtools","#somatic"],
-      "hook_queries": [
-        "woman face close up worried tense dark",
-        "close up woman hands tight clasped tense",
-        "woman eyes closed tense dark close up",
-        "woman face anxious close dark room",
-        "close up woman face stressed alone dark",
-        "woman face close up eyes closed worried"
-      ],
-      "problem_queries": [
-        "woman hands clasped lap tense close",
-        "woman breathing tight close dark",
-        "woman eyes closed worry dark",
-        "woman shoulders tense dark alone",
-        "woman hands tight clutch dark",
-        "woman hunched shoulders dark room",
-        "woman phone tense dark night",
-        "woman pacing blur dark room"
-      ],
-      "story_queries": [
-        "aerial drone calm sea morning wide",
-        "drone flight open landscape sunrise calm",
-        "aerial ocean still morning drone peaceful",
-        "drone wide coast sunrise calm",
-        "woman hands open lap calm",
-        "woman slow breath close calm"
-      ],
-      "cta_queries": [
-        "aerial sea calm sunrise golden drone",
-        "drone coastline morning peaceful wide",
-        "aerial ocean still sunrise drone",
-        "drone wide open landscape morning calm",
-        "aerial island sunrise soft golden drone",
-        "drone sea horizon calm morning light"
-      ],
-      "visual_moods": [
-        {
-          "name": "breathing_stillness",
-          "description": "the act of being still, slowing down, breath as the focus",
-          "pexels_queries": ["woman breathing calm close","woman eyes closed peaceful","woman meditation calm alone","woman hands lap breathing","woman still moment calm","woman peaceful face close","woman eyes closed light","woman sitting calm quiet"]
-        },
-        {
-          "name": "nature_grounding",
-          "description": "feet on ground, hands in nature, sensory calming",
-          "pexels_queries": ["woman barefoot grass close","hands touching water close","woman ground nature feet","hands leaves nature close","woman sitting earth nature","feet grass close morning","woman nature grounding","hands soil garden close"]
-        },
-        {
-          "name": "calm_water",
-          "description": "water as calm: aerial ocean, still lakes, gentle movement",
-          "pexels_queries": ["aerial drone ocean calm morning","drone sea still sunrise aerial","aerial coastline calm morning drone","drone ocean waves gentle aerial","calm water surface still","lake still morning reflection","water ripple slow calm","pond morning calm alone"]
-        },
-        {
-          "name": "light_abstract",
-          "description": "soft diffused light and open aerial: the visual feeling of calm arriving",
-          "pexels_queries": ["aerial drone sunrise wide calm","drone open sky morning aerial","aerial sea morning soft golden","drone coastline sunrise calm wide","soft light diffused calm","sunlight through curtain soft","warm bokeh light background","gentle light window soft"]
-        }
-      ]
+      "hashtags": ["#anxietyrelief","#anxietysupport","#stressrelief","#calmingtools","#somatic"]
     }
   }
 }

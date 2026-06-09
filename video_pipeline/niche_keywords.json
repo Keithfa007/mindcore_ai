@@ -1,4 +1,5 @@
 {
+  "serp_country": "gb",
   "schedule": {
     "monday": "recovery",
     "tuesday": "ai_companion",
@@ -11,307 +12,91 @@
   "niches": {
     "recovery": {
       "name": "Recovery & Sobriety",
-      "viewer_persona": "A man in his late 30s to early 50s, in active recovery or struggling to stay sober. He is often awake at 2am not from cravings, but from the feelings sobriety uncovered that alcohol used to bury. He holds it together for his family. Nobody at work knows. He questions whether the flatness he feels will ever pass.",
+      "viewer_persona": "A man in his late 30s to early 50s, in active recovery or struggling to stay sober. He is often awake at 2am not from cravings, but from the feelings sobriety uncovered that alcohol used to bury. He holds it together for his family. Nobody at work knows.",
       "seed_queries": [
-        "sober tiktok recovery",
-        "surviving instead of living",
-        "lowkey tired",
-        "i feel like i cant do anything right",
-        "sobriety emotional recovery",
-        "when a man says he's tired",
-        "im genuinely drained",
-        "night feeling sober",
-        "mental health recovery",
-        "addiction story",
-        "finding myself again and healing",
-        "the feeling of never being enough"
+        "how long does it take to feel normal after quitting drinking",
+        "why do I feel worse after getting sober",
+        "emotional sobriety what does it mean",
+        "depression after quitting alcohol",
+        "anger issues in early recovery",
+        "feeling empty after getting sober",
+        "sobriety and loneliness in men",
+        "dealing with shame in recovery",
+        "why does sobriety feel harder than drinking",
+        "post acute withdrawal syndrome how long does it last",
+        "sober but still struggling mentally",
+        "signs of relapse before it happens",
+        "emotional numbness after quitting alcohol",
+        "how to deal with boredom in sobriety",
+        "why recovery feels like grief"
       ],
-      "hashtags": ["#sobertok","#recoveryispossible","#soberaf","#sobercommunity","#addictionrecovery"],
-      "hook_queries": [
-        "man face close up dark shadow tired",
-        "close up man hands clasped together dark",
-        "man looking down alone dark room close",
-        "man hands covering face shadow dark",
-        "close up man eyes tired shadow",
-        "man sitting alone dark thinking close up"
-      ],
-      "problem_queries": [
-        "empty whiskey glass dark table alone",
-        "silhouette dark room single lamp window",
-        "man hands covering face shadow dark",
-        "ceiling stare dark bedroom night",
-        "rain streaks window night street bokeh",
-        "hands clasped table dark light alone",
-        "door closed dark hallway alone",
-        "empty bar stool dimly lit blurred"
-      ],
-      "story_queries": [
-        "aerial drone coastline sea waves below",
-        "drone shot winding road mountain sunrise",
-        "aerial beach waves breaking sunrise golden",
-        "drone flight ocean horizon morning calm",
-        "feet walking wet pavement forward",
-        "man walking away path sunrise silhouette"
-      ],
-      "cta_queries": [
-        "aerial drone coastline sunrise golden light",
-        "drone sea horizon morning calm light",
-        "aerial island coast golden sky morning",
-        "drone ocean waves sunrise peaceful",
-        "city lights aerial dawn morning drone",
-        "aerial cliffs sea sunrise drone wide"
-      ],
-      "visual_moods": [
-        {
-          "name": "dawn_renewal",
-          "description": "quiet early morning, new beginning, stillness before the world wakes",
-          "pexels_queries": ["man alone sunrise morning","empty road dawn mist","hands coffee mug morning light","window light morning fog","person walking alone sunrise","quiet room morning light beam","dawn sky empty street","man sitting porch morning"]
-        },
-        {
-          "name": "night_weight",
-          "description": "late night solitude, weight of thoughts, darkness with single light source",
-          "pexels_queries": ["man alone dark room lamp","city lights rain window night","person sitting dark silhouette","night bedroom ceiling stare","street lamp fog night alone","man hands face dark room","empty kitchen night light","window rain night city"]
-        },
-        {
-          "name": "forward_motion",
-          "description": "movement, walking, journey, progress without destination",
-          "pexels_queries": ["aerial drone coastline sea","drone road winding ahead","aerial ocean sunrise drone","drone beach waves aerial","man walking alone forest path","feet walking wet pavement","person crossing bridge fog","walking away perspective road"]
-        },
-        {
-          "name": "intimate_detail",
-          "description": "close-up objects and hands carrying quiet emotional weight",
-          "pexels_queries": ["hands holding cup close up","journal pen writing close","clock hands time passing","hands folded table thinking","candle flame dark background","keys hand close up","ring hands close up detail","empty glass table alone"]
-        }
-      ]
+      "hashtags": ["#sobertok","#recoveryispossible","#soberaf","#sobercommunity","#addictionrecovery"]
     },
     "ai_companion": {
       "name": "AI Companion",
-      "viewer_persona": "A man in his 40s who lives in his head. He has people around him but feels fundamentally alone like he is performing a version of himself rather than living. He is curious about technology. He would never call a helpline. He would talk to an AI before he would talk to a friend about how he really feels.",
+      "viewer_persona": "A man in his 40s who lives in his head. He has people around him but feels fundamentally alone. He would never call a helpline. He would talk to an AI before he would talk to a friend about how he really feels.",
       "seed_queries": [
-        "surviving instead of living",
-        "night feeling",
-        "im feeling",
-        "when a man says he's tired",
-        "im genuinely drained",
-        "lowkey tired",
-        "i feel like i cant do anything right",
-        "empathetic men",
-        "being alone again",
-        "when nobody listens to you",
-        "realizing how lonely you are",
-        "emotionally intelligent conversation"
+        "who to talk to when you feel alone at night",
+        "cant talk to anyone about my feelings as a man",
+        "feeling alone even in a relationship",
+        "nobody understands what I am going through",
+        "mental health support when you have no one",
+        "is it normal to feel disconnected from everyone",
+        "affordable alternatives to therapy",
+        "why is it hard for men to open up about feelings",
+        "feeling like a burden to everyone around you",
+        "how to deal with loneliness as a man over 35",
+        "men who feel alone but seem fine",
+        "what to do when you cant afford a therapist",
+        "how to process emotions as a man",
+        "feeling invisible to everyone around you",
+        "why do men bottle up emotions"
       ],
-      "hashtags": ["#aimentalhealth","#mentalwellnessapp","#aitherapy","#techmentalhealth"],
-      "hook_queries": [
-        "man face phone glow dark night close",
-        "close up man face alone thinking dark",
-        "man alone window night city lights close",
-        "close up man face looking down dark",
-        "man eyes dark night alone close up",
-        "man face close up tired alone night"
-      ],
-      "problem_queries": [
-        "man phone alone dark room night glow",
-        "city street crowd alone blur night",
-        "empty table coffee shop window rain",
-        "person crowd alone blur bokeh",
-        "man sitting subway alone window",
-        "phone glow face dark bedroom night",
-        "man alone bench night city lights",
-        "window rain city lights alone night"
-      ],
-      "story_queries": [
-        "aerial drone city lights night skyline",
-        "drone flight city buildings night glow",
-        "aerial coastline night stars drone",
-        "drone wide ocean night horizon calm",
-        "hand reaching toward warmth light",
-        "person walking night city alone"
-      ],
-      "cta_queries": [
-        "aerial city sunrise drone morning golden",
-        "drone ocean sunrise morning wide",
-        "aerial coastline dawn light drone",
-        "city skyline aerial sunrise morning",
-        "drone sea horizon sunrise calm golden",
-        "aerial island dawn morning drone wide"
-      ],
-      "visual_moods": [
-        {
-          "name": "digital_solitude",
-          "description": "person and technology at night, the glow of a screen as the only companion",
-          "pexels_queries": ["person phone glow dark room","man phone night alone","screen light face darkness","person laptop night solitude","phone glow bedroom night","man sitting phone light dark","night tablet screen glow","person scrolling dark background"]
-        },
-        {
-          "name": "reaching_connection",
-          "description": "reaching toward light, bridge between isolation and connection",
-          "pexels_queries": ["hand reaching toward light","person window light reaching","silhouette reaching upward","hands open light beam","person doorway light hope","shadow reaching window","man looking horizon peaceful","person light end tunnel"]
-        },
-        {
-          "name": "city_solitude",
-          "description": "alone in a crowd, urban isolation, modern loneliness",
-          "pexels_queries": ["man alone busy street blur","person crowd alone","city night one person","alone coffee shop window rain","urban street one person rain","man standing empty station","person alone park bench city","night city walk alone"]
-        },
-        {
-          "name": "abstract_light",
-          "description": "abstract light and space as metaphor for technology and human connection",
-          "pexels_queries": ["aerial drone city night lights","drone city skyline sunrise","aerial ocean drone morning","drone coastline wide sunrise","abstract light particles dark","blue light streams dark background","soft light dark room abstract","particles floating dark background"]
-        }
-      ]
+      "hashtags": ["#aimentalhealth","#mentalwellnessapp","#aitherapy","#techmentalhealth"]
     },
     "mens_mental_health": {
       "name": "Men's Mental Health",
-      "viewer_persona": "A man mid-30s to late 40s who has been the strong one for so long he has forgotten what it feels like to not be. He is not in crisis. He is just exhausted in a way he cannot explain to anyone. He would not use the word depressed. He would say he is not himself lately.",
+      "viewer_persona": "A man mid-30s to late 40s who has been the strong one for so long he has forgotten what it feels like to not be. He is not in crisis. He is just exhausted in a way he cannot explain to anyone.",
       "seed_queries": [
-        "empathetic men",
-        "when a man says he's tired",
-        "i feel like i cant do anything right",
-        "fragile masculinity",
-        "always overthinking",
-        "corrective emotional experience",
-        "if you are feeling disheartened",
-        "im genuinely drained",
-        "surviving instead of living",
-        "emotional issues",
-        "suffer in silence",
-        "feeling numb and disconnected",
-        "the feeling of never being enough",
-        "power of being silent"
+        "signs of depression in men over 35",
+        "why men dont talk about their feelings",
+        "high functioning depression symptoms in men",
+        "male burnout symptoms and warning signs",
+        "emotional numbness in men causes",
+        "how to know if you are depressed as a man",
+        "men mental health stigma",
+        "anxiety in men over 35 symptoms",
+        "why do men shut down emotionally",
+        "midlife crisis or depression how to tell the difference",
+        "men who carry everything alone",
+        "hidden depression in men warning signs",
+        "why men withdraw when they are struggling",
+        "anger as a sign of depression in men",
+        "men who never ask for help"
       ],
-      "hashtags": ["#malementalhealth","#mensmentalhealthmatters","#emotionalhealthformen","#menssupport"],
-      "hook_queries": [
-        "man face close up shadow tired thoughtful",
-        "close up man hands together dark thinking",
-        "man head bowed alone dark room close",
-        "man face looking away dark shadow close",
-        "close up man tired face morning shadow",
-        "man alone sitting dark close up face"
-      ],
-      "problem_queries": [
-        "man head down dark park bench grey",
-        "man sitting window rain grey sky",
-        "hands folded table dark alone",
-        "man staring empty wall shadow",
-        "grey sky overcast empty field",
-        "man alone fog road dark",
-        "heavy coat man dark rain street",
-        "man looking down floor shadow"
-      ],
-      "story_queries": [
-        "aerial drone sea cliffs wide below",
-        "drone shot landscape horizon wide open",
-        "aerial ocean waves sunset drone",
-        "drone flight mountains wide open sky",
-        "man walking alone path forward",
-        "man face tilted up sky clouds"
-      ],
-      "cta_queries": [
-        "aerial coastline sunrise drone golden",
-        "drone sea horizon morning wide",
-        "aerial city dawn light drone",
-        "drone ocean sunrise morning calm",
-        "aerial cliffs sunrise wide drone",
-        "drone island sea morning golden light"
-      ],
-      "visual_moods": [
-        {
-          "name": "weight_of_silence",
-          "description": "a man carrying something invisible, heavy still atmosphere",
-          "pexels_queries": ["man sitting alone window rain","man head down thinking alone","person alone park bench grey","man staring distance alone","dark room man sitting chair","man looking down shadow light","person alone empty room","man hands together thinking"]
-        },
-        {
-          "name": "weather_mood",
-          "description": "rain, grey skies, empty natural spaces as mood environment",
-          "pexels_queries": ["rain window grey sky","overcast sky empty field","rain street moody grey","fog forest morning alone","grey sky bare trees","rain drops window close up","misty morning empty landscape","clouds heavy sky open field"]
-        },
-        {
-          "name": "empty_spaces",
-          "description": "rooms and places that feel the absence of something",
-          "pexels_queries": ["empty chair room sunlight","abandoned room window light","empty table two chairs","hallway perspective empty","single chair spotlight dark","room dust light beam","empty bed morning light","doorway leading empty room light"]
-        },
-        {
-          "name": "man_in_nature",
-          "description": "man alone in vast natural environment, scale and solitude",
-          "pexels_queries": ["aerial drone sea cliffs wide","drone flight ocean horizon sunrise","aerial beach waves drone morning","drone mountain wide open sky","man alone mountain view","lone figure field horizon","silhouette man sunset nature","man overlooking valley alone"]
-        }
-      ]
+      "hashtags": ["#malementalhealth","#mensmentalhealthmatters","#emotionalhealthformen","#menssupport"]
     },
     "mood_wellness": {
       "name": "Mood & General Wellness",
-      "viewer_persona": "A man in his 30s to 40s who notices patterns in himself but has no framework to understand them. He is functional. He goes to the gym, does his job, looks fine from the outside. But something is off and he cannot name it. He is the type to download an app instead of talking to someone.",
+      "viewer_persona": "A man in his 30s to 40s who notices patterns in himself but has no framework to understand them. He is functional. He goes to the gym, does his job, looks fine from the outside. But something is off and he cannot name it.",
       "seed_queries": [
-        "always overthinking",
-        "night feeling",
-        "lowkey tired",
-        "if you are feeling disheartened",
-        "surviving instead of living",
-        "im genuinely drained",
-        "corrective emotional experience",
-        "when a man says he's tired",
-        "i feel like i cant do anything right",
-        "how life feels right now",
-        "the silence after overthinking",
-        "tired and overwhelmed",
-        "feeling mentally tired",
-        "mental health journey"
+        "why am I always tired even with enough sleep",
+        "feeling unmotivated and stuck in life",
+        "how to stop overthinking at night",
+        "brain fog and mental exhaustion causes",
+        "why do I feel numb and empty inside",
+        "losing interest in everything I used to enjoy",
+        "feeling like nothing matters anymore",
+        "how to get out of a mental rut",
+        "emotional exhaustion from work symptoms",
+        "can stress make you physically ill",
+        "mood tracking benefits for mental health",
+        "self care tips for men who hate self care",
+        "why do I feel worse on days off",
+        "sunday night anxiety reasons",
+        "feeling disconnected from your own life"
       ],
-      "hashtags": ["#moodtracker","#dailywellness","#selfawareness","#wellnessjourney","#menswellness"],
-      "hook_queries": [
-        "man close up face tired morning thinking",
-        "close up man hands dark desk thinking",
-        "man face window morning tired close up",
-        "close up man eyes tired morning light",
-        "man coffee dark morning close up face",
-        "man face close up distracted thinking"
-      ],
-      "problem_queries": [
-        "man tired desk night lamp alone",
-        "man coffee dark morning tired",
-        "notebook closed dark table alone",
-        "man head desk dark night",
-        "alarm clock dark night blurred",
-        "man distracted window dark room",
-        "scattered desk night lamp alone",
-        "man looking outside window dark"
-      ],
-      "story_queries": [
-        "aerial drone nature landscape morning wide",
-        "drone flight open countryside sunrise",
-        "aerial sea calm morning drone",
-        "drone wide open sky horizon",
-        "man walking park morning light",
-        "running shoes pavement morning light"
-      ],
-      "cta_queries": [
-        "aerial sunrise drone morning golden wide",
-        "drone ocean horizon morning calm",
-        "aerial coastline morning drone light",
-        "drone city sunrise aerial golden",
-        "aerial sea drone morning peaceful",
-        "drone wide landscape sunrise calm"
-      ],
-      "visual_moods": [
-        {
-          "name": "morning_ritual",
-          "description": "intentional morning, routine, the calm start of something",
-          "pexels_queries": ["morning routine man calm","coffee desk morning notebook","man stretching morning light","journal writing morning desk","sunrise window morning calm","man gym early morning alone","morning light desk minimal","person breakfast morning calm"]
-        },
-        {
-          "name": "reflection",
-          "description": "mirrors, water, glass: moments of self-seeing",
-          "pexels_queries": ["man mirror reflection alone","water reflection person","glass reflection person city","man looking mirror morning","reflection puddle person","mirror bedroom morning light","window reflection face","water surface ripple calm"]
-        },
-        {
-          "name": "movement_wellness",
-          "description": "body in motion, and aerial perspective showing the world opening up",
-          "pexels_queries": ["aerial drone coastline wide morning","drone sea calm sunrise aerial","aerial nature open landscape drone","man running alone trail","person walking meditation nature","man gym alone focus","running silhouette sunset","person outdoor exercise morning"]
-        },
-        {
-          "name": "minimal_calm",
-          "description": "clean, minimal, quiet: order as a form of wellbeing",
-          "pexels_queries": ["minimal desk clean morning","plant window light minimal","clean room morning light","notebook pen minimal desk","coffee steam minimal background","simple table morning calm","white room natural light","minimal lifestyle calm morning"]
-        }
-      ]
+      "hashtags": ["#moodtracker","#dailywellness","#selfawareness","#wellnessjourney","#menswellness"]
     }
   }
 }
