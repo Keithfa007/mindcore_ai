@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Ebook Promotion Pipeline v2.2
+MindCore AI — Ebook Promotion Pipeline v2.3
 ============================================
-v2.2: Uploads to TikTok + YouTube (video) and Facebook (image).
-v2.1: Updated hashtags with trending 2026 tags.
-v2: ElevenLabs TTS. 4x/week schedule.
+v2.3: Single upload call -- video to TikTok + Facebook + YouTube.
+v2.2: Added YouTube.
+v2.1: Updated hashtags.
+v2: ElevenLabs TTS. 4x/week.
 """
 
 import os, sys, json, random, requests, subprocess, tempfile, datetime
@@ -25,7 +26,7 @@ ELEVENLABS_API_KEY  = os.environ.get("ELEVENLABS_API_KEY", "")
 ELEVENLABS_VOICE_ID = "jfIS2w2yJi0grJZPyEsk"
 ELEVENLABS_API_URL  = "https://api.elevenlabs.io/v1/text-to-speech"
 
-HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #recovery #addiction #sobriety #sobertok #soberlife #ebook #selfhelp #healing #selflove #fyp #mentalhealthrecovery"
+TK_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #recovery #addiction #sobriety #sobertok #soberlife #ebook #selfhelp #healing #selflove #fyp #mentalhealthrecovery"
 FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #recovery #addiction #sobriety #healing #selfhelp #mindcoreai"
 
 PROMO_ANGLES = [
@@ -116,14 +117,17 @@ def get_scheduled_time(hour_utc):
     if now >= target: target += datetime.timedelta(days=1)
     return target.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-def upload_video_platforms(video_path, caption, yt_title, yt_description, yt_tags, scheduled_date=None):
-    """Upload video to TikTok + YouTube in a single Upload-Post call."""
+def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, yt_title, yt_description, yt_tags, scheduled_date=None):
+    """Upload video to TikTok + Facebook + YouTube in a single Upload-Post call."""
     if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
     data = [
         ("user", UPLOAD_POST_USER),
         ("platform[]", "tiktok"),
+        ("platform[]", "facebook"),
         ("platform[]", "youtube"),
-        ("title", caption[:2200]),
+        ("title", tiktok_caption[:2200]),
+        ("facebook_title", fb_title[:255]),
+        ("facebook_description", fb_description),
         ("youtube_title", yt_title[:100]),
         ("youtube_description", yt_description[:5000]),
         ("youtube_tags", yt_tags),
@@ -135,27 +139,14 @@ def upload_video_platforms(video_path, caption, yt_title, yt_description, yt_tag
                                  files=[("video", ("ebook_promo.mp4", f, "video/mp4"))], data=data, timeout=180)
         result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
         result["status_code"] = resp.status_code
-        print(f"   TikTok + YouTube upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        if scheduled_date: result["scheduled_date"] = scheduled_date
+        print(f"   Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        if not resp.ok: print(f"   {resp.text[:300]}")
         return result
     except Exception as e: print(f"   Upload failed: {e}"); return {"error": str(e)}
 
-def upload_facebook_image(image_path, caption, scheduled_date=None):
-    if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
-    data = [("user", UPLOAD_POST_USER), ("platform[]", "facebook"),
-            ("facebook_title", EBOOK_TITLE[:255]), ("facebook_description", caption)]
-    if scheduled_date: data.append(("scheduled_date", scheduled_date))
-    try:
-        with open(image_path, "rb") as f:
-            resp = requests.post(UPLOAD_POST_API_URL, headers={"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"},
-                                 files=[("image", ("ebook_cover.png", f, "image/png"))], data=data, timeout=180)
-        result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
-        result["status_code"] = resp.status_code
-        print(f"   Facebook upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
-        return result
-    except Exception as e: print(f"   Facebook upload failed: {e}"); return {"error": str(e)}
-
 def main():
-    print("== MindCore AI — Ebook Promotion Pipeline v2.2 ==\n")
+    print("== MindCore AI — Ebook Promotion Pipeline v2.3 ==\n")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
     scheduled_date = get_scheduled_time(10)
@@ -173,22 +164,22 @@ def main():
         if has_voice: create_static_video_with_voice(cover, audio, video)
         else: create_static_video_silent(cover, video)
 
-        tiktok_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{HASHTAGS}"
-        fb_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{FB_HASHTAGS}"
+        tiktok_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{TK_HASHTAGS}"
+        fb_title = EBOOK_TITLE
+        fb_description = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{FB_HASHTAGS}"
         yt_title = f"{EBOOK_TITLE} — {EBOOK_SUBTITLE} #Shorts"[:100]
         yt_description = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\nA deeply personal recovery guide by Keith, Founder of MindCore AI.\n\n#mindcoreai #mentalhealth #recovery #addiction #sobriety #ebook #selfhelp #Shorts"
         yt_tags = "mental health,recovery,addiction,sobriety,ebook,self help,the silent struggle,mindcore ai,healing,wellness"
 
-        print("5. Uploading video to TikTok + YouTube...")
-        video_result = upload_video_platforms(video, tiktok_caption, yt_title, yt_description, yt_tags, scheduled_date=scheduled_date)
+        print("5. Uploading to TikTok + Facebook + YouTube...")
+        result = upload_all_platforms(video, tiktok_caption, fb_title, fb_description, yt_title, yt_description, yt_tags, scheduled_date=scheduled_date)
 
-        print("6. Uploading image to Facebook...")
-        fb_result = upload_facebook_image(cover, fb_caption, scheduled_date=scheduled_date)
-
-        for platform, result in [("TikTok + YouTube", video_result), ("Facebook", fb_result)]:
-            if result.get("status_code") in (200, 202): print(f"   {platform}: Scheduled OK — {scheduled_date}")
-            elif result.get("skipped"): print(f"   {platform}: Skipped")
-            else: print(f"   {platform}: Check — {result.get('status_code', 'unknown')}")
+        if result.get("status_code") in (200, 202):
+            print(f"   All platforms: Scheduled OK — {scheduled_date}")
+        elif result.get("skipped"):
+            print(f"   Skipped — {result.get('reason')}")
+        else:
+            print(f"   Check result — {result.get('status_code', 'unknown')}")
 
     print("\n== Done ==")
 
