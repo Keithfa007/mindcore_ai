@@ -1,9 +1,11 @@
 name: Ebook Promo Pipeline
 
+# 4x per week: Monday, Wednesday, Friday, Sunday at 08:00 UTC (10:00 Malta)
+# Each run picks a random promo angle from 8 options -- different script every time
 on:
   schedule:
-    - cron: '0 8 * * 0'    # Every Sunday 08:00 UTC (10:00 Malta)
-  workflow_dispatch:         # Manual trigger
+    - cron: '0 8 * * 0,1,3,5'    # Sun, Mon, Wed, Fri 08:00 UTC
+  workflow_dispatch:               # Manual trigger
 
 jobs:
   ebook-promo:
