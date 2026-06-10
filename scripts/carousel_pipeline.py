@@ -24,7 +24,7 @@ GITHUB_RUN_NUMBER=int(os.environ.get("GITHUB_RUN_NUMBER","1"))
 UPLOAD_POST_PHOTOS_URL="https://api.upload-post.com/api/upload_photos"
 OUTPUT_DIR=Path("scripts/output_carousel"); PIPELINE_DIR=Path("scripts"); HISTORY_PATH=PIPELINE_DIR/"carousel_history.json"
 REQUIRED_BRAND_HASHTAG="#mindcoreai"
-HASHTAGS="#mindcoreai #mentalhealth #fyp #foryou #mentalhealthawareness #anxiety #healing #selfcare"
+HASHTAGS="#mindcoreai #mentalhealth #mentalhealthmatters #fyp #foryou #mentalhealthawareness #anxiety #depression #healing #selfcare #selflove #therapy #healingjourney"
 IMAGE_WIDTH=1080; IMAGE_HEIGHT=1920; TIKTOK_TITLE_LIMIT=90; TIKTOK_DESC_LIMIT=4000; CLAUDE_MAX_RETRIES=8; CLAUDE_RETRY_BASE=30
 POST_HOUR_UTC=11
 
