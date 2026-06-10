@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.3
+MindCore AI -- Male Pipeline Patch v2.4
 =======================================
-v2.3: SERP targets GB (European audience). Reads serp_country from niche_keywords.json.
+v2.4: ElevenLabs TTS (replaces Fish Audio for voiceover).
+v2.3: SERP targets GB.
 v2.2: Fixed power word flashes + softened ad CTA.
 v2.1: No background music.
 v2.0: Pexels restored.
@@ -14,39 +15,31 @@ import video_pipeline.male_pipeline as pipeline
 from video_pipeline.word_flash import pick_power_word as fixed_pick_power_word
 from video_pipeline.word_flash import WORD_FLASH_STOPWORDS as FIXED_STOPWORDS
 from video_pipeline.word_flash import POWER_WORDS as FIXED_POWER_WORDS
+from video_pipeline.tts import generate_elevenlabs_tts, MALE_VOICE_ID
 
 # Patch word flash
 pipeline.pick_power_word = fixed_pick_power_word
 pipeline.WORD_FLASH_STOPWORDS = FIXED_STOPWORDS
 pipeline.POWER_WORDS = FIXED_POWER_WORDS
 
-# Read SERP country from keywords JSON (default gb for European audience)
+# Patch TTS: ElevenLabs male voice replaces Fish Audio
+def _elevenlabs_tts(script_text, output_path):
+    return generate_elevenlabs_tts(script_text, output_path, MALE_VOICE_ID)
+pipeline.generate_fish_audio_tts = _elevenlabs_tts
+
+# Read SERP country from keywords JSON
 _kd = pipeline.load_keywords_data()
 SERP_COUNTRY = _kd.get("serp_country", "gb")
 print(f"  SERP country: {SERP_COUNTRY}")
 
-
-# Patch SERP functions to use European targeting
 def _patched_serp_google_query(seed):
-    r = requests.get(pipeline.SERP_API_URL, params={
-        "engine": "google", "q": seed, "api_key": pipeline.SERP_API_KEY,
-        "num": 10, "hl": "en", "gl": SERP_COUNTRY
-    }, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
+    r = requests.get(pipeline.SERP_API_URL, params={"engine":"google","q":seed,"api_key":pipeline.SERP_API_KEY,"num":10,"hl":"en","gl":SERP_COUNTRY}, timeout=30)
+    r.raise_for_status(); return r.json()
 def _patched_serp_autocomplete_query(seed):
     try:
-        r = requests.get(pipeline.SERP_API_URL, params={
-            "engine": "google_autocomplete", "q": seed,
-            "api_key": pipeline.SERP_API_KEY, "hl": "en", "gl": SERP_COUNTRY
-        }, timeout=30)
-        r.raise_for_status()
-        return [s.get("value", "").strip() for s in r.json().get("suggestions", []) if s.get("value")]
-    except Exception as e:
-        print(f"  Autocomplete failed: {e}")
-        return []
-
+        r = requests.get(pipeline.SERP_API_URL, params={"engine":"google_autocomplete","q":seed,"api_key":pipeline.SERP_API_KEY,"hl":"en","gl":SERP_COUNTRY}, timeout=30)
+        r.raise_for_status(); return [s.get("value","").strip() for s in r.json().get("suggestions",[]) if s.get("value")]
+    except Exception as e: print(f"  Autocomplete failed: {e}"); return []
 pipeline._serp_google_query = _patched_serp_google_query
 pipeline._serp_autocomplete_query = _patched_serp_autocomplete_query
 
@@ -65,7 +58,7 @@ def get_scheduled_post_time():
 
 def _patched_render_cinematic_video(script_text, mood, niche, script=None):
     from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
-    print("\n  [TTS] Generating voiceover...")
+    print("\n  [TTS] Generating voiceover (ElevenLabs)...")
     audio_path = str(pipeline.OUTPUT_DIR / "voiceover.mp3")
     pipeline.generate_fish_audio_tts(script_text, audio_path)
     print("\n  [Subtitles] Transcribing with Whisper...")
@@ -81,7 +74,7 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
             if pexels_path: raw_clip_paths.append(pexels_path); scene_types.append(scene_name)
             else: print(f"  WARNING: {scene_name} clip skipped")
     if not raw_clip_paths: raise RuntimeError("All Pexels fetches failed")
-    print(f"\n  Fetched {len(raw_clip_paths)}/5 clips (Pexels -- free)")
+    print(f"\n  Fetched {len(raw_clip_paths)}/5 clips (Pexels)")
     final_path = str(pipeline.OUTPUT_DIR / "mindcore_ai_video.mp4")
     pipeline.assemble_cinematic_video(raw_clip_paths, audio_path, final_path, None, ass_path, scene_types=scene_types)
     return final_path
@@ -92,24 +85,8 @@ def _patched_generate_ad_script(app_facts, niche, client):
     formula = random.choice(pipeline.HOOK_FORMULAS)
     hook_block = pipeline._build_hook_block(formula)
     print(f"  AD: {ad_topic['pain_point'][:65]}...")
-    lp,hp = pipeline.WORD_TARGETS_AD["problem"]
-    ls,hs = pipeline.WORD_TARGETS_AD["story"]
-    lc,hc = pipeline.WORD_TARGETS_AD["solution_cta"]
-    prompt = f"""You are writing a punchy cinematic voiceover ad script for MindCore AI. Target: 25-35 seconds.
-
-VIEWER: {niche['viewer_persona']}
-PAIN POINT: {ad_topic['pain_point']}
-INSIGHT: {ad_topic['insight']}
-FEATURE: {ad_topic['feature']}
-
-{hook_block}
-
-SCENES (KEEP TIGHT):
-hook -> problem ({lp}-{hp} words) -> story ({ls}-{hs} words -- mention MindCore AI ONCE as "a space that listens" or "somewhere that doesn't judge". NEVER say download, play, Google Play.) -> solution_cta ({lc}-{hc} words -- end on PURE EMOTIONAL RESOLUTION. NEVER say "Play now" or "Download now" or "Google Play".)
-BANNED IN VOICEOVER: "free trial", "first week free", "download now", "play now", "Google Play", "on Google Play"
-
-Return ONLY valid JSON:
-{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    lp,hp = pipeline.WORD_TARGETS_AD["problem"]; ls,hs = pipeline.WORD_TARGETS_AD["story"]; lc,hc = pipeline.WORD_TARGETS_AD["solution_cta"]
+    prompt = f"""You are writing a punchy cinematic voiceover ad script for MindCore AI. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']}\n\n{hook_block}\n\nSCENES:\nhook -> problem ({lp}-{hp} words) -> story ({ls}-{hs} words -- mention MindCore AI ONCE as "a space that listens". NEVER say download, play, Google Play.) -> solution_cta ({lc}-{hc} words -- PURE EMOTIONAL RESOLUTION. NEVER say "Play now" or "Google Play".)\nBANNED: "free trial", "download now", "play now", "Google Play"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return pipeline._call_claude_raw(prompt, client, max_tokens=800)
 
 
@@ -117,16 +94,7 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
     if not pipeline.UPLOAD_POST_API_KEY: return {"skipped":True,"reason":"no API key"}
     user = cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
-    data = [
-        ("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),
-        ("title",metadata.get("tiktok_caption","")[:pipeline.TIKTOK_CAPTION_LIMIT]),
-        ("facebook_title",metadata.get("facebook_title","")[:255]),
-        ("facebook_description",metadata.get("facebook_description","")),
-        ("youtube_title",metadata.get("youtube_title","")[:pipeline.YOUTUBE_TITLE_LIMIT]),
-        ("youtube_description",metadata.get("youtube_description","")[:pipeline.YOUTUBE_DESCRIPTION_LIMIT]),
-        ("youtube_tags",metadata.get("youtube_tags","")),
-        ("first_comment",metadata.get("first_comment","")),
-    ]
+    data = [("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("title",metadata.get("tiktok_caption","")[:pipeline.TIKTOK_CAPTION_LIMIT]),("facebook_title",metadata.get("facebook_title","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:pipeline.YOUTUBE_TITLE_LIMIT]),("youtube_description",metadata.get("youtube_description","")[:pipeline.YOUTUBE_DESCRIPTION_LIMIT]),("youtube_tags",metadata.get("youtube_tags","")),("first_comment",metadata.get("first_comment",""))]
     if scheduled_date: data.append(("scheduled_date",scheduled_date))
     try:
         with open(video_path,"rb") as f:
@@ -137,8 +105,7 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
         print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
         if not resp.ok: print(f"  {resp.text[:300]}")
         return result
-    except Exception as e: print(f"  Upload failed: {e}"); return {"error":str(e)}
-
+    except Exception as e: print(f"  Upload failed: {e}"; return {"error":str(e)}
 
 pipeline.render_cinematic_video = _patched_render_cinematic_video
 pipeline.upload_to_platforms = _patched_upload
@@ -158,9 +125,9 @@ def main():
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
     slot_label = "A (11am Malta)" if os.environ.get("POST_HOUR_UTC")=="9" else "B (3pm Malta)"
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.1")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.2")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Slot {slot_label}")
-    print(f"  Pexels | Voice only | SERP country: {SERP_COUNTRY} | SEO keywords")
+    print(f"  Pexels | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")

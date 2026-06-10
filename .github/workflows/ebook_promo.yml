@@ -1,11 +1,10 @@
 name: Ebook Promo Pipeline
 
-# 4x per week: Monday, Wednesday, Friday, Sunday at 08:00 UTC (10:00 Malta)
-# Each run picks a random promo angle from 8 options -- different script every time
+# 4x per week: Sunday, Monday, Wednesday, Friday at 08:00 UTC (10:00 Malta)
 on:
   schedule:
-    - cron: '0 8 * * 0,1,3,5'    # Sun, Mon, Wed, Fri 08:00 UTC
-  workflow_dispatch:               # Manual trigger
+    - cron: '0 8 * * 0,1,3,5'
+  workflow_dispatch:
 
 jobs:
   ebook-promo:
@@ -29,5 +28,5 @@ jobs:
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
-          FISH_AUDIO_API_KEY:  ${{ secrets.FISH_AUDIO_API_KEY }}
+          ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
         run: python scripts/ebook_promo_pipeline.py

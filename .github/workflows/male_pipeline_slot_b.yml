@@ -1,6 +1,4 @@
 name: Male Video Pipeline -- Slot B (3pm Malta)
-
-# POST_HOUR_UTC=13 is HARDCODED. Pexels B-roll (v8.0, fal.ai removed).
 on:
   workflow_dispatch:
     inputs:
@@ -8,10 +6,8 @@ on:
         description: "'content' or 'ad' (blank = auto)"
         required: false
         default: ""
-
   schedule:
-    - cron: "0 1 * * 6,0"  # Sat/Sun 01:00 UTC = 3am Malta
-
+    - cron: "0 1 * * 6,0"
 jobs:
   male-slot-b:
     name: Male Video Slot B -- posts 3pm Malta
@@ -30,31 +26,21 @@ jobs:
       - name: Run Slot B
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
-          FISH_AUDIO_API_KEY:  ${{ secrets.FISH_AUDIO_API_KEY }}
+          ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
           PEXELS_API_KEY:      ${{ secrets.PEXELS_API_KEY }}
           SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
           PYTHONPATH:          ${{ github.workspace }}
           POST_HOUR_UTC:       "13"
-        run: |
-          FORCE="${{ github.event.inputs.force_mode }}"
-          [ "$FORCE" = "ad" ]      && export GITHUB_RUN_NUMBER=10
-          [ "$FORCE" = "content" ] && export GITHUB_RUN_NUMBER=1
-          python video_pipeline/male_pipeline_patch.py
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        run: python video_pipeline/male_pipeline_patch.py
+      - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: male-slot-b-run-${{ github.run_number }}
-          path: |
-            video_pipeline/output/mindcore_ai_video.mp4
-            video_pipeline/output/upload_guide.txt
-            video_pipeline/output/script.json
-            video_pipeline/output/upload_result.json
+          path: video_pipeline/output/
           retention-days: 30
-      - name: Debug on failure
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: male-slot-b-debug-${{ github.run_number }}
