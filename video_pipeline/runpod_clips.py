@@ -1,7 +1,8 @@
 """
-MindCore AI -- RunPod AI Video Clips v1.1
+MindCore AI -- RunPod AI Video Clips v1.2
 ==========================================
-v1.1: 12 drone journey themes for maximum visual variety.
+v1.2: Built-in crossfade transitions between scenes.
+v1.1: 12 drone journey themes.
 v1.0: Initial 5 themes.
 
 Replaces pexels_clips.py when RunPod Serverless is active.
@@ -10,19 +11,20 @@ Sends prompts to RunPod endpoint, receives AI-generated video clips.
 Requires: RUNPOD_ENDPOINT_ID and RUNPOD_API_KEY env vars.
 """
 
-import os, base64, time, requests
+import os, base64, time, subprocess, requests
 from pathlib import Path
 
 RUNPOD_API_KEY = os.environ.get("RUNPOD_API_KEY", "")
 RUNPOD_ENDPOINT_ID = os.environ.get("RUNPOD_ENDPOINT_ID", "")
 RUNPOD_API_URL = f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}"
 
+CROSSFADE_DURATION = 0.8  # seconds of crossfade between scenes
+CLIP_DURATION = 5.06      # approximate duration of each 81-frame clip at 16fps
+
 _used_prompts = set()
 
 # -----------------------------------------------
 # 12 DRONE JOURNEY THEMES -- one location per video
-# Each theme = 5 scenes = ~25 seconds with crossfades
-# Themes rotate based on run number
 # -----------------------------------------------
 DRONE_THEMES = {
     "ocean": [
@@ -112,6 +114,109 @@ DRONE_THEMES = {
 }
 
 
+# -----------------------------------------------
+# CROSSFADE ASSEMBLY
+# -----------------------------------------------
+
+def assemble_drone_journey(clip_paths, output_path, crossfade_dur=None):
+    """Assemble clips with smooth crossfade transitions.
+    
+    Takes raw clips, applies fade-in/fade-out, then builds an FFmpeg
+    xfade filter chain for seamless scene-to-scene transitions.
+    
+    Returns the output video path.
+    """
+    if crossfade_dur is None:
+        crossfade_dur = CROSSFADE_DURATION
+
+    if not clip_paths:
+        raise RuntimeError("No clips to assemble")
+
+    if len(clip_paths) == 1:
+        import shutil
+        shutil.copy2(clip_paths[0], output_path)
+        return output_path
+
+    output_dir = str(Path(clip_paths[0]).parent)
+
+    # Step 1: Get actual duration of each clip
+    durations = []
+    for cp in clip_paths:
+        dur = _get_duration(cp)
+        durations.append(dur)
+        print(f"  [Crossfade] Clip duration: {dur:.2f}s")
+
+    # Step 2: Build xfade filter chain
+    inputs = []
+    for p in clip_paths:
+        inputs.extend(["-i", p])
+
+    filters = []
+    offset = durations[0] - crossfade_dur
+    prev = "0:v"
+
+    for i in range(1, len(clip_paths)):
+        out_label = f"v{i}" if i < len(clip_paths) - 1 else "outv"
+        filters.append(
+            f"[{prev}][{i}:v]xfade=transition=fade:duration={crossfade_dur}:offset={offset:.2f}[{out_label}]"
+        )
+        prev = out_label
+        if i < len(clip_paths) - 1:
+            offset += durations[i] - crossfade_dur
+
+    filter_str = ";".join(filters)
+
+    cmd = ["ffmpeg", "-y"] + inputs + [
+        "-filter_complex", filter_str,
+        "-map", "[outv]",
+        "-c:v", "libx264", "-crf", "16", "-preset", "slow",
+        "-pix_fmt", "yuv420p",
+        output_path,
+    ]
+
+    print(f"  [Crossfade] Assembling {len(clip_paths)} clips with {crossfade_dur}s crossfade...")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print(f"  [Crossfade] FFmpeg error: {result.stderr[-500:]}")
+        # Fallback: simple concatenation without crossfade
+        print(f"  [Crossfade] Falling back to simple concat...")
+        return _simple_concat(clip_paths, output_path)
+
+    size_mb = Path(output_path).stat().st_size / (1024 * 1024)
+    total_dur = sum(durations) - crossfade_dur * (len(clip_paths) - 1)
+    print(f"  [Crossfade] Done: {size_mb:.1f} MB | ~{total_dur:.0f}s with transitions")
+    return output_path
+
+
+def _get_duration(video_path):
+    """Get video duration in seconds."""
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", video_path],
+        capture_output=True, text=True, check=True,
+    )
+    return float(result.stdout.strip())
+
+
+def _simple_concat(clip_paths, output_path):
+    """Fallback: concatenate clips without crossfade if xfade fails."""
+    concat_file = str(Path(output_path).parent / "concat_fallback.txt")
+    with open(concat_file, "w") as f:
+        for p in clip_paths:
+            f.write(f"file '{p}'\n")
+    subprocess.run([
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+        "-i", concat_file, "-c:v", "libx264", "-crf", "18",
+        "-preset", "fast", "-pix_fmt", "yuv420p", output_path,
+    ], check=True, capture_output=True)
+    return output_path
+
+
+# -----------------------------------------------
+# RUNPOD API
+# -----------------------------------------------
+
 def _submit_job(prompt, num_frames=81, height=832, width=480):
     headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}", "Content-Type": "application/json"}
     payload = {"input": {"prompt": prompt, "num_frames": num_frames, "height": height, "width": width, "guidance_scale": 7.5, "fps": 16}}
@@ -151,6 +256,9 @@ def fetch_runpod_clip(prompt, scene_idx, output_path, timeout=600):
 
 
 def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
+    """Generate all clips for a drone journey theme.
+    Returns list of (clip_path, scene_name) tuples.
+    """
     theme = DRONE_THEMES.get(theme_name)
     if not theme:
         import random
@@ -166,6 +274,18 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
         except Exception as e:
             print(f"  [RunPod] Scene {scene['name']} failed: {e}")
     return clips
+
+
+def render_drone_journey(theme_name, output_dir, output_path, github_run_number=1):
+    """Full render: fetch all clips + assemble with crossfade transitions.
+    
+    This is the main function the pipeline calls. Returns the final video path.
+    """
+    clips = fetch_drone_journey_clips(theme_name, output_dir, github_run_number)
+    if not clips:
+        raise RuntimeError(f"No clips generated for theme '{theme_name}'")
+    clip_paths = [cp for cp, _ in clips]
+    return assemble_drone_journey(clip_paths, output_path)
 
 
 def get_theme_for_run(github_run_number):
