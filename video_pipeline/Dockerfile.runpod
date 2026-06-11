@@ -2,9 +2,9 @@ FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 WORKDIR /app
 
-# Install ALL dependencies including video export
+# Install ALL dependencies -- diffusers 0.38+ required for WanPipeline
 RUN pip install --no-cache-dir \
-    diffusers==0.32.2 \
+    "diffusers>=0.38.0" \
     transformers \
     accelerate \
     sentencepiece \
@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir \
     imageio-ffmpeg \
     runpod
 
-# Verify imports work
+# Verify all imports work before deploying
 RUN python3 -c "from diffusers import WanPipeline; from diffusers.utils import export_to_video; print('All imports OK')"
 
 ENV HF_HOME=/workspace/.cache/huggingface
