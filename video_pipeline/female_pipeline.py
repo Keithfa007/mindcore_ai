@@ -49,7 +49,7 @@ BANNED_HOOK_OPENERS=["I remember sitting at my kid","I remember sitting at a","I
 WORD_TARGETS_AD={"hook":(8,12),"problem":(15,22),"story":(18,25),"solution_cta":(7,10)}
 WORD_TARGETS_CONTENT={"hook":(8,12),"problem":(18,25),"story":(20,28),"solution_cta":(7,10)}
 BANNED_PHRASE_REPLACEMENTS=[(r"try\s+it\s+for\s+free","try it"),(r"download\s+now","find MindCore AI on Google Play"),(r"free\s+trial","try MindCore AI")]
-POST_HOUR_UTC=17
+POST_HOUR_UTC=int(os.environ.get("POST_HOUR_UTC","17"))
 def get_scheduled_post_time():
     now=datetime.now(timezone.utc);target=now.replace(hour=POST_HOUR_UTC,minute=0,second=0,microsecond=0)
     if now>=target:target+=timedelta(days=1)
