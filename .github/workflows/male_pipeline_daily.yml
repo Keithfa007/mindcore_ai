@@ -1,8 +1,8 @@
-name: Female Video Pipeline -- Daily
+name: Male Video Pipeline -- Daily
 
-# Runs daily, alternates morning/evening with male pipeline
-# Odd days: Female EVENING (7pm Malta) / Male MORNING (11am Malta)
-# Even days: Female MORNING (11am Malta) / Male EVENING (7pm Malta)
+# Runs daily, alternates morning/evening with female pipeline
+# Odd days: Male MORNING (11am Malta) / Female EVENING (7pm Malta)
+# Even days: Male EVENING (7pm Malta) / Female MORNING (11am Malta)
 
 on:
   schedule:
@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  female-daily:
-    name: Generate + Schedule Female Cinematic Video
+  male-daily:
+    name: Generate + Schedule Male Cinematic Video
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -23,19 +23,18 @@ jobs:
         run: |
           DAY=$(date +%j)
           if [ $((DAY % 2)) -eq 1 ]; then
-            echo "POST_HOUR_UTC=17" >> $GITHUB_ENV
-            echo "Female: EVENING slot (7pm Malta)"
-          else
             echo "POST_HOUR_UTC=9" >> $GITHUB_ENV
-            echo "Female: MORNING slot (11am Malta)"
+            echo "Male: MORNING slot (11am Malta)"
+          else
+            echo "POST_HOUR_UTC=17" >> $GITHUB_ENV
+            echo "Male: EVENING slot (7pm Malta)"
           fi
-      - name: Install FFmpeg + fonts
+      - name: Install deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
-      - name: Install Python dependencies
-        run: pip install anthropic requests openai-whisper
-      - name: Run Female Pipeline
+          pip install anthropic requests openai-whisper
+      - name: Run Male Pipeline
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
@@ -44,10 +43,10 @@ jobs:
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
           PYTHONPATH:          ${{ github.workspace }}
-        run: python video_pipeline/female_pipeline.py
+        run: python video_pipeline/male_pipeline_patch.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: female-daily-run-${{ github.run_number }}
-          path: video_pipeline/output_female/
+          name: male-daily-run-${{ github.run_number }}
+          path: video_pipeline/output/
           retention-days: 14
