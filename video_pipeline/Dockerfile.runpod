@@ -2,12 +2,24 @@ FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 WORKDIR /app
 
-# Install dependencies only (model downloads at runtime on first request)
+# Install ALL dependencies including video export
 RUN pip install --no-cache-dir \
-    diffusers transformers accelerate sentencepiece \
-    protobuf ftfy opencv-python-headless runpod
+    diffusers==0.32.2 \
+    transformers \
+    accelerate \
+    sentencepiece \
+    protobuf \
+    ftfy \
+    opencv-python-headless \
+    imageio \
+    imageio-ffmpeg \
+    runpod
+
+# Verify imports work
+RUN python3 -c "from diffusers import WanPipeline; from diffusers.utils import export_to_video; print('All imports OK')"
 
 ENV HF_HOME=/workspace/.cache/huggingface
+ENV TMPDIR=/workspace/tmp
 RUN mkdir -p /workspace/.cache/huggingface /workspace/tmp
 
 COPY video_pipeline/runpod_handler.py /app/handler.py
