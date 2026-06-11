@@ -23,7 +23,7 @@ jobs:
         run: |
           DAY=$(date +%j)
           if [ $((DAY % 2)) -eq 1 ]; then
-            echo "POST_HOUR_UTC=17" >> $GITHUB_ENV
+            echo "POST_HOUR_UTC=int(os.environ.get("POST_HOUR_UTC","17"))" >> $GITHUB_ENV
             echo "Female: EVENING slot (7pm Malta)"
           else
             echo "POST_HOUR_UTC=9" >> $GITHUB_ENV
