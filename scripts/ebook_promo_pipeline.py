@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Ebook Promotion Pipeline v2.3
+MindCore AI — Ebook Promotion Pipeline v2.4
 ============================================
+v2.4: Rotating cover image pool (7 Canva designs).
 v2.3: Single upload call -- video to TikTok + Facebook + YouTube.
 v2.2: Added YouTube.
 v2.1: Updated hashtags.
@@ -11,7 +12,16 @@ v2: ElevenLabs TTS. 4x/week.
 import os, sys, json, random, requests, subprocess, tempfile, datetime
 from anthropic import Anthropic
 
-COVER_IMAGE_URL     = "https://mindcoreai.eu/wp-content/uploads/2026/06/Poster-The-Silent-Struggle-Rise-from-Rock-Bottom-1.png"
+COVER_IMAGE_POOL = [
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Poster-The-Silent-Struggle-Rise-from-Rock-Bottom-1.png",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Lone-Silhouette-Against-Golden-Dawn-Poster.pdf",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Solitary-Figure-at-Dawn-on-Beach-Poster.pdf",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Dramatic-Poster-Journey-to-Resilience.pdf",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Cinematic-Poster-Rise-from-Rock-Bottom.pdf",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/A-Cinematic-Journey-Through-Misty-Trees.pdf",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Somber-Path-to-Hope-in-a-Dark-Forest.pdf",
+]
+COVER_IMAGE_URL = random.choice(COVER_IMAGE_POOL)
 PAYHIP_LINK         = "https://payhip.com/b/3HyoE"
 EBOOK_TITLE         = "The Silent Struggle"
 EBOOK_SUBTITLE      = "How to Rebuild Your Mental Health from Rock Bottom"
@@ -146,7 +156,8 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
     except Exception as e: print(f"   Upload failed: {e}"); return {"error": str(e)}
 
 def main():
-    print("== MindCore AI — Ebook Promotion Pipeline v2.3 ==\n")
+    print(f"== MindCore AI — Ebook Promotion Pipeline v2.4 ==\n")
+    print(f"   Cover: {COVER_IMAGE_URL.split('/')[-1]}")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
     scheduled_date = get_scheduled_time(10)
