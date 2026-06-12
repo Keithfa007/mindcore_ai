@@ -1,8 +1,5 @@
 name: Male Video Pipeline -- Daily
 
-# Runs daily, alternates morning/evening with female pipeline
-# Auto-detects RunPod (AI drone footage) or Pexels (free B-roll)
-
 on:
   schedule:
     - cron: "0 0 * * *"
@@ -12,7 +9,7 @@ jobs:
   male-daily:
     name: Generate + Schedule Male Cinematic Video
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
