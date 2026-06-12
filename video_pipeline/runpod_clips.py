@@ -1,10 +1,10 @@
 """
-MindCore AI -- RunPod AI Video Clips v1.6
+MindCore AI -- RunPod AI Video Clips v1.7
 ==========================================
+v1.7: Real-ESRGAN upscaling -- clips generated at 832x480 then upscaled 2x to 1664x960.
 v1.6: PARALLEL clip generation -- all 5 clips generated simultaneously.
 v1.5: Increased poll timeout to 1800s (30min) for cold starts.
 v1.3: All prompts rewritten for strong continuous flying movement.
-      Every scene has explicit camera direction and motion.
 v1.2: Built-in crossfade transitions between scenes.
 v1.1: 12 drone journey themes.
 
@@ -20,6 +20,7 @@ RUNPOD_API_URL = f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}"
 
 CROSSFADE_DURATION = 0.8
 CLIP_DURATION = 5.06
+UPSCALE_FACTOR = 2  # 1=no upscale, 2=2x (1664x960), 4=4x (3328x1920)
 
 _used_prompts = set()
 
@@ -149,9 +150,10 @@ def _simple_concat(clip_paths, output_path):
     return output_path
 
 
-def _submit_job(prompt, num_frames=81, height=832, width=480):
+def _submit_job(prompt, num_frames=81, height=832, width=480, upscale=None):
+    if upscale is None: upscale = UPSCALE_FACTOR
     headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}", "Content-Type": "application/json"}
-    payload = {"input": {"prompt": prompt, "num_frames": num_frames, "height": height, "width": width, "guidance_scale": 7.5, "fps": 16}}
+    payload = {"input": {"prompt": prompt, "num_frames": num_frames, "height": height, "width": width, "guidance_scale": 7.5, "fps": 16, "upscale": upscale}}
     resp = requests.post(f"{RUNPOD_API_URL}/run", headers=headers, json=payload, timeout=30)
     resp.raise_for_status(); return resp.json().get("id")
 
@@ -180,9 +182,8 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
     theme = DRONE_THEMES.get(theme_name)
     if not theme:
         import random; theme_name = random.choice(list(DRONE_THEMES.keys())); theme = DRONE_THEMES[theme_name]
-    print(f"  [RunPod] Drone journey: {theme_name} ({len(theme)} scenes) -- PARALLEL MODE")
+    print(f"  [RunPod] Drone journey: {theme_name} ({len(theme)} scenes) -- PARALLEL + {UPSCALE_FACTOR}x UPSCALE")
 
-    # Step 1: Submit ALL jobs at once (takes <1 second)
     jobs = []
     for i, scene in enumerate(theme):
         clip_path = os.path.join(output_dir, f"drone_{i}_{scene['name']}.mp4")
@@ -197,9 +198,8 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
         return []
     print(f"  [RunPod] All {len(jobs)} jobs submitted -- polling in parallel...")
 
-    # Step 2: Poll ALL jobs simultaneously until all complete or timeout
     headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}"}
-    deadline = time.time() + 1800  # 30 min max for all clips
+    deadline = time.time() + 1800
     while time.time() < deadline:
         all_done = True
         for job in jobs:
@@ -227,7 +227,6 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
         print(f"  [RunPod] {pending} clips generating... ({remaining}s remaining)")
         time.sleep(10)
 
-    # Step 3: Save completed clips
     clips = []
     for job in jobs:
         if job["result"] and job["result"].get("video_base64"):
