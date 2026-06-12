@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.6
+MindCore AI -- Male Pipeline Patch v2.7
 =======================================
+v2.7: Removed word flash overlays, enhanced subtitle styling.
 v2.6: RunPod Serverless AI drone footage (falls back to Pexels if not configured).
 v2.5: Fixed syntax error.
 v2.4: ElevenLabs TTS.
@@ -28,6 +29,44 @@ _kd = pipeline.load_keywords_data()
 SERP_COUNTRY = _kd.get("serp_country", "gb")
 print(f"  SERP country: {SERP_COUNTRY}")
 
+# Override subtitle generator -- no word flashes, cleaner cinematic style
+def _improved_ass_subtitles(words, output_path):
+    """Enhanced subtitles: bold white, strong outline, fade effect, no word flash overlays."""
+    if not words: return False
+    from pathlib import Path
+    def ts(s): h=int(s//3600);m=int((s%3600)//60);s=s%60; return f"{h}:{m:02d}:{s:05.2f}"
+    header = (
+        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n"
+        "ScaledBorderAndShadow: yes\nWrapStyle: 1\n\n[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
+        "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        "Style: Default,Arial,85,"
+        "&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
+        "-1,0,0,0,100,100,2,0,1,5,2,2,60,60,500,1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    chunks=[]; i=0; chunk_size=2
+    while i<len(words):
+        chunk=words[i:i+chunk_size]
+        text=" ".join(w["word"].upper() for w in chunk)
+        start=chunk[0]["start"]; end=chunk[-1]["end"]
+        if not chunks: start=0.0
+        elif start<chunks[-1]["end"]: start=chunks[-1]["end"]
+        chunks.append({"text":text,"start":start,"end":end})
+        i+=chunk_size
+    events=""
+    for c in chunks:
+        events+=f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{{\\fad(150,100)}}{c['text']}\n"
+    content_out = (header+events).encode("utf-8", errors="ignore").decode("utf-8")
+    Path(output_path).write_text(content_out, encoding="utf-8")
+    print(f"  Subtitles: {len(chunks)} groups (no word flashes)")
+    return True
+
+pipeline.generate_ass_subtitles = _improved_ass_subtitles
+
+
 def _patched_serp_google_query(seed):
     r = requests.get(pipeline.SERP_API_URL, params={"engine":"google","q":seed,"api_key":pipeline.SERP_API_KEY,"num":10,"hl":"en","gl":SERP_COUNTRY}, timeout=30)
     r.raise_for_status(); return r.json()
@@ -53,8 +92,7 @@ def get_scheduled_post_time():
 
 
 def _patched_render_cinematic_video(script_text, mood, niche, script=None):
-    """Render video using RunPod AI drone footage OR Pexels B-roll.
-    Auto-detects based on RUNPOD_ENDPOINT_ID env var."""
+    """Render video using RunPod AI drone footage OR Pexels B-roll."""
     runpod_endpoint = os.environ.get("RUNPOD_ENDPOINT_ID", "")
 
     print("\n  [TTS] Generating voiceover (ElevenLabs)...")
@@ -70,7 +108,6 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
     raw_clip_paths = []; scene_types = []
 
     if runpod_endpoint:
-        # ---- RUNPOD AI DRONE FOOTAGE ----
         from video_pipeline.runpod_clips import fetch_runpod_clip, get_theme_for_run, DRONE_THEMES
         theme_name = get_theme_for_run(pipeline.GITHUB_RUN_NUMBER)
         theme = DRONE_THEMES[theme_name]
@@ -85,7 +122,6 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
                 print(f"  [RunPod] Scene {scene['name']} failed: {e}")
         source = "RunPod AI"
     else:
-        # ---- PEXELS FREE B-ROLL (fallback) ----
         from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
         for scene_name, count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
             for j in range(count):
@@ -150,7 +186,7 @@ def main():
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
     video_source = "RunPod AI" if os.environ.get("RUNPOD_ENDPOINT_ID") else "Pexels"
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.4")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.5")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Daily")
     print(f"  {video_source} | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
