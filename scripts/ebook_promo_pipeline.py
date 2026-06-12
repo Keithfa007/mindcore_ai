@@ -14,12 +14,12 @@ from anthropic import Anthropic
 
 COVER_IMAGE_POOL = [
     "https://mindcoreai.eu/wp-content/uploads/2026/06/Poster-The-Silent-Struggle-Rise-from-Rock-Bottom-1.png",
-    "https://mindcoreai.eu/wp-content/uploads/2026/06/Lone-Silhouette-Against-Golden-Dawn-Poster.pdf",
-    "https://mindcoreai.eu/wp-content/uploads/2026/06/Solitary-Figure-at-Dawn-on-Beach-Poster.pdf",
-    "https://mindcoreai.eu/wp-content/uploads/2026/06/Dramatic-Poster-Journey-to-Resilience.pdf",
-    "https://mindcoreai.eu/wp-content/uploads/2026/06/Cinematic-Poster-Rise-from-Rock-Bottom.pdf",
-    "https://mindcoreai.eu/wp-content/uploads/2026/06/A-Cinematic-Journey-Through-Misty-Trees.pdf",
-    "https://mindcoreai.eu/wp-content/uploads/2026/06/Somber-Path-to-Hope-in-a-Dark-Forest.pdf",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Lone-Silhouette-Against-Golden-Dawn-Poster.png",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Solitary-Figure-at-Dawn-on-Beach-Poster.png",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Dramatic-Poster-Journey-to-Resilience.png",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Cinematic-Poster-Rise-from-Rock-Bottom.png",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/A-Cinematic-Journey-Through-Misty-Trees.png",
+    "https://mindcoreai.eu/wp-content/uploads/2026/06/Somber-Path-to-Hope-in-a-Dark-Forest.png",
 ]
 COVER_IMAGE_URL = random.choice(COVER_IMAGE_POOL)
 PAYHIP_LINK         = "https://payhip.com/b/3HyoE"
