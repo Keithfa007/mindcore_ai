@@ -1,6 +1,7 @@
 """
-MindCore AI -- RunPod AI Video Clips v1.3
+MindCore AI -- RunPod AI Video Clips v1.4
 ==========================================
+v1.4: Increased poll timeout to 1200s for cold starts.
 v1.3: All prompts rewritten for strong continuous flying movement.
       Every scene has explicit camera direction and motion.
 v1.2: Built-in crossfade transitions between scenes.
@@ -49,7 +50,7 @@ DRONE_THEMES = {
     ],
     "desert": [
         {"name": "dunes", "prompt": "FPV drone flying fast forward low over endless golden sand dunes at sunrise, camera racing forward over the ridges, long dramatic shadows below, wind blowing fine sand off the tops, continuous forward motion, smooth tracking shot, photorealistic, 4K"},
-        {"name": "canyon", "prompt": "FPV drone flying fast forward through a narrow red rock canyon, camera racing between towering sandstone walls on both sides, golden sunlight streaming down from above, continuous forward motion through the canyon, epic speed, photorealistic, 4K"},
+        {"name": "canyon", "prompt": "FPV drone fast forward through a narrow red rock canyon, camera racing between towering sandstone walls on both sides, golden sunlight streaming down from above, continuous forward motion through the canyon, epic speed, photorealistic, 4K"},
         {"name": "mesa", "prompt": "Aerial drone flying in a wide orbit around a dramatic desert mesa at golden hour, camera circling continuously around the formation, vast desert floor below stretching to the horizon, smooth continuous orbital motion, photorealistic, 4K"},
         {"name": "oasis", "prompt": "Cinematic drone flying forward and descending toward a hidden desert oasis with palm trees and turquoise water, camera moving forward and downward revealing the oasis, golden sand dunes surrounding, continuous approach shot, photorealistic, 4K"},
         {"name": "stars", "prompt": "Cinematic drone flying upward slowly above dark desert landscape at night, camera rising continuously to reveal an incredible starry sky with the Milky Way stretching across the frame, smooth vertical tracking shot upward, cosmic peace, photorealistic, 4K"},
@@ -165,7 +166,7 @@ def _submit_job(prompt, num_frames=81, height=832, width=480):
     resp = requests.post(f"{RUNPOD_API_URL}/run", headers=headers, json=payload, timeout=30)
     resp.raise_for_status(); return resp.json().get("id")
 
-def _poll_result(job_id, timeout=600, interval=10):
+def _poll_result(job_id, timeout=1200, interval=10):
     headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}"}
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -176,7 +177,7 @@ def _poll_result(job_id, timeout=600, interval=10):
         print(f"  [RunPod] {status}... ({int(deadline - time.time())}s remaining)"); time.sleep(interval)
     raise TimeoutError(f"RunPod job {job_id} timed out after {timeout}s")
 
-def fetch_runpod_clip(prompt, scene_idx, output_path, timeout=600):
+def fetch_runpod_clip(prompt, scene_idx, output_path, timeout=1200):
     if not RUNPOD_API_KEY or not RUNPOD_ENDPOINT_ID: raise RuntimeError("RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID must be set")
     print(f"  [RunPod] Submitting: {prompt[:60]}..."); job_id = _submit_job(prompt)
     print(f"  [RunPod] Job {job_id} submitted"); result = _poll_result(job_id, timeout=timeout)
