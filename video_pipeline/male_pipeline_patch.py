@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.5
+MindCore AI -- Male Pipeline Patch v2.6
 =======================================
-v2.5: Fixed syntax error in upload exception handler.
-v2.4: ElevenLabs TTS (replaces Fish Audio for voiceover).
+v2.6: RunPod Serverless AI drone footage (falls back to Pexels if not configured).
+v2.5: Fixed syntax error.
+v2.4: ElevenLabs TTS.
 v2.3: SERP targets GB.
-v2.2: Fixed power word flashes + softened ad CTA.
-v2.1: No background music.
-v2.0: Pexels restored.
 """
-import json, os, sys, random
+import json, os, sys, random, subprocess
 from datetime import datetime, timedelta, timezone
 import requests
 import video_pipeline.male_pipeline as pipeline
@@ -18,17 +16,14 @@ from video_pipeline.word_flash import WORD_FLASH_STOPWORDS as FIXED_STOPWORDS
 from video_pipeline.word_flash import POWER_WORDS as FIXED_POWER_WORDS
 from video_pipeline.tts import generate_elevenlabs_tts, MALE_VOICE_ID
 
-# Patch word flash
 pipeline.pick_power_word = fixed_pick_power_word
 pipeline.WORD_FLASH_STOPWORDS = FIXED_STOPWORDS
 pipeline.POWER_WORDS = FIXED_POWER_WORDS
 
-# Patch TTS: ElevenLabs male voice replaces Fish Audio
 def _elevenlabs_tts(script_text, output_path):
     return generate_elevenlabs_tts(script_text, output_path, MALE_VOICE_ID)
 pipeline.generate_fish_audio_tts = _elevenlabs_tts
 
-# Read SERP country from keywords JSON
 _kd = pipeline.load_keywords_data()
 SERP_COUNTRY = _kd.get("serp_country", "gb")
 print(f"  SERP country: {SERP_COUNTRY}")
@@ -58,24 +53,51 @@ def get_scheduled_post_time():
 
 
 def _patched_render_cinematic_video(script_text, mood, niche, script=None):
-    from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
+    """Render video using RunPod AI drone footage OR Pexels B-roll.
+    Auto-detects based on RUNPOD_ENDPOINT_ID env var."""
+    runpod_endpoint = os.environ.get("RUNPOD_ENDPOINT_ID", "")
+
     print("\n  [TTS] Generating voiceover (ElevenLabs)...")
     audio_path = str(pipeline.OUTPUT_DIR / "voiceover.mp3")
     pipeline.generate_fish_audio_tts(script_text, audio_path)
+
     print("\n  [Subtitles] Transcribing with Whisper...")
     ass_path = str(pipeline.OUTPUT_DIR / "subtitles_cinematic.ass")
     words = pipeline.transcribe_audio_whisper(audio_path)
     if not pipeline.generate_ass_subtitles(words, ass_path): ass_path = None
+
     clips_dir = pipeline.OUTPUT_DIR / "clips"; clips_dir.mkdir(exist_ok=True)
     raw_clip_paths = []; scene_types = []
-    for scene_name, count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
-        for j in range(count):
-            clip_path = str(clips_dir / f"raw_{len(raw_clip_paths)}.mp4")
-            pexels_path = fetch_pexels_clip_for_scene(scene_name, len(raw_clip_paths), clip_path, pipeline.GITHUB_RUN_NUMBER, gender="man")
-            if pexels_path: raw_clip_paths.append(pexels_path); scene_types.append(scene_name)
-            else: print(f"  WARNING: {scene_name} clip skipped")
-    if not raw_clip_paths: raise RuntimeError("All Pexels fetches failed")
-    print(f"\n  Fetched {len(raw_clip_paths)}/5 clips (Pexels)")
+
+    if runpod_endpoint:
+        # ---- RUNPOD AI DRONE FOOTAGE ----
+        from video_pipeline.runpod_clips import fetch_runpod_clip, get_theme_for_run, DRONE_THEMES
+        theme_name = get_theme_for_run(pipeline.GITHUB_RUN_NUMBER)
+        theme = DRONE_THEMES[theme_name]
+        print(f"\n  [RunPod] Drone theme: {theme_name} ({len(theme)} scenes)")
+        for i, scene in enumerate(theme):
+            clip_path = str(clips_dir / f"raw_{i}.mp4")
+            try:
+                fetch_runpod_clip(scene["prompt"], i, clip_path)
+                raw_clip_paths.append(clip_path)
+                scene_types.append(scene["name"])
+            except Exception as e:
+                print(f"  [RunPod] Scene {scene['name']} failed: {e}")
+        source = "RunPod AI"
+    else:
+        # ---- PEXELS FREE B-ROLL (fallback) ----
+        from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
+        for scene_name, count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
+            for j in range(count):
+                clip_path = str(clips_dir / f"raw_{len(raw_clip_paths)}.mp4")
+                pexels_path = fetch_pexels_clip_for_scene(scene_name, len(raw_clip_paths), clip_path, pipeline.GITHUB_RUN_NUMBER, gender="man")
+                if pexels_path: raw_clip_paths.append(pexels_path); scene_types.append(scene_name)
+                else: print(f"  WARNING: {scene_name} clip skipped")
+        source = "Pexels"
+
+    if not raw_clip_paths: raise RuntimeError("No clips generated")
+    print(f"\n  Fetched {len(raw_clip_paths)} clips ({source})")
+
     final_path = str(pipeline.OUTPUT_DIR / "mindcore_ai_video.mp4")
     pipeline.assemble_cinematic_video(raw_clip_paths, audio_path, final_path, None, ass_path, scene_types=scene_types)
     return final_path
@@ -127,9 +149,10 @@ def main():
     upload_enabled = cfg.get("upload_enabled",False) and bool(pipeline.UPLOAD_POST_API_KEY)
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.3")
+    video_source = "RunPod AI" if os.environ.get("RUNPOD_ENDPOINT_ID") else "Pexels"
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.4")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Daily")
-    print(f"  Pexels | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
+    print(f"  {video_source} | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")

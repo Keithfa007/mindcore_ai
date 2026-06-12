@@ -1,8 +1,7 @@
 name: Male Video Pipeline -- Daily
 
 # Runs daily, alternates morning/evening with female pipeline
-# Odd days: Male MORNING (11am Malta) / Female EVENING (7pm Malta)
-# Even days: Male EVENING (7pm Malta) / Female MORNING (11am Malta)
+# Auto-detects RunPod (AI drone footage) or Pexels (free B-roll)
 
 on:
   schedule:
@@ -13,7 +12,7 @@ jobs:
   male-daily:
     name: Generate + Schedule Male Cinematic Video
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,6 +40,8 @@ jobs:
           PEXELS_API_KEY:      ${{ secrets.PEXELS_API_KEY }}
           SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          RUNPOD_API_KEY:      ${{ secrets.RUNPOD_API_KEY }}
+          RUNPOD_ENDPOINT_ID:  ${{ secrets.RUNPOD_ENDPOINT_ID }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
           PYTHONPATH:          ${{ github.workspace }}
         run: python video_pipeline/male_pipeline_patch.py
