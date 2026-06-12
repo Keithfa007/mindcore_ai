@@ -1,6 +1,7 @@
 """
-MindCore AI -- RunPod AI Video Clips v1.5
+MindCore AI -- RunPod AI Video Clips v1.6
 ==========================================
+v1.6: PARALLEL clip generation -- all 5 clips generated simultaneously.
 v1.5: Increased poll timeout to 1800s (30min) for cold starts.
 v1.3: All prompts rewritten for strong continuous flying movement.
       Every scene has explicit camera direction and motion.
@@ -175,15 +176,71 @@ def fetch_runpod_clip(prompt, scene_idx, output_path, timeout=1800):
     print(f"  [RunPod] Clip saved: {Path(output_path).stat().st_size / 1024:.0f} KB"); return output_path
 
 def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
+    """Generate all clips IN PARALLEL -- submit all jobs at once, poll simultaneously."""
     theme = DRONE_THEMES.get(theme_name)
     if not theme:
         import random; theme_name = random.choice(list(DRONE_THEMES.keys())); theme = DRONE_THEMES[theme_name]
-    print(f"  [RunPod] Drone journey: {theme_name} ({len(theme)} scenes)")
-    clips = []
+    print(f"  [RunPod] Drone journey: {theme_name} ({len(theme)} scenes) -- PARALLEL MODE")
+
+    # Step 1: Submit ALL jobs at once (takes <1 second)
+    jobs = []
     for i, scene in enumerate(theme):
         clip_path = os.path.join(output_dir, f"drone_{i}_{scene['name']}.mp4")
-        try: fetch_runpod_clip(scene["prompt"], i, clip_path); clips.append((clip_path, scene["name"]))
-        except Exception as e: print(f"  [RunPod] Scene {scene['name']} failed: {e}")
+        try:
+            print(f"  [RunPod] Submitting [{i+1}/{len(theme)}]: {scene['prompt'][:55]}...")
+            job_id = _submit_job(scene["prompt"])
+            jobs.append({"job_id": job_id, "scene": scene, "clip_path": clip_path, "index": i, "done": False, "result": None})
+            print(f"  [RunPod] Job {job_id} submitted")
+        except Exception as e:
+            print(f"  [RunPod] Submit failed for {scene['name']}: {e}")
+    if not jobs:
+        return []
+    print(f"  [RunPod] All {len(jobs)} jobs submitted -- polling in parallel...")
+
+    # Step 2: Poll ALL jobs simultaneously until all complete or timeout
+    headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}"}
+    deadline = time.time() + 1800  # 30 min max for all clips
+    while time.time() < deadline:
+        all_done = True
+        for job in jobs:
+            if job["done"]:
+                continue
+            all_done = False
+            try:
+                resp = requests.get(f"{RUNPOD_API_URL}/status/{job['job_id']}", headers=headers, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+                status = data.get("status")
+                if status == "COMPLETED":
+                    job["done"] = True
+                    job["result"] = data.get("output", {})
+                    print(f"  [RunPod] [{job['index']+1}/{len(jobs)}] {job['scene']['name']} COMPLETED")
+                elif status in ("FAILED", "CANCELLED"):
+                    job["done"] = True
+                    print(f"  [RunPod] [{job['index']+1}/{len(jobs)}] {job['scene']['name']} {status}")
+            except Exception as e:
+                print(f"  [RunPod] Poll error for {job['scene']['name']}: {e}")
+        if all_done:
+            break
+        pending = sum(1 for j in jobs if not j["done"])
+        remaining = int(deadline - time.time())
+        print(f"  [RunPod] {pending} clips generating... ({remaining}s remaining)")
+        time.sleep(10)
+
+    # Step 3: Save completed clips
+    clips = []
+    for job in jobs:
+        if job["result"] and job["result"].get("video_base64"):
+            with open(job["clip_path"], "wb") as f:
+                f.write(base64.b64decode(job["result"]["video_base64"]))
+            size_kb = Path(job["clip_path"]).stat().st_size / 1024
+            print(f"  [RunPod] Saved {job['scene']['name']}: {size_kb:.0f} KB")
+            clips.append((job["clip_path"], job["scene"]["name"]))
+        elif not job["done"]:
+            print(f"  [RunPod] {job['scene']['name']} timed out")
+        else:
+            print(f"  [RunPod] {job['scene']['name']} failed (no video)")
+    print(f"  [RunPod] {len(clips)}/{len(jobs)} clips generated successfully")
     return clips
 
 def render_drone_journey(theme_name, output_dir, output_path, github_run_number=1):
