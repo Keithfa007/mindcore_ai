@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v5.4
+MindCore AI -- Female Cinematic Pipeline v5.5
 =============================================
+v5.5: Removed word flash overlays, enhanced subtitle styling.
 v5.4: RunPod AI drone footage with Pexels fallback.
 v5.3: ElevenLabs TTS (replaces Fish Audio for voiceover).
 v5.2: SERP targets GB.
@@ -195,23 +196,21 @@ def transcribe_audio_whisper(mp):
         print(f"  Whisper: {len(words)} words");return words
     except Exception as e:print(f"  Whisper failed ({e})");return[]
 def generate_ass_subtitles(words,output_path):
+    """Enhanced subtitles: bold white, strong outline, fade effect, no word flash overlays."""
     if not words:return False
     def ts(s):h=int(s//3600);m=int((s%3600)//60);s=s%60;return f"{h}:{m:02d}:{s:05.2f}"
-    header="[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nScaledBorderAndShadow: yes\nWrapStyle: 1\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"+f"Style: Default,{SUBTITLE_FONT},{SUBTITLE_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,4,0,2,60,60,{SUBTITLE_MARGIN_V},1\n"+f"Style: Flash,{SUBTITLE_FONT},{WORD_FLASH_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&HAA000000,-1,0,0,0,100,100,2,0,1,7,3,8,60,60,550,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-    chunks=[];i=0
+    header="[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nScaledBorderAndShadow: yes\nWrapStyle: 1\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,85,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,5,2,2,60,60,500,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    chunks=[];i=0;chunk_size=2
     while i<len(words):
-        chunk=words[i:i+SUBTITLE_CHUNK];text=" ".join(w["word"].upper() for w in chunk);start=chunk[0]["start"];end=chunk[-1]["end"]
+        chunk=words[i:i+chunk_size];text=" ".join(w["word"].upper() for w in chunk);start=chunk[0]["start"];end=chunk[-1]["end"]
         if not chunks:start=0.0
         elif start<chunks[-1]["end"]:start=chunks[-1]["end"]
-        chunks.append({"text":text,"start":start,"end":end,"words":chunk});i+=SUBTITLE_CHUNK
-    events="".join(f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{c['text']}\n" for c in chunks)
-    fe="";fc=0
-    for idx,chunk in enumerate(chunks):
-        if idx%FLASH_EVERY_N_CHUNKS!=0:continue
-        word=pick_power_word(chunk["words"])
-        if word:fe+=f"Dialogue: 0,{ts(chunk['start'])},{ts(chunk['end'])},Flash,,0,0,0,,{word}\n";fc+=1
-    Path(output_path).write_text((header+events+fe).encode("utf-8",errors="ignore").decode("utf-8"),encoding="utf-8")
-    print(f"  Subtitles: {len(chunks)} groups + {fc} word flashes");return True
+        chunks.append({"text":text,"start":start,"end":end});i+=chunk_size
+    events=""
+    for c in chunks:
+        events+=f"Dialogue: 0,{ts(c['start'])},{ts(c['end'])},Default,,0,0,0,,{{\\fad(150,100)}}{c['text']}\n"
+    Path(output_path).write_text((header+events).encode("utf-8",errors="ignore").decode("utf-8"),encoding="utf-8")
+    print(f"  Subtitles: {len(chunks)} groups (no word flashes)");return True
 def burn_subtitles_into_video(vp,ap):
     if not ap or not Path(ap).exists():return False
     sa=str(Path(ap).resolve()).replace("\\","/");bt=vp.replace(".mp4","_subtitled.mp4")
@@ -328,7 +327,7 @@ def main():
         with open(cp) as f:cfg=json.load(f)
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     kd=load_keywords_data();niche=get_niche_for_today(kd);mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v5.4")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v5.5")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Pexels | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Niche: {niche['name']} | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
