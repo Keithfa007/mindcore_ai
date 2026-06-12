@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Ebook Promotion Pipeline v2.4
+MindCore AI — Ebook Promotion Pipeline v2.5
 ============================================
+v2.5: Expanded voiceover variations (18 angles, 12 hooks, 6 closers).
 v2.4: Rotating cover image pool (7 Canva designs).
 v2.3: Single upload call -- video to TikTok + Facebook + YouTube.
 v2.2: Added YouTube.
@@ -42,6 +43,34 @@ FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #recovery #addiction #sobriety
 PROMO_ANGLES = [
     "chapter_teaser", "personal_story", "pain_point", "transformation",
     "quote_style", "urgency", "social_proof_style", "raw_honesty",
+    "before_and_after", "3am_moment", "letter_to_past_self", "one_line_truth",
+    "what_nobody_tells_you", "the_day_everything_changed", "relapse_honesty",
+    "first_7_days", "shame_chapter", "rebuilding_identity", "midnight_confession",
+    "if_you_are_reading_this",
+]
+
+VOICEOVER_HOOKS = [
+    "I spent twenty years destroying myself before I wrote a single word of this book.",
+    "Nobody talks about what happens after rock bottom. I did.",
+    "This isn't a self-help book. It's a survival guide written in the dark.",
+    "I wrote this at 3am because that's when the truth comes out.",
+    "The hardest chapter to write was the one about shame. You'll understand why.",
+    "Relapse doesn't mean failure. That's chapter six. It nearly killed me to write it.",
+    "If someone handed me this book ten years ago, I might have saved a decade of pain.",
+    "I didn't write this to inspire you. I wrote it because I needed it to exist.",
+    "Twenty years of addiction. Two years clean. Seven chapters of everything in between.",
+    "Rock bottom has a basement. I found it. Then I found the stairs.",
+    "The first seven days clean were the longest year of my life.",
+    "This book isn't about willpower. It's about what happens when willpower runs out.",
+]
+
+VOICEOVER_CLOSERS = [
+    "The Silent Struggle. Available now.",
+    "The Silent Struggle. Link in bio.",
+    "The Silent Struggle. If you need it, you already know.",
+    "The Silent Struggle. Written in the dark so you don't have to stay there.",
+    "The Silent Struggle. Seven chapters. Zero bullshit.",
+    "The Silent Struggle. For the ones still fighting.",
 ]
 
 def generate_caption(client):
@@ -66,23 +95,31 @@ Return ONLY the caption text, nothing else."""
     return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=200, messages=[{"role": "user", "content": prompt}]).content[0].text.strip()
 
 def generate_voiceover_script(client):
-    angle = random.choice(PROMO_ANGLES); print(f"   Voiceover angle: {angle}")
+    angle = random.choice(PROMO_ANGLES)
+    hook = random.choice(VOICEOVER_HOOKS)
+    closer = random.choice(VOICEOVER_CLOSERS)
+    print(f"   Voiceover angle: {angle}")
+    print(f"   Hook: {hook[:50]}...")
+    print(f"   Closer: {closer}")
     prompt = f"""Write a SHORT voiceover script for a TikTok video promoting an ebook called
 "{EBOOK_TITLE} — {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
 
 The ebook is a deeply personal recovery guide written by someone who spent 20 years in addiction and has been 2 years clean.
+7 chapters: rock bottom, willpower, shame, the first 7 days, mental reset toolkit, relapse, rebuilding identity.
 
 ANGLE: {angle}
+OPENING HOOK (use this as the first line or adapt it): "{hook}"
+CLOSING LINE (end with this exactly): "{closer}"
 
 RULES:
-- Maximum 3-4 sentences, 10-15 seconds to read aloud
-- Speak as Keith (first person) — raw, honest, direct
-- End with "The Silent Struggle. Available now." or "Link in bio."
-- NO emojis, NO hashtags, NO links
-- Natural spoken words. Do NOT start with "Hey" or "What's up"
+- Total 3-5 sentences including hook and closer. 10-18 seconds spoken.
+- Speak as Keith (first person) — raw, honest, direct, no filter
+- The middle 1-3 sentences should connect the hook to the closer naturally
+- NO emojis, NO hashtags, NO links, NO "Hey", NO "What's up"
+- Sound like a man talking to himself at 3am, not a marketer
 
 Return ONLY the voiceover text, nothing else."""
-    return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=200, messages=[{"role": "user", "content": prompt}]).content[0].text.strip()
+    return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=300, messages=[{"role": "user", "content": prompt}]).content[0].text.strip()
 
 def download_cover(url, path):
     resp = requests.get(url, timeout=30); resp.raise_for_status()
@@ -156,7 +193,7 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
     except Exception as e: print(f"   Upload failed: {e}"); return {"error": str(e)}
 
 def main():
-    print(f"== MindCore AI — Ebook Promotion Pipeline v2.4 ==\n")
+    print(f"== MindCore AI — Ebook Promotion Pipeline v2.5 ==\n")
     print(f"   Cover: {COVER_IMAGE_URL.split('/')[-1]}")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
