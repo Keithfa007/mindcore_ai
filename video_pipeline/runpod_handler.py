@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- RunPod Serverless Handler v1.1
+MindCore AI -- RunPod Serverless Handler v1.2
 =============================================
-Receives a prompt, generates a 5-second Wan 2.1 video clip,
-returns the clip as base64-encoded MP4.
-
-v1.1: Robust imports, HF_TOKEN support, better error handling.
+v1.2: Loads model from baked-in Docker image path (no cold start download).
+v1.1: Lazy imports, HF_TOKEN support, error handling.
 """
 import os, sys, base64
 
-os.environ["HF_HOME"] = "/workspace/.cache/huggingface"
+# Use baked-in model path first, fallback to workspace cache
+MODEL_CACHE = "/app/models" if os.path.exists("/app/models") else "/workspace/.cache/huggingface"
+os.environ["HF_HOME"] = MODEL_CACHE
 os.environ["TMPDIR"] = "/workspace/tmp"
 os.makedirs("/workspace/tmp", exist_ok=True)
 
@@ -19,25 +19,24 @@ pipe = None
 
 
 def load_model():
-    """Load Wan 2.1 T2V 1.3B model. Downloads on first call."""
     global pipe
     import torch
     from diffusers import AutoModel, WanPipeline
 
-    print("Loading Wan 2.1 T2V 1.3B...")
+    print(f"Loading Wan 2.1 T2V 1.3B from {MODEL_CACHE}...")
     sys.stdout.flush()
 
     vae = AutoModel.from_pretrained(
         "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
         subfolder="vae",
         torch_dtype=torch.float32,
-        cache_dir="/workspace/.cache/huggingface",
+        cache_dir=MODEL_CACHE,
     )
     pipe = WanPipeline.from_pretrained(
         "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
         vae=vae,
         torch_dtype=torch.bfloat16,
-        cache_dir="/workspace/.cache/huggingface",
+        cache_dir=MODEL_CACHE,
     )
     pipe.enable_model_cpu_offload()
     print("Model loaded successfully.")
@@ -45,7 +44,6 @@ def load_model():
 
 
 def handler(event):
-    """Handle a video generation request."""
     global pipe
 
     try:
@@ -92,6 +90,6 @@ def handler(event):
         return {"error": str(e)}
 
 
-print("MindCore AI RunPod Handler v1.1 starting...")
+print(f"MindCore AI RunPod Handler v1.2 starting (cache: {MODEL_CACHE})...")
 sys.stdout.flush()
 runpod.serverless.start({"handler": handler})
