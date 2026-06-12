@@ -1,7 +1,7 @@
 """
-MindCore AI -- RunPod AI Video Clips v1.4
+MindCore AI -- RunPod AI Video Clips v1.5
 ==========================================
-v1.4: Increased poll timeout to 1200s for cold starts.
+v1.5: Increased poll timeout to 1800s (30min) for cold starts.
 v1.3: All prompts rewritten for strong continuous flying movement.
       Every scene has explicit camera direction and motion.
 v1.2: Built-in crossfade transitions between scenes.
@@ -22,10 +22,6 @@ CLIP_DURATION = 5.06
 
 _used_prompts = set()
 
-# -----------------------------------------------
-# 12 DRONE JOURNEY THEMES
-# ALL prompts have continuous camera movement
-# -----------------------------------------------
 DRONE_THEMES = {
     "ocean": [
         {"name": "approach", "prompt": "FPV drone flying fast forward low over dark blue ocean waves at dawn, camera racing toward the horizon, spray misting up from the surface, continuous forward motion never stopping, golden light appearing ahead, dramatic moody atmosphere, smooth tracking shot, photorealistic, 4K"},
@@ -114,10 +110,6 @@ DRONE_THEMES = {
 }
 
 
-# -----------------------------------------------
-# CROSSFADE ASSEMBLY
-# -----------------------------------------------
-
 def assemble_drone_journey(clip_paths, output_path, crossfade_dur=None):
     if crossfade_dur is None: crossfade_dur = CROSSFADE_DURATION
     if not clip_paths: raise RuntimeError("No clips to assemble")
@@ -156,17 +148,13 @@ def _simple_concat(clip_paths, output_path):
     return output_path
 
 
-# -----------------------------------------------
-# RUNPOD API
-# -----------------------------------------------
-
 def _submit_job(prompt, num_frames=81, height=832, width=480):
     headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}", "Content-Type": "application/json"}
     payload = {"input": {"prompt": prompt, "num_frames": num_frames, "height": height, "width": width, "guidance_scale": 7.5, "fps": 16}}
     resp = requests.post(f"{RUNPOD_API_URL}/run", headers=headers, json=payload, timeout=30)
     resp.raise_for_status(); return resp.json().get("id")
 
-def _poll_result(job_id, timeout=1200, interval=10):
+def _poll_result(job_id, timeout=1800, interval=10):
     headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}"}
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -177,7 +165,7 @@ def _poll_result(job_id, timeout=1200, interval=10):
         print(f"  [RunPod] {status}... ({int(deadline - time.time())}s remaining)"); time.sleep(interval)
     raise TimeoutError(f"RunPod job {job_id} timed out after {timeout}s")
 
-def fetch_runpod_clip(prompt, scene_idx, output_path, timeout=1200):
+def fetch_runpod_clip(prompt, scene_idx, output_path, timeout=1800):
     if not RUNPOD_API_KEY or not RUNPOD_ENDPOINT_ID: raise RuntimeError("RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID must be set")
     print(f"  [RunPod] Submitting: {prompt[:60]}..."); job_id = _submit_job(prompt)
     print(f"  [RunPod] Job {job_id} submitted"); result = _poll_result(job_id, timeout=timeout)
