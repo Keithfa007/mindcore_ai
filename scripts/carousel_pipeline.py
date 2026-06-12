@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.8
+MindCore AI -- Carousel Image Post Pipeline v2.9
 =================================================
-v2.8: Facebook-specific title + description (no TikTok hashtags on FB).
+v2.9: Facebook-specific title + description (no TikTok hashtags on FB).
 v2.7: Full image variety pools -- 10 prompts per slide per gender.
 v2.6: POST_HOUR_UTC = 11 (1pm Malta), scheduled_date.
 
@@ -183,12 +183,23 @@ Return ONLY valid JSON:
     return result
 
 def generate_slide_image(oc,sk,topic,gender):
-    prompt=get_image_prompt(sk,gender,topic)
-    ps=len(IMAGE_POOLS_MALE[sk] if gender=="male" else IMAGE_POOLS_FEMALE[sk]); sn=int(sk.split("_")[1]); idx=(GITHUB_RUN_NUMBER+sn-1)%ps
-    print(f"  [gpt-image-1 HIGH] {sk} generating... (pool idx {idx}/{ps-1})")
-    r=oc.images.generate(model="gpt-image-1",prompt=prompt,size="1024x1536",quality="high",n=1)
-    d=r.data[0]; ib=requests.get(d.url,timeout=60).content if getattr(d,"url",None) else base64.b64decode(d.b64_json)
-    print(f"  [gpt-image-1 HIGH] {sk} ready ({len(ib)//1024:.0f} KB)"); return ib
+    pools=IMAGE_POOLS_MALE if gender=="male" else IMAGE_POOLS_FEMALE
+    ps=len(pools[sk]); sn=int(sk.split("_")[1]); base_idx=(GITHUB_RUN_NUMBER+sn-1)%ps
+    for attempt in range(3):
+        idx=(base_idx+attempt)%ps
+        prompt=pools[sk][idx]
+        if sk=="slide_1" and topic: prompt=f"{prompt} Emotional theme: {topic}."
+        print(f"  [gpt-image-1 HIGH] {sk} generating... (pool idx {idx}/{ps-1}, attempt {attempt+1}/3)")
+        try:
+            r=oc.images.generate(model="gpt-image-1",prompt=prompt,size="1024x1536",quality="high",n=1)
+            d=r.data[0]; ib=requests.get(d.url,timeout=60).content if getattr(d,"url",None) else base64.b64decode(d.b64_json)
+            print(f"  [gpt-image-1 HIGH] {sk} ready ({len(ib)//1024:.0f} KB)"); return ib
+        except Exception as e:
+            if "moderation" in str(e).lower() or "safety" in str(e).lower():
+                print(f"  [gpt-image-1] {sk} BLOCKED by moderation (attempt {attempt+1}/3), trying next prompt...")
+                continue
+            raise
+    raise RuntimeError(f"All 3 image prompts for {sk} were blocked by moderation")
 
 def resize_to_tiktok(ib):
     img=Image.open(io.BytesIO(ib)).convert("RGB"); s=max(IMAGE_WIDTH/img.width,IMAGE_HEIGHT/img.height)
@@ -272,7 +283,7 @@ def main():
         with open(cp) as f: cfg=json.load(f)
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     gender=get_gender_mode(); history=load_history(); scheduled_date=get_scheduled_post_time()
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.8")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.9")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Gender: {gender.upper()} | ~$0.48")
     print(f"  Image pools: 10 prompts per slide | Facebook: separate title + description")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
