@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.4
+MindCore AI -- Male Pipeline Patch v2.5
 =======================================
+v2.5: Fixed syntax error in upload exception handler.
 v2.4: ElevenLabs TTS (replaces Fish Audio for voiceover).
 v2.3: SERP targets GB.
 v2.2: Fixed power word flashes + softened ad CTA.
@@ -51,8 +52,8 @@ def get_scheduled_post_time():
     target = now.replace(hour=post_hour, minute=0, second=0, microsecond=0)
     if now >= target: target += timedelta(days=1)
     scheduled = target.strftime("%Y-%m-%dT%H:%M:%SZ")
-    slot = "A (11am Malta)" if post_hour == 9 else "B (3pm Malta)"
-    print(f"  Slot {slot} | {post_hour:02d}:00 UTC = {post_hour+2:02d}:00 Malta | Fires: {scheduled}")
+    slot = "MORNING (11am Malta)" if post_hour == 9 else "EVENING (7pm Malta)"
+    print(f"  {slot} | {post_hour:02d}:00 UTC = {post_hour+2:02d}:00 Malta | Fires: {scheduled}")
     return scheduled
 
 
@@ -105,7 +106,9 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
         print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
         if not resp.ok: print(f"  {resp.text[:300]}")
         return result
-    except Exception as e: print(f"  Upload failed: {e}"; return {"error":str(e)}
+    except Exception as e:
+        print(f"  Upload failed: {e}")
+        return {"error": str(e)}
 
 pipeline.render_cinematic_video = _patched_render_cinematic_video
 pipeline.upload_to_platforms = _patched_upload
@@ -124,9 +127,8 @@ def main():
     upload_enabled = cfg.get("upload_enabled",False) and bool(pipeline.UPLOAD_POST_API_KEY)
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
-    slot_label = "A (11am Malta)" if os.environ.get("POST_HOUR_UTC")=="9" else "B (3pm Malta)"
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.2")
-    print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Slot {slot_label}")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.3")
+    print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Daily")
     print(f"  Pexels | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
