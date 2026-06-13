@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v3.0
+MindCore AI -- Male Pipeline Patch v3.1
 =======================================
-v3.0: WaveSpeed with automatic Pexels fallback. Full voiceover duration passed to WaveSpeed.
+v3.1: Pexels-only + xfade crossfade transitions (matching female v5.8).
+v3.0: WaveSpeed with automatic Pexels fallback.
 v2.9: WaveSpeed API only (RunPod removed).
 v2.7: Removed word flash overlays.
 v2.4: ElevenLabs TTS.
@@ -10,6 +11,7 @@ v2.3: SERP targets GB.
 """
 import json, os, sys, random, subprocess
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import requests
 import video_pipeline.male_pipeline as pipeline
 from video_pipeline.word_flash import pick_power_word as fixed_pick_power_word
@@ -31,7 +33,6 @@ print(f"  SERP country: {SERP_COUNTRY}")
 
 def _improved_ass_subtitles(words, output_path):
     if not words: return False
-    from pathlib import Path
     def ts(s): h=int(s//3600);m=int((s%3600)//60);s=s%60; return f"{h}:{m:02d}:{s:05.2f}"
     header = (
         "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n"
@@ -86,10 +87,62 @@ def get_scheduled_post_time():
     print(f"  {slot} | {post_hour:02d}:00 UTC = {post_hour+2:02d}:00 Malta | Fires: {scheduled}")
     return scheduled
 
-def _patched_render_cinematic_video(script_text, mood, niche, script=None):
-    """Render video: WaveSpeed API with automatic Pexels fallback."""
-    wavespeed_key = os.environ.get("WAVESPEED_API_KEY", "")
+# ── xfade assembly -- replaces hard concat with smooth dissolve transitions ──
+def _patched_assemble_cinematic_video(clip_paths, audio_path, output_path, music_path=None, ass_path=None, scene_types=None):
+    XFADE_DUR = 0.6
+    ad = pipeline.get_audio_duration(audio_path); n = len(clip_paths)
+    total_xfade = XFADE_DUR * (n - 1) if n > 1 else 0
+    cd = (ad + total_xfade) / n
+    print(f"  Assembling: {n} clips x {cd:.1f}s = {ad:.1f}s (with {XFADE_DUR}s crossfades)")
+    clips_dir = pipeline.OUTPUT_DIR / "clips"; clips_dir.mkdir(exist_ok=True); processed = []
+    for i, rp in enumerate(clip_paths):
+        st = scene_types[i] if scene_types and i < len(scene_types) else "problem"
+        grade = pipeline.COLOR_GRADE_WARM if st in pipeline.WARM_SCENES else pipeline.COLOR_GRADE_COLD
+        d = pipeline.KB_DIRECTIONS[i % len(pipeline.KB_DIRECTIONS)]
+        out = str(clips_dir / f"clip_{i}_processed.mp4")
+        try:
+            pipeline.process_clip_to_portrait(rp, out, cd, d, grade)
+            processed.append(out)
+            print(f"    Clip {i+1}/{n}: {d} | {'WARM' if grade == pipeline.COLOR_GRADE_WARM else 'COLD'}")
+        except Exception as e:
+            print(f"  Clip {i+1} failed ({e}) -- skipping")
+    if not processed: raise RuntimeError("No clips processed")
+    if len(processed) == 1:
+        cv = processed[0]
+    else:
+        inputs = []
+        for p in processed: inputs.extend(["-i", p])
+        clip_durs = []
+        for p in processed:
+            dur_out = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",p], capture_output=True, text=True)
+            clip_durs.append(float(dur_out.stdout.strip()) if dur_out.returncode == 0 else cd)
+        filters = []; offset = clip_durs[0] - XFADE_DUR; prev = "0:v"
+        for i in range(1, len(processed)):
+            out_label = f"v{i}" if i < len(processed) - 1 else "outv"
+            filters.append(f"[{prev}][{i}:v]xfade=transition=fade:duration={XFADE_DUR}:offset={offset:.3f}[{out_label}]")
+            prev = out_label
+            if i < len(processed) - 1: offset += clip_durs[i] - XFADE_DUR
+        cv = str(pipeline.OUTPUT_DIR / "xfade_video.mp4")
+        xfade_cmd = ["ffmpeg","-y"] + inputs + ["-filter_complex",";".join(filters),"-map","[outv]","-c:v","libx264","-crf","18","-preset","slow","-pix_fmt","yuv420p",cv]
+        print(f"  [xfade] {len(processed)} clips with {XFADE_DUR}s dissolve transitions...")
+        r = subprocess.run(xfade_cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"  [xfade] Failed -- falling back to hard concat: {r.stderr[-300:]}")
+            cf = pipeline.OUTPUT_DIR / "concat.txt"
+            with open(cf, "w") as f:
+                for p in processed: f.write(f"file '{Path(p).resolve()}'\n")
+            cv = str(pipeline.OUTPUT_DIR / "concat_video.mp4")
+            subprocess.run(["ffmpeg","-f","concat","-safe","0","-i",str(cf),"-c:v","copy","-t",str(ad),"-y",cv], capture_output=True, text=True, check=True)
+        else:
+            print(f"  [xfade] Smooth transitions applied")
+    r = subprocess.run(["ffmpeg","-i",cv,"-i",audio_path,"-map","0:v:0","-map","1:a:0","-c:v","libx264","-crf","18","-preset","slow","-c:a","aac","-b:a","192k","-t",str(ad),"-y",output_path], capture_output=True, text=True)
+    if r.returncode != 0: raise RuntimeError(f"Audio mix failed: {r.stderr[-500:]}")
+    print(f"  Assembled: {Path(output_path).stat().st_size/(1024*1024):.1f} MB | xfade transitions")
+    if ass_path: pipeline.burn_subtitles_into_video(output_path, ass_path)
 
+# ── Pexels-only render -- WaveSpeed removed ──
+def _patched_render_cinematic_video(script_text, mood, niche, script=None):
+    """Render video: Pexels B-roll with xfade transitions."""
     print("\n  [TTS] Generating voiceover (ElevenLabs)...")
     audio_path = str(pipeline.OUTPUT_DIR / "voiceover.mp3")
     pipeline.generate_fish_audio_tts(script_text, audio_path)
@@ -102,33 +155,17 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
     clips_dir = pipeline.OUTPUT_DIR / "clips"; clips_dir.mkdir(exist_ok=True)
     raw_clip_paths = []; scene_types = []
 
-    if wavespeed_key:
-        try:
-            _dur_out = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",audio_path], capture_output=True, text=True)
-            audio_dur = int(float(_dur_out.stdout.strip())) if _dur_out.returncode == 0 else 30
-            from video_pipeline.wavespeed_clips import fetch_drone_journey_clips, get_theme_for_run
-            theme_name = get_theme_for_run(pipeline.GITHUB_RUN_NUMBER)
-            print(f"\n  [WaveSpeed] Drone theme: {theme_name} | Voiceover: {audio_dur}s")
-            clips = fetch_drone_journey_clips(theme_name, str(clips_dir), pipeline.GITHUB_RUN_NUMBER, duration=audio_dur)
-            for cp, sn in clips:
-                raw_clip_paths.append(cp); scene_types.append(sn)
-            source = "WaveSpeed AI"
-        except Exception as e:
-            print(f"\n  [WaveSpeed] FAILED ({e}) -- falling back to Pexels")
-            raw_clip_paths = []; scene_types = []
+    from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene, reset_used_videos
+    reset_used_videos()
+    for scene_name, count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
+        for j in range(count):
+            clip_path = str(clips_dir / f"raw_{len(raw_clip_paths)}.mp4")
+            pexels_path = fetch_pexels_clip_for_scene(scene_name, len(raw_clip_paths), clip_path, pipeline.GITHUB_RUN_NUMBER, gender="man")
+            if pexels_path: raw_clip_paths.append(pexels_path); scene_types.append(scene_name)
+            else: print(f"  WARNING: {scene_name} clip skipped")
 
-    if not raw_clip_paths:
-        from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
-        for scene_name, count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
-            for j in range(count):
-                clip_path = str(clips_dir / f"raw_{len(raw_clip_paths)}.mp4")
-                pexels_path = fetch_pexels_clip_for_scene(scene_name, len(raw_clip_paths), clip_path, pipeline.GITHUB_RUN_NUMBER, gender="man")
-                if pexels_path: raw_clip_paths.append(pexels_path); scene_types.append(scene_name)
-                else: print(f"  WARNING: {scene_name} clip skipped")
-        source = "Pexels"
-
-    if not raw_clip_paths: raise RuntimeError("No clips generated")
-    print(f"\n  Fetched {len(raw_clip_paths)} clips ({source})")
+    if not raw_clip_paths: raise RuntimeError("No clips fetched from Pexels")
+    print(f"\n  Fetched {len(raw_clip_paths)} clips (Pexels)")
     final_path = str(pipeline.OUTPUT_DIR / "mindcore_ai_video.mp4")
     pipeline.assemble_cinematic_video(raw_clip_paths, audio_path, final_path, None, ass_path, scene_types=scene_types)
     return final_path
@@ -160,6 +197,7 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
     except Exception as e:
         print(f"  Upload failed: {e}"); return {"error": str(e)}
 
+pipeline.assemble_cinematic_video = _patched_assemble_cinematic_video
 pipeline.render_cinematic_video = _patched_render_cinematic_video
 pipeline.upload_to_platforms = _patched_upload
 pipeline.generate_ad_script = _patched_generate_ad_script
@@ -176,10 +214,9 @@ def main():
     upload_enabled = cfg.get("upload_enabled",False) and bool(pipeline.UPLOAD_POST_API_KEY)
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
-    video_source = "WaveSpeed AI" if os.environ.get("WAVESPEED_API_KEY") else "Pexels"
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.8")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.9")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Daily")
-    print(f"  {video_source} | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
+    print(f"  Pexels + xfade | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
     print("\n  Generating script...")
