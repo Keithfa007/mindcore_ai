@@ -1,5 +1,8 @@
-"""MindCore AI -- WaveSpeed AI Video Clips v1.3
+"""MindCore AI -- WaveSpeed AI Video Clips v2.0
 ==========================================
+v2.0: Wan 2.2 negative prompt support -- critical for eliminating morphing,
+      flickering, face deformation, and text artifacts. Based on Wan 2.2
+      prompting guide best practices (PixelDojo, MimicPC).
 v1.3: Single-scene mode, full-length clip matching voiceover duration.
 v1.2: Single-scene mode.
 v1.1: Fixed API URL and model slug.
@@ -17,14 +20,30 @@ WAVESPEED_BASE = "https://api.wavespeed.ai/api/v3"
 WAVESPEED_MODEL = "wavespeed-ai/wan-2.2/t2v-480p-ultra-fast"
 MAX_CLIP_DURATION = 5  # Wan 2.2 model limit
 
+# ── Wan 2.2 negative prompt -- critical for output quality ───────────────
+WAN_NEGATIVE_PROMPT = (
+    "static, still picture, blurred details, overexposed, bright colors, "
+    "overall gray, worst quality, low quality, JPEG compression residue, "
+    "ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, "
+    "deformed, disfigured, malformed limbs, fused fingers, text, subtitles, "
+    "watermark, logo, cluttered background, three legs, walking backwards, "
+    "morphing, warping, flickering, face deformation"
+)
+
 from video_pipeline.runpod_clips import DRONE_THEMES, get_theme_for_run
 
 
 def _submit(prompt, duration=5):
-    """Submit a video generation job. Returns request ID."""
+    """Submit a video generation job with Wan 2.2 negative prompt. Returns request ID."""
     headers = {"Authorization": f"Bearer {WAVESPEED_API_KEY}", "Content-Type": "application/json"}
     url = f"{WAVESPEED_BASE}/{WAVESPEED_MODEL}"
-    payload = {"prompt": prompt, "size": "832*480", "duration": min(duration, MAX_CLIP_DURATION), "seed": -1}
+    payload = {
+        "prompt": prompt,
+        "negative_prompt": WAN_NEGATIVE_PROMPT,
+        "size": "832*480",
+        "duration": min(duration, MAX_CLIP_DURATION),
+        "seed": -1,
+    }
     resp = requests.post(url, headers=headers, json=payload, timeout=30)
     resp.raise_for_status()
     data = resp.json()
@@ -63,7 +82,7 @@ def _download(video_url, output_path):
     vid_resp = requests.get(video_url, timeout=120)
     vid_resp.raise_for_status()
     with open(output_path, "wb") as f:
-        f.write(vid_resp.content)
+        vid_resp.content and f.write(vid_resp.content)
     size_kb = Path(output_path).stat().st_size / 1024
     print(f"  [WaveSpeed] Clip saved: {size_kb:.0f} KB")
     return output_path
@@ -84,13 +103,19 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1, durat
     headers = {"Authorization": f"Bearer {WAVESPEED_API_KEY}", "Content-Type": "application/json"}
     submit_url = f"{WAVESPEED_BASE}/{WAVESPEED_MODEL}"
 
-    # Step 1: Submit ALL jobs at once
+    # Step 1: Submit ALL jobs at once (with negative prompt)
     jobs = []
     for i, scene in enumerate(theme):
         clip_path = os.path.join(output_dir, f"drone_{i}_{scene['name']}.mp4")
         try:
             print(f"  [WaveSpeed] Submitting [{i+1}/{len(theme)}]: {scene['prompt'][:55]}...")
-            payload = {"prompt": scene["prompt"], "size": "832*480", "duration": MAX_CLIP_DURATION, "seed": -1}
+            payload = {
+                "prompt": scene["prompt"],
+                "negative_prompt": WAN_NEGATIVE_PROMPT,
+                "size": "832*480",
+                "duration": MAX_CLIP_DURATION,
+                "seed": -1,
+            }
             resp = requests.post(submit_url, headers=headers, json=payload, timeout=30)
             resp.raise_for_status()
             data = resp.json()
