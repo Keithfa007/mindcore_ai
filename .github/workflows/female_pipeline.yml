@@ -38,6 +38,7 @@ jobs:
           PEXELS_API_KEY:      ${{ secrets.PEXELS_API_KEY }}
           SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          WAVESPEED_API_KEY:   ${{ secrets.WAVESPEED_API_KEY }}
           RUNPOD_API_KEY:      ${{ secrets.RUNPOD_API_KEY }}
           RUNPOD_ENDPOINT_ID:  ${{ secrets.RUNPOD_ENDPOINT_ID }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
