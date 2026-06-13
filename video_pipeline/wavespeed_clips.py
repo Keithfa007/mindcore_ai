@@ -1,6 +1,7 @@
-"""MindCore AI -- WaveSpeed AI Video Clips v1.2
+"""MindCore AI -- WaveSpeed AI Video Clips v1.3
 ==========================================
-v1.2: Single-scene mode -- generates 1 continuous clip per video (no choppy transitions).
+v1.3: Full-length single clip matching voiceover duration (no looping).
+v1.2: Single-scene mode.
 v1.1: Fixed API URL and model slug.
 v1.0: Initial WaveSpeed integration.
 
@@ -30,7 +31,7 @@ def _submit(prompt, duration=5):
     return req_id
 
 
-def _poll(req_id, timeout=300):
+def _poll(req_id, timeout=600):
     """Poll for completion. Returns output URL."""
     headers = {"Authorization": f"Bearer {WAVESPEED_API_KEY}"}
     url = f"{WAVESPEED_BASE}/predictions/{req_id}/result"
@@ -65,10 +66,12 @@ def _download(video_url, output_path):
     return output_path
 
 
-def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
-    """Generate a SINGLE continuous drone clip for the entire video.
-    Picks one scene from the theme and generates one clip.
-    Returns list with single clip for compatibility with assembly pipeline.
+def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1, duration=5):
+    """Generate a SINGLE continuous drone clip matching the voiceover duration.
+    
+    Args:
+        duration: Target video duration in seconds (matches voiceover length).
+                  WaveSpeed charges $0.01/second, so 30s = $0.30.
     """
     theme = DRONE_THEMES.get(theme_name)
     if not theme:
@@ -78,16 +81,23 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
     # Pick 1 scene from the theme (rotate based on run number)
     scene_idx = github_run_number % len(theme)
     scene = theme[scene_idx]
+    
+    # Cap duration at what the model supports (typically 5-10s max)
+    # If voiceover is longer, the pipeline will loop/stretch the clip
+    clip_duration = min(duration, 10)
+    
     print(f"  [WaveSpeed] Single scene: {theme_name} / {scene['name']}")
-    print(f"  [WaveSpeed] Prompt: {scene['prompt'][:80]}...")
+    print(f"  [WaveSpeed] Duration: {clip_duration}s (voiceover: {duration}s)")
+    print(f"  [WaveSpeed] Cost: ~${clip_duration * 0.01:.2f}")
 
     clip_path = os.path.join(output_dir, f"drone_0_{scene['name']}.mp4")
 
     try:
         print(f"  [WaveSpeed] Submitting...")
-        req_id = _submit(scene["prompt"], duration=5)
+        req_id = _submit(scene["prompt"], duration=clip_duration)
         print(f"  [WaveSpeed] Job {req_id} submitted")
-        video_url = _poll(req_id, timeout=300)
+        # Longer timeout for longer clips
+        video_url = _poll(req_id, timeout=max(300, clip_duration * 30))
         if video_url:
             _download(video_url, clip_path)
             return [(clip_path, scene["name"])]
@@ -97,12 +107,12 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
     return []
 
 
-def fetch_wavespeed_clip(prompt, scene_idx, output_path, timeout=300):
+def fetch_wavespeed_clip(prompt, scene_idx, output_path, timeout=300, duration=5):
     """Generate a single clip (for direct use)."""
     if not WAVESPEED_API_KEY:
         raise RuntimeError("WAVESPEED_API_KEY not set")
     print(f"  [WaveSpeed] Submitting: {prompt[:60]}...")
-    req_id = _submit(prompt)
+    req_id = _submit(prompt, duration=duration)
     print(f"  [WaveSpeed] Job {req_id} submitted")
     video_url = _poll(req_id, timeout=timeout)
     if video_url:
