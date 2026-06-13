@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Female Cinematic Pipeline v5.6
+MindCore AI -- Female Cinematic Pipeline v5.7
 =============================================
+v5.7: WaveSpeed with automatic Pexels fallback.
 v5.6: WaveSpeed API (RunPod removed).
 v5.5: Removed word flash overlays, enhanced subtitle styling.
 v5.4: RunPod AI drone footage with Pexels fallback.
@@ -258,14 +259,19 @@ def render_cinematic_video(script_text,mood,niche,script=None):
     if not generate_ass_subtitles(words,ass_path):ass_path=None
     clips_dir=OUTPUT_DIR/"clips";clips_dir.mkdir(exist_ok=True);raw=[];st=[]
     if wavespeed_key:
-        from video_pipeline.wavespeed_clips import fetch_drone_journey_clips, get_theme_for_run
-        theme_name = get_theme_for_run(GITHUB_RUN_NUMBER)
-        print(f"\n  [WaveSpeed] Drone theme: {theme_name}")
-        clips = fetch_drone_journey_clips(theme_name, str(clips_dir), GITHUB_RUN_NUMBER)
-        for cp, sn in clips:
-            raw.append(cp);st.append(sn)
-        source = "WaveSpeed AI"
-    else:
+        try:
+            from video_pipeline.wavespeed_clips import fetch_drone_journey_clips, get_theme_for_run
+            theme_name = get_theme_for_run(GITHUB_RUN_NUMBER)
+            print(f"\n  [WaveSpeed] Drone theme: {theme_name}")
+            clips = fetch_drone_journey_clips(theme_name, str(clips_dir), GITHUB_RUN_NUMBER)
+            for cp, sn in clips:
+                raw.append(cp);st.append(sn)
+            source = "WaveSpeed AI"
+        except Exception as e:
+            print(f"\n  [WaveSpeed] FAILED ({e}) -- falling back to Pexels")
+            raw = []; st = []
+
+    if not raw:
         from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
         for sn,count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
             for j in range(count):
@@ -324,7 +330,7 @@ def main():
         with open(cp) as f:cfg=json.load(f)
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     kd=load_keywords_data();niche=get_niche_for_today(kd);mood=pick_visual_mood(niche)
-    print(f"\n  MindCore AI -- Female Cinematic Pipeline v5.6")
+    print(f"\n  MindCore AI -- Female Cinematic Pipeline v5.7")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Pexels | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Niche: {niche['name']} | Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
