@@ -1,53 +1,51 @@
-"""MindCore AI -- WaveSpeed AI Video Clips v1.0
+"""MindCore AI -- WaveSpeed AI Video Clips v1.1
 ==========================================
-Replaces runpod_clips.py with WaveSpeed managed API.
+v1.1: Fixed API URL (/api/v3/) and model slug (wan-2.2/t2v-480p-ultra-fast).
+v1.0: Initial WaveSpeed integration.
+
 Zero cold starts, no Docker, no GPU management.
-Uses Wan 2.2 Ultra Fast ($0.01/second) by default.
+Uses Wan 2.2 T2V Ultra Fast ($0.01/second).
 """
 import os, time, requests
 from pathlib import Path
 
 WAVESPEED_API_KEY = os.environ.get("WAVESPEED_API_KEY", "")
-WAVESPEED_MODEL = os.environ.get("WAVESPEED_MODEL", "wavespeed-ai/wan-2.1/t2v-480p")
+WAVESPEED_BASE = "https://api.wavespeed.ai/api/v3"
+WAVESPEED_MODEL = "wavespeed-ai/wan-2.2/t2v-480p-ultra-fast"
 
-# Re-export drone themes from runpod_clips
 from video_pipeline.runpod_clips import DRONE_THEMES, get_theme_for_run, CROSSFADE_DURATION
-from video_pipeline.runpod_clips import assemble_drone_journey, _simple_concat
+from video_pipeline.runpod_clips import assemble_drone_journey
 
 
-def _wavespeed_generate(prompt, output_path, timeout=300):
-    """Generate a video clip via WaveSpeed API. Returns output path or raises."""
+def fetch_wavespeed_clip(prompt, scene_idx, output_path, timeout=300):
+    """Generate a single clip via WaveSpeed."""
     if not WAVESPEED_API_KEY:
         raise RuntimeError("WAVESPEED_API_KEY not set")
-
-    # Submit job
     headers = {"Authorization": f"Bearer {WAVESPEED_API_KEY}", "Content-Type": "application/json"}
-    payload = {"prompt": prompt}
-    submit_url = f"https://api.wavespeed.ai/v3/wavespeed-ai/wan-2.1/t2v-480p"
-
+    url = f"{WAVESPEED_BASE}/{WAVESPEED_MODEL}"
+    payload = {"prompt": prompt, "size": "832*480", "duration": 5, "seed": -1}
     print(f"  [WaveSpeed] Submitting: {prompt[:60]}...")
-    resp = requests.post(submit_url, headers=headers, json=payload, timeout=30)
+    resp = requests.post(url, headers=headers, json=payload, timeout=30)
     resp.raise_for_status()
     data = resp.json()
-    request_id = data.get("data", {}).get("id") or data.get("id")
-    if not request_id:
-        raise RuntimeError(f"WaveSpeed returned no request ID: {data}")
-    print(f"  [WaveSpeed] Job {request_id} submitted")
+    req_id = data.get("data", {}).get("id") or data.get("id")
+    if not req_id:
+        raise RuntimeError(f"WaveSpeed no request ID: {data}")
+    print(f"  [WaveSpeed] Job {req_id} submitted")
 
-    # Poll for completion
-    poll_url = f"https://api.wavespeed.ai/v3/predictions/{request_id}"
+    poll_url = f"{WAVESPEED_BASE}/predictions/{req_id}/result"
     deadline = time.time() + timeout
     while time.time() < deadline:
-        resp = requests.get(poll_url, headers=headers, timeout=30)
+        resp = requests.get(poll_url, headers={"Authorization": f"Bearer {WAVESPEED_API_KEY}"}, timeout=30)
         resp.raise_for_status()
         result = resp.json()
-        status = result.get("data", {}).get("status") or result.get("status")
+        d = result.get("data", result)
+        status = d.get("status", "")
         if status == "completed":
-            outputs = result.get("data", {}).get("outputs") or result.get("outputs", [])
+            outputs = d.get("outputs") or d.get("output", [])
             if outputs:
                 video_url = outputs[0] if isinstance(outputs[0], str) else outputs[0].get("url", "")
                 if video_url:
-                    print(f"  [WaveSpeed] Downloading video...")
                     vid_resp = requests.get(video_url, timeout=120)
                     vid_resp.raise_for_status()
                     with open(output_path, "wb") as f:
@@ -55,30 +53,24 @@ def _wavespeed_generate(prompt, output_path, timeout=300):
                     size_kb = Path(output_path).stat().st_size / 1024
                     print(f"  [WaveSpeed] Clip saved: {size_kb:.0f} KB")
                     return output_path
-            raise RuntimeError(f"WaveSpeed completed but no video URL in output: {result}")
+            raise RuntimeError(f"WaveSpeed completed but no output: {result}")
         elif status in ("failed", "cancelled"):
-            error = result.get("data", {}).get("error") or result.get("error", "unknown")
-            raise RuntimeError(f"WaveSpeed job {request_id} {status}: {error}")
+            raise RuntimeError(f"WaveSpeed {status}: {d.get('error', result)}")
         remaining = int(deadline - time.time())
         print(f"  [WaveSpeed] {status}... ({remaining}s remaining)")
         time.sleep(5)
-    raise TimeoutError(f"WaveSpeed job {request_id} timed out after {timeout}s")
-
-
-def fetch_wavespeed_clip(prompt, scene_idx, output_path, timeout=300):
-    """Generate a single clip via WaveSpeed."""
-    return _wavespeed_generate(prompt, output_path, timeout=timeout)
+    raise TimeoutError(f"WaveSpeed job {req_id} timed out after {timeout}s")
 
 
 def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
-    """Generate all clips IN PARALLEL via WaveSpeed -- submit all, poll all."""
+    """Generate all clips IN PARALLEL via WaveSpeed."""
     theme = DRONE_THEMES.get(theme_name)
     if not theme:
         import random; theme_name = random.choice(list(DRONE_THEMES.keys())); theme = DRONE_THEMES[theme_name]
     print(f"  [WaveSpeed] Drone journey: {theme_name} ({len(theme)} scenes) -- PARALLEL")
 
     headers = {"Authorization": f"Bearer {WAVESPEED_API_KEY}", "Content-Type": "application/json"}
-    submit_url = f"https://api.wavespeed.ai/v3/wavespeed-ai/wan-2.1/t2v-480p"
+    submit_url = f"{WAVESPEED_BASE}/{WAVESPEED_MODEL}"
 
     # Step 1: Submit ALL jobs at once
     jobs = []
@@ -86,13 +78,14 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
         clip_path = os.path.join(output_dir, f"drone_{i}_{scene['name']}.mp4")
         try:
             print(f"  [WaveSpeed] Submitting [{i+1}/{len(theme)}]: {scene['prompt'][:55]}...")
-            resp = requests.post(submit_url, headers=headers, json={"prompt": scene["prompt"]}, timeout=30)
+            payload = {"prompt": scene["prompt"], "size": "832*480", "duration": 5, "seed": -1}
+            resp = requests.post(submit_url, headers=headers, json=payload, timeout=30)
             resp.raise_for_status()
             data = resp.json()
-            request_id = data.get("data", {}).get("id") or data.get("id")
-            if request_id:
-                jobs.append({"id": request_id, "scene": scene, "clip_path": clip_path, "index": i, "done": False, "output_url": None})
-                print(f"  [WaveSpeed] Job {request_id} submitted")
+            req_id = data.get("data", {}).get("id") or data.get("id")
+            if req_id:
+                jobs.append({"id": req_id, "scene": scene, "clip_path": clip_path, "index": i, "done": False, "output_url": None})
+                print(f"  [WaveSpeed] Job {req_id} submitted")
         except Exception as e:
             print(f"  [WaveSpeed] Submit failed for {scene['name']}: {e}")
     if not jobs:
@@ -100,7 +93,8 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
     print(f"  [WaveSpeed] All {len(jobs)} jobs submitted -- polling in parallel...")
 
     # Step 2: Poll ALL jobs simultaneously
-    deadline = time.time() + 600  # 10 min max for all clips
+    headers_poll = {"Authorization": f"Bearer {WAVESPEED_API_KEY}"}
+    deadline = time.time() + 600
     while time.time() < deadline:
         all_done = True
         for job in jobs:
@@ -108,14 +102,15 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
                 continue
             all_done = False
             try:
-                poll_url = f"https://api.wavespeed.ai/v3/predictions/{job['id']}"
-                resp = requests.get(poll_url, headers=headers, timeout=30)
+                poll_url = f"{WAVESPEED_BASE}/predictions/{job['id']}/result"
+                resp = requests.get(poll_url, headers=headers_poll, timeout=30)
                 resp.raise_for_status()
                 result = resp.json()
-                status = result.get("data", {}).get("status") or result.get("status")
+                d = result.get("data", result)
+                status = d.get("status", "")
                 if status == "completed":
                     job["done"] = True
-                    outputs = result.get("data", {}).get("outputs") or result.get("outputs", [])
+                    outputs = d.get("outputs") or d.get("output", [])
                     if outputs:
                         job["output_url"] = outputs[0] if isinstance(outputs[0], str) else outputs[0].get("url", "")
                     print(f"  [WaveSpeed] [{job['index']+1}/{len(jobs)}] {job['scene']['name']} COMPLETED")
@@ -142,7 +137,7 @@ def fetch_drone_journey_clips(theme_name, output_dir, github_run_number=1):
                     f.write(vid_resp.content)
                 size_kb = Path(job["clip_path"]).stat().st_size / 1024
                 print(f"  [WaveSpeed] Saved {job['scene']['name']}: {size_kb:.0f} KB")
-                clips.append((job["clip_path"], job["scene']['name"]))
+                clips.append((job["clip_path"], job["scene"]["name"]))
             except Exception as e:
                 print(f"  [WaveSpeed] Download failed for {job['scene']['name']}: {e}")
         elif not job["done"]:
