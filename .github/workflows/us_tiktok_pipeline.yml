@@ -2,7 +2,7 @@ name: US TikTok Pipeline -- Daily (Alternating Male/Female)
 
 on:
   schedule:
-    - cron: "0 10 * * *"  # 10:00 UTC = 6am EST -- generates video, schedules for 9am EST posting
+    - cron: "0 0 * * *"  # Midnight UTC (2am Malta) -- runs with all other pipelines
   workflow_dispatch:
 
 jobs:
@@ -36,13 +36,17 @@ jobs:
             echo "Today: MALE video for US TikTok"
           fi
 
-      - name: Swap config to US account
+      - name: Configure for US market
         run: |
-          # Backup original config, replace with US config
+          # Swap Upload-Post config to US account
           cp ${{ steps.gender.outputs.CONFIG_DST }} ${{ steps.gender.outputs.CONFIG_DST }}.bak 2>/dev/null || true
           cp ${{ steps.gender.outputs.CONFIG_SRC }} ${{ steps.gender.outputs.CONFIG_DST }}
-          echo "Config swapped to US Upload-Post user"
-          cat ${{ steps.gender.outputs.CONFIG_DST }}
+          echo "Upload-Post user: MindCoreAI_US"
+
+          # Switch SERP keyword research to US market
+          sed -i 's/"serp_country": "gb"/"serp_country": "us"/g' video_pipeline/niche_keywords.json
+          sed -i 's/"serp_country": "gb"/"serp_country": "us"/g' video_pipeline/niche_keywords_female.json
+          echo "SERP country: US"
 
       - name: Install FFmpeg + fonts
         run: |
@@ -60,7 +64,7 @@ jobs:
           SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "13"  # 9am EST = 1pm UTC
+          POST_HOUR_UTC:       "1"  # 1am UTC = 9pm EDT (prime US evening scroll time)
           PYTHONPATH:          ${{ github.workspace }}
         run: python ${{ steps.gender.outputs.SCRIPT }}
 
