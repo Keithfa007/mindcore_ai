@@ -260,10 +260,13 @@ def render_cinematic_video(script_text,mood,niche,script=None):
     clips_dir=OUTPUT_DIR/"clips";clips_dir.mkdir(exist_ok=True);raw=[];st=[]
     if wavespeed_key:
         try:
+            import subprocess as _sp
+            _dur_out = _sp.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",audio_path], capture_output=True, text=True)
+            audio_dur = int(float(_dur_out.stdout.strip())) if _dur_out.returncode == 0 else 30
             from video_pipeline.wavespeed_clips import fetch_drone_journey_clips, get_theme_for_run
             theme_name = get_theme_for_run(GITHUB_RUN_NUMBER)
-            print(f"\n  [WaveSpeed] Drone theme: {theme_name}")
-            clips = fetch_drone_journey_clips(theme_name, str(clips_dir), GITHUB_RUN_NUMBER)
+            print(f"\n  [WaveSpeed] Drone theme: {theme_name} | Voiceover: {audio_dur}s")
+            clips = fetch_drone_journey_clips(theme_name, str(clips_dir), GITHUB_RUN_NUMBER, duration=audio_dur)
             for cp, sn in clips:
                 raw.append(cp);st.append(sn)
             source = "WaveSpeed AI"
