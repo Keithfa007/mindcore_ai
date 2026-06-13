@@ -22,6 +22,17 @@ RUN pip install --no-cache-dir \
     gfpgan \
     runpod
 
+# Fix: basicsr expects torchvision.transforms.functional_tensor which was removed
+# Create a shim module that redirects to the new location
+RUN python3 -c "\
+import os, torchvision; \
+path = os.path.join(os.path.dirname(torchvision.transforms.__file__), 'functional_tensor.py'); \
+open(path, 'w').write('from torchvision.transforms.functional import *\n'); \
+print(f'Created torchvision shim at {path}')"
+
+# Verify Real-ESRGAN imports work
+RUN python3 -c "from realesrgan import RealESRGANer; from basicsr.archs.rrdbnet_arch import RRDBNet; print('Real-ESRGAN imports OK')"
+
 # Pre-download Wan 2.1 model INTO the image (eliminates cold start)
 ENV HF_HOME=/app/models
 RUN mkdir -p /app/models /app/realesrgan_models /workspace/tmp && \
