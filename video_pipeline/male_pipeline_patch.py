@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.9
+MindCore AI -- Male Pipeline Patch v3.0
 =======================================
-v2.9: WaveSpeed API only (RunPod removed). WaveSpeed → Pexels fallback.
-v2.8: WaveSpeed as primary.
+v3.0: WaveSpeed with automatic Pexels fallback if WaveSpeed fails.
+v2.9: WaveSpeed API only (RunPod removed).
 v2.7: Removed word flash overlays.
-v2.6: RunPod (removed).
 v2.4: ElevenLabs TTS.
 v2.3: SERP targets GB.
 """
@@ -88,7 +87,7 @@ def get_scheduled_post_time():
     return scheduled
 
 def _patched_render_cinematic_video(script_text, mood, niche, script=None):
-    """Render video: WaveSpeed API → Pexels fallback."""
+    """Render video: WaveSpeed API with automatic Pexels fallback."""
     wavespeed_key = os.environ.get("WAVESPEED_API_KEY", "")
 
     print("\n  [TTS] Generating voiceover (ElevenLabs)...")
@@ -104,16 +103,19 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
     raw_clip_paths = []; scene_types = []
 
     if wavespeed_key:
-        # ---- WAVESPEED MANAGED API ----
-        from video_pipeline.wavespeed_clips import fetch_drone_journey_clips, get_theme_for_run
-        theme_name = get_theme_for_run(pipeline.GITHUB_RUN_NUMBER)
-        print(f"\n  [WaveSpeed] Drone theme: {theme_name}")
-        clips = fetch_drone_journey_clips(theme_name, str(clips_dir), pipeline.GITHUB_RUN_NUMBER)
-        for cp, sn in clips:
-            raw_clip_paths.append(cp); scene_types.append(sn)
-        source = "WaveSpeed AI"
-    else:
-        # ---- PEXELS FREE B-ROLL (fallback) ----
+        try:
+            from video_pipeline.wavespeed_clips import fetch_drone_journey_clips, get_theme_for_run
+            theme_name = get_theme_for_run(pipeline.GITHUB_RUN_NUMBER)
+            print(f"\n  [WaveSpeed] Drone theme: {theme_name}")
+            clips = fetch_drone_journey_clips(theme_name, str(clips_dir), pipeline.GITHUB_RUN_NUMBER)
+            for cp, sn in clips:
+                raw_clip_paths.append(cp); scene_types.append(sn)
+            source = "WaveSpeed AI"
+        except Exception as e:
+            print(f"\n  [WaveSpeed] FAILED ({e}) -- falling back to Pexels")
+            raw_clip_paths = []; scene_types = []
+
+    if not raw_clip_paths:
         from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
         for scene_name, count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
             for j in range(count):
@@ -173,7 +175,7 @@ def main():
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
     video_source = "WaveSpeed AI" if os.environ.get("WAVESPEED_API_KEY") else "Pexels"
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.7")
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.8")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Daily")
     print(f"  {video_source} | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
