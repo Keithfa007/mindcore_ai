@@ -64,7 +64,7 @@ jobs:
           SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "1"  # 1am UTC = 9pm EDT (prime US evening scroll time)
+          POST_HOUR_UTC:       "22"  # 22:00 UTC = 6pm EDT = midnight Malta (22hr buffer from generation)
           PYTHONPATH:          ${{ github.workspace }}
         run: python ${{ steps.gender.outputs.SCRIPT }}
 
