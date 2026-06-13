@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Male Pipeline Patch v2.8
+MindCore AI -- Male Pipeline Patch v2.9
 =======================================
-v2.8: WaveSpeed API for AI video (priority: WaveSpeed → RunPod → Pexels).
-v2.7: Removed word flash overlays, enhanced subtitle styling.
-v2.6: RunPod Serverless AI drone footage.
-v2.5: Fixed syntax error.
+v2.9: WaveSpeed API only (RunPod removed). WaveSpeed → Pexels fallback.
+v2.8: WaveSpeed as primary.
+v2.7: Removed word flash overlays.
+v2.6: RunPod (removed).
 v2.4: ElevenLabs TTS.
 v2.3: SERP targets GB.
 """
@@ -88,9 +88,8 @@ def get_scheduled_post_time():
     return scheduled
 
 def _patched_render_cinematic_video(script_text, mood, niche, script=None):
-    """Render video: WaveSpeed API → RunPod → Pexels fallback."""
+    """Render video: WaveSpeed API → Pexels fallback."""
     wavespeed_key = os.environ.get("WAVESPEED_API_KEY", "")
-    runpod_endpoint = os.environ.get("RUNPOD_ENDPOINT_ID", "")
 
     print("\n  [TTS] Generating voiceover (ElevenLabs)...")
     audio_path = str(pipeline.OUTPUT_DIR / "voiceover.mp3")
@@ -105,7 +104,7 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
     raw_clip_paths = []; scene_types = []
 
     if wavespeed_key:
-        # ---- WAVESPEED MANAGED API (primary) ----
+        # ---- WAVESPEED MANAGED API ----
         from video_pipeline.wavespeed_clips import fetch_drone_journey_clips, get_theme_for_run
         theme_name = get_theme_for_run(pipeline.GITHUB_RUN_NUMBER)
         print(f"\n  [WaveSpeed] Drone theme: {theme_name}")
@@ -113,21 +112,8 @@ def _patched_render_cinematic_video(script_text, mood, niche, script=None):
         for cp, sn in clips:
             raw_clip_paths.append(cp); scene_types.append(sn)
         source = "WaveSpeed AI"
-    elif runpod_endpoint:
-        # ---- RUNPOD SERVERLESS (fallback) ----
-        from video_pipeline.runpod_clips import fetch_runpod_clip, get_theme_for_run, DRONE_THEMES
-        theme_name = get_theme_for_run(pipeline.GITHUB_RUN_NUMBER)
-        theme = DRONE_THEMES[theme_name]
-        print(f"\n  [RunPod] Drone theme: {theme_name} ({len(theme)} scenes)")
-        for i, scene in enumerate(theme):
-            clip_path = str(clips_dir / f"raw_{i}.mp4")
-            try:
-                fetch_runpod_clip(scene["prompt"], i, clip_path)
-                raw_clip_paths.append(clip_path); scene_types.append(scene["name"])
-            except Exception as e: print(f"  [RunPod] Scene {scene['name']} failed: {e}")
-        source = "RunPod AI"
     else:
-        # ---- PEXELS FREE B-ROLL (last resort) ----
+        # ---- PEXELS FREE B-ROLL (fallback) ----
         from video_pipeline.pexels_clips import fetch_pexels_clip_for_scene
         for scene_name, count in [("hook",1),("problem",2),("story",1),("solution_cta",1)]:
             for j in range(count):
@@ -186,10 +172,8 @@ def main():
     upload_enabled = cfg.get("upload_enabled",False) and bool(pipeline.UPLOAD_POST_API_KEY)
     keywords_data = pipeline.load_keywords_data(); niche = pipeline.get_niche_for_today(keywords_data)
     mood = pipeline.pick_visual_mood(niche)
-    ws = os.environ.get("WAVESPEED_API_KEY")
-    rp = os.environ.get("RUNPOD_ENDPOINT_ID")
-    video_source = "WaveSpeed AI" if ws else ("RunPod AI" if rp else "Pexels")
-    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.6")
+    video_source = "WaveSpeed AI" if os.environ.get("WAVESPEED_API_KEY") else "Pexels"
+    print(f"\n  MindCore AI -- Male Cinematic Pipeline v8.7")
     print(f"  Run #{pipeline.GITHUB_RUN_NUMBER} | Mode: {mode.upper()} | Daily")
     print(f"  {video_source} | ElevenLabs TTS | SERP: {SERP_COUNTRY.upper()}")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
