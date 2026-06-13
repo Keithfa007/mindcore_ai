@@ -1,0 +1,72 @@
+name: US TikTok Pipeline -- Daily (Alternating Male/Female)
+
+on:
+  schedule:
+    - cron: "0 10 * * *"  # 10:00 UTC = 6am EST -- generates video, schedules for 9am EST posting
+  workflow_dispatch:
+
+jobs:
+  us-tiktok-daily:
+    name: Generate + Schedule US TikTok Video
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Determine gender (alternates daily)
+        id: gender
+        run: |
+          DAY=$(date +%j)
+          if [ $((DAY % 2)) -eq 0 ]; then
+            echo "GENDER=female" >> $GITHUB_OUTPUT
+            echo "SCRIPT=video_pipeline/female_pipeline.py" >> $GITHUB_OUTPUT
+            echo "CONFIG_SRC=video_pipeline/heygen_config_us.json" >> $GITHUB_OUTPUT
+            echo "CONFIG_DST=video_pipeline/heygen_config_female.json" >> $GITHUB_OUTPUT
+            echo "OUTPUT_DIR=video_pipeline/output_female" >> $GITHUB_OUTPUT
+            echo "Today: FEMALE video for US TikTok"
+          else
+            echo "GENDER=male" >> $GITHUB_OUTPUT
+            echo "SCRIPT=video_pipeline/male_pipeline_patch.py" >> $GITHUB_OUTPUT
+            echo "CONFIG_SRC=video_pipeline/heygen_config_us.json" >> $GITHUB_OUTPUT
+            echo "CONFIG_DST=video_pipeline/heygen_config.json" >> $GITHUB_OUTPUT
+            echo "OUTPUT_DIR=video_pipeline/output" >> $GITHUB_OUTPUT
+            echo "Today: MALE video for US TikTok"
+          fi
+
+      - name: Swap config to US account
+        run: |
+          # Backup original config, replace with US config
+          cp ${{ steps.gender.outputs.CONFIG_DST }} ${{ steps.gender.outputs.CONFIG_DST }}.bak 2>/dev/null || true
+          cp ${{ steps.gender.outputs.CONFIG_SRC }} ${{ steps.gender.outputs.CONFIG_DST }}
+          echo "Config swapped to US Upload-Post user"
+          cat ${{ steps.gender.outputs.CONFIG_DST }}
+
+      - name: Install FFmpeg + fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
+
+      - name: Install Python dependencies
+        run: pip install anthropic requests openai-whisper
+
+      - name: Run Pipeline (${{ steps.gender.outputs.GENDER }})
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
+          PEXELS_API_KEY:      ${{ secrets.PEXELS_API_KEY }}
+          SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          GITHUB_RUN_NUMBER:   ${{ github.run_number }}
+          POST_HOUR_UTC:       "13"  # 9am EST = 1pm UTC
+          PYTHONPATH:          ${{ github.workspace }}
+        run: python ${{ steps.gender.outputs.SCRIPT }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: us-tiktok-${{ steps.gender.outputs.GENDER }}-run-${{ github.run_number }}
+          path: ${{ steps.gender.outputs.OUTPUT_DIR }}/
+          retention-days: 14
