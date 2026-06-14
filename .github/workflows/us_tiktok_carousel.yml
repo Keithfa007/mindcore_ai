@@ -1,0 +1,54 @@
+name: US TikTok -- Carousel (Daily)
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 02:00 UTC -- same as EU carousel
+  workflow_dispatch:
+
+jobs:
+  us-carousel:
+    name: US Carousel -- 12pm EDT
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure for US market
+        run: |
+          # Swap Upload-Post user to US account
+          cp video_pipeline/heygen_config_us.json video_pipeline/heygen_config.json
+
+          # Swap carousel hashtags to US-targeted
+          sed -i 's/HASHTAGS=.*/HASHTAGS="#mindcoreai #mentalhealth #mentalhealthmatters #mentalhealthtiktok #therapytok #anxietyrelief #mentalhealthawareness #healing #selfcare #fyp #foryoupage #mentalhealthusa"/' scripts/carousel_pipeline.py
+
+          # Swap POST_HOUR_UTC to US midday
+          sed -i 's/POST_HOUR_UTC=11/POST_HOUR_UTC=16/' scripts/carousel_pipeline.py
+
+          echo "US config: MindCoreAI_US | POST 16:00 UTC (12pm EDT) | US hashtags"
+
+      - name: Install fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-liberation
+
+      - name: Install Python dependencies
+        run: pip install anthropic requests Pillow
+
+      - name: Run Carousel Pipeline
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_RUN_NUMBER:   ${{ github.run_number }}
+          PYTHONPATH:          ${{ github.workspace }}
+        run: python scripts/carousel_pipeline.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: us-carousel-run-${{ github.run_number }}
+          path: scripts/carousel_output/
+          retention-days: 14
