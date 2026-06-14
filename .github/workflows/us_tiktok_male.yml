@@ -1,0 +1,50 @@
+name: US TikTok -- Male Video (Daily)
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  us-male-video:
+    name: US Male Video -- 6pm EDT
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure for US market
+        run: |
+          cp video_pipeline/heygen_config_us.json video_pipeline/heygen_config.json
+          sed -i 's/"serp_country": "gb"/"serp_country": "us"/g' video_pipeline/niche_keywords.json
+          echo "US config applied | SERP: US | User: MindCoreAI_US"
+
+      - name: Install FFmpeg + fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --fix-missing ffmpeg fonts-liberation
+
+      - name: Install Python dependencies
+        run: pip install anthropic requests openai-whisper
+
+      - name: Run Male Pipeline
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
+          PEXELS_API_KEY:      ${{ secrets.PEXELS_API_KEY }}
+          SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          GITHUB_RUN_NUMBER:   ${{ github.run_number }}
+          POST_HOUR_UTC:       "22"  # 22:00 UTC = 6pm EDT = midnight Malta
+          PYTHONPATH:          ${{ github.workspace }}
+        run: python video_pipeline/male_pipeline_patch.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: us-male-run-${{ github.run_number }}
+          path: video_pipeline/output/
+          retention-days: 14
