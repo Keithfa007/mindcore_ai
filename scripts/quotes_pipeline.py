@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Quotes Pipeline v1.0
+MindCore AI — Daily Quotes Pipeline v1.1
 =========================================
-v1.0: Claude-generated raw quotes, Pillow cinematic design, FFmpeg video
-      with Ken Burns + fade, Upload-Post to TikTok + Facebook.
+v1.1: Photo upload with auto_add_music (TikTok adds trending audio).
+      Removed FFmpeg video -- uploads image directly as TikTok photo post.
+v1.0: Claude-generated raw quotes, Pillow cinematic design.
 
 Design: Dark gradient background, clean typography, thin accent lines,
         subtle vignette. NOT generic motivational posters — raw 3am truths.
@@ -11,7 +12,7 @@ Design: Dark gradient background, clean typography, thin accent lines,
 Cost: ~$0.01/post (one Claude API call).
 """
 
-import os, sys, json, random, subprocess, tempfile, datetime, textwrap, math
+import os, sys, json, random, datetime, math
 from pathlib import Path
 from anthropic import Anthropic
 from PIL import Image, ImageDraw, ImageFont
@@ -19,11 +20,11 @@ import requests
 
 ANTHROPIC_API_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
 UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
-UPLOAD_POST_API_URL = "https://api.upload-post.com/api/upload"
+UPLOAD_POST_PHOTOS_URL = "https://api.upload-post.com/api/upload_photos"
 UPLOAD_POST_USER    = "MindCoreAI"
 ANTHROPIC_MODEL     = "claude-sonnet-4-6"
 GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
-POST_HOUR_UTC       = int(os.environ.get("POST_HOUR_UTC", "6"))  # default 6:00 UTC = 8am Malta
+POST_HOUR_UTC       = int(os.environ.get("POST_HOUR_UTC", "6"))
 
 OUTPUT_DIR = Path("scripts/quotes_output")
 WIDTH  = 1080
@@ -32,7 +33,6 @@ HEIGHT = 1920
 TK_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #fyp #foryou #mentalhealthawareness #healing #selfcare #therapytok #mentalhealthtiktok #quotestoliveby #realtalk"
 FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #healing #selfcare #mindcoreai #quotestoliveby"
 
-# ── Quote categories -- rotates by run number ────────────────────────────
 QUOTE_CATEGORIES = [
     {
         "name": "3am_truth",
@@ -127,11 +127,10 @@ Return ONLY the quote text. No quotes marks, no attribution, nothing else."""
                 model=ANTHROPIC_MODEL, max_tokens=100,
                 messages=[{"role": "user", "content": prompt}]
             ).content[0].text.strip().strip('"').strip("'")
-            # Clean up any attribution the model might add
             for sep in [" —", " -", " ~", "\n"]:
                 if sep in result:
                     result = result.split(sep)[0].strip()
-            print(f"  Quote: \"{result}\"")
+            print(f'  Quote: "{result}"')
             return result
         except Exception as e:
             print(f"  Quote generation attempt {attempt+1} failed: {e}")
@@ -164,8 +163,6 @@ Return ONLY the caption text."""
         return "Sometimes the truest words are the ones nobody says out loud."
 
 
-# ── Visual Design ────────────────────────────────────────────────────────
-
 def get_font(size, bold=True):
     bold_paths = [
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
@@ -185,33 +182,26 @@ def get_font(size, bold=True):
 
 
 def create_gradient_background():
-    """Dark cinematic gradient — deep navy to near-black with subtle vignette."""
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img)
-
-    # Vertical gradient: dark navy top → near-black bottom
-    top_r, top_g, top_b = 12, 16, 32        # #0c1020
-    bot_r, bot_g, bot_b = 6, 6, 12          # #06060c
-
+    top_r, top_g, top_b = 12, 16, 32
+    bot_r, bot_g, bot_b = 6, 6, 12
     for y in range(HEIGHT):
         ratio = y / HEIGHT
-        # Ease the gradient (slower in middle, faster at edges)
         ease = ratio * ratio * (3 - 2 * ratio)
         r = int(top_r + (bot_r - top_r) * ease)
         g = int(top_g + (bot_g - top_g) * ease)
         b = int(top_b + (bot_b - top_b) * ease)
         draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
-
-    # Subtle vignette overlay
     vignette = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     vdraw = ImageDraw.Draw(vignette)
     cx, cy = WIDTH // 2, HEIGHT // 2
     max_dist = math.sqrt(cx * cx + cy * cy)
-    for y in range(0, HEIGHT, 3):
-        for x in range(0, WIDTH, 3):
+    for y in range(0, HEIGHT, 4):
+        for x in range(0, WIDTH, 4):
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
             alpha = int(min(80, (dist / max_dist) * 120))
-            vdraw.rectangle([x, y, x + 3, y + 3], fill=(0, 0, 0, alpha))
+            vdraw.rectangle([x, y, x + 4, y + 4], fill=(0, 0, 0, alpha))
     img = Image.alpha_composite(img.convert("RGBA"), vignette).convert("RGB")
     return img
 
@@ -248,84 +238,35 @@ def draw_text_centered(draw, y, text, font, fill=(255, 255, 255), stroke_width=0
 
 
 def render_quote_image(quote_text, output_path):
-    """Render a cinematic quote image at 1080x1920."""
     img = create_gradient_background()
     draw = ImageDraw.Draw(img)
-
-    # Typography
     quote_font = get_font(62, bold=True)
     attr_font = get_font(32, bold=False)
     max_text_width = int(WIDTH * 0.82)
-
-    # Wrap quote text
     lines = wrap_text_lines(quote_text, quote_font, max_text_width)
     line_height = 82
     total_text_height = len(lines) * line_height
-
-    # Position quote in the golden ratio zone (slightly above center)
     quote_top = int(HEIGHT * 0.38) - (total_text_height // 2)
-
-    # Thin accent line above quote
     line_y_top = quote_top - 50
-    accent_color = (180, 160, 120)  # warm gold/amber
+    accent_color = (180, 160, 120)
     line_left = WIDTH // 2 - 80
     line_right = WIDTH // 2 + 80
     draw.line([(line_left, line_y_top), (line_right, line_y_top)], fill=accent_color, width=2)
-
-    # Draw quote lines
     for i, line in enumerate(lines):
         y = quote_top + i * line_height
-        # Subtle text shadow
         draw_text_centered(draw, y, line, quote_font,
-                           fill=(255, 255, 255),
-                           stroke_width=2,
-                           stroke_fill=(0, 0, 0))
-
-    # Thin accent line below quote
+                           fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
     line_y_bottom = quote_top + total_text_height + 30
     draw.line([(line_left, line_y_bottom), (line_right, line_y_bottom)], fill=accent_color, width=2)
-
-    # Attribution
     attr_text = "— MindCore AI"
     attr_y = line_y_bottom + 40
     draw_text_centered(draw, attr_y, attr_text, attr_font, fill=(140, 140, 160))
-
-    # Save
+    # Save as both PNG (artifact) and JPG (upload)
     img.save(output_path, "PNG", quality=95)
-    print(f"  Image: {Path(output_path).stat().st_size / 1024:.0f} KB")
-    return output_path
-
-
-def create_video_from_image(image_path, output_path, duration=7):
-    """Create a short video with slow Ken Burns zoom and fade in/out."""
-    # Scale up slightly for Ken Burns room
-    scale = 1.08
-    sw = int(WIDTH * scale)
-    sh = int(HEIGHT * scale)
-    # Slow zoom in over the duration
-    crop_filter = (
-        f"scale={sw}:{sh},"
-        f"crop={WIDTH}:{HEIGHT}:"
-        f"'max(0,({sw}-{WIDTH})/2-t/{duration}*({sw}-{WIDTH})/2)':"
-        f"'max(0,({sh}-{HEIGHT})/2-t/{duration}*({sh}-{HEIGHT})/2)'"
-    )
-    fade_filter = f"fade=t=in:st=0:d=1.2,fade=t=out:st={duration-1.2}:d=1.2"
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-loop", "1", "-i", image_path,
-        "-vf", f"{crop_filter},{fade_filter},fps=30",
-        "-t", str(duration),
-        "-c:v", "libx264", "-crf", "18", "-preset", "slow",
-        "-pix_fmt", "yuv420p",
-        "-an",  # no audio -- TikTok users add trending sound
-        output_path,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"  FFmpeg error: {result.stderr[-300:]}")
-        raise RuntimeError("Video creation failed")
-    print(f"  Video: {Path(output_path).stat().st_size / 1024:.0f} KB | {duration}s | silent (for trending audio)")
+    jpg_path = output_path.replace(".png", ".jpg")
+    img.convert("RGB").save(jpg_path, "JPEG", quality=92)
+    print(f"  Image: {Path(output_path).stat().st_size / 1024:.0f} KB (PNG) | {Path(jpg_path).stat().st_size / 1024:.0f} KB (JPG)")
+    return jpg_path
 
 
 def get_scheduled_time(hour_utc):
@@ -336,7 +277,8 @@ def get_scheduled_time(hour_utc):
     return target.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def upload_to_platforms(video_path, tiktok_caption, fb_title, fb_description, scheduled_date=None):
+def upload_photo_to_platforms(image_path, tiktok_caption, fb_title, fb_description, scheduled_date=None):
+    """Upload as photo post with auto_add_music -- TikTok adds trending audio automatically."""
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
     data = [
@@ -346,22 +288,25 @@ def upload_to_platforms(video_path, tiktok_caption, fb_title, fb_description, sc
         ("title", tiktok_caption[:2200]),
         ("facebook_title", fb_title[:255]),
         ("facebook_description", fb_description[:5000]),
+        ("auto_add_music", "true"),
+        ("photo_cover_index", "0"),
     ]
     if scheduled_date:
         data.append(("scheduled_date", scheduled_date))
     try:
-        with open(video_path, "rb") as f:
-            resp = requests.post(
-                UPLOAD_POST_API_URL,
-                headers={"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"},
-                files=[("video", ("mindcore_quote.mp4", f, "video/mp4"))],
-                data=data, timeout=180,
-            )
+        f = open(image_path, "rb")
+        files = [("photos[]", ("quote.jpg", f, "image/jpeg"))]
+        resp = requests.post(
+            UPLOAD_POST_PHOTOS_URL,
+            headers={"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"},
+            files=files, data=data, timeout=180,
+        )
+        f.close()
         result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
         result["status_code"] = resp.status_code
         if scheduled_date:
             result["scheduled_date"] = scheduled_date
-        print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code} | auto_add_music=true")
         if not resp.ok:
             print(f"  {resp.text[:300]}")
         return result
@@ -372,8 +317,8 @@ def upload_to_platforms(video_path, tiktok_caption, fb_title, fb_description, sc
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI — Daily Quotes Pipeline v1.0 ==")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC")
+    print(f"== MindCore AI — Daily Quotes Pipeline v1.1 ==")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | Photo + auto music")
 
     if not ANTHROPIC_API_KEY:
         sys.exit("ERROR: ANTHROPIC_API_KEY not set")
@@ -391,30 +336,27 @@ def main():
 
     print("3. Rendering image...")
     image_path = str(OUTPUT_DIR / "quote_image.png")
-    render_quote_image(quote, image_path)
+    jpg_path = render_quote_image(quote, image_path)
 
-    print("4. Creating video...")
-    video_path = str(OUTPUT_DIR / "quote_video.mp4")
-    create_video_from_image(image_path, video_path)
-
-    print("5. Uploading...")
+    print("4. Uploading as photo post (TikTok auto trending audio)...")
     tiktok_caption = f"{quote}\n\n{caption}\n\n{TK_HASHTAGS}"
     fb_title = quote[:255]
     fb_description = f"{quote}\n\n{caption}\n\n{FB_HASHTAGS}"
 
-    result = upload_to_platforms(video_path, tiktok_caption, fb_title, fb_description, scheduled_date=scheduled_date)
+    result = upload_photo_to_platforms(jpg_path, tiktok_caption, fb_title, fb_description, scheduled_date=scheduled_date)
     if result.get("status_code") in (200, 202):
         print(f"  Scheduled: {scheduled_date}")
     elif result.get("skipped"):
         print(f"  Skipped: {result.get('reason')}")
 
-    # Save metadata
     meta = {
         "run": GITHUB_RUN_NUMBER,
         "category": category["name"],
         "quote": quote,
         "caption": caption,
         "scheduled": scheduled_date,
+        "upload_type": "photo",
+        "auto_music": True,
     }
     (OUTPUT_DIR / "quote_metadata.json").write_text(json.dumps(meta, indent=2))
 
