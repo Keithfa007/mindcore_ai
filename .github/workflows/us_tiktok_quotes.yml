@@ -1,0 +1,52 @@
+name: US TikTok -- Daily Quote
+
+on:
+  schedule:
+    - cron: "30 0 * * *"  # 00:30 UTC -- same gen time as EU, different post time
+  workflow_dispatch:
+
+jobs:
+  us-quote:
+    name: US Quote -- 10pm EDT
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure for US market
+        run: |
+          # Swap Upload-Post user to US account
+          sed -i 's/UPLOAD_POST_USER    = "MindCoreAI"/UPLOAD_POST_USER    = "MindCoreAI_US"/' scripts/quotes_pipeline.py
+
+          # Swap hashtags to US-targeted
+          sed -i 's/TK_HASHTAGS = .*/TK_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #fyp #foryoupage #mentalhealthtiktok #therapytok #anxietyrelief #healing #selfcare #mentalhealthusa #quotestoliveby #realtalk"/' scripts/quotes_pipeline.py
+          sed -i 's/FB_HASHTAGS = .*/FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #healing #selfcare #mindcoreai #mentalhealthusa #quotestoliveby"/' scripts/quotes_pipeline.py
+
+          echo "US config: MindCoreAI_US | 10pm EDT | US hashtags"
+
+      - name: Install FFmpeg + fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
+
+      - name: Install Python dependencies
+        run: pip install anthropic requests Pillow
+
+      - name: Run Quotes Pipeline
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          GITHUB_RUN_NUMBER:   ${{ github.run_number }}
+          POST_HOUR_UTC:       "2"  # 2:00 UTC = 10pm EDT (late evening -- prime mental health scroll)
+          PYTHONPATH:          ${{ github.workspace }}
+        run: python scripts/quotes_pipeline.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: us-quote-run-${{ github.run_number }}
+          path: scripts/quotes_output/
+          retention-days: 14
