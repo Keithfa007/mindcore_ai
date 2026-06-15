@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Quotes Pipeline v1.1
+MindCore AI — Daily Quotes Pipeline v1.2
 =========================================
-v1.1: Photo upload with auto_add_music (TikTok adds trending audio).
-      Removed FFmpeg video -- uploads image directly as TikTok photo post.
+v1.2: Fixed Upload-Post fields -- tiktok_title (90 chars) + description
+      (full caption), matching carousel pipeline. Added post_mode=DIRECT_POST.
+v1.1: Photo upload with auto_add_music.
 v1.0: Claude-generated raw quotes, Pillow cinematic design.
-
-Design: Dark gradient background, clean typography, thin accent lines,
-        subtle vignette. NOT generic motivational posters — raw 3am truths.
 
 Cost: ~$0.01/post (one Claude API call).
 """
@@ -34,62 +32,13 @@ TK_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #fyp #foryou #ment
 FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #healing #selfcare #mindcoreai #quotestoliveby"
 
 QUOTE_CATEGORIES = [
-    {
-        "name": "3am_truth",
-        "instruction": "A raw truth that someone thinks at 3am but never says out loud. It should feel like eavesdropping on someone's inner monologue during their hardest moment. Not inspirational — honest.",
-        "examples": [
-            "You didn't stop feeling things. You just got tired of feeling them alone.",
-            "The strongest people I know are exhausted.",
-        ],
-    },
-    {
-        "name": "silent_strength",
-        "instruction": "About the quiet strength in vulnerability, in asking for help, in admitting you're not okay. Reframe what strength actually means. Not toxic positivity.",
-        "examples": [
-            "Falling apart quietly doesn't make you weak. It means you've been strong for too long.",
-            "Courage isn't loud. Sometimes it's the quiet voice at the end of the day saying: I'll try again tomorrow.",
-        ],
-    },
-    {
-        "name": "recovery_wisdom",
-        "instruction": "A hard-won insight from the recovery journey. Something only someone who's been through it would know. Written as if spoken by someone 2 years clean looking back.",
-        "examples": [
-            "Recovery isn't a straight line. Some days the line disappears entirely. You walk it anyway.",
-            "The thing about rock bottom is you find out what you're made of. Not who you thought you were.",
-        ],
-    },
-    {
-        "name": "the_unsaid",
-        "instruction": "Something people feel every day but have never heard articulated. When they read it, their stomach should drop with recognition. Specific enough to feel personal, universal enough to be shared.",
-        "examples": [
-            "You can miss a version of yourself that nobody else ever met.",
-            "The loneliest feeling is being surrounded by people who think you're fine.",
-        ],
-    },
-    {
-        "name": "permission",
-        "instruction": "Giving the reader permission to feel something they've been told is wrong to feel. Permission to rest, to break, to grieve, to not be okay, to put themselves first. Not preachy — just honest.",
-        "examples": [
-            "You don't owe anyone a performance of being okay.",
-            "Rest is not giving up. It's refusing to break.",
-        ],
-    },
-    {
-        "name": "hard_reframe",
-        "instruction": "Take something the reader believes about themselves (that they're broken, weak, too sensitive, too much, not enough) and reframe it with precision. The reframe must feel earned and true, not like a bumper sticker.",
-        "examples": [
-            "You're not too sensitive. You've been in rooms that couldn't hold what you carry.",
-            "You didn't fail. You just ran out of reasons to keep pretending.",
-        ],
-    },
-    {
-        "name": "midnight_honesty",
-        "instruction": "The kind of thought that only comes after midnight when every defence is down. Not dramatic — just quietly devastating in its honesty. Should feel whispered, not shouted.",
-        "examples": [
-            "Some nights the hardest thing is admitting you need someone.",
-            "The version of you that held everything together deserves someone who asks how.",
-        ],
-    },
+    {"name": "3am_truth", "instruction": "A raw truth that someone thinks at 3am but never says out loud. It should feel like eavesdropping on someone's inner monologue during their hardest moment. Not inspirational — honest.", "examples": ["You didn't stop feeling things. You just got tired of feeling them alone.", "The strongest people I know are exhausted."]},
+    {"name": "silent_strength", "instruction": "About the quiet strength in vulnerability, in asking for help, in admitting you're not okay. Reframe what strength actually means. Not toxic positivity.", "examples": ["Falling apart quietly doesn't make you weak. It means you've been strong for too long.", "Courage isn't loud. Sometimes it's the quiet voice at the end of the day saying: I'll try again tomorrow."]},
+    {"name": "recovery_wisdom", "instruction": "A hard-won insight from the recovery journey. Something only someone who's been through it would know. Written as if spoken by someone 2 years clean looking back.", "examples": ["Recovery isn't a straight line. Some days the line disappears entirely. You walk it anyway.", "The thing about rock bottom is you find out what you're made of. Not who you thought you were."]},
+    {"name": "the_unsaid", "instruction": "Something people feel every day but have never heard articulated. When they read it, their stomach should drop with recognition. Specific enough to feel personal, universal enough to be shared.", "examples": ["You can miss a version of yourself that nobody else ever met.", "The loneliest feeling is being surrounded by people who think you're fine."]},
+    {"name": "permission", "instruction": "Giving the reader permission to feel something they've been told is wrong to feel. Permission to rest, to break, to grieve, to not be okay, to put themselves first. Not preachy — just honest.", "examples": ["You don't owe anyone a performance of being okay.", "Rest is not giving up. It's refusing to break."]},
+    {"name": "hard_reframe", "instruction": "Take something the reader believes about themselves (that they're broken, weak, too sensitive, too much, not enough) and reframe it with precision. The reframe must feel earned and true, not like a bumper sticker.", "examples": ["You're not too sensitive. You've been in rooms that couldn't hold what you carry.", "You didn't fail. You just ran out of reasons to keep pretending."]},
+    {"name": "midnight_honesty", "instruction": "The kind of thought that only comes after midnight when every defence is down. Not dramatic — just quietly devastating in its honesty. Should feel whispered, not shouted.", "examples": ["Some nights the hardest thing is admitting you need someone.", "The version of you that held everything together deserves someone who asks how."]},
 ]
 
 
@@ -150,7 +99,6 @@ RULES:
 - Raw honest tone, not salesy
 - Can ask a question to drive comments
 - NO emojis, NO hashtags, NO links
-- Example: "Some things only make sense after midnight." or "Tag someone who needs to hear this."
 
 Return ONLY the caption text."""
     try:
@@ -164,20 +112,11 @@ Return ONLY the caption text."""
 
 
 def get_font(size, bold=True):
-    bold_paths = [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    ]
-    regular_paths = [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ]
-    paths = bold_paths if bold else regular_paths
-    for p in paths:
-        try:
-            return ImageFont.truetype(p, size)
-        except Exception:
-            continue
+    bold_paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+    regular_paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+    for p in (bold_paths if bold else regular_paths):
+        try: return ImageFont.truetype(p, size)
+        except: continue
     return ImageFont.load_default()
 
 
@@ -202,38 +141,29 @@ def create_gradient_background():
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
             alpha = int(min(80, (dist / max_dist) * 120))
             vdraw.rectangle([x, y, x + 4, y + 4], fill=(0, 0, 0, alpha))
-    img = Image.alpha_composite(img.convert("RGBA"), vignette).convert("RGB")
-    return img
+    return Image.alpha_composite(img.convert("RGBA"), vignette).convert("RGB")
 
 
 def wrap_text_lines(text, font, max_width):
-    words = text.split()
-    lines = []
-    current = ""
+    words = text.split(); lines = []; current = ""
     for word in words:
         test = f"{current} {word}".strip()
-        bbox = font.getbbox(test)
-        tw = bbox[2] - bbox[0]
-        if tw <= max_width:
-            current = test
+        tw = font.getbbox(test)[2] - font.getbbox(test)[0]
+        if tw <= max_width: current = test
         else:
-            if current:
-                lines.append(current)
+            if current: lines.append(current)
             current = word
-    if current:
-        lines.append(current)
+    if current: lines.append(current)
     return lines
 
 
 def draw_text_centered(draw, y, text, font, fill=(255, 255, 255), stroke_width=0, stroke_fill=(0, 0, 0)):
-    bbox = font.getbbox(text)
-    tw = bbox[2] - bbox[0]
+    tw = font.getbbox(text)[2] - font.getbbox(text)[0]
     x = (WIDTH - tw) // 2
     if stroke_width > 0:
         for dx in range(-stroke_width, stroke_width + 1):
             for dy in range(-stroke_width, stroke_width + 1):
-                if dx or dy:
-                    draw.text((x + dx, y + dy), text, font=font, fill=stroke_fill)
+                if dx or dy: draw.text((x + dx, y + dy), text, font=font, fill=stroke_fill)
     draw.text((x, y), text, font=font, fill=fill)
 
 
@@ -242,26 +172,18 @@ def render_quote_image(quote_text, output_path):
     draw = ImageDraw.Draw(img)
     quote_font = get_font(62, bold=True)
     attr_font = get_font(32, bold=False)
-    max_text_width = int(WIDTH * 0.82)
-    lines = wrap_text_lines(quote_text, quote_font, max_text_width)
+    lines = wrap_text_lines(quote_text, quote_font, int(WIDTH * 0.82))
     line_height = 82
     total_text_height = len(lines) * line_height
     quote_top = int(HEIGHT * 0.38) - (total_text_height // 2)
-    line_y_top = quote_top - 50
     accent_color = (180, 160, 120)
-    line_left = WIDTH // 2 - 80
-    line_right = WIDTH // 2 + 80
-    draw.line([(line_left, line_y_top), (line_right, line_y_top)], fill=accent_color, width=2)
+    line_left, line_right = WIDTH // 2 - 80, WIDTH // 2 + 80
+    draw.line([(line_left, quote_top - 50), (line_right, quote_top - 50)], fill=accent_color, width=2)
     for i, line in enumerate(lines):
-        y = quote_top + i * line_height
-        draw_text_centered(draw, y, line, quote_font,
-                           fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
+        draw_text_centered(draw, quote_top + i * line_height, line, quote_font, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
     line_y_bottom = quote_top + total_text_height + 30
     draw.line([(line_left, line_y_bottom), (line_right, line_y_bottom)], fill=accent_color, width=2)
-    attr_text = "— MindCore AI"
-    attr_y = line_y_bottom + 40
-    draw_text_centered(draw, attr_y, attr_text, attr_font, fill=(140, 140, 160))
-    # Save as both PNG (artifact) and JPG (upload)
+    draw_text_centered(draw, line_y_bottom + 40, "— MindCore AI", attr_font, fill=(140, 140, 160))
     img.save(output_path, "PNG", quality=95)
     jpg_path = output_path.replace(".png", ".jpg")
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
@@ -272,22 +194,23 @@ def render_quote_image(quote_text, output_path):
 def get_scheduled_time(hour_utc):
     now = datetime.datetime.utcnow()
     target = now.replace(hour=hour_utc, minute=0, second=0, microsecond=0)
-    if now >= target:
-        target += datetime.timedelta(days=1)
+    if now >= target: target += datetime.timedelta(days=1)
     return target.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def upload_photo_to_platforms(image_path, tiktok_caption, fb_title, fb_description, scheduled_date=None):
-    """Upload as photo post with auto_add_music -- TikTok adds trending audio automatically."""
+def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, fb_description, scheduled_date=None):
+    """Upload as photo post with auto_add_music -- matches carousel pipeline upload format."""
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
     data = [
         ("user", UPLOAD_POST_USER),
         ("platform[]", "tiktok"),
         ("platform[]", "facebook"),
-        ("title", tiktok_caption[:2200]),
+        ("tiktok_title", tiktok_title[:90]),
+        ("description", description[:4000]),
         ("facebook_title", fb_title[:255]),
         ("facebook_description", fb_description[:5000]),
+        ("post_mode", "DIRECT_POST"),
         ("auto_add_music", "true"),
         ("photo_cover_index", "0"),
     ]
@@ -304,11 +227,9 @@ def upload_photo_to_platforms(image_path, tiktok_caption, fb_title, fb_descripti
         f.close()
         result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
         result["status_code"] = resp.status_code
-        if scheduled_date:
-            result["scheduled_date"] = scheduled_date
+        if scheduled_date: result["scheduled_date"] = scheduled_date
         print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code} | auto_add_music=true")
-        if not resp.ok:
-            print(f"  {resp.text[:300]}")
+        if not resp.ok: print(f"  {resp.text[:300]}")
         return result
     except Exception as e:
         print(f"  Upload failed: {e}")
@@ -317,12 +238,10 @@ def upload_photo_to_platforms(image_path, tiktok_caption, fb_title, fb_descripti
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI — Daily Quotes Pipeline v1.1 ==")
+    print(f"== MindCore AI — Daily Quotes Pipeline v1.2 ==")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | Photo + auto music")
 
-    if not ANTHROPIC_API_KEY:
-        sys.exit("ERROR: ANTHROPIC_API_KEY not set")
-
+    if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
     category = get_category_for_run()
     scheduled_date = get_scheduled_time(POST_HOUR_UTC)
@@ -335,31 +254,27 @@ def main():
     print(f"  Caption: {caption}")
 
     print("3. Rendering image...")
-    image_path = str(OUTPUT_DIR / "quote_image.png")
-    jpg_path = render_quote_image(quote, image_path)
+    jpg_path = render_quote_image(quote, str(OUTPUT_DIR / "quote_image.png"))
 
     print("4. Uploading as photo post (TikTok auto trending audio)...")
-    tiktok_caption = f"{quote}\n\n{caption}\n\n{TK_HASHTAGS}"
+    # tiktok_title: short (max 90 chars) -- just the quote truncated
+    tiktok_title = quote[:90]
+    # description: full caption + hashtags (TikTok shows this below the title)
+    description = f"{caption}\n\n{TK_HASHTAGS}"
     fb_title = quote[:255]
     fb_description = f"{quote}\n\n{caption}\n\n{FB_HASHTAGS}"
 
-    result = upload_photo_to_platforms(jpg_path, tiktok_caption, fb_title, fb_description, scheduled_date=scheduled_date)
+    result = upload_photo_to_platforms(jpg_path, tiktok_title, description, fb_title, fb_description, scheduled_date=scheduled_date)
     if result.get("status_code") in (200, 202):
         print(f"  Scheduled: {scheduled_date}")
     elif result.get("skipped"):
         print(f"  Skipped: {result.get('reason')}")
 
-    meta = {
-        "run": GITHUB_RUN_NUMBER,
-        "category": category["name"],
-        "quote": quote,
-        "caption": caption,
-        "scheduled": scheduled_date,
-        "upload_type": "photo",
-        "auto_music": True,
-    }
-    (OUTPUT_DIR / "quote_metadata.json").write_text(json.dumps(meta, indent=2))
-
+    (OUTPUT_DIR / "quote_metadata.json").write_text(json.dumps({
+        "run": GITHUB_RUN_NUMBER, "category": category["name"],
+        "quote": quote, "caption": caption, "tiktok_title": tiktok_title,
+        "scheduled": scheduled_date, "upload_type": "photo", "auto_music": True,
+    }, indent=2))
     print("\n== Done ==")
 
 
