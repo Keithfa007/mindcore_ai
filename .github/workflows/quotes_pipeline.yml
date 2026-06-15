@@ -2,7 +2,7 @@ name: Daily Quote -- EU (TikTok + Facebook)
 
 on:
   schedule:
-    - cron: "30 0 * * *"  # 00:30 UTC -- slightly offset from video pipelines
+    - cron: "30 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -16,20 +16,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg + fonts
+      - name: Install fonts + dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
-
-      - name: Install Python dependencies
-        run: pip install anthropic requests Pillow
+          sudo apt-get install -y --no-install-recommends fonts-liberation
+          pip install anthropic requests Pillow
 
       - name: Run Quotes Pipeline
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "6"  # 6:00 UTC = 8am Malta (morning scroll)
+          POST_HOUR_UTC:       "6"  # 6:00 UTC = 8am Malta
           PYTHONPATH:          ${{ github.workspace }}
         run: python scripts/quotes_pipeline.py
 
