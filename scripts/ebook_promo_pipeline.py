@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Ebook Promotion Pipeline v2.5
+MindCore AI — Ebook Promotion Pipeline v2.6
 ============================================
+v2.6: Free Chapter 1 link + 50% launch discount (until July 31st).
 v2.5: Expanded voiceover variations (18 angles, 12 hooks, 6 closers).
 v2.4: Rotating cover image pool (7 Canva designs).
 v2.3: Single upload call -- video to TikTok + Facebook + YouTube.
@@ -24,6 +25,7 @@ COVER_IMAGE_POOL = [
 ]
 COVER_IMAGE_URL = random.choice(COVER_IMAGE_POOL)
 PAYHIP_LINK         = "https://payhip.com/b/3HyoE"
+FREE_CHAPTER_LINK   = "https://payhip.com/b/pTqFt"
 EBOOK_TITLE         = "The Silent Struggle"
 EBOOK_SUBTITLE      = "How to Rebuild Your Mental Health from Rock Bottom"
 
@@ -65,12 +67,14 @@ VOICEOVER_HOOKS = [
 ]
 
 VOICEOVER_CLOSERS = [
-    "The Silent Struggle. Available now.",
-    "The Silent Struggle. Link in bio.",
-    "The Silent Struggle. If you need it, you already know.",
-    "The Silent Struggle. Written in the dark so you don't have to stay there.",
-    "The Silent Struggle. Seven chapters. Zero bullshit.",
-    "The Silent Struggle. For the ones still fighting.",
+    "The Silent Struggle. Read Chapter 1 free. Link in bio.",
+    "The Silent Struggle. First chapter is free. Fifty percent off until July.",
+    "The Silent Struggle. Chapter 1 is yours, free. If it hits, the rest is half price.",
+    "The Silent Struggle. Start reading free. Half price through July.",
+    "The Silent Struggle. Written in the dark so you don't have to stay there. Chapter 1 free.",
+    "The Silent Struggle. Seven chapters. Zero bullshit. First one's on me.",
+    "The Silent Struggle. For the ones still fighting. Read free. Link in bio.",
+    "The Silent Struggle. If you need it, you already know. Chapter 1 free.",
 ]
 
 def generate_caption(client):
@@ -82,6 +86,8 @@ EBOOK DETAILS:
 - 7 chapters about addiction recovery, written by someone with 20 years of addiction who has been 2 years clean
 - Topics: rock bottom, willpower, shame, first 7 days, mental reset toolkit, relapse, rebuilding
 - Deeply personal recovery guide — NOT clinical self-help
+- Chapter 1 is available to read for FREE (no sign-up, no payment)
+- Currently 50% off (launch sale through July 31st)
 
 ANGLE: {angle}
 
@@ -90,6 +96,7 @@ RULES:
 - NO emojis. Raw, honest tone — not salesy
 - Use first person for personal_story/raw_honesty, second person for others
 - Do NOT mention the price, hashtags, or links
+- You MAY naturally mention that Chapter 1 is free or that it's half price, but only if it fits the angle. Do not force it.
 
 Return ONLY the caption text, nothing else."""
     return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=200, messages=[{"role": "user", "content": prompt}]).content[0].text.strip()
@@ -106,6 +113,7 @@ def generate_voiceover_script(client):
 
 The ebook is a deeply personal recovery guide written by someone who spent 20 years in addiction and has been 2 years clean.
 7 chapters: rock bottom, willpower, shame, the first 7 days, mental reset toolkit, relapse, rebuilding identity.
+Chapter 1 is available to read completely free. The full book is currently 50% off through July.
 
 ANGLE: {angle}
 OPENING HOOK (use this as the first line or adapt it): "{hook}"
@@ -193,7 +201,7 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
     except Exception as e: print(f"   Upload failed: {e}"); return {"error": str(e)}
 
 def main():
-    print(f"== MindCore AI — Ebook Promotion Pipeline v2.5 ==\n")
+    print(f"== MindCore AI — Ebook Promotion Pipeline v2.6 ==\n")
     print(f"   Cover: {COVER_IMAGE_URL.split('/')[-1]}")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -212,11 +220,11 @@ def main():
         if has_voice: create_static_video_with_voice(cover, audio, video)
         else: create_static_video_silent(cover, video)
 
-        tiktok_caption = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{TK_HASHTAGS}"
-        fb_title = EBOOK_TITLE
-        fb_description = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\n{FB_HASHTAGS}"
+        tiktok_caption = f"{caption}\n\nRead Chapter 1 FREE: {FREE_CHAPTER_LINK}\n50% off through July: {PAYHIP_LINK}\n\n{TK_HASHTAGS}"
+        fb_title = f"{EBOOK_TITLE} — Read Chapter 1 Free"
+        fb_description = f"{caption}\n\nRead Chapter 1 completely free: {FREE_CHAPTER_LINK}\nFull ebook 50% off through July: {PAYHIP_LINK}\n\n{FB_HASHTAGS}"
         yt_title = f"{EBOOK_TITLE} — {EBOOK_SUBTITLE} #Shorts"[:100]
-        yt_description = f"{caption}\n\nGet your copy: {PAYHIP_LINK}\n\nA deeply personal recovery guide by Keith, Founder of MindCore AI.\n\n#mindcoreai #mentalhealth #recovery #addiction #sobriety #ebook #selfhelp #Shorts"
+        yt_description = f"{caption}\n\nRead Chapter 1 FREE: {FREE_CHAPTER_LINK}\nGet the full ebook (50% off through July): {PAYHIP_LINK}\n\nA deeply personal recovery guide by Keith, Founder of MindCore AI.\n\n#mindcoreai #mentalhealth #recovery #addiction #sobriety #ebook #selfhelp #Shorts"
         yt_tags = "mental health,recovery,addiction,sobriety,ebook,self help,the silent struggle,mindcore ai,healing,wellness"
 
         print("5. Uploading to TikTok + Facebook + YouTube...")
