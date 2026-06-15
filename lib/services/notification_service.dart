@@ -42,6 +42,9 @@ class NotificationService {
   static const _sleepChannelId           = 'sleep_ritual_channel';
   static const _sleepChannelName         = 'Sleep Ritual';
   static const _sleepChannelDesc         = 'Morning and evening check-in reminders';
+  static const _trialChannelId           = 'trial_nudge_channel';
+  static const _trialChannelName         = 'Trial Reminders';
+  static const _trialChannelDesc         = 'Reminders during your free trial';
 
   // Notification IDs
   static const int _dailyNotificationId   = 2000;
@@ -52,6 +55,8 @@ class NotificationService {
   static const int _weeklySummaryId       = 6001;
   static const int _sleepEveningId        = 7001;
   static const int _sleepMorningId        = 7002;
+  static const int _trialNudgeDay2Id      = 8001;
+  static const int _trialNudgeDay3Id      = 8002;
 
   // Prefs keys
   static const String _kLastScheduledSignature = 'recommendation_last_schedule_signature';
@@ -109,6 +114,7 @@ class NotificationService {
         const AndroidNotificationChannel(_blogChannelId,      _blogChannelName,      description: _blogChannelDesc,           importance: Importance.high),
         const AndroidNotificationChannel(_weeklySummaryChannelId, _weeklySummaryChannelName, description: _weeklySummaryChannelDesc, importance: Importance.high),
         const AndroidNotificationChannel(_sleepChannelId,     _sleepChannelName,     description: _sleepChannelDesc,          importance: Importance.high),
+        const AndroidNotificationChannel(_trialChannelId,     _trialChannelName,     description: _trialChannelDesc,          importance: Importance.high),
       ]) { await android?.createNotificationChannel(ch); }
     }
 
@@ -191,7 +197,7 @@ class NotificationService {
     await promptBatteryOptimizationExemption(context);
   }
 
-  // ── Immediate / blog ───────────────────────────────────────────────────────
+  // ── Immediate / blog ───────────────────────────────────────────────────
 
   Future<void> showImmediateNotification({required String title, required String body}) async {
     const details = NotificationDetails(
@@ -211,28 +217,72 @@ class NotificationService {
     await _plugin.show(_blogNotificationId, 'New article \ud83d\udcd6', postTitle, details, payload: payload);
   }
 
-  // ── Daily recommendation ──────────────────────────────────────────────────
+  // ── Trial nudges ─────────────────────────────────────────────────────────
+
+  Future<void> scheduleTrialNudges(DateTime trialStart) async {
+    final payload = jsonEncode({'routeName': '/home'});
+
+    // Day 2 nudge: 24 hours after trial start, at 10am
+    final day2 = trialStart.add(const Duration(days: 1));
+    final day2Time = tz.TZDateTime(
+      tz.local, day2.year, day2.month, day2.day, 10, 0,
+    );
+
+    // Day 3 nudge: 48 hours after trial start, at 9am
+    final day3 = trialStart.add(const Duration(days: 2));
+    final day3Time = tz.TZDateTime(
+      tz.local, day3.year, day3.month, day3.day, 9, 0,
+    );
+
+    const day2Details = NotificationDetails(
+      android: AndroidNotificationDetails(_trialChannelId, _trialChannelName,
+          channelDescription: _trialChannelDesc, importance: Importance.high, priority: Priority.high),
+    );
+
+    try {
+      await _plugin.zonedSchedule(
+        _trialNudgeDay2Id,
+        'How\'s it going? \ud83d\udc99',
+        'You\'ve been using MindCore AI for 2 days. Your trial ends tomorrow \u2014 how\'s it feeling?',
+        day2Time, day2Details,
+        payload: payload,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+    } catch (_) {}
+
+    try {
+      await _plugin.zonedSchedule(
+        _trialNudgeDay3Id,
+        'Your trial ends today \u23f3',
+        'Everything you\'ve shared is saved and waiting for you. Subscribe to keep going.',
+        day3Time, day2Details,
+        payload: payload,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> cancelTrialNudges() async {
+    await _plugin.cancel(_trialNudgeDay2Id);
+    await _plugin.cancel(_trialNudgeDay3Id);
+  }
+
+  // ── Daily recommendation ─────────────────────────────────────────────────
 
   Future<void> scheduleDailyRecommendationNotification({
-    required String uniqueKey,
-    required String title,
-    required String body,
-    required String routeName,
-    Map<String, dynamic>? routeArguments,
-    int hour = 8, int minute = 0,
-    bool openSettingsIfNeeded = false,
+    required String uniqueKey, required String title, required String body,
+    required String routeName, Map<String, dynamic>? routeArguments,
+    int hour = 8, int minute = 0, bool openSettingsIfNeeded = false,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final now   = DateTime.now();
     final today = '${now.year}-${now.month}-${now.day}';
     final signature = '$today|$hour:$minute|$uniqueKey|$title|$body|${jsonEncode(routeArguments ?? const {})}';
     if (prefs.getString(_kLastScheduledSignature) == signature) return;
-
     final payload  = jsonEncode({'routeName': routeName, 'arguments': routeArguments ?? <String, dynamic>{}});
     final nowTz    = tz.TZDateTime.now(tz.local);
     var scheduled  = tz.TZDateTime(tz.local, nowTz.year, nowTz.month, nowTz.day, hour, minute);
     if (scheduled.isBefore(nowTz)) scheduled = scheduled.add(const Duration(days: 1));
-
     const details = NotificationDetails(
       android: AndroidNotificationDetails(_dailyChannelId, _dailyChannelName,
           channelDescription: _dailyChannelDesc, importance: Importance.max, priority: Priority.high),
@@ -259,7 +309,7 @@ class NotificationService {
       scheduleDailyRecommendationNotification(
         uniqueKey: 'fallback_daily_reset',
         title: 'Your daily recommendation is ready',
-        body:  'Open MindCore AI for a calm reset and one gentle next step.',
+        body: 'Open MindCore AI for a calm reset and one gentle next step.',
         routeName: '/home', hour: hour, minute: minute,
         openSettingsIfNeeded: openSettingsIfNeeded,
       );
@@ -275,8 +325,8 @@ class NotificationService {
   Future<void> scheduleCheckInNotifications({required int timesPerDay}) async {
     await cancelCheckInNotifications();
     final dayOfYear = DateTime.now().difference(DateTime(DateTime.now().year)).inDays;
-    await _scheduleOneCheckIn(id: _checkInMorningId,   hour: 9,  minute: 47, msgIndex: (dayOfYear * 3)     % _checkInMessages.length);
-    await _scheduleOneCheckIn(id: _checkInEveningId,   hour: 19, minute: 15, msgIndex: (dayOfYear * 3 + 2) % _checkInMessages.length);
+    await _scheduleOneCheckIn(id: _checkInMorningId, hour: 9, minute: 47, msgIndex: (dayOfYear * 3) % _checkInMessages.length);
+    await _scheduleOneCheckIn(id: _checkInEveningId, hour: 19, minute: 15, msgIndex: (dayOfYear * 3 + 2) % _checkInMessages.length);
     if (timesPerDay >= 3) {
       await _scheduleOneCheckIn(id: _checkInAfternoonId, hour: 14, minute: 23, msgIndex: (dayOfYear * 3 + 1) % _checkInMessages.length);
     }
@@ -319,38 +369,27 @@ class NotificationService {
     await prefs.setBool(_kCheckInEnabled, false);
   }
 
-  // ── Sleep Ritual ──────────────────────────────────────────────────────────
+  // ── Sleep Ritual ─────────────────────────────────────────────────────────
 
   Future<void> scheduleSleepRitualNotifications({
-    required TimeOfDay eveningTime,
-    required TimeOfDay morningTime,
+    required TimeOfDay eveningTime, required TimeOfDay morningTime,
   }) async {
     await cancelSleepRitualNotifications();
     await _scheduleOneSleepNotif(
-      id:      _sleepEveningId,
-      title:   'Evening check-in \ud83c\udf19',
-      body:    'How did today go? Take 30 seconds.',
-      hour:    eveningTime.hour,
-      minute:  eveningTime.minute,
-      mode:    'evening',
+      id: _sleepEveningId, title: 'Evening check-in \ud83c\udf19',
+      body: 'How did today go? Take 30 seconds.',
+      hour: eveningTime.hour, minute: eveningTime.minute, mode: 'evening',
     );
     await _scheduleOneSleepNotif(
-      id:     _sleepMorningId,
-      title:  'Good morning \u2600\ufe0f',
-      body:   'How are you feeling today?',
-      hour:   morningTime.hour,
-      minute: morningTime.minute,
-      mode:   'morning',
+      id: _sleepMorningId, title: 'Good morning \u2600\ufe0f',
+      body: 'How are you feeling today?',
+      hour: morningTime.hour, minute: morningTime.minute, mode: 'morning',
     );
   }
 
   Future<void> _scheduleOneSleepNotif({
-    required int    id,
-    required String title,
-    required String body,
-    required int    hour,
-    required int    minute,
-    required String mode,
+    required int id, required String title, required String body,
+    required int hour, required int minute, required String mode,
   }) async {
     final payload = jsonEncode({'routeName': '/sleep-ritual', 'arguments': {'mode': mode}});
     final nowTz   = tz.TZDateTime.now(tz.local);
@@ -381,12 +420,12 @@ class NotificationService {
     await _plugin.cancel(_sleepMorningId);
   }
 
-  // ── Weekly summary ─────────────────────────────────────────────────────────
+  // ── Weekly summary ────────────────────────────────────────────────────────
 
   Future<void> scheduleWeeklySummary() async {
     try {
       final weekNumber = DateTime.now().difference(DateTime(DateTime.now().year, 1, 1)).inDays ~/ 7;
-      final msg        = _weeklySummaryMessages[weekNumber % _weeklySummaryMessages.length];
+      final msg = _weeklySummaryMessages[weekNumber % _weeklySummaryMessages.length];
       await _scheduleWeeklySummaryNotification(title: msg.title, body: msg.body);
     } catch (_) {}
   }
@@ -420,5 +459,5 @@ class NotificationService {
   }
 
   Future<void> cancelWeeklySummary() => _plugin.cancel(_weeklySummaryId).then((_) {});
-  Future<void> cancelAll()           => _plugin.cancelAll();
+  Future<void> cancelAll() => _plugin.cancelAll();
 }

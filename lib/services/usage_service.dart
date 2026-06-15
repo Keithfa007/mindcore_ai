@@ -1,6 +1,8 @@
 // lib/services/usage_service.dart
 //
 // Tracks message + voice usage per billing period.
+// Trial users get daily limits (15 msgs/day, 5 min voice/day).
+// Paid users get monthly limits from their tier.
 // bonusVoiceSeconds (purchased voice packs) lives on the USER document
 // so it is NEVER wiped at month rollover.
 
@@ -15,7 +17,7 @@ import 'package:mindcore_ai/services/premium_service.dart';
 class UsageSnapshot {
   final int messagesUsed;
   final int voiceSecondsUsed;
-  final int bonusVoiceSeconds; // purchased packs — never resets
+  final int bonusVoiceSeconds;
   final TierConfig tier;
 
   const UsageSnapshot({
@@ -26,24 +28,19 @@ class UsageSnapshot {
   });
 
   static const empty = UsageSnapshot(
-    messagesUsed:     0,
-    voiceSecondsUsed: 0,
-    tier:             TierConfig.trial,
+    messagesUsed: 0, voiceSecondsUsed: 0, tier: TierConfig.trial,
   );
 
   int get messagesRemaining {
     if (tier.isUnlimited) return 9999;
-    return (tier.monthlyMessages - messagesUsed)
-        .clamp(0, tier.monthlyMessages);
+    return (tier.monthlyMessages - messagesUsed).clamp(0, tier.monthlyMessages);
   }
 
-  // Total = plan allowance + bonus from purchased packs
   int get totalVoiceSeconds => tier.monthlyVoiceSeconds + bonusVoiceSeconds;
 
   int get voiceSecondsRemaining {
     if (tier.monthlyVoiceSeconds == -1) return 9999;
-    return (totalVoiceSeconds - voiceSecondsUsed)
-        .clamp(0, totalVoiceSeconds);
+    return (totalVoiceSeconds - voiceSecondsUsed).clamp(0, totalVoiceSeconds);
   }
 
   int get voiceMinutesRemaining => (voiceSecondsRemaining / 60).floor();
@@ -53,8 +50,7 @@ class UsageSnapshot {
 
   bool get canUseVoice =>
       tier.hasVoice &&
-      (tier.monthlyVoiceSeconds == -1 ||
-          voiceSecondsUsed < totalVoiceSeconds);
+      (tier.monthlyVoiceSeconds == -1 || voiceSecondsUsed < totalVoiceSeconds);
 
   double get messageFraction {
     if (tier.isUnlimited) return 0;
@@ -67,18 +63,14 @@ class UsageSnapshot {
   }
 
   UsageSnapshot copyWith({
-    int? messagesUsed,
-    int? voiceSecondsUsed,
-    int? bonusVoiceSeconds,
-    TierConfig? tier,
-  }) {
-    return UsageSnapshot(
-      messagesUsed:      messagesUsed      ?? this.messagesUsed,
-      voiceSecondsUsed:  voiceSecondsUsed  ?? this.voiceSecondsUsed,
-      bonusVoiceSeconds: bonusVoiceSeconds ?? this.bonusVoiceSeconds,
-      tier:              tier              ?? this.tier,
-    );
-  }
+    int? messagesUsed, int? voiceSecondsUsed,
+    int? bonusVoiceSeconds, TierConfig? tier,
+  }) => UsageSnapshot(
+    messagesUsed:      messagesUsed      ?? this.messagesUsed,
+    voiceSecondsUsed:  voiceSecondsUsed  ?? this.voiceSecondsUsed,
+    bonusVoiceSeconds: bonusVoiceSeconds ?? this.bonusVoiceSeconds,
+    tier:              tier              ?? this.tier,
+  );
 }
 
 class UsageService {
@@ -87,45 +79,101 @@ class UsageService {
 
   final snapshot = ValueNotifier<UsageSnapshot>(UsageSnapshot.empty);
 
-  // Period-scoped keys (messages + voice used reset monthly)
+  // Period-scoped keys (reset monthly)
   static const _kMsgs   = 'usage_msgs_';
   static const _kVoice  = 'usage_voice_';
   static const _kPeriod = 'usage_period';
   static const _kTier   = 'usage_tier';
-  // Bonus never resets — stored without period suffix
   static const _kBonus  = 'usage_bonus_voice_total';
+
+  // Trial daily keys (reset daily)
+  static const _kTrialDailyMsgs  = 'trial_daily_msgs_';
+  static const _kTrialDailyVoice = 'trial_daily_voice_';
 
   bool _initialised = false;
   int  _voiceBuffer = 0;
 
+  bool get _isTrialUser => PremiumService.currentTier.value.isTrial;
+
+  String get _todayKey {
+    final d = DateTime.now();
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   Future<void> init() async {
     if (_initialised) return;
     _initialised = true;
-
     await _loadFromCache();
-
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) await _syncFromFirestore(user.uid);
-
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user == null) { snapshot.value = UsageSnapshot.empty; return; }
       await _syncFromFirestore(user.uid);
     });
-
     PremiumService.isPremium.addListener(() async {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) await _syncFromFirestore(user.uid);
     });
   }
 
-  // ── Message gating ─────────────────────────────────────────────────
+  // ── Trial daily usage helpers ─────────────────────────────────────────
+
+  Future<int> _trialDailyMsgsUsed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('$_kTrialDailyMsgs$_todayKey') ?? 0;
+  }
+
+  Future<void> _incrementTrialDailyMsgs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt('$_kTrialDailyMsgs$_todayKey') ?? 0;
+    await prefs.setInt('$_kTrialDailyMsgs$_todayKey', current + 1);
+  }
+
+  Future<int> _trialDailyVoiceUsed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('$_kTrialDailyVoice$_todayKey') ?? 0;
+  }
+
+  Future<void> _incrementTrialDailyVoice(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt('$_kTrialDailyVoice$_todayKey') ?? 0;
+    await prefs.setInt('$_kTrialDailyVoice$_todayKey', current + seconds);
+  }
+
+  // ── Message gating ───────────────────────────────────────────────────
 
   Future<bool> tryConsumeMessage(BuildContext context) async {
-    final snap = snapshot.value;
+    // Trial users: enforce daily limits
+    if (_isTrialUser) {
+      // Check if trial has expired first
+      final expired = await PremiumService.isTrialExpired();
+      if (expired) {
+        await _showLimitDialog(context,
+          title: 'Your free trial has ended',
+          body: 'You had 3 days of full access and it made a difference.\n\n'
+              'Subscribe to keep going \u2014 your conversations and progress are saved.',
+        );
+        return false;
+      }
 
-    if (!snap.canSendMessage) {
-      await _showLimitDialog(
-        context,
+      final dailyUsed = await _trialDailyMsgsUsed();
+      final dailyLimit = TierConfig.trial.trialDailyMessages;
+      if (dailyUsed >= dailyLimit) {
+        final remaining = await PremiumService.trialDaysRemaining();
+        await _showLimitDialog(context,
+          title: 'Daily limit reached',
+          body: 'You\'ve used all $dailyLimit messages for today.\n\n'
+              '${remaining > 0 ? 'You have $remaining day${remaining == 1 ? '' : 's'} left in your free trial. Come back tomorrow or subscribe now.' : 'Subscribe to unlock full access.'}',
+        );
+        return false;
+      }
+
+      await _incrementTrialDailyMsgs();
+    }
+
+    final snap = snapshot.value;
+    if (!_isTrialUser && !snap.canSendMessage) {
+      await _showLimitDialog(context,
         title: 'Message limit reached',
         body: 'You\'ve used all ${snap.tier.monthlyMessages} messages '
             'for this month on the ${snap.tier.displayName} plan.\n\n'
@@ -141,23 +189,44 @@ class UsageService {
     return true;
   }
 
-  // ── Voice gating ──────────────────────────────────────────────────
+  // ── Voice gating ─────────────────────────────────────────────────────
 
   Future<bool> tryConsumeVoice(BuildContext context) async {
     final snap = snapshot.value;
 
     if (!snap.tier.hasVoice) {
-      await _showLimitDialog(
-        context,
+      await _showLimitDialog(context,
         title: 'Voice not included',
         body: 'Hands-free voice is available on Premium and Pro plans.',
       );
       return false;
     }
 
-    if (!snap.canUseVoice) {
-      await _showLimitDialog(
-        context,
+    // Trial users: check daily voice limit
+    if (_isTrialUser) {
+      final expired = await PremiumService.isTrialExpired();
+      if (expired) {
+        await _showLimitDialog(context,
+          title: 'Your free trial has ended',
+          body: 'Subscribe to keep using voice chat.',
+        );
+        return false;
+      }
+
+      final dailyUsed  = await _trialDailyVoiceUsed();
+      final dailyLimit = TierConfig.trial.trialDailyVoiceSeconds;
+      if (dailyUsed >= dailyLimit) {
+        await _showLimitDialog(context,
+          title: 'Voice limit for today',
+          body: 'You\'ve used your 5 minutes of voice for today.\n\n'
+              'Come back tomorrow or subscribe for more.',
+        );
+        return false;
+      }
+    }
+
+    if (!_isTrialUser && !snap.canUseVoice) {
+      await _showLimitDialog(context,
         title: 'Voice minutes used up',
         body: 'You\'ve used all your voice minutes this month.\n\n'
             'Buy a voice top-up pack or upgrade your plan.',
@@ -170,10 +239,18 @@ class UsageService {
 
   Future<bool> recordVoiceSecond() async {
     final snap = snapshot.value;
-    if (!snap.canUseVoice) return false;
 
-    final updated =
-        snap.copyWith(voiceSecondsUsed: snap.voiceSecondsUsed + 1);
+    // Trial daily voice tracking
+    if (_isTrialUser) {
+      final dailyUsed  = await _trialDailyVoiceUsed();
+      final dailyLimit = TierConfig.trial.trialDailyVoiceSeconds;
+      if (dailyUsed >= dailyLimit) return false;
+      await _incrementTrialDailyVoice(1);
+    }
+
+    if (!_isTrialUser && !snap.canUseVoice) return false;
+
+    final updated = snap.copyWith(voiceSecondsUsed: snap.voiceSecondsUsed + 1);
     snapshot.value = updated;
 
     _voiceBuffer++;
@@ -182,39 +259,29 @@ class UsageService {
       _voiceBuffer = 0;
     }
 
-    return updated.canUseVoice;
+    return true;
   }
 
-  // ── Voice pack top-up ───────────────────────────────────────────────
-  // Bonus lives on the USER document — never resets at month rollover.
+  // ── Voice pack top-up ─────────────────────────────────────────────────
 
   Future<void> addVoiceMinutes(int minutes) async {
     final addSeconds = minutes * 60;
-    final updated    = snapshot.value.copyWith(
+    final updated = snapshot.value.copyWith(
       bonusVoiceSeconds: snapshot.value.bonusVoiceSeconds + addSeconds,
     );
     snapshot.value = updated;
     await _persistLocally(updated);
-
-    // Write to users/{uid} (NOT the period sub-document)
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .set(
-          {
-            'bonusVoiceSeconds': FieldValue.increment(addSeconds),
-            'bonusUpdatedAt':    FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'bonusVoiceSeconds': FieldValue.increment(addSeconds),
+          'bonusUpdatedAt':    FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       } catch (e) {
-        debugPrint('UsageService: addVoiceMinutes Firestore failed — $e');
+        debugPrint('UsageService: addVoiceMinutes Firestore failed \u2014 $e');
       }
     }
-
     debugPrint('UsageService: added $minutes voice minutes (+${addSeconds}s)');
   }
 
@@ -226,113 +293,78 @@ class UsageService {
     await _persistLocally(snapshot.value);
   }
 
-  // ── Firestore sync ──────────────────────────────────────────────────
+  // ── Firestore sync ─────────────────────────────────────────────────────
 
   Future<void> _syncFromFirestore(String uid) async {
     final period     = _currentPeriod();
     final tierConfig = PremiumService.currentTier.value;
-
     try {
-      // Read period doc (messages + voice used)
       final periodRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('usage')
-          .doc(period);
-
-      // Read user doc (bonus voice pack balance)
-      final userRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid);
-
-      final results = await Future.wait([
-        periodRef.get(),
-        userRef.get(),
-      ]);
-
+          .collection('users').doc(uid).collection('usage').doc(period);
+      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+      final results = await Future.wait([periodRef.get(), userRef.get()]);
       final periodDoc = results[0];
       final userDoc   = results[1];
-
       int msgs   = 0;
       int voices = 0;
-      // Bonus comes from the USER doc — persists forever
       final int bonus = (userDoc.data()?['bonusVoiceSeconds'] as int?) ?? 0;
-
       if (periodDoc.exists) {
         msgs   = (periodDoc.data()?['messagesUsed']    as int?) ?? 0;
         voices = (periodDoc.data()?['voiceSecondsUsed'] as int?) ?? 0;
       } else {
-        // Create period doc on first access this month
         await periodDoc.reference.set({
-          'messagesUsed':     0,
-          'voiceSecondsUsed': 0,
-          'tier':             tierConfig.firestoreKey,
-          'periodStart':      FieldValue.serverTimestamp(),
-          'updatedAt':        FieldValue.serverTimestamp(),
+          'messagesUsed': 0, 'voiceSecondsUsed': 0,
+          'tier': tierConfig.firestoreKey,
+          'periodStart': FieldValue.serverTimestamp(),
+          'updatedAt':   FieldValue.serverTimestamp(),
         });
       }
-
       final updated = UsageSnapshot(
-        messagesUsed:      msgs,
-        voiceSecondsUsed:  voices,
-        bonusVoiceSeconds: bonus,
-        tier:              tierConfig,
+        messagesUsed: msgs, voiceSecondsUsed: voices,
+        bonusVoiceSeconds: bonus, tier: tierConfig,
       );
-
       snapshot.value = updated;
       await _persistLocally(updated);
     } catch (e) {
-      debugPrint('UsageService: Firestore sync failed — $e');
+      debugPrint('UsageService: Firestore sync failed \u2014 $e');
     }
   }
 
-  // Increments fields on the period sub-document only (usage that resets monthly)
   Future<void> _incrementPeriodFirestore(String field, int amount) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
       await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('usage')
-          .doc(_currentPeriod())
-          .set(
-        {
-          field:       FieldValue.increment(amount),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'tier':      PremiumService.currentTier.value.firestoreKey,
-        },
-        SetOptions(merge: true),
-      );
+          .collection('users').doc(uid)
+          .collection('usage').doc(_currentPeriod())
+          .set({
+        field:       FieldValue.increment(amount),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'tier':      PremiumService.currentTier.value.firestoreKey,
+      }, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('UsageService: increment failed — $e');
+      debugPrint('UsageService: increment failed \u2014 $e');
     }
   }
 
-  // ── Local cache ────────────────────────────────────────────────────
+  // ── Local cache ─────────────────────────────────────────────────────────
 
   Future<void> _loadFromCache() async {
     final prefs  = await SharedPreferences.getInstance();
     final period = _currentPeriod();
     final cached = prefs.getString(_kPeriod);
-
-    // Wipe period-scoped keys on rollover, but leave bonus intact
     if (cached != null && cached != period) {
       await prefs.remove(_kMsgs  + cached);
       await prefs.remove(_kVoice + cached);
       await prefs.setString(_kPeriod, period);
     }
-
     final msgs   = prefs.getInt(_kMsgs  + period) ?? 0;
     final voices = prefs.getInt(_kVoice + period) ?? 0;
-    final bonus  = prefs.getInt(_kBonus)           ?? 0;  // no period suffix
+    final bonus  = prefs.getInt(_kBonus)           ?? 0;
     final tier   = TierConfig.fromKey(prefs.getString(_kTier));
-
     snapshot.value = UsageSnapshot(
-      messagesUsed:      msgs,
-      voiceSecondsUsed:  voices,
-      bonusVoiceSeconds: bonus,
-      tier:              tier,
+      messagesUsed: msgs, voiceSecondsUsed: voices,
+      bonusVoiceSeconds: bonus, tier: tier,
     );
   }
 
@@ -342,7 +374,7 @@ class UsageService {
     await prefs.setString(_kPeriod, period);
     await prefs.setInt(_kMsgs  + period, snap.messagesUsed);
     await prefs.setInt(_kVoice + period, snap.voiceSecondsUsed);
-    await prefs.setInt(_kBonus, snap.bonusVoiceSeconds);      // no period suffix
+    await prefs.setInt(_kBonus, snap.bonusVoiceSeconds);
     await prefs.setString(_kTier, snap.tier.firestoreKey);
   }
 
@@ -351,7 +383,7 @@ class UsageService {
     return '${now.year}-${now.month.toString().padLeft(2, '0')}';
   }
 
-  // ── Limit dialog ──────────────────────────────────────────────────
+  // ── Limit dialog ───────────────────────────────────────────────────────
 
   Future<void> _showLimitDialog(
     BuildContext context, {
@@ -362,8 +394,7 @@ class UsageService {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title:   Text(title),
         content: Text(body),
         actions: [
