@@ -78,6 +78,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
           FAL_KEY:              ${{ secrets.FAL_KEY }}
+          SERP_API_KEY:         ${{ secrets.SERP_API_KEY }}
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
         run: python scripts/carousel_pipeline.py

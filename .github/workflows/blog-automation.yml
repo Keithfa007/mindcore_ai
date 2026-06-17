@@ -82,6 +82,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           FAL_KEY:             ${{ secrets.FAL_KEY }}
+          SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           WP_USERNAME:         ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD:     ${{ secrets.WP_APP_PASSWORD }}
           GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
