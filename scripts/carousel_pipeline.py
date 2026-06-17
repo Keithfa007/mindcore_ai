@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v2.9
+MindCore AI -- Carousel Image Post Pipeline v3.0
 =================================================
+v3.0: SERP-driven topic selection — trending topics from real Google data.
 v2.9: Facebook-specific title + description (no TikTok hashtags on FB).
 v2.7: Full image variety pools -- 10 prompts per slide per gender.
-v2.6: POST_HOUR_UTC = 11 (1pm Malta), scheduled_date.
 
 Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
 Cron: 02:00 UTC = 4am Malta | Post: 11:00 UTC = 1pm Malta
@@ -20,7 +20,19 @@ from openai import OpenAI
 ANTHROPIC_API_KEY=os.environ["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY=os.environ["OPENAI_API_KEY"]
 UPLOAD_POST_API_KEY=os.environ.get("UPLOAD_POST_API_KEY","")
+SERP_API_KEY=os.environ.get("SERP_API_KEY","")
 GITHUB_RUN_NUMBER=int(os.environ.get("GITHUB_RUN_NUMBER","1"))
+
+# SERP research (graceful fallback)
+try:
+    from scripts.serp_research import research_topics, pick_best_topic
+    SERP_AVAILABLE = True
+except ImportError:
+    try:
+        from serp_research import research_topics, pick_best_topic
+        SERP_AVAILABLE = True
+    except ImportError:
+        SERP_AVAILABLE = False
 UPLOAD_POST_PHOTOS_URL="https://api.upload-post.com/api/upload_photos"
 OUTPUT_DIR=Path("scripts/output_carousel"); PIPELINE_DIR=Path("scripts"); HISTORY_PATH=PIPELINE_DIR/"carousel_history.json"
 REQUIRED_BRAND_HASHTAG="#mindcoreai"
@@ -122,7 +134,25 @@ def add_gradient_overlay(img,tsy):
 
 def generate_carousel_script(client,history,gender):
     used=[e.get("topic","") for e in history]; seeds=MALE_SEEDS if gender=="male" else FEMALE_SEEDS
-    seed=random.choice(seeds); avoid=", ".join(used[-10:]) if used else "none"
+    avoid=", ".join(used[-10:]) if used else "none"
+    # SERP-driven topic selection — find what's trending right now
+    seed=None
+    if SERP_AVAILABLE and SERP_API_KEY:
+        try:
+            print(f"  [SERP] Researching trending {gender} topics...")
+            candidates=research_topics(seeds, SERP_API_KEY, country="gb", num_seeds=2, num_autocomplete=1)
+            if candidates:
+                winner=pick_best_topic(candidates, client, history=used[-10:],
+                    context=f"{'mens' if gender=='male' else 'womens'} mental health TikTok carousel",
+                    model="claude-sonnet-4-6")
+                if winner:
+                    seed=winner.get("topic", winner.get("keyword",""))
+                    print(f"  [SERP] Winner: '{seed}' [{winner.get('source','?')}]")
+        except Exception as e:
+            print(f"  [SERP] Failed: {e} — falling back to random seed")
+    if not seed:
+        seed=random.choice(seeds)
+        print(f"  [SEED] Random: '{seed[:50]}'")
     if gender=="male":
         ai="Write a 5-content-slide carousel that speaks DIRECTLY TO a man who is struggling.\nAddress him as 'you'. Validate his experience without preaching.\nTone: direct, honest, no softening. Like a friend who has been there.\nExample voice: 'You're not falling apart. You've been holding everything together for too long.'"
     else:
@@ -283,8 +313,9 @@ def main():
         with open(cp) as f: cfg=json.load(f)
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     gender=get_gender_mode(); history=load_history(); scheduled_date=get_scheduled_post_time()
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v2.9")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v3.0")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Gender: {gender.upper()} | ~$0.48")
+    print(f"  SERP: {'ENABLED' if (SERP_AVAILABLE and SERP_API_KEY) else 'DISABLED'}")
     print(f"  Image pools: 10 prompts per slide | Facebook: separate title + description")
     print(f"  Upload: {'ENABLED' if upload_enabled else 'DISABLED'}")
     print("="*60)
