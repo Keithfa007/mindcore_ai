@@ -21,12 +21,10 @@ jobs:
         run: |
           python3 << 'PATCH'
           c = open('scripts/carousel_pipeline.py').read()
-          # Add fal import
           c = c.replace(
               'from openai import OpenAI',
               'from scripts.fal_image import generate_fal_image'
           )
-          # Replace image generation function body
           old_fn = '''def generate_slide_image(oc,sk,topic,gender):
     pools=IMAGE_POOLS_MALE if gender=="male" else IMAGE_POOLS_FEMALE
     ps=len(pools[sk]); sn=int(sk.split("_")[1]); base_idx=(GITHUB_RUN_NUMBER+sn-1)%ps
@@ -63,7 +61,6 @@ jobs:
             raise
     raise RuntimeError(f"All 3 image prompts for {sk} were blocked")'''
           c = c.replace(old_fn, new_fn)
-          # Remove OpenAI client creation (oc) -- keep the variable name for compatibility
           c = c.replace('oc=OpenAI(api_key=OPENAI_API_KEY)', 'oc=None  # fal.ai replaces OpenAI')
           open('scripts/carousel_pipeline.py','w').write(c)
           print("Patched: fal.ai Flux Schnell (~$0.003/image)")
@@ -80,7 +77,7 @@ jobs:
       - name: Run Carousel Pipeline
         env:
           ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
-          FAL_API_KEY:          ${{ secrets.FAL_API_KEY }}
+          FAL_KEY:              ${{ secrets.FAL_KEY }}
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
         run: python scripts/carousel_pipeline.py
