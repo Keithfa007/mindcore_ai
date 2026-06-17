@@ -8,9 +8,21 @@ from anthropic import Anthropic
 from openai import OpenAI
 from datetime import datetime
 
+# SERP research (graceful fallback if module unavailable)
+try:
+    from scripts.serp_research import research_topics, pick_best_topic
+    SERP_AVAILABLE = True
+except ImportError:
+    try:
+        from serp_research import research_topics, pick_best_topic
+        SERP_AVAILABLE = True
+    except ImportError:
+        SERP_AVAILABLE = False
+
 # -- Clients ------------------------------------------------------------------
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+SERP_API_KEY     = os.environ.get("SERP_API_KEY", "")
 
 WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
@@ -87,13 +99,13 @@ EXTERNAL_LINKS = [
     ("SAMHSA",                    "https://www.samhsa.gov"),
 ]
 
-# Inline app link — used naturally within content text
+# Inline app link
 APP_INLINE_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
     'target="_blank" rel="noopener noreferrer"><strong>MindCore AI</strong></a>'
 )
 
-# CTA button — bold dark styled button used in the final CTA section
+# CTA button
 GP_CTA_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
     'target="_blank" rel="noopener noreferrer" '
@@ -206,6 +218,62 @@ AUDIENCE_PROFILES = {
         ),
         "preferred_categories": ["AI & Wellness", "Recovery & Sobriety", "Sleep & Burnout", "Anxiety & Stress", "Relationships & Family"],
     },
+}
+
+
+# -- SERP seed queries per audience -------------------------------------------
+SERP_SEEDS = {
+    "men": [
+        "men's mental health struggles",
+        "male depression signs",
+        "men emotional suppression",
+        "male loneliness epidemic",
+        "men anxiety symptoms",
+        "men burnout recovery",
+        "men addiction recovery support",
+        "high functioning depression men",
+        "men midlife crisis mental health",
+        "men anger management",
+        "men therapy resistance",
+        "fatherhood mental health",
+        "men grief and loss",
+        "men self worth issues",
+        "men panic attacks",
+    ],
+    "women": [
+        "ADHD in women undiagnosed",
+        "perimenopause mental health",
+        "postpartum depression support",
+        "caregiver burnout women",
+        "mental load emotional labour",
+        "women imposter syndrome",
+        "people pleasing codependency",
+        "setting boundaries without guilt",
+        "women addiction recovery",
+        "loneliness adult women",
+        "women perfectionism anxiety",
+        "body image self worth",
+        "empty nest syndrome",
+        "PMDD mood hormones",
+        "gaslighting recovery",
+    ],
+    "neutral": [
+        "high functioning anxiety",
+        "complex PTSD symptoms",
+        "nervous system dysregulation",
+        "AI mental health tools",
+        "therapy alternatives affordable",
+        "sobriety social life",
+        "insomnia anxiety loop",
+        "workplace burnout recovery",
+        "loneliness epidemic adults",
+        "social media mental health",
+        "anxiety management without medication",
+        "rumination overthinking",
+        "journaling mental health benefits",
+        "emotional intelligence skills",
+        "mental health apps that work",
+    ],
 }
 
 
@@ -353,10 +421,21 @@ def research_topic(history):
     if picked:
         print(f"   [LIBRARY] Using verified keyword: '{picked['keyword']}' ({picked['monthly_searches']} searches/mo, {picked['competition']} competition, {picked['trend']})")
         return research_from_library(picked, audience, profile, history, library)
-    else:
-        remaining = sum(1 for k in library if not k["used"])
-        print(f"   [RESEARCH] No library keyword for this audience ({remaining} remaining for others) — using Claude research")
-        return research_from_claude(audience, profile, history)
+
+    # Try SERP research before falling back to Claude
+    if SERP_AVAILABLE and SERP_API_KEY:
+        try:
+            result = research_from_serp(audience, profile, history)
+            if result:
+                return result
+        except Exception as e:
+            print(f"   [SERP] Failed: {e} — falling back to Claude")
+    elif not SERP_API_KEY:
+        print("   [SERP] Skipped — no SERP_API_KEY set")
+
+    remaining = sum(1 for k in library if not k["used"])
+    print(f"   [RESEARCH] No library/SERP keyword for this audience ({remaining} remaining for others) — using Claude research")
+    return research_from_claude(audience, profile, history)
 
 
 def research_from_library(picked, audience, profile, history, library):
@@ -448,6 +527,80 @@ Respond ONLY in this exact JSON:
     return data
 
 
+def research_from_serp(audience, profile, history):
+    """Use SERP API to find real trending topics, then Claude to shape the blog."""
+    print(f"   [SERP] Researching real search data for {profile['label']}...")
+    seeds = SERP_SEEDS.get(audience, SERP_SEEDS["neutral"])
+    candidates = research_topics(seeds, SERP_API_KEY, country="gb", num_seeds=3, num_autocomplete=2)
+    if not candidates:
+        print("   [SERP] No candidates found")
+        return None
+
+    used_topics = [e.get("primary_keyword", "").lower() for e in history]
+    winner = pick_best_topic(
+        candidates, anthropic_client, history=used_topics,
+        context=f"{profile['label']} blog for mindcoreai.eu", model="claude-sonnet-4-6"
+    )
+    if not winner:
+        return None
+
+    history_txt = format_history_for_prompt(history)
+    all_cats    = "\n".join(f"  - {c}" for c in CATEGORIES)
+    pref_cats   = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
+
+    # Collect PAA questions for FAQ section
+    paa_questions = [c["text"] for c in candidates if c["source"] == "people_also_ask"][:8]
+    paa_block = ""
+    if paa_questions:
+        paa_block = "\nREAL PEOPLE ALSO ASK QUESTIONS (use 3-5 of these in the FAQ section):\n"
+        paa_block += "\n".join(f"  - {q}" for q in paa_questions) + "\n"
+
+    response = anthropic_client.messages.create(
+        model="claude-sonnet-4-6", max_tokens=2000,
+        messages=[{"role": "user", "content": f"""You are an expert SEO content strategist for mindcoreai.eu.
+
+SERP-RESEARCHED KEYWORD: {winner.get('keyword', winner.get('topic', ''))}
+SERP SOURCE: {winner.get('source', 'unknown')}
+COMPETITION SIGNAL: {winner.get('competition_signal', 'unknown')}
+TARGET AUDIENCE: {profile['label']}
+{paa_block}
+AUDIENCE CONTEXT:
+{profile['description']}
+
+ALREADY PUBLISHED (avoid repeating):
+{history_txt}
+
+PREFERRED CATEGORIES:
+{pref_cats}
+
+ALL CATEGORIES:
+{all_cats}
+
+Tasks:
+1. Use the SERP keyword as primary keyword or refine to 2-5 words
+2. Write a compelling title that CONTAINS A NUMBER (e.g. "7 Signs...", "5 Ways...") and contains the keyword
+3. Choose the best 5 secondary keywords
+4. Write a meta description (150-160 chars) containing the primary keyword verbatim
+5. Write a DALL-E image prompt for a cinematic-warm scene
+
+Respond ONLY in this exact JSON — no markdown:
+{{"topic":"title with number and keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta containing primary keyword verbatim","image_prompt":"specific cinematic-warm scene: what is happening, where, time of day, lighting","rationale":"SERP insight","category":"exact category","audience":"{audience}","serp_paa_questions":{json.dumps(paa_questions[:5])}}}"""}]
+    )
+
+    raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
+    data = json.loads(raw)
+    data["audience"]       = audience
+    data["_library_entry"] = None
+    data["_library"]       = None
+    data["_serp_winner"]   = winner
+    data["_serp_paa"]      = paa_questions
+    print(f"   Topic    : {data['topic']}")
+    print(f"   Keyword  : {data['primary_keyword']} [SERP-driven]")
+    print(f"   Category : {data.get('category', 'N/A')}")
+    print(f"   PAA Qs   : {len(paa_questions)} available for FAQ")
+    return data
+
+
 # -- Step 2: Write post -------------------------------------------------------
 def write_blog_post(topic_data, history):
     print("Writing blog post...")
@@ -457,6 +610,33 @@ def write_blog_post(topic_data, history):
 
     int_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in INTERNAL_LINKS)
     ext_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in EXTERNAL_LINKS[:3])
+
+    # Use real SERP PAA questions for FAQ if available
+    serp_paa = topic_data.get("_serp_paa", []) or topic_data.get("serp_paa_questions", [])
+    if serp_paa:
+        faq_instruction = (
+            f'\n\nMANDATORY FAQ SECTION (SERP-DRIVEN):\n'
+            f'  After the main content and before the final CTA, include a FAQ section with this structure:\n'
+            f'  <h2>Frequently Asked Questions About {kw.title()}</h2>\n'
+            f'  Then 5 questions and answers using <h3> for each question and <p> for each answer.\n'
+            f'  USE THESE REAL "People Also Ask" QUESTIONS FROM GOOGLE (pick the best 3-5, rephrase slightly if needed):\n'
+            + "\n".join(f'    - {q}' for q in serp_paa[:8]) +
+            f'\n  - Add 1-2 more questions if needed to reach 5 total\n'
+            f'  - At least 2 questions must include the exact phrase "{kw}"\n'
+            f'  - Answers must be 2-4 sentences — specific and helpful, not generic\n'
+            f'  - One answer should naturally mention MindCore AI as a useful tool'
+        )
+    else:
+        faq_instruction = (
+            f'\n\nMANDATORY FAQ SECTION:\n'
+            f'  After the main content and before the final CTA, include a FAQ section with this structure:\n'
+            f'  <h2>Frequently Asked Questions About {kw.title()}</h2>\n'
+            f'  Then 5 questions and answers using <h3> for each question and <p> for each answer.\n'
+            f'  - Questions must be natural, conversational, things people actually Google\n'
+            f'  - At least 2 questions must include the exact phrase "{kw}"\n'
+            f'  - Answers must be 2-4 sentences — specific and helpful, not generic\n'
+            f'  - One answer should naturally mention MindCore AI as a useful tool'
+        )
 
     existing_posts   = build_post_links(history)
     cross_link_block = ""
@@ -511,15 +691,7 @@ MANDATORY LINKS — all must appear as proper HTML anchor tags:
 {cross_link_block}
 GOOGLE PLAY CTA BUTTON (use this EXACT HTML in the final CTA section):
   {GP_CTA_LINK}
-
-MANDATORY FAQ SECTION:
-  After the main content and before the final CTA, include a FAQ section with this structure:
-  <h2>Frequently Asked Questions About {kw.title()}</h2>
-  Then 5 questions and answers using <h3> for each question and <p> for each answer.
-  - Questions must be natural, conversational, things people actually Google
-  - At least 2 questions must include the exact phrase "{kw}"
-  - Answers must be 2-4 sentences — specific and helpful, not generic
-  - One answer should naturally mention MindCore AI as a useful tool
+{faq_instruction}
 
 STRUCTURE:
   H1 → intro (2-3 para) → 5-7 H2 sections (150-200 words each) → FAQ section → conclusion + CTA button
@@ -823,7 +995,7 @@ def main():
         "audience":        topic_data.get("audience", "neutral"),
         "slug":            keyword_to_slug(topic_data["primary_keyword"]),
         "wp_post_id":      post.get("id"),
-        "source":          "library" if topic_data.get("_library_entry") else "claude_research",
+        "source":          "library" if topic_data.get("_library_entry") else ("serp" if topic_data.get("_serp_winner") else "claude_research"),
     })
 
     print("\nPipeline complete! Post is live on mindcoreai.eu")
