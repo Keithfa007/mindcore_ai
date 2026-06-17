@@ -1,42 +1,26 @@
 name: Carousel Image Post Pipeline
 
-# Male/female alternating carousels with Upload-Post scheduled posting.
-#
-# HOW IT WORKS (v2.5):
-#   1. Pipeline generates content at 02:00 UTC = 4am Malta (overnight).
-#   2. Upload-Post receives content and holds it.
-#   3. Upload-Post fires at exactly 21:00 UTC = 11pm Malta.
-#   GitHub delay is IRRELEVANT -- posting time is controlled by Upload-Post.
-#
-# To change posting time: edit POST_HOUR_UTC in carousel_pipeline.py.
-# No cron change needed.
-#
-# Cost: ~$0.48/post (6 x gpt-image-1 high)
 on:
   workflow_dispatch:
-    inputs:
-      run_note:
-        description: "Optional note"
-        required: false
-        default: "manual"
-
   schedule:
-    - cron: "0 2 * * *"  # 02:00 UTC = 4am Malta -- generates overnight, posts at 9pm via scheduled_date
+    - cron: "0 2 * * *"
 
 jobs:
   generate-carousel:
-    name: Generate + Schedule 6-Slide Carousel (Male/Female Alternating)
+    name: Generate + Schedule 6-Slide Carousel
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Set image quality to low (cost reduction)
+        run: |
+          sed -i 's/quality="high"/quality="low"/g' scripts/carousel_pipeline.py
+          echo "Image quality: LOW (~$0.02/image instead of ~$0.19)"
 
       - name: Install fonts
         run: |
@@ -46,14 +30,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install anthropic requests openai pillow
 
-      - name: Show run info
-        run: |
-          echo "Pipeline: Carousel Image Post v2.5"
-          echo "Generate: 02:00 UTC = 4am Malta (now)"
-          echo "Post: 21:00 UTC = 11pm Malta (Upload-Post scheduled_date)"
-          echo "Platforms: TikTok + Facebook (DIRECT_POST, scheduled)"
-          echo "Format: 6-slide male/female alternating"
-
       - name: Run Carousel Pipeline
         env:
           ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
@@ -62,8 +38,7 @@ jobs:
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
         run: python scripts/carousel_pipeline.py
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: carousel-run-${{ github.run_number }}
@@ -79,29 +54,9 @@ jobs:
             scripts/output_carousel/carousel_upload_result.json
           retention-days: 30
 
-      - name: Upload debug on failure
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: carousel-debug-${{ github.run_number }}
           path: scripts/output_carousel/
           retention-days: 7
-
-      - name: Write job summary
-        if: always()
-        run: |
-          echo "## Carousel Image Post Pipeline v2.5" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }} | 6 slides | Scheduled: 21:00 UTC" >> $GITHUB_STEP_SUMMARY
-          if [ -f "scripts/output_carousel/carousel_script.json" ]; then
-            TOPIC=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('topic',''))" 2>/dev/null || echo "")
-            H1=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('s1_command',''))" 2>/dev/null || echo "")
-            H2=$(python3 -c "import json; d=json.load(open('scripts/output_carousel/carousel_script.json')); print(d.get('s1_hero',''))" 2>/dev/null || echo "")
-            echo "**Topic:** $TOPIC" >> $GITHUB_STEP_SUMMARY
-            echo "**Headline:** $H1 / $H2" >> $GITHUB_STEP_SUMMARY
-          fi
-          if [ -f "scripts/output_carousel/carousel_upload_result.json" ]; then
-            echo "### Upload Result" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat scripts/output_carousel/carousel_upload_result.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
