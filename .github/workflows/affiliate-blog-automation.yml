@@ -2,9 +2,9 @@ name: MindCore AI — Affiliate Blog Automation
 
 on:
   schedule:
-    - cron: '0 10 * * 3'   # Every Wednesday at 10:00 AM UTC (12:00 Malta)
-    - cron: '0 10 * * 5'   # Every Friday at 10:00 AM UTC (12:00 Malta)
-  workflow_dispatch:        # Manual trigger from GitHub UI
+    - cron: '0 10 * * 3'
+    - cron: '0 10 * * 5'
+  workflow_dispatch:
 
 jobs:
   publish-affiliate-blog:
@@ -14,24 +14,63 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Switch image gen to fal.ai Flux Pro
         run: |
-          pip install anthropic openai requests cloudscraper
+          python3 << 'PATCH'
+          c = open('scripts/affiliate_blog_automation.py').read()
+          c = c.replace(
+              'from openai import OpenAI',
+              'from scripts.fal_image import generate_fal_image'
+          )
+          old = '''def generate_illustration(image_prompt):
+    print("Generating cinematic image...")
+    prompt = (
+        f"{image_prompt}. Style: cinematic photography, warm golden-hour lighting, "
+        "soft focus background, shallow depth of field, no faces shown, "
+        "warm amber and soft teal colour grading, photorealistic. No text in the image."
+    )
+    try:
+        resp = openai_client.images.generate(model="gpt-image-1", prompt=prompt, size="1536x1024", quality="high", n=1)
+        data = resp.data[0]
+        img  = requests.get(data.url, timeout=30).content if getattr(data, "url", None) else base64.b64decode(data.b64_json)
+        print("   Cinematic image generated (gpt-image-1)")
+        return img
+    except Exception as e1:
+        print(f"   gpt-image-1 failed: {e1} \u2014 trying dall-e-2...")
+    try:
+        resp = openai_client.images.generate(model="dall-e-2", prompt=prompt[:1000], size="1024x1024", n=1)
+        img  = requests.get(resp.data[0].url, timeout=30).content
+        print("   Cinematic image generated (dall-e-2 fallback)")
+        return img
+    except Exception as e2:
+        raise RuntimeError(f"All image models failed. {e1} | {e2}")'''
+          new = '''def generate_illustration(image_prompt):
+    print("Generating cinematic image (fal.ai Flux Pro)...")
+    prompt = (
+        f"{image_prompt}. Style: cinematic photography, warm golden-hour lighting, "
+        "soft focus background, shallow depth of field, no faces shown, "
+        "warm amber and soft teal colour grading, photorealistic. No text in the image."
+    )
+    return generate_fal_image(prompt, image_size="landscape_4_3", model="pro")'''
+          c = c.replace(old, new)
+          c = c.replace('openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])', '# openai_client removed -- using fal.ai')
+          open('scripts/affiliate_blog_automation.py','w').write(c)
+          print("Patched: fal.ai Flux Pro for affiliate blog images")
+          PATCH
+
+      - name: Install dependencies
+        run: pip install anthropic requests cloudscraper
 
       - name: Run affiliate blog pipeline
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
+          FAL_KEY:           ${{ secrets.FAL_KEY }}
           WP_USERNAME:       ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD:   ${{ secrets.WP_APP_PASSWORD }}
           GITHUB_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python scripts/affiliate_blog_automation.py
+        run: python scripts/affiliate_blog_automation.py
