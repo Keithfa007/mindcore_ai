@@ -5,7 +5,7 @@ Cost: ~$0.003/image vs ~$0.02-0.19/image on OpenAI.
 """
 import os, requests, time
 
-FAL_API_KEY = os.environ.get("FAL_API_KEY", "")
+FAL_API_KEY = os.environ.get("FAL_KEY", "")
 FAL_BASE_URL = "https://queue.fal.run"
 FAL_MODEL = "fal-ai/flux/schnell"
 
@@ -13,7 +13,7 @@ FAL_MODEL = "fal-ai/flux/schnell"
 def generate_fal_image(prompt, image_size="portrait_4_3", num_inference_steps=4):
     """Generate an image with fal.ai Flux Schnell. Returns image bytes."""
     if not FAL_API_KEY:
-        raise RuntimeError("FAL_API_KEY not set")
+        raise RuntimeError("FAL_KEY not set")
 
     headers = {
         "Authorization": f"Key {FAL_API_KEY}",
@@ -28,7 +28,6 @@ def generate_fal_image(prompt, image_size="portrait_4_3", num_inference_steps=4)
         "output_format": "jpeg",
     }
 
-    # Submit job
     resp = requests.post(
         f"{FAL_BASE_URL}/{FAL_MODEL}",
         headers=headers, json=payload, timeout=30,
@@ -36,12 +35,9 @@ def generate_fal_image(prompt, image_size="portrait_4_3", num_inference_steps=4)
     resp.raise_for_status()
     result = resp.json()
 
-    # Check if result is immediate or queued
     if "images" in result:
-        # Immediate result
         image_url = result["images"][0]["url"]
     elif "request_id" in result:
-        # Queued -- poll for result
         req_id = result["request_id"]
         poll_url = f"{FAL_BASE_URL}/{FAL_MODEL}/requests/{req_id}"
         for _ in range(60):
@@ -60,7 +56,6 @@ def generate_fal_image(prompt, image_size="portrait_4_3", num_inference_steps=4)
     else:
         raise RuntimeError(f"Unexpected fal.ai response: {result}")
 
-    # Download the image
     img_resp = requests.get(image_url, timeout=60)
     img_resp.raise_for_status()
     return img_resp.content
