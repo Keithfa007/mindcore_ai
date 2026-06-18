@@ -10,7 +10,6 @@ Models:
 import os, requests, time
 
 FAL_API_KEY = os.environ.get("FAL_KEY", "")
-FAL_BASE_URL = "https://queue.fal.run"
 
 MODELS = {
     "schnell": "fal-ai/flux/schnell",
@@ -50,39 +49,18 @@ def generate_fal_image(prompt, image_size="portrait_4_3", model="schnell", num_i
         "output_format": "jpeg",
     }
 
+    # Use synchronous endpoint (fal.run) -- returns result directly.
+    # Schnell completes in <5s, pro in <30s, well within timeout.
+    sync_url = f"https://fal.run/{model_id}"
     print(f"  [fal.ai] Model: {model} ({model_id}) | Size: {image_size}")
-    resp = requests.post(
-        f"{FAL_BASE_URL}/{model_id}",
-        headers=headers, json=payload, timeout=60,
-    )
+    resp = requests.post(sync_url, headers=headers, json=payload, timeout=120)
     resp.raise_for_status()
     result = resp.json()
 
-    if "images" in result:
+    if "images" in result and result["images"]:
         image_url = result["images"][0]["url"]
-    elif "request_id" in result:
-        req_id = result["request_id"]
-        poll_url = f"{FAL_BASE_URL}/{model_id}/requests/{req_id}"
-        for _ in range(90):
-            time.sleep(2)
-            poll_resp = requests.get(poll_url, headers=headers, timeout=30)
-            poll_resp.raise_for_status()
-            poll_data = poll_resp.json()
-            status = poll_data.get("status", "")
-            if status == "COMPLETED":
-                output = poll_data.get("output", poll_data)
-                images = output.get("images", [])
-                if images:
-                    image_url = images[0]["url"]
-                else:
-                    raise RuntimeError(f"fal.ai completed but no images: {poll_data}")
-                break
-            elif status in ("FAILED", "CANCELLED"):
-                raise RuntimeError(f"fal.ai job {status}: {poll_data}")
-        else:
-            raise TimeoutError(f"fal.ai job {req_id} timed out")
     else:
-        raise RuntimeError(f"Unexpected fal.ai response: {result}")
+        raise RuntimeError(f"Unexpected fal.ai response (no images): {result}")
 
     img_resp = requests.get(image_url, timeout=60)
     img_resp.raise_for_status()
