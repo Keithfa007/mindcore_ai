@@ -44,6 +44,7 @@ jobs:
           FAL_KEY:              ${{ secrets.FAL_KEY }}
           UPLOAD_POST_API_KEY:  ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:    ${{ github.run_number }}
+          PYTHONPATH:           ${{ github.workspace }}
         run: python scripts/carousel_pipeline.py
 
       - uses: actions/upload-artifact@v4
