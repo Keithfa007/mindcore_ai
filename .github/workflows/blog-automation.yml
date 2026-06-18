@@ -26,18 +26,7 @@ jobs:
           c = open('scripts/blog_automation.py').read()
           c = c.replace('from openai import OpenAI', 'from scripts.fal_image import generate_fal_image')
           c = c.replace('openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])', '# openai_client removed -- using fal.ai')
-          new_fn = '''def generate_illustration(image_prompt):
-    """Generate cinematic-warm image using fal.ai Flux Pro."""
-    print("Generating cinematic image (fal.ai Flux Pro)...")
-    cinematic_prompt = (
-        f"{image_prompt}. "
-        "Style: cinematic photography, warm golden-hour lighting, "
-        "soft focus background with shallow depth of field, "
-        "peaceful and hopeful atmosphere, no faces shown, "
-        "warm amber and soft teal colour grading, photorealistic. "
-        "No text, no words, no letters in the image."
-    )
-    return generate_fal_image(cinematic_prompt, image_size="landscape_4_3", model="pro")'''
+          new_fn = "def generate_illustration(image_prompt):\n    \"\"\"Generate cinematic-warm image using fal.ai Flux Pro.\"\"\"\n    print(\"Generating cinematic image (fal.ai Flux Pro)...\")\n    cinematic_prompt = (\n        f\"{image_prompt}. \"\n        \"Style: cinematic photography, warm golden-hour lighting, \"\n        \"soft focus background with shallow depth of field, \"\n        \"peaceful and hopeful atmosphere, no faces shown, \"\n        \"warm amber and soft teal colour grading, photorealistic. \"\n        \"No text, no words, no letters in the image.\"\n    )\n    return generate_fal_image(cinematic_prompt, image_size=\"landscape_4_3\", model=\"pro\")"
           c = re.sub(r'def generate_illustration\(image_prompt\):.*?(?=\n\n# -- Step 2)', new_fn + '\n', c, flags=re.DOTALL)
           open('scripts/blog_automation.py','w').write(c)
           print("Patched: fal.ai Flux Pro for blog images")
