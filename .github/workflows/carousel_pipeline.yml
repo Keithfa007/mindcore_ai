@@ -23,6 +23,7 @@ jobs:
           import re
           c = open('scripts/carousel_pipeline.py').read()
           c = c.replace('from openai import OpenAI', 'from scripts.fal_image import generate_fal_image')
+          c = c.replace('OPENAI_API_KEY=os.environ["OPENAI_API_KEY"]', 'OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY","")  # optional with fal.ai')
           c = c.replace('oc=OpenAI(api_key=OPENAI_API_KEY)', 'oc=None  # fal.ai replaces OpenAI')
           new_fn = "def generate_slide_image(oc,sk,topic,gender):\n    pools=IMAGE_POOLS_MALE if gender==\"male\" else IMAGE_POOLS_FEMALE\n    ps=len(pools[sk]); sn=int(sk.split(\"_\")[1]); base_idx=(GITHUB_RUN_NUMBER+sn-1)%ps\n    for attempt in range(3):\n        idx=(base_idx+attempt)%ps\n        prompt=pools[sk][idx]\n        if sk==\"slide_1\" and topic: prompt=f\"{prompt} Emotional theme: {topic}.\"\n        print(f\"  [fal.ai Flux] {sk} generating... (pool idx {idx}/{ps-1}, attempt {attempt+1}/3)\")\n        try:\n            ib=generate_fal_image(prompt)\n            print(f\"  [fal.ai Flux] {sk} ready ({len(ib)//1024:.0f} KB)\"); return ib\n        except Exception as e:\n            if \"safety\" in str(e).lower() or \"moderation\" in str(e).lower():\n                print(f\"  [fal.ai] {sk} BLOCKED (attempt {attempt+1}/3), trying next prompt...\")\n                continue\n            raise\n    raise RuntimeError(f\"All 3 image prompts for {sk} were blocked\")"
           c = re.sub(r'def generate_slide_image\(oc,sk,topic,gender\):.*?(?=\ndef resize_to_tiktok)', new_fn + '\n\n', c, flags=re.DOTALL)
