@@ -1,4 +1,4 @@
-name: MindCore AI — Affiliate Blog Automation
+name: MindCore AI -- Affiliate Blog Automation
 
 on:
   schedule:
@@ -9,7 +9,6 @@ on:
 jobs:
   publish-affiliate-blog:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
 
@@ -22,34 +21,11 @@ jobs:
       - name: Switch image gen to fal.ai Flux Pro
         run: |
           python3 << 'PATCH'
+          import re
           c = open('scripts/affiliate_blog_automation.py').read()
-          c = c.replace(
-              'from openai import OpenAI',
-              'from scripts.fal_image import generate_fal_image'
-          )
-          old = '''def generate_illustration(image_prompt):
-    print("Generating cinematic image...")
-    prompt = (
-        f"{image_prompt}. Style: cinematic photography, warm golden-hour lighting, "
-        "soft focus background, shallow depth of field, no faces shown, "
-        "warm amber and soft teal colour grading, photorealistic. No text in the image."
-    )
-    try:
-        resp = openai_client.images.generate(model="gpt-image-1", prompt=prompt, size="1536x1024", quality="high", n=1)
-        data = resp.data[0]
-        img  = requests.get(data.url, timeout=30).content if getattr(data, "url", None) else base64.b64decode(data.b64_json)
-        print("   Cinematic image generated (gpt-image-1)")
-        return img
-    except Exception as e1:
-        print(f"   gpt-image-1 failed: {e1} \u2014 trying dall-e-2...")
-    try:
-        resp = openai_client.images.generate(model="dall-e-2", prompt=prompt[:1000], size="1024x1024", n=1)
-        img  = requests.get(resp.data[0].url, timeout=30).content
-        print("   Cinematic image generated (dall-e-2 fallback)")
-        return img
-    except Exception as e2:
-        raise RuntimeError(f"All image models failed. {e1} | {e2}")'''
-          new = '''def generate_illustration(image_prompt):
+          c = c.replace('from openai import OpenAI', 'from scripts.fal_image import generate_fal_image')
+          c = c.replace('openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])', '# openai_client removed -- using fal.ai')
+          new_fn = '''def generate_illustration(image_prompt):
     print("Generating cinematic image (fal.ai Flux Pro)...")
     prompt = (
         f"{image_prompt}. Style: cinematic photography, warm golden-hour lighting, "
@@ -57,8 +33,7 @@ jobs:
         "warm amber and soft teal colour grading, photorealistic. No text in the image."
     )
     return generate_fal_image(prompt, image_size="landscape_4_3", model="pro")'''
-          c = c.replace(old, new)
-          c = c.replace('openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])', '# openai_client removed -- using fal.ai')
+          c = re.sub(r'def generate_illustration\(image_prompt\):.*?(?=\ndef )', new_fn + '\n\n', c, flags=re.DOTALL)
           open('scripts/affiliate_blog_automation.py','w').write(c)
           print("Patched: fal.ai Flux Pro for affiliate blog images")
           PATCH
