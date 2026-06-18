@@ -44,4 +44,5 @@ jobs:
           WP_APP_PASSWORD:     ${{ secrets.WP_APP_PASSWORD }}
           GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY:   ${{ github.repository }}
+          PYTHONPATH:          ${{ github.workspace }}
         run: python scripts/blog_automation.py
