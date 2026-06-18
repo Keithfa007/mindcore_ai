@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Switch images to fal.ai Flux Pro
+      - name: Patch fal.ai + SEO hyphen fix
         run: |
           python3 << 'PATCH'
           import re
@@ -28,8 +28,12 @@ jobs:
           c = c.replace('openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])', '# openai_client removed -- using fal.ai')
           new_fn = "def generate_illustration(image_prompt):\n    \"\"\"Generate cinematic-warm image using fal.ai Flux Pro.\"\"\"\n    print(\"Generating cinematic image (fal.ai Flux Pro)...\")\n    cinematic_prompt = (\n        f\"{image_prompt}. \"\n        \"Style: cinematic photography, warm golden-hour lighting, \"\n        \"soft focus background with shallow depth of field, \"\n        \"peaceful and hopeful atmosphere, no faces shown, \"\n        \"warm amber and soft teal colour grading, photorealistic. \"\n        \"No text, no words, no letters in the image.\"\n    )\n    return generate_fal_image(cinematic_prompt, image_size=\"landscape_4_3\", model=\"pro\")"
           c = re.sub(r'def generate_illustration\(image_prompt\):.*?(?=\n\ndef upload_image_to_wordpress)', new_fn + '\n', c, flags=re.DOTALL)
+          c = c.replace('kw    = primary_keyword.lower()', 'kw    = primary_keyword.lower().replace("-", " ")')
+          c = c.replace('text  = re.sub(r"<[^>]+>", " ", content).lower()', 'text  = re.sub(r"<[^>]+>", " ", content).lower().replace("-", " ")')
+          c = c.replace('kw in title.lower(),', 'kw in title.lower().replace("-", " "),')
+          c = c.replace('kw in meta.lower(),', 'kw in meta.lower().replace("-", " "),')
           open('scripts/blog_automation.py','w').write(c)
-          print("Patched: fal.ai Flux Pro for blog images")
+          print("Patched: fal.ai Flux Pro + SEO hyphen normalization")
           PATCH
 
       - name: Install dependencies
