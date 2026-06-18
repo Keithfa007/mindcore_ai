@@ -115,16 +115,16 @@ def count_words_in_html(h):
 
 def validate_seo(content, title, meta, primary_keyword, slug):
     print("\n-- SEO Validation Report --")
-    kw    = primary_keyword.lower()
-    text  = re.sub(r"<[^>]+>", " ", content).lower()
+    kw    = primary_keyword.lower().replace("-", " ")
+    text  = re.sub(r"<[^>]+>", " ", content).lower().replace("-", " ")
     words = text.split()
     wc    = len(words)
     first = " ".join(words[:max(1, wc // 10)])
     kw_n  = text.count(kw)
     dens  = (kw_n / wc * 100) if wc > 0 else 0
     checks = {
-        "Keyword in title":             kw in title.lower(),
-        "Keyword in meta description":  kw in meta.lower(),
+        "Keyword in title":             kw in title.lower().replace("-", " "),
+        "Keyword in meta description":  kw in meta.lower().replace("-", " "),
         "Keyword in URL slug":          kw.replace(" ", "-") in slug,
         "Keyword in first 10%":         kw in first,
         "Keyword found in content":     kw in text,
@@ -223,7 +223,7 @@ Tasks:
 5. Write a DALL-E image prompt for a cinematic-warm lifestyle scene
 
 Respond ONLY in this exact JSON \u2014 no markdown:
-{{"topic":"title","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"intent","meta_description":"meta","image_prompt":"scene","category":"{product_cat['wp_category']}"}}"""}]
+{{"topic":"title","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"intent","meta_description":"meta","image_prompt":"scene","category":"{product_cat['wp_category']}"}}\n"""}]
     )
 
     raw  = response.content[0].text.replace("```json", "").replace("```", "").strip()
@@ -313,7 +313,7 @@ FORMAT:
   - Clean WordPress HTML only
   - Affiliate links: rel="noopener sponsored"
   - External links: rel="noopener noreferrer"
-  - After ALL HTML: EXCERPT: [2-3 sentence hook with "{kw}"]"""}]
+  - After ALL HTML: EXCERPT: [2-3 sentence hook with "{kw}"]\n"""}]
     )
 
     content  = response.content[0].text
