@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Ebook Promotion Pipeline v2.6
+MindCore AI — Ebook Promotion Pipeline v2.7
 ============================================
+v2.7: Retry logic + fallback for cover image download.
 v2.6: Free Chapter 1 link + 50% launch discount (until July 31st).
 v2.5: Expanded voiceover variations (18 angles, 12 hooks, 6 closers).
 v2.4: Rotating cover image pool (7 Canva designs).
@@ -11,7 +12,8 @@ v2.1: Updated hashtags.
 v2: ElevenLabs TTS. 4x/week.
 """
 
-import os, sys, json, random, requests, subprocess, tempfile, datetime
+import os, sys, json, random, requests, subprocess, tempfile, datetime, time
+
 from anthropic import Anthropic
 
 COVER_IMAGE_POOL = [
@@ -23,7 +25,6 @@ COVER_IMAGE_POOL = [
     "https://mindcoreai.eu/wp-content/uploads/2026/06/A-Cinematic-Journey-Through-Misty-Trees.png",
     "https://mindcoreai.eu/wp-content/uploads/2026/06/Somber-Path-to-Hope-in-a-Dark-Forest.png",
 ]
-COVER_IMAGE_URL = random.choice(COVER_IMAGE_POOL)
 PAYHIP_LINK         = "https://payhip.com/b/3HyoE"
 FREE_CHAPTER_LINK   = "https://payhip.com/b/pTqFt"
 EBOOK_TITLE         = "The Silent Struggle"
@@ -130,9 +131,43 @@ Return ONLY the voiceover text, nothing else."""
     return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=300, messages=[{"role": "user", "content": prompt}]).content[0].text.strip()
 
 def download_cover(url, path):
-    resp = requests.get(url, timeout=30); resp.raise_for_status()
-    with open(path, "wb") as f: f.write(resp.content)
-    print(f"   Cover downloaded ({len(resp.content) / 1024:.0f} KB)")
+    """Download cover image with retry logic and User-Agent header."""
+    headers = {"User-Agent": "MindCoreAI-Pipeline/2.7"}
+    for attempt in range(3):
+        try:
+            if attempt > 0:
+                wait = 5 * (2 ** (attempt - 1))
+                print(f"   Retry {attempt}/2 in {wait}s...")
+                time.sleep(wait)
+            resp = requests.get(url, timeout=30, headers=headers)
+            resp.raise_for_status()
+            with open(path, "wb") as f:
+                f.write(resp.content)
+            print(f"   Cover downloaded ({len(resp.content) / 1024:.0f} KB)")
+            return True
+        except Exception as e:
+            print(f"   Download attempt {attempt + 1} failed: {e}")
+    return False
+
+def download_cover_with_fallback(pool, path):
+    """Try each cover in shuffled order, then generate a fallback if all fail."""
+    shuffled = pool[:]
+    random.shuffle(shuffled)
+    for i, url in enumerate(shuffled):
+        name = url.split("/")[-1]
+        print(f"   Trying cover {i + 1}/{len(shuffled)}: {name}")
+        if download_cover(url, path):
+            return
+    print("   All cover downloads failed — generating fallback image")
+    cmd = [
+        "ffmpeg", "-y", "-f", "lavfi", "-i",
+        "color=c=0x1a1a2e:s=1080x1920:d=1",
+        "-frames:v", "1", path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError("Could not download or generate cover image")
+    print("   Fallback cover generated (solid dark)")
 
 def generate_voiceover(script_text, output_path):
     if not ELEVENLABS_API_KEY: print("   ELEVENLABS_API_KEY not set"); return False
@@ -201,8 +236,7 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
     except Exception as e: print(f"   Upload failed: {e}"); return {"error": str(e)}
 
 def main():
-    print(f"== MindCore AI — Ebook Promotion Pipeline v2.6 ==\n")
-    print(f"   Cover: {COVER_IMAGE_URL.split('/')[-1]}")
+    print(f"== MindCore AI — Ebook Promotion Pipeline v2.7 ==\n")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
     scheduled_date = get_scheduled_time(10)
@@ -212,7 +246,9 @@ def main():
         audio = os.path.join(tmp, "voiceover.mp3")
         video = os.path.join(tmp, "ebook_promo.mp4")
 
-        print("1. Downloading cover..."); download_cover(COVER_IMAGE_URL, cover)
+        print("1. Downloading cover...")
+        download_cover_with_fallback(COVER_IMAGE_POOL, cover)
+
         print("2. Generating caption..."); caption = generate_caption(client); print(f"   {caption}\n")
         print("3. Generating voiceover..."); vo_script = generate_voiceover_script(client); print(f"   {vo_script}\n")
         has_voice = generate_voiceover(vo_script, audio)
