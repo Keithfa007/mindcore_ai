@@ -30,7 +30,6 @@ class _PostLoginGateState extends State<PostLoginGate> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    //await prefs.remove('onboarding_done_v1'); // TEMP — delete after testing
     final done   = prefs.getBool(_kOnboardingDone) ?? false;
     final access = await PremiumService.hasAccess();
 
@@ -101,7 +100,7 @@ class _SplashScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Getting things ready…',
+                'Getting things ready\u2026',
                 style: tt.bodyMedium?.copyWith(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.45)
@@ -145,7 +144,7 @@ class _TrialExpiredScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Your 30-day trial has expired. Subscribe to keep '
+                'Your 3-day free trial has ended. Subscribe to keep '
                 'your progress, conversations and wellness journey going.',
                 style: tt.bodyLarge?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.6),
