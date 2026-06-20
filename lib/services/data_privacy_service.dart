@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Centralized local data controls (v1).
 /// We avoid prefs.clear() to not accidentally wipe auth/remote config flags.
-/// Instead we remove known keys/prefixes used by MindReset AI's local storage.
+/// Instead we remove known keys/prefixes used by MindCore AI's local storage.
 class DataPrivacyService {
   static const List<String> _explicitKeys = [
     // Journal / mood / daily content
