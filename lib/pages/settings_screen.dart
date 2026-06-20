@@ -47,6 +47,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _sleepEveningTime = const TimeOfDay(hour: 22, minute: 0);
   TimeOfDay _sleepMorningTime = const TimeOfDay(hour: 7,  minute: 0);
 
+  // Battle Report
+  bool _battleReportMode = false;
+
   bool _loading = true;
 
   @override
@@ -71,6 +74,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final sleepEvening  = await SleepRitualService.instance.getEveningTime();
       final sleepMorning  = await SleepRitualService.instance.getMorningTime();
 
+      // Battle Report
+      final battleMode = await SettingsService.getBattleReportMode();
+
       if (!mounted) return;
       setState(() {
         _preset               = preset;
@@ -83,6 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _sleepEnabled         = sleepEnabled;
         _sleepEveningTime     = sleepEvening;
         _sleepMorningTime     = sleepMorning;
+        _battleReportMode     = battleMode;
         _loading              = false;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -315,6 +322,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ]),
                   const SizedBox(height: 24),
 
+                  // ── Weekly Report ──
+                  _SectionLabel(label: 'Weekly Report', icon: Icons.military_tech_rounded, color: const Color(0xFFBA7517)),
+                  _SettingsCard(children: [
+                    _ToggleRow(
+                      icon: Icons.military_tech_rounded,
+                      title: 'Battle Report mode',
+                      subtitle: 'Reframes your weekly report in tactical language',
+                      value: _battleReportMode,
+                      onChanged: (v) async {
+                        setState(() => _battleReportMode = v);
+                        await SettingsService.setBattleReportMode(v);
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: 24),
+
                   _SectionLabel(label: 'Trust & Safety', icon: Icons.shield_outlined, color: AppColors.primary),
                   _SettingsCard(children: [
                     _NavRow(
@@ -324,8 +347,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     _Divider(),
                     _NavRow(
-                      icon: Icons.lock_outline_rounded, title: 'Privacy & controls',
-                      subtitle: 'Export, delete and storage options',
+                      icon: Icons.lock_outline_rounded, title: 'Privacy & transparency',
+                      subtitle: 'What we collect, store, and never do',
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyControlsScreen())),
                     ),
                     _Divider(),
@@ -540,7 +563,7 @@ class _PlanBillingCard extends StatelessWidget {
                   ),
                   const Spacer(),
                   if (tier.tier != AppTier.trial)
-                    Text('€${tier.monthlyPrice.toStringAsFixed(2)}/mo',
+                    Text('\u20ac${tier.monthlyPrice.toStringAsFixed(2)}/mo',
                         style: tt.bodySmall?.copyWith(
                             color: isDark ? Colors.white.withValues(alpha: 0.50) : Colors.black.withValues(alpha: 0.45),
                             fontWeight: FontWeight.w600)),
@@ -637,7 +660,7 @@ class _VoiceTopUpSheetState extends State<_VoiceTopUpSheet> {
     if (product == null) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Store not available. Try again.'))); return; }
     setState(() => _loading = true);
     try { await _sub.buy(product); if (mounted) Navigator.of(context).pop(); }
-    catch (e) { debugPrint('VoiceTopUpSheet: buy failed — $e'); }
+    catch (e) { debugPrint('VoiceTopUpSheet: buy failed \u2014 $e'); }
     finally { if (mounted) setState(() => _loading = false); }
   }
   @override
