@@ -34,6 +34,8 @@ class SettingsService {
   static const _kDailyReminderHour    = 'notif_daily_hour_v1';    // int
   static const _kDailyReminderMinute  = 'notif_daily_min_v1';     // int
 
+  static const _kBattleReportMode = 'battle_report_mode_v1'; // bool
+
   // ---------- Backing store ----------
   static SharedPreferences? _prefs;
   static Future<SharedPreferences> get _p async =>
@@ -157,6 +159,17 @@ class SettingsService {
     await p.setInt(_kDailyReminderMinute, t.minute);
   }
 
+  // ---------- Battle Report mode ----------
+  static Future<bool> getBattleReportMode() async {
+    final p = await _p;
+    return p.getBool(_kBattleReportMode) ?? false;
+  }
+
+  static Future<void> setBattleReportMode(bool v) async {
+    final p = await _p;
+    await p.setBool(_kBattleReportMode, v);
+  }
+
   // ---------- Data clearing ----------
   static Future<void> clearLocalData() async {
     // Clear content/history first
@@ -173,9 +186,5 @@ class SettingsService {
     await p.remove(_kDailyReminderEnabled);
     await p.remove(_kDailyReminderHour);
     await p.remove(_kDailyReminderMinute);
-
-    // NOTE: If your tip/affirmation services store daily caches with
-    // date-based keys, clear them inside those services to avoid nuking
-    // unrelated preferences here.
   }
 }
