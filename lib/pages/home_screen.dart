@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final AnimationController _entranceCtrl;
   final List<Animation<double>> _fadeAnims  = [];
   final List<Animation<Offset>> _slideAnims = [];
-  static const int _cardCount = 8; // bumped from 7 to accommodate wins card
+  static const int _cardCount = 8;
 
   @override
   void initState() {
@@ -272,12 +272,110 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             )),
             const SizedBox(height: 20),
 
+            // 0b ─ MindScore (premium feature)
+            _animated(1, Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: GestureDetector(
+                onTap: () => _openPremiumRoute('/mindscore'),
+                child: GlassCard(
+                  glowColor: AppColors.mintDeep.withValues(alpha: 0.12),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44, height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.mintDeep.withValues(alpha: 0.12),
+                          border: Border.all(color: AppColors.mintDeep.withValues(alpha: 0.25)),
+                        ),
+                        child: Icon(Icons.insights_rounded, color: AppColors.mintDeep, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('MindScore', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            Text('Track habits and see your wellness score',
+                                style: tt.bodySmall?.copyWith(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.45)
+                                        : const Color(0xFF475467))),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, size: 22,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.30)
+                              : Colors.black.withValues(alpha: 0.25)),
+                    ],
+                  ),
+                ),
+              ),
+            )),
+
             // 1 ─ SOS
             _animated(1, Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _SosButton(
                   onTap: () => Navigator.of(context).pushNamed('/sos'),
                   isDark: isDark, tt: tt),
+            )),
+
+            // 1b ─ Pressure Valve (free for all users)
+            _animated(2, Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pushNamed('/pressure-valve'),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.03)
+                        : Colors.black.withValues(alpha: 0.02),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.06),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFFE24B4A).withValues(alpha: 0.10),
+                          border: Border.all(color: const Color(0xFFE24B4A).withValues(alpha: 0.20)),
+                        ),
+                        child: const Icon(Icons.water_drop_outlined, color: Color(0xFFE24B4A), size: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Pressure Valve', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            Text('Write it out. Release it. Gone forever.',
+                                style: tt.bodySmall?.copyWith(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.40)
+                                        : const Color(0xFF475467))),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, size: 20,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.25)
+                              : Colors.black.withValues(alpha: 0.20)),
+                    ],
+                  ),
+                ),
+              ),
             )),
 
             // 2 ─ Mood insight chip
@@ -601,7 +699,7 @@ class _WinsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF4CAF82); // mint green
+    const accent = Color(0xFF4CAF82);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -716,15 +814,35 @@ class _SosButton extends StatelessWidget {
   }
 }
 
-// ── Weekly report card ─────────────────────────────────────────────────────────
+// ── Weekly report card (with Battle Report skin) ──────────────────────────────
 
-class _WeeklyReportCard extends StatelessWidget {
+class _WeeklyReportCard extends StatefulWidget {
   final WeeklyReport report;
   final TextTheme tt;
   final bool isDark;
   const _WeeklyReportCard({required this.report, required this.tt, required this.isDark});
   @override
+  State<_WeeklyReportCard> createState() => _WeeklyReportCardState();
+}
+
+class _WeeklyReportCardState extends State<_WeeklyReportCard> {
+  bool _battleMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SettingsService.getBattleReportMode().then((v) {
+      if (mounted) setState(() => _battleMode = v);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final tt = widget.tt;
+    final isDark = widget.isDark;
+    final report = widget.report;
+    final accentColor = _battleMode ? const Color(0xFFBA7517) : AppColors.violet;
+
     return GlassCard(
       glowColor: AppColors.glowViolet,
       child: Column(
@@ -733,13 +851,22 @@ class _WeeklyReportCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.violet.withValues(alpha: 0.15),
+              color: accentColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
+              border: Border.all(color: accentColor.withValues(alpha: 0.35)),
             ),
-            child: Text('Weekly Report',
-                style: tt.labelSmall?.copyWith(
-                    color: AppColors.violet, fontWeight: FontWeight.w800)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_battleMode) ...[
+                  Icon(Icons.military_tech_rounded, size: 12, color: accentColor),
+                  const SizedBox(width: 4),
+                ],
+                Text(_battleMode ? 'Battle Report' : 'Weekly Report',
+                    style: tt.labelSmall?.copyWith(
+                        color: accentColor, fontWeight: FontWeight.w800)),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Text(report.summary,
@@ -747,14 +874,23 @@ class _WeeklyReportCard extends StatelessWidget {
                   color: isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF0E1320),
                   height: 1.5)),
           const SizedBox(height: 14),
-          _ReportRow(icon: Icons.star_rounded, color: AppColors.mintDeep,
-              label: 'Best day', value: report.bestDay, tt: tt, isDark: isDark),
+          _ReportRow(
+              icon: _battleMode ? Icons.emoji_events_rounded : Icons.star_rounded,
+              color: AppColors.mintDeep,
+              label: _battleMode ? 'Strongest day' : 'Best day',
+              value: report.bestDay, tt: tt, isDark: isDark),
           const SizedBox(height: 8),
-          _ReportRow(icon: Icons.lightbulb_rounded, color: AppColors.primary,
-              label: 'What helped', value: report.highlight, tt: tt, isDark: isDark),
+          _ReportRow(
+              icon: _battleMode ? Icons.military_tech_rounded : Icons.lightbulb_rounded,
+              color: AppColors.primary,
+              label: _battleMode ? 'Win' : 'What helped',
+              value: report.highlight, tt: tt, isDark: isDark),
           const SizedBox(height: 8),
-          _ReportRow(icon: Icons.visibility_rounded, color: AppColors.violet,
-              label: 'Watch out', value: report.watchOut, tt: tt, isDark: isDark),
+          _ReportRow(
+              icon: _battleMode ? Icons.radar_rounded : Icons.visibility_rounded,
+              color: _battleMode ? const Color(0xFFE24B4A) : AppColors.violet,
+              label: _battleMode ? 'Threat assessment' : 'Watch out',
+              value: report.watchOut, tt: tt, isDark: isDark),
         ],
       ),
     );
