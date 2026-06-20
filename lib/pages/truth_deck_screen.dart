@@ -12,8 +12,6 @@ import 'package:mindcore_ai/widgets/app_top_bar.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
 import 'package:mindcore_ai/services/truth_deck_service.dart';
-import 'package:mindcore_ai/pages/chat_screen.dart';
-import 'package:mindcore_ai/pages/helpers/navigation_helpers.dart';
 
 class TruthDeckScreen extends StatefulWidget {
   const TruthDeckScreen({super.key});
@@ -73,9 +71,10 @@ class _TruthDeckScreenState extends State<TruthDeckScreen>
     HapticFeedback.selectionClick();
     await TruthDeckService.recordTalked();
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      createSlideRoute(ChatScreen(initialMessage: 'I just read this: "$_cardText" — I want to talk about it.')),
-    );
+    Navigator.of(context).pushReplacementNamed('/chat', arguments: {
+      'prefillText': 'I just read this: "$_cardText" \u2014 I want to talk about it.',
+      'autoSend': true,
+    });
   }
 
   @override
