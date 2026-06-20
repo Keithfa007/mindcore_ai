@@ -157,8 +157,12 @@ class _PressureValveScreenState extends State<PressureValveScreen>
     final tt = Theme.of(context).textTheme;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return Theme(
+      data: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
       body: AnimatedBackdrop(
         child: SafeArea(
           child: Padding(
@@ -199,6 +203,7 @@ class _PressureValveScreenState extends State<PressureValveScreen>
           ),
         ),
       ),
+    ),
     );
   }
 
