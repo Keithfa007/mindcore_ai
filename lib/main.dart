@@ -30,6 +30,7 @@ import 'pages/journey_screen.dart';
 import 'pages/sleep_ritual_screen.dart';
 import 'pages/wins_screen.dart';
 import 'pages/truth_deck_screen.dart';
+import 'pages/pressure_valve_screen.dart';
 
 import 'pages/helpers/route_observer.dart';
 import 'services/settings_service.dart';
@@ -114,6 +115,7 @@ class MindCoreApp extends StatelessWidget {
             '/journey':          (_) => const JourneyScreen(),
             '/wins':             (_) => const WinsScreen(),
             '/truth-deck':       (_) => const TruthDeckScreen(),
+            '/pressure-valve':   (_) => const PressureValveScreen(),
             // Sleep Ritual — reads mode from route arguments
             '/sleep-ritual': (ctx) {
               final args = ModalRoute.of(ctx)?.settings.arguments;
