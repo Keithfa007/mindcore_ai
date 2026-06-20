@@ -309,6 +309,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             )),
 
+            // 4b ─ Truth Deck (free for all users)
+            _animated(5, Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pushNamed('/truth-deck'),
+                child: GlassCard(
+                  glowColor: AppColors.primary.withValues(alpha: 0.12),
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46, height: 46,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+                        ),
+                        child: Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Today\u2019s Truth', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 3),
+                            Text('One honest card per day. Tap to reveal.',
+                                style: tt.bodySmall?.copyWith(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.50)
+                                        : const Color(0xFF475467))),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, size: 22,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.30)
+                              : Colors.black.withValues(alpha: 0.25)),
+                    ],
+                  ),
+                ),
+              ),
+            )),
+
             // 5 ─ Chat buttons
             _animated(5, Row(
               children: [
