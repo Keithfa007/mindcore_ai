@@ -6,12 +6,12 @@ import time
 import requests
 import cloudscraper
 from anthropic import Anthropic
-from openai import OpenAI
+from scripts.fal_image import generate_fal_image
 from datetime import datetime
 
 # -- Clients ------------------------------------------------------------------
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+# Image generation: fal.ai Flux Pro (baked in, no OpenAI needed)
 
 scraper = cloudscraper.create_scraper(
     browser={"browser": "chrome", "platform": "windows", "mobile": False}
@@ -340,27 +340,13 @@ def expand_post(content, topic_data, current_words):
 
 # -- Step 3: Image generation -------------------------------------------------
 def generate_illustration(image_prompt):
-    print("Generating cinematic image...")
+    print("Generating cinematic image (fal.ai Flux Pro)...")
     prompt = (
         f"{image_prompt}. Style: cinematic photography, warm golden-hour lighting, "
         "soft focus background, shallow depth of field, no faces shown, "
         "warm amber and soft teal colour grading, photorealistic. No text in the image."
     )
-    try:
-        resp = openai_client.images.generate(model="gpt-image-1", prompt=prompt, size="1536x1024", quality="high", n=1)
-        data = resp.data[0]
-        img  = requests.get(data.url, timeout=30).content if getattr(data, "url", None) else base64.b64decode(data.b64_json)
-        print("   Cinematic image generated (gpt-image-1)")
-        return img
-    except Exception as e1:
-        print(f"   gpt-image-1 failed: {e1} \u2014 trying dall-e-2...")
-    try:
-        resp = openai_client.images.generate(model="dall-e-2", prompt=prompt[:1000], size="1024x1024", n=1)
-        img  = requests.get(resp.data[0].url, timeout=30).content
-        print("   Cinematic image generated (dall-e-2 fallback)")
-        return img
-    except Exception as e2:
-        raise RuntimeError(f"All image models failed. {e1} | {e2}")
+    return generate_fal_image(prompt, image_size="landscape_4_3", model="pro")
 
 
 def upload_image_to_wordpress(image_data, alt_text=""):
