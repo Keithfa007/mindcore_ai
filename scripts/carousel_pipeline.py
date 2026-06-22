@@ -6,7 +6,7 @@ v3.0: SERP-driven topic selection — trending topics from real Google data.
 v2.9: Facebook-specific title + description (no TikTok hashtags on FB).
 v2.7: Full image variety pools -- 10 prompts per slide per gender.
 
-Cost: ~$0.48/post (6 x gpt-image-1 high @ ~$0.08)
+Cost: ~$0.03/post (6 x fal.ai Flux Schnell @ ~$0.005)
 Cron: 02:00 UTC = 4am Malta | Post: 11:00 UTC = 1pm Malta
 """
 
@@ -15,10 +15,10 @@ from datetime import datetime,timedelta,timezone
 from pathlib import Path
 import anthropic,requests
 from PIL import Image,ImageDraw,ImageFont
-from openai import OpenAI
+from scripts.fal_image import generate_fal_image
 
 ANTHROPIC_API_KEY=os.environ["ANTHROPIC_API_KEY"]
-OPENAI_API_KEY=os.environ["OPENAI_API_KEY"]
+OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY","")  # no longer needed — using fal.ai
 UPLOAD_POST_API_KEY=os.environ.get("UPLOAD_POST_API_KEY","")
 SERP_API_KEY=os.environ.get("SERP_API_KEY","")
 GITHUB_RUN_NUMBER=int(os.environ.get("GITHUB_RUN_NUMBER","1"))
@@ -219,17 +219,16 @@ def generate_slide_image(oc,sk,topic,gender):
         idx=(base_idx+attempt)%ps
         prompt=pools[sk][idx]
         if sk=="slide_1" and topic: prompt=f"{prompt} Emotional theme: {topic}."
-        print(f"  [gpt-image-1 HIGH] {sk} generating... (pool idx {idx}/{ps-1}, attempt {attempt+1}/3)")
+        print(f"  [fal.ai Flux] {sk} generating... (pool idx {idx}/{ps-1}, attempt {attempt+1}/3)")
         try:
-            r=oc.images.generate(model="gpt-image-1",prompt=prompt,size="1024x1536",quality="high",n=1)
-            d=r.data[0]; ib=requests.get(d.url,timeout=60).content if getattr(d,"url",None) else base64.b64decode(d.b64_json)
-            print(f"  [gpt-image-1 HIGH] {sk} ready ({len(ib)//1024:.0f} KB)"); return ib
+            ib=generate_fal_image(prompt)
+            print(f"  [fal.ai Flux] {sk} ready ({len(ib)//1024:.0f} KB)"); return ib
         except Exception as e:
-            if "moderation" in str(e).lower() or "safety" in str(e).lower():
-                print(f"  [gpt-image-1] {sk} BLOCKED by moderation (attempt {attempt+1}/3), trying next prompt...")
+            if "safety" in str(e).lower() or "moderation" in str(e).lower():
+                print(f"  [fal.ai] {sk} BLOCKED (attempt {attempt+1}/3), trying next prompt...")
                 continue
             raise
-    raise RuntimeError(f"All 3 image prompts for {sk} were blocked by moderation")
+    raise RuntimeError(f"All 3 image prompts for {sk} were blocked")
 
 def resize_to_tiktok(ib):
     img=Image.open(io.BytesIO(ib)).convert("RGB"); s=max(IMAGE_WIDTH/img.width,IMAGE_HEIGHT/img.height)
@@ -307,7 +306,7 @@ def upload_carousel(image_paths,tiktok_title,description,cfg,scheduled_date,face
 
 def main():
     OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
-    client=anthropic.Anthropic(api_key=ANTHROPIC_API_KEY); oc=OpenAI(api_key=OPENAI_API_KEY)
+    client=anthropic.Anthropic(api_key=ANTHROPIC_API_KEY); oc=None  # fal.ai replaces OpenAI
     cfg={}; cp=Path("video_pipeline/heygen_config.json")
     if cp.exists():
         with open(cp) as f: cfg=json.load(f)
