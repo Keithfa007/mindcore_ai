@@ -5,7 +5,7 @@ import re
 import time
 import requests
 from anthropic import Anthropic
-from openai import OpenAI
+from scripts.fal_image import generate_fal_image
 from datetime import datetime
 
 # SERP research (graceful fallback if module unavailable)
@@ -21,7 +21,7 @@ except ImportError:
 
 # -- Clients ------------------------------------------------------------------
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+# Image generation: fal.ai Flux Pro (baked in, no OpenAI needed)
 SERP_API_KEY     = os.environ.get("SERP_API_KEY", "")
 
 WP_URL          = "https://mindcoreai.eu"
@@ -737,47 +737,17 @@ Use EXACT phrase "{kw}" at least 3 more times. Return COMPLETE post with EXCERPT
 
 # -- Step 3: Image generation -------------------------------------------------
 def generate_illustration(image_prompt):
-    """Generate cinematic-warm image. Tries gpt-image-1 first, falls back to dall-e-2."""
-    print("Generating cinematic image...")
+    """Generate cinematic-warm image using fal.ai Flux Pro."""
+    print("Generating cinematic image (fal.ai Flux Pro)...")
     cinematic_prompt = (
         f"{image_prompt}. "
         "Style: cinematic photography, warm golden-hour lighting, "
         "soft focus background with shallow depth of field, "
-        "peaceful and hopeful atmosphere, no faces shown — shoot from behind or hands/objects only, "
+        "peaceful and hopeful atmosphere, no faces shown, "
         "warm amber and soft teal colour grading, photorealistic. "
         "No text, no words, no letters in the image."
     )
-
-    try:
-        resp = openai_client.images.generate(
-            model="gpt-image-1",
-            prompt=cinematic_prompt,
-            size="1536x1024",
-            quality="high",
-            n=1,
-        )
-        data = resp.data[0]
-        if getattr(data, "url", None):
-            img = requests.get(data.url, timeout=30).content
-        else:
-            img = base64.b64decode(data.b64_json)
-        print("   Cinematic image generated (gpt-image-1)")
-        return img
-    except Exception as e1:
-        print(f"   gpt-image-1 failed: {e1} — trying dall-e-2...")
-
-    try:
-        resp = openai_client.images.generate(
-            model="dall-e-2",
-            prompt=cinematic_prompt[:1000],
-            size="1024x1024",
-            n=1,
-        )
-        img = requests.get(resp.data[0].url, timeout=30).content
-        print("   Cinematic image generated (dall-e-2 fallback)")
-        return img
-    except Exception as e2:
-        raise RuntimeError(f"All image models failed. gpt-image-1: {e1} | dall-e-2: {e2}")
+    return generate_fal_image(cinematic_prompt, image_size="landscape_4_3", model="pro")
 
 
 def upload_image_to_wordpress(image_data, alt_text=""):
