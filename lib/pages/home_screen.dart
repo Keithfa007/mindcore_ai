@@ -24,6 +24,7 @@ import 'package:mindcore_ai/services/settings_service.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/services/blog_service.dart';
 import 'package:mindcore_ai/ai/proactive_support_service.dart';
+import 'package:mindcore_ai/services/app_update_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -71,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadAI();
     _entranceCtrl.forward();
     BlogService.checkForNewPost().ignore();
+    AppUpdateService.checkForUpdate();
   }
 
   @override
