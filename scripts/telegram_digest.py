@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.0
+MindCore AI — Daily Telegram Digest v2.1
 =========================================
 Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
+- App users (Firebase Auth)
 - Website visitors + bounce rate (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
 - OpenAI daily cost
@@ -21,6 +22,7 @@ OPENAI_API_KEY     = os.environ.get("OPENAI_API_KEY", "")
 REPO               = "Keithfa007/mindcore_ai"
 GA4_PROPERTY_ID    = "516837337"
 SITE_URL           = "https://mindcoreai.eu/"
+FIREBASE_PROJECT   = "mindcore-ai"
 
 
 def get_google_credentials():
@@ -35,10 +37,30 @@ def get_google_credentials():
             info, scopes=[
                 "https://www.googleapis.com/auth/analytics.readonly",
                 "https://www.googleapis.com/auth/webmasters.readonly",
+                "https://www.googleapis.com/auth/firebase.readonly",
+                "https://www.googleapis.com/auth/cloud-platform",
             ]
         )
     except Exception as e:
         print(f"   Google auth error: {e}")
+        return None
+
+
+def get_firebase_app():
+    """Initialize Firebase Admin SDK."""
+    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not sa_json:
+        return None
+    try:
+        import firebase_admin
+        from firebase_admin import credentials
+        if not firebase_admin._apps:
+            info = json.loads(sa_json)
+            cred = credentials.Certificate(info)
+            firebase_admin.initialize_app(cred, {"projectId": FIREBASE_PROJECT})
+        return True
+    except Exception as e:
+        print(f"   Firebase init error: {e}")
         return None
 
 
@@ -76,6 +98,33 @@ def get_recent_failures():
     if resp.status_code != 200:
         return []
     return [{"name": r["name"], "updated": r["updated_at"]} for r in resp.json().get("workflow_runs", [])]
+
+
+# ── Firebase Auth Users ──────────────────────────────────────────────────
+
+def get_firebase_users():
+    """Get total users and new signups in last 24 hours from Firebase Auth."""
+    try:
+        from firebase_admin import auth
+
+        total = 0
+        new_24h = 0
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+
+        page = auth.list_users()
+        while page:
+            for user in page.users:
+                total += 1
+                if user.user_metadata and user.user_metadata.creation_timestamp:
+                    created = datetime.utcfromtimestamp(user.user_metadata.creation_timestamp / 1000)
+                    if created > cutoff:
+                        new_24h += 1
+            page = page.get_next_page()
+
+        return {"total": total, "new_24h": new_24h}
+    except Exception as e:
+        print(f"   Firebase Auth error: {e}")
+        return None
 
 
 # ── Google Analytics ─────────────────────────────────────────────────────
@@ -128,11 +177,7 @@ def get_search_console_stats(creds):
 
         response = service.searchanalytics().query(
             siteUrl=SITE_URL,
-            body={
-                "startDate": start_date,
-                "endDate": end_date,
-                "dimensions": [],
-            }
+            body={"startDate": start_date, "endDate": end_date, "dimensions": []},
         ).execute()
 
         if response.get("rows"):
@@ -188,7 +233,7 @@ def format_time(iso_str):
         return iso_str
 
 
-def build_message(workflows, failures, analytics, search_console, openai_cost):
+def build_message(workflows, failures, firebase_users, analytics, search_console, openai_cost):
     now = datetime.utcnow().strftime("%A, %b %d %Y \u2014 %H:%M UTC")
     lines = ["\U0001f4ca *MindCore AI \u2014 Daily Digest*", f"_{now}_", ""]
 
@@ -203,6 +248,16 @@ def build_message(workflows, failures, analytics, search_console, openai_cost):
             if w["conclusion"] == "failure":
                 lines.append(f"  \u274c {w['name']}")
     lines.append("")
+
+    # ── App Users ──
+    if firebase_users:
+        new_emoji = "\U0001f389" if firebase_users["new_24h"] > 0 else ""
+        lines.append(f"\U0001f465 *App Users:* {firebase_users['total']} total")
+        if firebase_users["new_24h"] > 0:
+            lines.append(f"  {new_emoji} {firebase_users['new_24h']} new in last 24h")
+        else:
+            lines.append("  No new signups yesterday")
+        lines.append("")
 
     # ── Website (Analytics) ──
     if analytics:
@@ -226,7 +281,7 @@ def build_message(workflows, failures, analytics, search_console, openai_cost):
 
     # ── 24h Failures Detail ──
     if failures:
-        lines.append(f"*\U0001f6a8 Failed in last 24h:*")
+        lines.append("*\U0001f6a8 Failed in last 24h:*")
         for f in failures[:5]:
             lines.append(f"  \u274c {f['name']} \u2014 _{format_time(f['updated'])}_")
         lines.append("")
@@ -247,7 +302,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.0 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.1 ==\n")
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
@@ -264,21 +319,26 @@ def main():
     failures = get_recent_failures()
     print(f"   {len(failures)} in last 24h")
 
-    print("3. Google Analytics...")
+    print("3. Firebase Auth users...")
+    fb_app = get_firebase_app()
+    firebase_users = get_firebase_users() if fb_app else None
+    print(f"   {'OK — ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
+
+    print("4. Google Analytics...")
     creds = get_google_credentials()
     analytics = get_analytics_stats(creds) if creds else None
     print(f"   {'OK' if analytics else 'skipped'}")
 
-    print("4. Search Console...")
+    print("5. Search Console...")
     search_console = get_search_console_stats(creds) if creds else None
     print(f"   {'OK' if search_console else 'skipped'}")
 
-    print("5. OpenAI cost...")
+    print("6. OpenAI cost...")
     openai_cost = get_openai_cost()
     print(f"   {'OK' if openai_cost else 'skipped'}")
 
-    print("6. Sending digest...")
-    message = build_message(workflows, failures, analytics, search_console, openai_cost)
+    print("7. Sending digest...")
+    message = build_message(workflows, failures, firebase_users, analytics, search_console, openai_cost)
     send_telegram(message)
 
     print("\n== Done ==")
