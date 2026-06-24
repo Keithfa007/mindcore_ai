@@ -16,7 +16,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests google-auth google-api-python-client google-analytics-data
+        run: pip install requests google-auth google-api-python-client google-analytics-data firebase-admin
 
       - name: Send daily digest
         env:
