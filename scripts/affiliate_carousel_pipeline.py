@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Affiliate Product Carousel Pipeline v1.3
+MindCore AI -- Affiliate Product Carousel Pipeline v1.4
 ========================================================
 Promotes affiliate products from affiliate_products.json as
 personal recommendation carousels. Visually distinct from
 the main emotional carousel (warm amber tones, centered layout,
 lifestyle backgrounds, 5 slides).
 
-v1.3: Fixed Upload-Post API format (platform[], photos[], tuples).
-      Both TikTok and Facebook in single request with separate descriptions.
+v1.4: EU (TikTok+Facebook 14:00 Malta) + US TikTok (16:00 Malta).
+      Correct Upload-Post API format. Affiliate links in all descriptions.
 
 Schedule: Wednesday + Friday
 Cost: ~$0.025/post (5 x fal.ai Flux Schnell @ ~$0.005)
@@ -37,9 +37,11 @@ TIKTOK_DESC_LIMIT = 4000
 CLAUDE_MAX_RETRIES = 8
 CLAUDE_RETRY_BASE = 30
 POST_HOUR_UTC = 12
+US_POST_HOUR_UTC = 14
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 TIKTOK_HASHTAGS = "#mindcoreai #mentalhealth #wellness #selfcare #fyp #ad #affiliate"
 FB_HASHTAGS = "#mindcoreai #mentalhealth #wellness #selfcare #ad"
+US_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #mentalhealthtiktok #therapytok #anxietyrelief #healing #selfcare #fyp #ad #affiliate"
 SLIDE_COUNT = 5
 
 BADGE_BG = (212, 165, 116)
@@ -73,7 +75,7 @@ def get_scheduled_post_time():
     if now >= target:
         target += timedelta(days=1)
     s = target.strftime("%Y-%m-%dT%H:%M:%SZ")
-    print(f"  Scheduled: {s} ({POST_HOUR_UTC:02d}:00 UTC)")
+    print(f"  EU Scheduled: {s} ({POST_HOUR_UTC:02d}:00 UTC / 14:00 Malta)")
     return s
 
 
@@ -285,7 +287,7 @@ RULES:
 
 def main():
     print("=" * 60)
-    print("MindCore AI — Affiliate Product Carousel v1.3")
+    print("MindCore AI — Affiliate Product Carousel v1.4")
     print("=" * 60)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -364,6 +366,8 @@ def main():
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
         scheduled = get_scheduled_post_time()
 
+        # ── EU: TikTok + Facebook (14:00 Malta / 12:00 UTC) ──
+        print("  Posting to EU (TikTok + Facebook)...")
         data = [
             ("user", "MindCoreAI"),
             ("platform[]", "tiktok"),
@@ -382,9 +386,45 @@ def main():
         try:
             r = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, data=data, files=photos, timeout=180)
             result = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
-            print(f"  Upload-Post: {r.status_code} — {str(result)[:200]}")
+            print(f"  EU: {r.status_code} — {str(result)[:200]}")
         except Exception as e:
-            print(f"  Upload-Post error: {e}")
+            print(f"  EU error: {e}")
+
+        # ── US: TikTok only (16:00 Malta / 14:00 UTC) ──
+        print("  Posting to US TikTok...")
+        us_desc = content["description"].strip()
+        if affiliate_link:
+            us_desc += f"\n\nGet it here: {affiliate_link}"
+        if "#ad" not in us_desc.lower():
+            us_desc += " #ad"
+        us_desc += f"\n\n{US_HASHTAGS}"
+
+        now_utc = datetime.now(timezone.utc)
+        us_target = now_utc.replace(hour=US_POST_HOUR_UTC, minute=0, second=0, microsecond=0)
+        if now_utc >= us_target:
+            us_target += timedelta(days=1)
+        us_scheduled = us_target.strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"  US Scheduled: {us_scheduled} ({US_POST_HOUR_UTC:02d}:00 UTC / 16:00 Malta)")
+
+        us_data = [
+            ("user", "MindCoreAI_US"),
+            ("platform[]", "tiktok"),
+            ("tiktok_title", title),
+            ("description", us_desc[:TIKTOK_DESC_LIMIT]),
+            ("post_mode", "DIRECT_POST"),
+            ("auto_add_music", "true"),
+            ("photo_cover_index", "0"),
+            ("scheduled_date", us_scheduled),
+        ]
+        us_photos = []
+        for i, p in enumerate(final_slides):
+            us_photos.append(("photos[]", (f"slide_{i+1}.jpg", open(p, "rb"), "image/jpeg")))
+        try:
+            r_us = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, data=us_data, files=us_photos, timeout=180)
+            us_result = r_us.json() if r_us.headers.get("content-type", "").startswith("application/json") else {"raw": r_us.text}
+            print(f"  US TikTok: {r_us.status_code} — {str(us_result)[:200]}")
+        except Exception as e:
+            print(f"  US TikTok error: {e}")
 
         print(f"  Affiliate link: {affiliate_link}")
 
