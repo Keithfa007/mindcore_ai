@@ -122,38 +122,7 @@ def pick_product():
     return cat, prod
 
 
-LIFESTYLE_PROMPTS = {
-    "slide_1": [
-        "Cinematic overhead shot of a cosy reading nook at night, warm amber lamp light, soft blankets, steaming mug. 9:16 vertical. No text, no people, no faces.",
-        "Warm golden hour light streaming through sheer curtains into a peaceful bedroom. Soft textures, muted tones. 9:16 vertical. No text, no people.",
-        "Close-up of warm candlelight on a wooden table, soft bokeh background, amber and honey tones. 9:16 vertical. No text, no watermarks.",
-        "Moody cosy evening scene: soft blanket, warm lamp, rain on window. Amber tones, intimate warmth. 9:16 vertical. No text, no people.",
-    ],
-    "slide_2": [
-        "Warm morning light on rumpled white bed sheets, peaceful, minimal. Golden hour tones. 9:16 vertical. No text, no people.",
-        "Soft focus on a steaming cup of tea on a wooden surface, warm amber background light. 9:16 vertical. No text, no watermarks.",
-        "Rain drops on a window at night, warm interior light blurred behind. Intimate, reflective mood. 9:16 vertical. No text.",
-        "Close-up of hands wrapped around a warm mug, soft golden light, wooden table. 9:16 vertical. No faces, no text.",
-    ],
-    "slide_3": [
-        "Warm flat lay of self-care items on a wooden surface: candle, journal, warm drink. Soft golden light from above. 9:16 vertical. No text.",
-        "Peaceful morning scene: open book on a sunlit table beside a window, warm tones. 9:16 vertical. No text, no people.",
-        "Soft golden light on a wooden shelf with plants, books, and a candle. Warm cosy aesthetic. 9:16 vertical. No text.",
-        "Morning sunlight casting warm shadows through blinds onto a peaceful desk. Minimal, warm. 9:16 vertical. No text.",
-    ],
-    "slide_4": [
-        "Beautiful lifestyle flat lay on warm wood: journal, pen, coffee, soft morning light. Clean and aspirational. 9:16 vertical. No text.",
-        "Warm sunset light through a window onto a wooden table with a book and warm drink. Peaceful evening. 9:16 vertical. No text.",
-        "Close-up of soft fabrics and warm textures in golden amber light. Cosy, tactile, inviting. 9:16 vertical. No text.",
-        "Soft golden light on an open notebook beside a window, morning, peaceful. 9:16 vertical. No text, no people.",
-    ],
-    "slide_5": [
-        "Warm inviting phone on a wooden table, soft amber candlelight, cosy evening setting. 9:16 vertical. No text, no watermarks.",
-        "Smartphone face-up on a warm wooden surface, soft golden morning light. Clean, minimal, inviting. 9:16 vertical. No text.",
-        "Phone on a cosy bedside table with warm lamp light, soft evening tones. 9:16 vertical. No text.",
-        "Clean minimal shot of a phone on a marble surface beside a warm drink, golden light. 9:16 vertical. No text.",
-    ],
-}
+LIFESTYLE_PROMPTS = {"slide_1": ["Cinematic overhead shot of a cosy reading nook at night, warm amber lamp light, soft blankets, steaming mug. 9:16 vertical. No text, no people, no faces.","Warm golden hour light streaming through sheer curtains into a peaceful bedroom. Soft textures, muted tones. 9:16 vertical. No text, no people.","Close-up of warm candlelight on a wooden table, soft bokeh background, amber and honey tones. 9:16 vertical. No text, no watermarks.","Moody cosy evening scene: soft blanket, warm lamp, rain on window. Amber tones, intimate warmth. 9:16 vertical. No text, no people."],"slide_2": ["Warm morning light on rumpled white bed sheets, peaceful, minimal. Golden hour tones. 9:16 vertical. No text, no people.","Soft focus on a steaming cup of tea on a wooden surface, warm amber background light. 9:16 vertical. No text, no watermarks.","Rain drops on a window at night, warm interior light blurred behind. Intimate, reflective mood. 9:16 vertical. No text.","Close-up of hands wrapped around a warm mug, soft golden light, wooden table. 9:16 vertical. No faces, no text."],"slide_3": ["Warm flat lay of self-care items on a wooden surface: candle, journal, warm drink. Soft golden light from above. 9:16 vertical. No text.","Peaceful morning scene: open book on a sunlit table beside a window, warm tones. 9:16 vertical. No text, no people.","Soft golden light on a wooden shelf with plants, books, and a candle. Warm cosy aesthetic. 9:16 vertical. No text.","Morning sunlight casting warm shadows through blinds onto a peaceful desk. Minimal, warm. 9:16 vertical. No text."],"slide_4": ["Beautiful lifestyle flat lay on warm wood: journal, pen, coffee, soft morning light. Clean and aspirational. 9:16 vertical. No text.","Warm sunset light through a window onto a wooden table with a book and warm drink. Peaceful evening. 9:16 vertical. No text.","Close-up of soft fabrics and warm textures in golden amber light. Cosy, tactile, inviting. 9:16 vertical. No text.","Soft golden light on an open notebook beside a window, morning, peaceful. 9:16 vertical. No text, no people."],"slide_5": ["Warm inviting phone on a wooden table, soft amber candlelight, cosy evening setting. 9:16 vertical. No text, no watermarks.","Smartphone face-up on a warm wooden surface, soft golden morning light. Clean, minimal, inviting. 9:16 vertical. No text.","Phone on a cosy bedside table with warm lamp light, soft evening tones. 9:16 vertical. No text.","Clean minimal shot of a phone on a marble surface beside a warm drink, golden light. 9:16 vertical. No text."]}
 
 
 def generate_slide_image(slide_key):
@@ -176,10 +145,7 @@ def generate_slide_image(slide_key):
 
 
 def get_font(size, bold=False):
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    ]
+    paths = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf","/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
     for p in paths:
         if os.path.exists(p):
             return ImageFont.truetype(p, size)
@@ -221,10 +187,7 @@ def draw_badge(draw, text, cx, y, font):
     pad_x, pad_y = 24, 10
     rx = cx - tw // 2 - pad_x
     ry = y
-    draw.rounded_rectangle(
-        [rx, ry, rx + tw + pad_x * 2, ry + th + pad_y * 2],
-        radius=20, fill=BADGE_BG,
-    )
+    draw.rounded_rectangle([rx, ry, rx + tw + pad_x * 2, ry + th + pad_y * 2], radius=20, fill=BADGE_BG)
     draw.text((cx - tw // 2, ry + pad_y), text, fill=BADGE_TEXT, font=font)
     return th + pad_y * 2 + 20
 
@@ -266,7 +229,7 @@ def _call_claude(prompt, client, max_tokens=2000):
     for a in range(1, CLAUDE_MAX_RETRIES + 1):
         try:
             r = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -382,7 +345,6 @@ def main():
     else:
         title = content["tiktok_title"][:TIKTOK_TITLE_LIMIT]
 
-        # TikTok description — includes affiliate link (copyable, not clickable)
         tiktok_desc = content["description"].strip()
         if affiliate_link:
             tiktok_desc += f"\n\nGet it here: {affiliate_link}"
@@ -392,7 +354,6 @@ def main():
             tiktok_desc += " #ad"
         tiktok_desc += f"\n\n{TIKTOK_HASHTAGS}"
 
-        # Facebook description — includes affiliate link (clickable)
         fb_desc = content["description"].strip()
         if affiliate_link:
             fb_desc += f"\n\nGet it here: {affiliate_link}"
@@ -407,13 +368,7 @@ def main():
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
         scheduled = get_scheduled_post_time()
 
-        payload = {
-            "user": "MindCoreAI",
-            "platforms": "tiktok",
-            "tiktok_title": title,
-            "description": tiktok_desc[:TIKTOK_DESC_LIMIT],
-            "scheduled_date": scheduled,
-        }
+        payload = {"user": "MindCoreAI", "platforms": "tiktok", "tiktok_title": title, "description": tiktok_desc[:TIKTOK_DESC_LIMIT], "scheduled_date": scheduled}
         try:
             r = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, data=payload, files=files, timeout=120)
             print(f"  TikTok: {r.status_code} — {r.text[:200]}")
@@ -424,12 +379,7 @@ def main():
         for p in final_slides:
             files2.append(("files", (p.name, open(p, "rb"), "image/jpeg")))
 
-        payload_fb = {
-            "user": "MindCoreAI",
-            "platforms": "facebook",
-            "description": fb_desc[:TIKTOK_DESC_LIMIT],
-            "scheduled_date": scheduled,
-        }
+        payload_fb = {"user": "MindCoreAI", "platforms": "facebook", "description": fb_desc[:TIKTOK_DESC_LIMIT], "scheduled_date": scheduled}
         try:
             r2 = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, data=payload_fb, files=files2, timeout=120)
             print(f"  Facebook: {r2.status_code} — {r2.text[:200]}")
@@ -440,13 +390,7 @@ def main():
 
     print("\n6. Saving history...")
     history = load_history()
-    save_history(history, {
-        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "product_name": product["name"],
-        "category": category["category"],
-        "title": content["tiktok_title"],
-        "affiliate_link": affiliate_link,
-    })
+    save_history(history, {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "product_name": product["name"], "category": category["category"], "title": content["tiktok_title"], "affiliate_link": affiliate_link})
 
     print("\n" + "=" * 60)
     print("DONE — Affiliate carousel posted!")
