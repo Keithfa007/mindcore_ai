@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Affiliate Product Carousel Pipeline v1.0
+MindCore AI -- Affiliate Product Carousel Pipeline v1.1
 ========================================================
 Promotes affiliate products from affiliate_products.json as
 personal recommendation carousels. Visually distinct from
 the main emotional carousel (warm amber tones, centered layout,
 lifestyle backgrounds, 5 slides).
+
+v1.1: Facebook posts include direct affiliate link in description.
+      TikTok uses "Link in bio" (no clickable links in captions).
 
 Schedule: Wednesday + Friday
 Cost: ~$0.025/post (5 x fal.ai Flux Schnell @ ~$0.005)
@@ -35,7 +38,8 @@ CLAUDE_MAX_RETRIES = 8
 CLAUDE_RETRY_BASE = 30
 POST_HOUR_UTC = 12
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
-HASHTAGS = "#mindcoreai #mentalhealth #wellness #selfcare #fyp #ad #affiliate"
+TIKTOK_HASHTAGS = "#mindcoreai #mentalhealth #wellness #selfcare #fyp #ad #affiliate"
+FB_HASHTAGS = "#mindcoreai #mentalhealth #wellness #selfcare #ad"
 SLIDE_COUNT = 5
 
 BADGE_BG = (212, 165, 116)
@@ -318,7 +322,7 @@ RULES:
 
 def main():
     print("=" * 60)
-    print("MindCore AI — Affiliate Product Carousel v1.0")
+    print("MindCore AI — Affiliate Product Carousel v1.1")
     print("=" * 60)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -326,6 +330,7 @@ def main():
 
     print("\n1. Selecting product...")
     category, product = pick_product()
+    affiliate_link = product.get("affiliate_link", "")
 
     print("\n2. Generating content...")
     content = generate_content(client, product, category)
@@ -377,14 +382,20 @@ def main():
         print("  SKIP: UPLOAD_POST_API_KEY not set")
     else:
         title = content["tiktok_title"][:TIKTOK_TITLE_LIMIT]
-        desc = content["description"]
-        if REQUIRED_BRAND_HASHTAG not in desc:
-            desc += f" {REQUIRED_BRAND_HASHTAG}"
-        if "#ad" not in desc.lower():
-            desc += " #ad"
-        desc += f"\n\n{HASHTAGS}"
+        tiktok_desc = content["description"]
+        if REQUIRED_BRAND_HASHTAG not in tiktok_desc:
+            tiktok_desc += f" {REQUIRED_BRAND_HASHTAG}"
+        if "#ad" not in tiktok_desc.lower():
+            tiktok_desc += " #ad"
+        tiktok_desc += f"\n\n{TIKTOK_HASHTAGS}"
 
-        fb_desc = desc.replace("#fyp", "").replace("#foryou", "").strip()
+        # Facebook description includes direct affiliate link
+        fb_desc = content["description"].replace("Link in bio.", "").replace("Link in bio", "").strip()
+        if affiliate_link:
+            fb_desc += f"\n\nGet it here: {affiliate_link}"
+        fb_desc += f"\n\n{FB_HASHTAGS}"
+        if "#ad" not in fb_desc.lower():
+            fb_desc += " #ad"
 
         files = []
         for p in final_slides:
@@ -393,11 +404,12 @@ def main():
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
         scheduled = get_scheduled_post_time()
 
+        # TikTok — no clickable links, uses "Link in bio"
         payload = {
             "user": "MindCoreAI",
             "platforms": "tiktok",
             "tiktok_title": title,
-            "description": desc[:TIKTOK_DESC_LIMIT],
+            "description": tiktok_desc[:TIKTOK_DESC_LIMIT],
             "scheduled_date": scheduled,
         }
         try:
@@ -406,6 +418,7 @@ def main():
         except Exception as e:
             print(f"  TikTok error: {e}")
 
+        # Facebook — includes direct affiliate link
         files2 = []
         for p in final_slides:
             files2.append(("files", (p.name, open(p, "rb"), "image/jpeg")))
@@ -422,6 +435,8 @@ def main():
         except Exception as e:
             print(f"  Facebook error: {e}")
 
+        print(f"  Affiliate link: {affiliate_link}")
+
     print("\n6. Saving history...")
     history = load_history()
     save_history(history, {
@@ -429,6 +444,7 @@ def main():
         "product_name": product["name"],
         "category": category["category"],
         "title": content["tiktok_title"],
+        "affiliate_link": affiliate_link,
     })
 
     print("\n" + "=" * 60)
