@@ -179,6 +179,186 @@
           "commission": "3%"
         }
       ]
+    },
+    {
+      "category": "Mental Health Books",
+      "blog_keyword": "best mental health books for anxiety and recovery",
+      "blog_title_template": "Best Mental Health Books for Anxiety, Recovery and Personal Growth in 2026",
+      "audience": "neutral",
+      "wp_category": "Recovery & Sobriety",
+      "products": [
+        {
+          "name": "Don't Believe Everything You Think — Joseph Nguyen",
+          "affiliate_link": "https://amzn.to/3SGtHdp",
+          "price_range": "$13-16",
+          "weight": "N/A",
+          "best_for": "Understanding how thoughts create suffering",
+          "highlight": "Amazon #1 mental health bestseller, short and powerful read that reframes your relationship with thinking",
+          "commission": "4.5%"
+        },
+        {
+          "name": "The Body Keeps the Score — Bessel van der Kolk",
+          "affiliate_link": "https://amzn.to/4vtL0Ng",
+          "price_range": "$12-18",
+          "weight": "N/A",
+          "best_for": "Understanding how trauma affects the body and mind",
+          "highlight": "Evergreen bestseller recommended by therapists worldwide, groundbreaking research on trauma and healing",
+          "commission": "4.5%"
+        },
+        {
+          "name": "Atomic Habits — James Clear",
+          "affiliate_link": "https://amzn.to/4esSbiT",
+          "price_range": "$11-16",
+          "weight": "N/A",
+          "best_for": "Building good habits and breaking bad ones",
+          "highlight": "10 million+ copies sold, practical framework for tiny changes that compound into remarkable results",
+          "commission": "4.5%"
+        }
+      ]
+    },
+    {
+      "category": "Journals and Planners",
+      "blog_keyword": "best journals for mental health and gratitude",
+      "blog_title_template": "Best Journals for Mental Health, Gratitude and Daily Reflection in 2026",
+      "audience": "neutral",
+      "wp_category": "Recovery & Sobriety",
+      "products": [
+        {
+          "name": "The Five Minute Journal by Intelligent Change",
+          "affiliate_link": "https://amzn.to/4xTtlk2",
+          "price_range": "$22-29",
+          "weight": "N/A",
+          "best_for": "Daily gratitude and intention setting in under 5 minutes",
+          "highlight": "Over 1 million sold, science-backed prompts, used by top performers worldwide",
+          "commission": "4%"
+        },
+        {
+          "name": "PAPERAGE Gratitude Journal",
+          "affiliate_link": "https://amzn.to/4vuFsCe",
+          "price_range": "$10-15",
+          "weight": "N/A",
+          "best_for": "Budget-friendly guided gratitude prompts",
+          "highlight": "Simple daily structure, thick paper quality, affordable entry point for journaling beginners",
+          "commission": "4%"
+        },
+        {
+          "name": "Legend Planner — Daily Habit Tracker Journal",
+          "affiliate_link": "https://amzn.to/4oLP9Kb",
+          "price_range": "$25-35",
+          "weight": "N/A",
+          "best_for": "Habit tracking, goal setting, and daily planning",
+          "highlight": "Combines planner, habit tracker, and journal in one, PU leather cover, undated for flexible start",
+          "commission": "4%"
+        }
+      ]
+    },
+    {
+      "category": "Aromatherapy and Essential Oils",
+      "blog_keyword": "best aromatherapy diffusers for stress and relaxation",
+      "blog_title_template": "Best Aromatherapy Diffusers and Essential Oils for Stress Relief in 2026",
+      "audience": "neutral",
+      "wp_category": "Anxiety & Stress",
+      "products": [
+        {
+          "name": "ASAKUKI 500ml Essential Oil Diffuser",
+          "affiliate_link": "https://amzn.to/4v0kmeb",
+          "price_range": "$20-30",
+          "weight": "N/A",
+          "best_for": "Large room coverage, 7 LED colours, auto shut-off",
+          "highlight": "Amazon bestseller with 100K+ reviews, runs up to 16 hours, whisper-quiet operation",
+          "commission": "3%"
+        },
+        {
+          "name": "Lagunamoon Essential Oils Top 10 Gift Set",
+          "affiliate_link": "https://amzn.to/4g4GkZF",
+          "price_range": "$12-18",
+          "weight": "N/A",
+          "best_for": "Starter set with lavender, peppermint, eucalyptus and 7 more",
+          "highlight": "Top-rated starter kit, therapeutic grade, includes calming and energising oils",
+          "commission": "3%"
+        },
+        {
+          "name": "InnoGear Upgraded Aromatherapy Diffuser",
+          "affiliate_link": "https://amzn.to/4wd1hGA",
+          "price_range": "$15-22",
+          "weight": "N/A",
+          "best_for": "Compact desk diffuser, 2 mist modes, 7 colours",
+          "highlight": "BPA-free, auto shut-off, perfect for bedside or office use, budget-friendly",
+          "commission": "3%"
+        }
+      ]
+    },
+    {
+      "category": "Sleep Aids",
+      "blog_keyword": "best sleep aids for anxiety and insomnia",
+      "blog_title_template": "Best Sleep Aids for Anxiety and Insomnia That Actually Work in 2026",
+      "audience": "neutral",
+      "wp_category": "Sleep & Burnout",
+      "products": [
+        {
+          "name": "Hatch Restore 2 Sunrise Alarm Clock",
+          "affiliate_link": "https://amzn.to/43VHjUA",
+          "price_range": "$130-170",
+          "weight": "N/A",
+          "best_for": "Sunrise wake-up, sleep sounds, wind-down routines",
+          "highlight": "Replaces your phone on the nightstand, library of sleep content, gentle sunrise alarm",
+          "commission": "3%"
+        },
+        {
+          "name": "Yogasleep Dohm Classic White Noise Machine",
+          "affiliate_link": "https://amzn.to/44ri3Wr",
+          "price_range": "$30-45",
+          "weight": "N/A",
+          "best_for": "Natural fan-based white noise, simple and reliable",
+          "highlight": "Over 1 million sold, real fan sound not digital loops, adjustable tone and volume",
+          "commission": "3%"
+        },
+        {
+          "name": "MAVOGEL Cotton Sleep Eye Mask",
+          "affiliate_link": "https://amzn.to/4w0wP24",
+          "price_range": "$8-12",
+          "weight": "N/A",
+          "best_for": "Total light blocking, comfortable for all sleep positions",
+          "highlight": "Amazon's Choice sleep mask, 50K+ reviews, nose bridge design blocks all light",
+          "commission": "3%"
+        }
+      ]
+    },
+    {
+      "category": "Stress and Mood Supplements",
+      "blog_keyword": "best supplements for stress and anxiety relief",
+      "blog_title_template": "Best Natural Supplements for Stress, Anxiety and Better Sleep in 2026",
+      "audience": "neutral",
+      "wp_category": "Anxiety & Stress",
+      "products": [
+        {
+          "name": "Natural Vitality Calm Magnesium Powder",
+          "affiliate_link": "https://amzn.to/4w9Yi1y",
+          "price_range": "$18-25",
+          "weight": "N/A",
+          "best_for": "Stress relief, muscle relaxation, better sleep",
+          "highlight": "Amazon bestseller, magnesium citrate powder drink, raspberry lemon flavour",
+          "commission": "1%"
+        },
+        {
+          "name": "Nature Made Magnesium Glycinate 400mg",
+          "affiliate_link": "https://amzn.to/4aPygIC",
+          "price_range": "$12-18",
+          "weight": "N/A",
+          "best_for": "High absorption magnesium for calm and sleep",
+          "highlight": "Glycinate form is gentler on stomach, USP verified, highly bioavailable",
+          "commission": "1%"
+        },
+        {
+          "name": "Natrol Melatonin 5mg Gummies",
+          "affiliate_link": "https://amzn.to/4vNLwpT",
+          "price_range": "$8-14",
+          "weight": "N/A",
+          "best_for": "Falling asleep faster, natural sleep cycle support",
+          "highlight": "Drug-free sleep aid, strawberry flavour, high repurchase rate on Amazon",
+          "commission": "1%"
+        }
+      ]
     }
   ]
 }
