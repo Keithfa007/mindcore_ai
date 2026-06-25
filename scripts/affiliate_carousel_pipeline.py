@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Affiliate Product Carousel Pipeline v1.2
+MindCore AI -- Affiliate Product Carousel Pipeline v1.3
 ========================================================
 Promotes affiliate products from affiliate_products.json as
 personal recommendation carousels. Visually distinct from
 the main emotional carousel (warm amber tones, centered layout,
 lifestyle backgrounds, 5 slides).
 
-v1.2: Both TikTok and Facebook include affiliate link in description.
-      TikTok link is not clickable but viewers can copy it.
+v1.3: Fixed Upload-Post API format (platform[], photos[], tuples).
+      Both TikTok and Facebook in single request with separate descriptions.
 
 Schedule: Wednesday + Friday
 Cost: ~$0.025/post (5 x fal.ai Flux Schnell @ ~$0.005)
@@ -285,7 +285,7 @@ RULES:
 
 def main():
     print("=" * 60)
-    print("MindCore AI — Affiliate Product Carousel v1.2")
+    print("MindCore AI — Affiliate Product Carousel v1.3")
     print("=" * 60)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -361,30 +361,30 @@ def main():
         if "#ad" not in fb_desc.lower():
             fb_desc += " #ad"
 
-        files = []
-        for p in final_slides:
-            files.append(("files", (p.name, open(p, "rb"), "image/jpeg")))
-
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
         scheduled = get_scheduled_post_time()
 
-        payload = {"user": "MindCoreAI", "platforms": "tiktok", "tiktok_title": title, "description": tiktok_desc[:TIKTOK_DESC_LIMIT], "scheduled_date": scheduled}
+        data = [
+            ("user", "MindCoreAI"),
+            ("platform[]", "tiktok"),
+            ("platform[]", "facebook"),
+            ("tiktok_title", title),
+            ("description", tiktok_desc[:TIKTOK_DESC_LIMIT]),
+            ("facebook_description", fb_desc[:TIKTOK_DESC_LIMIT]),
+            ("post_mode", "DIRECT_POST"),
+            ("auto_add_music", "true"),
+            ("photo_cover_index", "0"),
+            ("scheduled_date", scheduled),
+        ]
+        photos = []
+        for i, p in enumerate(final_slides):
+            photos.append(("photos[]", (f"slide_{i+1}.jpg", open(p, "rb"), "image/jpeg")))
         try:
-            r = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, data=payload, files=files, timeout=120)
-            print(f"  TikTok: {r.status_code} — {r.text[:200]}")
+            r = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, data=data, files=photos, timeout=180)
+            result = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
+            print(f"  Upload-Post: {r.status_code} — {str(result)[:200]}")
         except Exception as e:
-            print(f"  TikTok error: {e}")
-
-        files2 = []
-        for p in final_slides:
-            files2.append(("files", (p.name, open(p, "rb"), "image/jpeg")))
-
-        payload_fb = {"user": "MindCoreAI", "platforms": "facebook", "description": fb_desc[:TIKTOK_DESC_LIMIT], "scheduled_date": scheduled}
-        try:
-            r2 = requests.post(UPLOAD_POST_PHOTOS_URL, headers=headers, data=payload_fb, files=files2, timeout=120)
-            print(f"  Facebook: {r2.status_code} — {r2.text[:200]}")
-        except Exception as e:
-            print(f"  Facebook error: {e}")
+            print(f"  Upload-Post error: {e}")
 
         print(f"  Affiliate link: {affiliate_link}")
 
