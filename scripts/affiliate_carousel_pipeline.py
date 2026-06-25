@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Affiliate Product Carousel Pipeline v1.1
+MindCore AI -- Affiliate Product Carousel Pipeline v1.2
 ========================================================
 Promotes affiliate products from affiliate_products.json as
 personal recommendation carousels. Visually distinct from
 the main emotional carousel (warm amber tones, centered layout,
 lifestyle backgrounds, 5 slides).
 
-v1.1: Facebook posts include direct affiliate link in description.
-      TikTok uses "Link in bio" (no clickable links in captions).
+v1.2: Both TikTok and Facebook include affiliate link in description.
+      TikTok link is not clickable but viewers can copy it.
 
 Schedule: Wednesday + Friday
 Cost: ~$0.025/post (5 x fal.ai Flux Schnell @ ~$0.005)
@@ -295,7 +295,7 @@ VOICE: You are Keith, founder of MindCore AI. You struggled with anxiety, addict
 FORMAT — respond with EXACTLY this JSON structure, nothing else:
 {{
   "tiktok_title": "Short hook title under 85 chars",
-  "description": "Longer caption 2-3 sentences, include why you personally use it. End with: Link in bio.",
+  "description": "Longer caption 2-3 sentences, include why you personally use it.",
   "slides": [
     {{"slide": 1, "hook": "Short punchy hook question (8-12 words max)"}},
     {{"slide": 2, "story": "Personal 1-2 sentence connection to the problem"}},
@@ -310,7 +310,7 @@ RULES:
 - Slide 2: Brief personal story connecting to that problem. Raw and real.
 - Slide 3: The turning point. What shifted.
 - Slide 4: Introduce the product naturally. What it does and why it works.
-- Slide 5: Warm CTA. "Link in bio" must appear.
+- Slide 5: Warm CTA.
 - Keep ALL text SHORT. These are image overlays, not paragraphs.
 - Do NOT use quotation marks in any slide text.
 - Sound like a real person, not a marketer."""
@@ -322,7 +322,7 @@ RULES:
 
 def main():
     print("=" * 60)
-    print("MindCore AI — Affiliate Product Carousel v1.1")
+    print("MindCore AI — Affiliate Product Carousel v1.2")
     print("=" * 60)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -364,11 +364,10 @@ def main():
             lines = [(sd.get("product", ""), BOLD_SIZE, BOLD_COLOR, True)]
             img = render_slide(bg, lines, badge_text=product.get("price_range", ""))
         elif i == 4:
-            cta_text = sd.get("cta", "Link in bio")
+            cta_text = sd.get("cta", "Check the link below")
             lines = [
                 (cta_text, CTA_TRIG, CTA_COLOR, True),
                 ("MindCore AI", CTA_APP, ACCENT_COLOR, True),
-                ("Link in bio", CTA_URL, URL_COLOR, False),
             ]
             img = render_slide(bg, lines)
 
@@ -382,15 +381,19 @@ def main():
         print("  SKIP: UPLOAD_POST_API_KEY not set")
     else:
         title = content["tiktok_title"][:TIKTOK_TITLE_LIMIT]
-        tiktok_desc = content["description"]
+
+        # TikTok description — includes affiliate link (copyable, not clickable)
+        tiktok_desc = content["description"].strip()
+        if affiliate_link:
+            tiktok_desc += f"\n\nGet it here: {affiliate_link}"
         if REQUIRED_BRAND_HASHTAG not in tiktok_desc:
             tiktok_desc += f" {REQUIRED_BRAND_HASHTAG}"
         if "#ad" not in tiktok_desc.lower():
             tiktok_desc += " #ad"
         tiktok_desc += f"\n\n{TIKTOK_HASHTAGS}"
 
-        # Facebook description includes direct affiliate link
-        fb_desc = content["description"].replace("Link in bio.", "").replace("Link in bio", "").strip()
+        # Facebook description — includes affiliate link (clickable)
+        fb_desc = content["description"].strip()
         if affiliate_link:
             fb_desc += f"\n\nGet it here: {affiliate_link}"
         fb_desc += f"\n\n{FB_HASHTAGS}"
@@ -404,7 +407,6 @@ def main():
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
         scheduled = get_scheduled_post_time()
 
-        # TikTok — no clickable links, uses "Link in bio"
         payload = {
             "user": "MindCoreAI",
             "platforms": "tiktok",
@@ -418,7 +420,6 @@ def main():
         except Exception as e:
             print(f"  TikTok error: {e}")
 
-        # Facebook — includes direct affiliate link
         files2 = []
         for p in final_slides:
             files2.append(("files", (p.name, open(p, "rb"), "image/jpeg")))
