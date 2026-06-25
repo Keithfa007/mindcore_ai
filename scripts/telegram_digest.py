@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.1
+MindCore AI — Daily Telegram Digest v2.2
 =========================================
 Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
+- Today's scheduled pipelines
 - App users (Firebase Auth)
 - Website visitors + bounce rate (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
-- OpenAI daily cost
 """
 
 import os
 import json
+import re
+import base64
 import requests
 from datetime import datetime, timedelta
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 GITHUB_TOKEN       = os.environ.get("GITHUB_TOKEN", "")
-OPENAI_API_KEY     = os.environ.get("OPENAI_API_KEY", "")
 REPO               = "Keithfa007/mindcore_ai"
 GA4_PROPERTY_ID    = "516837337"
 SITE_URL           = "https://mindcoreai.eu/"
@@ -26,7 +27,6 @@ FIREBASE_PROJECT   = "mindcore-ai"
 
 
 def get_google_credentials():
-    """Load Google service account credentials from env."""
     sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
     if not sa_json:
         return None
@@ -47,7 +47,6 @@ def get_google_credentials():
 
 
 def get_firebase_app():
-    """Initialize Firebase Admin SDK."""
     sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
     if not sa_json:
         return None
@@ -100,10 +99,103 @@ def get_recent_failures():
     return [{"name": r["name"], "updated": r["updated_at"]} for r in resp.json().get("workflow_runs", [])]
 
 
+# ── Today's Schedule ─────────────────────────────────────────────────────
+
+def cron_matches_today(cron_expr):
+    """Check if a cron expression runs today. Returns hour(s) in UTC or None."""
+    parts = cron_expr.strip().split()
+    if len(parts) < 5:
+        return None
+
+    minute, hour, dom, month, dow = parts[:5]
+    today = datetime.utcnow()
+    today_dow = today.weekday()  # 0=Mon ... 6=Sun
+    today_dom = today.day
+
+    # Convert cron dow (0=Sun, 1=Mon...6=Sat) to Python (0=Mon...6=Sun)
+    cron_to_python_dow = {0: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6}
+
+    # Check day-of-week
+    dow_match = False
+    if dow == "*":
+        dow_match = True
+    else:
+        for part in dow.split(","):
+            if "-" in part:
+                start, end = part.split("-")
+                for d in range(int(start), int(end) + 1):
+                    if cron_to_python_dow.get(d) == today_dow:
+                        dow_match = True
+            else:
+                if cron_to_python_dow.get(int(part)) == today_dow:
+                    dow_match = True
+
+    # Check day-of-month
+    dom_match = False
+    if dom == "*":
+        dom_match = True
+    else:
+        for part in dom.split(","):
+            if int(part) == today_dom:
+                dom_match = True
+
+    if not (dow_match and dom_match):
+        return None
+
+    # Parse hour
+    if hour == "*":
+        return "all day"
+    hours = []
+    for part in hour.split(","):
+        hours.append(int(part))
+    return hours
+
+
+def get_todays_schedule():
+    """Fetch workflow YAMLs and determine which run today."""
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+
+    # Get list of workflow files
+    resp = requests.get(f"https://api.github.com/repos/{REPO}/contents/.github/workflows",
+                        headers=headers, timeout=30)
+    if resp.status_code != 200:
+        return []
+
+    schedule = []
+    for f in resp.json():
+        if not f["name"].endswith(".yml") and not f["name"].endswith(".yaml"):
+            continue
+
+        # Fetch file content
+        file_resp = requests.get(f["url"], headers=headers, timeout=30)
+        if file_resp.status_code != 200:
+            continue
+
+        content = base64.b64decode(file_resp.json().get("content", "")).decode("utf-8", errors="ignore")
+
+        # Extract workflow name
+        name_match = re.search(r'^name:\s*(.+)$', content, re.MULTILINE)
+        wf_name = name_match.group(1).strip().strip("'\"") if name_match else f["name"]
+
+        # Extract cron schedules
+        cron_matches = re.findall(r"cron:\s*['\"](.+?)['\"]", content)
+        for cron in cron_matches:
+            hours = cron_matches_today(cron)
+            if hours is not None:
+                if isinstance(hours, list):
+                    for h in hours:
+                        schedule.append({"name": wf_name, "hour": h, "minute": int(cron.split()[0])})
+                else:
+                    schedule.append({"name": wf_name, "hour": 0, "minute": 0, "all_day": True})
+
+    # Sort by hour then minute
+    schedule.sort(key=lambda x: (x.get("hour", 0), x.get("minute", 0)))
+    return schedule
+
+
 # ── Firebase Auth Users ──────────────────────────────────────────────────
 
 def get_firebase_users():
-    """Get total users and new signups in last 24 hours from Firebase Auth."""
     try:
         from firebase_admin import auth
 
@@ -130,7 +222,6 @@ def get_firebase_users():
 # ── Google Analytics ─────────────────────────────────────────────────────
 
 def get_analytics_stats(creds):
-    """Get yesterday's GA4 stats: sessions, users, bounce rate."""
     try:
         from google.analytics.data_v1beta import BetaAnalyticsDataClient
         from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Metric
@@ -167,7 +258,6 @@ def get_analytics_stats(creds):
 # ── Google Search Console ────────────────────────────────────────────────
 
 def get_search_console_stats(creds):
-    """Get last 7 days of Search Console stats."""
     try:
         from googleapiclient.discovery import build
 
@@ -194,34 +284,6 @@ def get_search_console_stats(creds):
     return None
 
 
-# ── OpenAI Daily Cost ────────────────────────────────────────────────────
-
-def get_openai_cost():
-    """Get yesterday's OpenAI API cost."""
-    if not OPENAI_API_KEY:
-        return None
-    try:
-        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-        resp = requests.get(
-            "https://api.openai.com/v1/organization/costs",
-            headers=headers,
-            params={"start_time": f"{yesterday}T00:00:00Z", "end_time": f"{yesterday}T23:59:59Z", "bucket_width": "1d"},
-            timeout=30,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            results = data.get("data", [])
-            if results:
-                total_cents = sum(r.get("results", [{}])[0].get("amount", {}).get("value", 0) for r in results if r.get("results"))
-                return {"cost": round(total_cents / 100, 2), "date": yesterday}
-        else:
-            print(f"   OpenAI cost API: {resp.status_code}")
-    except Exception as e:
-        print(f"   OpenAI cost error: {e}")
-    return None
-
-
 # ── Message Builder ──────────────────────────────────────────────────────
 
 def format_time(iso_str):
@@ -233,7 +295,7 @@ def format_time(iso_str):
         return iso_str
 
 
-def build_message(workflows, failures, firebase_users, analytics, search_console, openai_cost):
+def build_message(workflows, failures, todays_schedule, firebase_users, analytics, search_console):
     now = datetime.utcnow().strftime("%A, %b %d %Y \u2014 %H:%M UTC")
     lines = ["\U0001f4ca *MindCore AI \u2014 Daily Digest*", f"_{now}_", ""]
 
@@ -243,11 +305,21 @@ def build_message(workflows, failures, firebase_users, analytics, search_console
     failed = sum(1 for w in workflows if w["conclusion"] == "failure")
     lines.append(f"\U0001f527 *Pipelines:* {passed}/{total} passing")
     if failed > 0:
-        lines.append(f"\u274c {failed} failed:")
         for w in workflows:
             if w["conclusion"] == "failure":
                 lines.append(f"  \u274c {w['name']}")
     lines.append("")
+
+    # ── Today's Schedule ──
+    if todays_schedule:
+        lines.append(f"\U0001f4c5 *Today's Schedule ({len(todays_schedule)} pipelines):*")
+        for s in todays_schedule:
+            if s.get("all_day"):
+                lines.append(f"  \u23f0 {s['name']}")
+            else:
+                malta_h = (s['hour'] + 2) % 24
+                lines.append(f"  \u23f0 {malta_h:02d}:{s['minute']:02d} \u2014 {s['name']}")
+        lines.append("")
 
     # ── App Users ──
     if firebase_users:
@@ -273,12 +345,6 @@ def build_message(workflows, failures, firebase_users, analytics, search_console
         lines.append(f"  CTR: {search_console['ctr']}% | Avg Position: {search_console['position']}")
         lines.append("")
 
-    # ── OpenAI Cost ──
-    if openai_cost:
-        emoji = "\u2705" if openai_cost["cost"] < 1 else "\u26a0\ufe0f" if openai_cost["cost"] < 5 else "\U0001f6a8"
-        lines.append(f"\U0001f4b0 *OpenAI cost (yesterday):* {emoji} ${openai_cost['cost']:.2f}")
-        lines.append("")
-
     # ── 24h Failures Detail ──
     if failures:
         lines.append("*\U0001f6a8 Failed in last 24h:*")
@@ -302,7 +368,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.1 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.2 ==\n")
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
@@ -319,26 +385,26 @@ def main():
     failures = get_recent_failures()
     print(f"   {len(failures)} in last 24h")
 
-    print("3. Firebase Auth users...")
+    print("3. Today's schedule...")
+    todays_schedule = get_todays_schedule()
+    print(f"   {len(todays_schedule)} pipelines scheduled today")
+
+    print("4. Firebase Auth users...")
     fb_app = get_firebase_app()
     firebase_users = get_firebase_users() if fb_app else None
     print(f"   {'OK — ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
 
-    print("4. Google Analytics...")
+    print("5. Google Analytics...")
     creds = get_google_credentials()
     analytics = get_analytics_stats(creds) if creds else None
     print(f"   {'OK' if analytics else 'skipped'}")
 
-    print("5. Search Console...")
+    print("6. Search Console...")
     search_console = get_search_console_stats(creds) if creds else None
     print(f"   {'OK' if search_console else 'skipped'}")
 
-    print("6. OpenAI cost...")
-    openai_cost = get_openai_cost()
-    print(f"   {'OK' if openai_cost else 'skipped'}")
-
     print("7. Sending digest...")
-    message = build_message(workflows, failures, firebase_users, analytics, search_console, openai_cost)
+    message = build_message(workflows, failures, todays_schedule, firebase_users, analytics, search_console)
     send_telegram(message)
 
     print("\n== Done ==")
