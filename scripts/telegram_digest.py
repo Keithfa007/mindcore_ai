@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.2
+MindCore AI — Daily Telegram Digest v2.3
 =========================================
 Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
 - Today's scheduled pipelines
-- App users (Firebase Auth)
+- App users (Firestore users collection)
 - Website visitors + bounce rate (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
 """
@@ -37,29 +37,12 @@ def get_google_credentials():
             info, scopes=[
                 "https://www.googleapis.com/auth/analytics.readonly",
                 "https://www.googleapis.com/auth/webmasters.readonly",
-                "https://www.googleapis.com/auth/firebase.readonly",
+                "https://www.googleapis.com/auth/datastore",
                 "https://www.googleapis.com/auth/cloud-platform",
             ]
         )
     except Exception as e:
         print(f"   Google auth error: {e}")
-        return None
-
-
-def get_firebase_app():
-    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-    if not sa_json:
-        return None
-    try:
-        import firebase_admin
-        from firebase_admin import credentials
-        if not firebase_admin._apps:
-            info = json.loads(sa_json)
-            cred = credentials.Certificate(info)
-            firebase_admin.initialize_app(cred, {"projectId": FIREBASE_PROJECT})
-        return True
-    except Exception as e:
-        print(f"   Firebase init error: {e}")
         return None
 
 
@@ -102,20 +85,17 @@ def get_recent_failures():
 # ── Today's Schedule ─────────────────────────────────────────────────────
 
 def cron_matches_today(cron_expr):
-    """Check if a cron expression runs today. Returns hour(s) in UTC or None."""
     parts = cron_expr.strip().split()
     if len(parts) < 5:
         return None
 
     minute, hour, dom, month, dow = parts[:5]
     today = datetime.utcnow()
-    today_dow = today.weekday()  # 0=Mon ... 6=Sun
+    today_dow = today.weekday()
     today_dom = today.day
 
-    # Convert cron dow (0=Sun, 1=Mon...6=Sat) to Python (0=Mon...6=Sun)
     cron_to_python_dow = {0: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6}
 
-    # Check day-of-week
     dow_match = False
     if dow == "*":
         dow_match = True
@@ -130,7 +110,6 @@ def cron_matches_today(cron_expr):
                 if cron_to_python_dow.get(int(part)) == today_dow:
                     dow_match = True
 
-    # Check day-of-month
     dom_match = False
     if dom == "*":
         dom_match = True
@@ -142,7 +121,6 @@ def cron_matches_today(cron_expr):
     if not (dow_match and dom_match):
         return None
 
-    # Parse hour
     if hour == "*":
         return "all day"
     hours = []
@@ -152,10 +130,8 @@ def cron_matches_today(cron_expr):
 
 
 def get_todays_schedule():
-    """Fetch workflow YAMLs and determine which run today."""
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
-    # Get list of workflow files
     resp = requests.get(f"https://api.github.com/repos/{REPO}/contents/.github/workflows",
                         headers=headers, timeout=30)
     if resp.status_code != 200:
@@ -166,18 +142,15 @@ def get_todays_schedule():
         if not f["name"].endswith(".yml") and not f["name"].endswith(".yaml"):
             continue
 
-        # Fetch file content
         file_resp = requests.get(f["url"], headers=headers, timeout=30)
         if file_resp.status_code != 200:
             continue
 
         content = base64.b64decode(file_resp.json().get("content", "")).decode("utf-8", errors="ignore")
 
-        # Extract workflow name
         name_match = re.search(r'^name:\s*(.+)$', content, re.MULTILINE)
         wf_name = name_match.group(1).strip().strip("'\"") if name_match else f["name"]
 
-        # Extract cron schedules
         cron_matches = re.findall(r"cron:\s*['\"](.+?)['\"]", content)
         for cron in cron_matches:
             hours = cron_matches_today(cron)
@@ -188,34 +161,63 @@ def get_todays_schedule():
                 else:
                     schedule.append({"name": wf_name, "hour": 0, "minute": 0, "all_day": True})
 
-    # Sort by hour then minute
     schedule.sort(key=lambda x: (x.get("hour", 0), x.get("minute", 0)))
     return schedule
 
 
-# ── Firebase Auth Users ──────────────────────────────────────────────────
+# ── App Users (Firestore REST API) ───────────────────────────────────────
 
-def get_firebase_users():
+def get_firestore_users(creds):
+    """Count users from Firestore users collection via REST API."""
     try:
-        from firebase_admin import auth
+        from google.auth.transport.requests import Request
+
+        # Refresh credentials to get access token
+        creds_copy = creds.with_scopes(["https://www.googleapis.com/auth/datastore"])
+        creds_copy.refresh(Request())
+        token = creds_copy.token
+
+        # List all documents in users collection
+        url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT}/databases/(default)/documents/users"
+        headers = {"Authorization": f"Bearer {token}"}
 
         total = 0
         new_24h = 0
         cutoff = datetime.utcnow() - timedelta(hours=24)
+        page_token = None
 
-        page = auth.list_users()
-        while page:
-            for user in page.users:
+        while True:
+            params = {"pageSize": 300}
+            if page_token:
+                params["pageToken"] = page_token
+
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            if resp.status_code != 200:
+                print(f"   Firestore API error: {resp.status_code} — {resp.text[:200]}")
+                return None
+
+            data = resp.json()
+            documents = data.get("documents", [])
+
+            for doc in documents:
                 total += 1
-                if user.user_metadata and user.user_metadata.creation_timestamp:
-                    created = datetime.utcfromtimestamp(user.user_metadata.creation_timestamp / 1000)
-                    if created > cutoff:
-                        new_24h += 1
-            page = page.get_next_page()
+                # Check createTime (Firestore metadata)
+                create_time = doc.get("createTime", "")
+                if create_time:
+                    try:
+                        created = datetime.strptime(create_time[:19], "%Y-%m-%dT%H:%M:%S")
+                        if created > cutoff:
+                            new_24h += 1
+                    except:
+                        pass
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
 
         return {"total": total, "new_24h": new_24h}
     except Exception as e:
-        print(f"   Firebase Auth error: {e}")
+        print(f"   Firestore users error: {e}")
         return None
 
 
@@ -368,7 +370,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.2 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.3 ==\n")
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
@@ -389,13 +391,12 @@ def main():
     todays_schedule = get_todays_schedule()
     print(f"   {len(todays_schedule)} pipelines scheduled today")
 
-    print("4. Firebase Auth users...")
-    fb_app = get_firebase_app()
-    firebase_users = get_firebase_users() if fb_app else None
+    print("4. App users (Firestore)...")
+    creds = get_google_credentials()
+    firebase_users = get_firestore_users(creds) if creds else None
     print(f"   {'OK — ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
 
     print("5. Google Analytics...")
-    creds = get_google_credentials()
     analytics = get_analytics_stats(creds) if creds else None
     print(f"   {'OK' if analytics else 'skipped'}")
 
