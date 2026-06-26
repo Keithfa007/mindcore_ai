@@ -6,7 +6,7 @@ Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
 - Today's scheduled pipelines
 - App users (Firestore users collection)
-- Website visitors + bounce rate (Google Analytics GA4)
+- Website stats 7-day average (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
 """
 
@@ -172,12 +172,10 @@ def get_firestore_users(creds):
     try:
         from google.auth.transport.requests import Request
 
-        # Refresh credentials to get access token
         creds_copy = creds.with_scopes(["https://www.googleapis.com/auth/datastore"])
         creds_copy.refresh(Request())
         token = creds_copy.token
 
-        # List all documents in users collection
         url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT}/databases/(default)/documents/users"
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -201,7 +199,6 @@ def get_firestore_users(creds):
 
             for doc in documents:
                 total += 1
-                # Check createTime (Firestore metadata)
                 create_time = doc.get("createTime", "")
                 if create_time:
                     try:
@@ -221,7 +218,7 @@ def get_firestore_users(creds):
         return None
 
 
-# ── Google Analytics ─────────────────────────────────────────────────────
+# ── Google Analytics (7-day) ─────────────────────────────────────────────
 
 def get_analytics_stats(creds):
     try:
@@ -229,11 +226,12 @@ def get_analytics_stats(creds):
         from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Metric
 
         client = BetaAnalyticsDataClient(credentials=creds)
-        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        end_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
 
         request = RunReportRequest(
             property=f"properties/{GA4_PROPERTY_ID}",
-            date_ranges=[DateRange(start_date=yesterday, end_date=yesterday)],
+            date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
             metrics=[
                 Metric(name="sessions"),
                 Metric(name="activeUsers"),
@@ -250,7 +248,7 @@ def get_analytics_stats(creds):
                 "users": int(row.metric_values[1].value),
                 "bounce_rate": round(float(row.metric_values[2].value) * 100, 1),
                 "pageviews": int(row.metric_values[3].value),
-                "date": yesterday,
+                "period": f"{start_date} to {end_date}",
             }
     except Exception as e:
         print(f"   Analytics error: {e}")
@@ -335,7 +333,7 @@ def build_message(workflows, failures, todays_schedule, firebase_users, analytic
 
     # ── Website (Analytics) ──
     if analytics:
-        lines.append("\U0001f310 *Website (yesterday):*")
+        lines.append("\U0001f310 *Website (7 days):*")
         lines.append(f"  Users: {analytics['users']} | Sessions: {analytics['sessions']}")
         lines.append(f"  Pageviews: {analytics['pageviews']} | Bounce: {analytics['bounce_rate']}%")
         lines.append("")
@@ -396,7 +394,7 @@ def main():
     firebase_users = get_firestore_users(creds) if creds else None
     print(f"   {'OK — ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
 
-    print("5. Google Analytics...")
+    print("5. Google Analytics (7 days)...")
     analytics = get_analytics_stats(creds) if creds else None
     print(f"   {'OK' if analytics else 'skipped'}")
 
