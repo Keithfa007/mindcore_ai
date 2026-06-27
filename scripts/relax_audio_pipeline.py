@@ -126,6 +126,12 @@ REQUIREMENTS:
 - Speak directly as "you"
 - End with quiet confidence
 
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
 Write ONLY the script. No title, no notes. Begin immediately."""
     message = client.messages.create(model="claude-opus-4-5", max_tokens=1500, messages=[{"role": "user", "content": prompt}])
     return message.content[0].text
