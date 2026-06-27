@@ -36,7 +36,7 @@ Generate 3 new learning cards for the MindCore AI app.
 
 MindCore AI targets adults 35+ (men AND women equally), people in recovery from alcohol/substances, and women experiencing perimenopause.
 
-ALREADY COVERED TOPICS — do NOT repeat:
+ALREADY COVERED TOPICS  - do NOT repeat:
 {chr(10).join(f'  - {t}' for t in used_topics) if used_topics else '  (none yet)'}
 
 Generate 3 NEW high-value mental wellness learning topics that:
@@ -47,7 +47,13 @@ Generate 3 NEW high-value mental wellness learning topics that:
 
 Each learning card should be practical, evidence-informed, and written in plain language.
 
-Respond ONLY in this exact JSON format — no markdown, no preamble:
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Respond ONLY in this exact JSON format  - no markdown, no preamble:
 {{
   "seeds": [
     {{
@@ -122,7 +128,7 @@ def save_learning_seeds(db, seeds):
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
-    print("\n📚  MindCore AI — Learning Pipeline")
+    print("\n📚  MindCore AI  - Learning Pipeline")
     print("=" * 45)
 
     print("\n[1/4] Connecting to Firebase...")
