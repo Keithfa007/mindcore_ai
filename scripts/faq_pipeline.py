@@ -66,6 +66,12 @@ Generate exactly 8 questions and answers.
 Tone: warm, honest, evidence-informed, non-clinical. Like a trusted friend who has been through it.
 Gender-inclusive - speak to both men and women.
 
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
 Respond ONLY in this exact JSON format - no markdown, no preamble:
 {{
   "title": "Theme Title",
@@ -149,6 +155,12 @@ Requirements:
 - Gender-inclusive - relevant to both men and women 35+
 - Warm, honest, evidence-informed tone. 150-250 words per answer.
 - Particularly welcome: questions relevant to women, perimenopause, recovery, or midlife
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Respond ONLY in this exact JSON format - no markdown, no preamble:
 {{
