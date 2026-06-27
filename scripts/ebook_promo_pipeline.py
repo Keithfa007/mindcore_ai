@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Ebook Promotion Pipeline v2.7
+MindCore AI  - Ebook Promotion Pipeline v2.7
 ============================================
 v2.7: Retry logic + fallback for cover image download.
 v2.6: Free Chapter 1 link + 50% launch discount (until July 31st).
@@ -81,12 +81,12 @@ VOICEOVER_CLOSERS = [
 def generate_caption(client):
     angle = random.choice(PROMO_ANGLES); print(f"   Angle: {angle}")
     prompt = f"""You are writing a SHORT social media promotional post for an ebook called
-"{EBOOK_TITLE} — {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
+"{EBOOK_TITLE}  - {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
 
 EBOOK DETAILS:
 - 7 chapters about addiction recovery, written by someone with 20 years of addiction who has been 2 years clean
 - Topics: rock bottom, willpower, shame, first 7 days, mental reset toolkit, relapse, rebuilding
-- Deeply personal recovery guide — NOT clinical self-help
+- Deeply personal recovery guide  - NOT clinical self-help
 - Chapter 1 is available to read for FREE (no sign-up, no payment)
 - Currently 50% off (launch sale through July 31st)
 
@@ -94,10 +94,16 @@ ANGLE: {angle}
 
 RULES:
 - Maximum 2-3 SHORT sentences. Be punchy and direct.
-- NO emojis. Raw, honest tone — not salesy
+- NO emojis. Raw, honest tone  - not salesy
 - Use first person for personal_story/raw_honesty, second person for others
 - Do NOT mention the price, hashtags, or links
 - You MAY naturally mention that Chapter 1 is free or that it's half price, but only if it fits the angle. Do not force it.
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Return ONLY the caption text, nothing else."""
     return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=200, messages=[{"role": "user", "content": prompt}]).content[0].text.strip()
@@ -110,7 +116,7 @@ def generate_voiceover_script(client):
     print(f"   Hook: {hook[:50]}...")
     print(f"   Closer: {closer}")
     prompt = f"""Write a SHORT voiceover script for a TikTok video promoting an ebook called
-"{EBOOK_TITLE} — {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
+"{EBOOK_TITLE}  - {EBOOK_SUBTITLE}" by Keith, Founder of MindCore AI.
 
 The ebook is a deeply personal recovery guide written by someone who spent 20 years in addiction and has been 2 years clean.
 7 chapters: rock bottom, willpower, shame, the first 7 days, mental reset toolkit, relapse, rebuilding identity.
@@ -122,10 +128,16 @@ CLOSING LINE (end with this exactly): "{closer}"
 
 RULES:
 - Total 3-5 sentences including hook and closer. 10-18 seconds spoken.
-- Speak as Keith (first person) — raw, honest, direct, no filter
+- Speak as Keith (first person)  - raw, honest, direct, no filter
 - The middle 1-3 sentences should connect the hook to the closer naturally
 - NO emojis, NO hashtags, NO links, NO "Hey", NO "What's up"
 - Sound like a man talking to himself at 3am, not a marketer
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Return ONLY the voiceover text, nothing else."""
     return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=300, messages=[{"role": "user", "content": prompt}]).content[0].text.strip()
@@ -158,7 +170,7 @@ def download_cover_with_fallback(pool, path):
         print(f"   Trying cover {i + 1}/{len(shuffled)}: {name}")
         if download_cover(url, path):
             return
-    print("   All cover downloads failed — generating fallback image")
+    print("   All cover downloads failed  - generating fallback image")
     cmd = [
         "ffmpeg", "-y", "-f", "lavfi", "-i",
         "color=c=0x1a1a2e:s=1080x1920:d=1",
@@ -236,7 +248,7 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
     except Exception as e: print(f"   Upload failed: {e}"); return {"error": str(e)}
 
 def main():
-    print(f"== MindCore AI — Ebook Promotion Pipeline v2.7 ==\n")
+    print(f"== MindCore AI  - Ebook Promotion Pipeline v2.7 ==\n")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
     scheduled_date = get_scheduled_time(10)
@@ -257,9 +269,9 @@ def main():
         else: create_static_video_silent(cover, video)
 
         tiktok_caption = f"{caption}\n\nRead Chapter 1 FREE: {FREE_CHAPTER_LINK}\n50% off through July: {PAYHIP_LINK}\n\n{TK_HASHTAGS}"
-        fb_title = f"{EBOOK_TITLE} — Read Chapter 1 Free"
+        fb_title = f"{EBOOK_TITLE}  - Read Chapter 1 Free"
         fb_description = f"{caption}\n\nRead Chapter 1 completely free: {FREE_CHAPTER_LINK}\nFull ebook 50% off through July: {PAYHIP_LINK}\n\n{FB_HASHTAGS}"
-        yt_title = f"{EBOOK_TITLE} — {EBOOK_SUBTITLE} #Shorts"[:100]
+        yt_title = f"{EBOOK_TITLE}  - {EBOOK_SUBTITLE} #Shorts"[:100]
         yt_description = f"{caption}\n\nRead Chapter 1 FREE: {FREE_CHAPTER_LINK}\nGet the full ebook (50% off through July): {PAYHIP_LINK}\n\nA deeply personal recovery guide by Keith, Founder of MindCore AI.\n\n#mindcoreai #mentalhealth #recovery #addiction #sobriety #ebook #selfhelp #Shorts"
         yt_tags = "mental health,recovery,addiction,sobriety,ebook,self help,the silent struggle,mindcore ai,healing,wellness"
 
@@ -267,11 +279,11 @@ def main():
         result = upload_all_platforms(video, tiktok_caption, fb_title, fb_description, yt_title, yt_description, yt_tags, scheduled_date=scheduled_date)
 
         if result.get("status_code") in (200, 202):
-            print(f"   All platforms: Scheduled OK — {scheduled_date}")
+            print(f"   All platforms: Scheduled OK  - {scheduled_date}")
         elif result.get("skipped"):
-            print(f"   Skipped — {result.get('reason')}")
+            print(f"   Skipped  - {result.get('reason')}")
         else:
-            print(f"   Check result — {result.get('status_code', 'unknown')}")
+            print(f"   Check result  - {result.get('status_code', 'unknown')}")
 
     print("\n== Done ==")
 
