@@ -257,6 +257,12 @@ PRICE: {product.get('price_range', '')}
 
 VOICE: You are Keith, founder of MindCore AI. You struggled with anxiety, addiction, and sleepless nights for 20 years. You're 2 years clean. This product genuinely helped you. Write as if recommending to a friend.
 
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
 FORMAT  - respond with EXACTLY this JSON structure, nothing else:
 {{
   "tiktok_title": "Short hook title under 85 chars",
