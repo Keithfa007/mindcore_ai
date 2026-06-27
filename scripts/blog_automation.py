@@ -144,7 +144,7 @@ AUDIENCE_PROFILES = {
             "  - Veterans and mental health"
         ),
         "tone": (
-            "Direct, honest, no-nonsense — like advice from a mate who has been there. "
+            "Direct, honest, no-nonsense  - like advice from a mate who has been there. "
             "Never preachy. Never clinical. Speak to men who would never normally "
             "read a mental health article."
         ),
@@ -155,7 +155,7 @@ AUDIENCE_PROFILES = {
         "description": (
             "Women 25-50 who carry invisible loads and need content that truly validates them. "
             "TOPIC POOL:\n"
-            "  - ADHD in women (massively underdiagnosed — exploding search volume)\n"
+            "  - ADHD in women (massively underdiagnosed  - exploding search volume)\n"
             "  - Perimenopause and mental health\n"
             "  - Menopause and identity loss\n"
             "  - Postpartum depression vs postpartum anxiety\n"
@@ -180,7 +180,7 @@ AUDIENCE_PROFILES = {
             "  - Gaslighting and recovery"
         ),
         "tone": (
-            "Warm, empathetic, validating — like advice from a trusted friend. "
+            "Warm, empathetic, validating  - like advice from a trusted friend. "
             "Acknowledge the invisible load women carry. Practical and empowering, never patronising."
         ),
         "preferred_categories": ["Women's Mental Health", "Anxiety & Stress", "Relationships & Family", "Sleep & Burnout", "Recovery & Sobriety"],
@@ -209,7 +209,7 @@ AUDIENCE_PROFILES = {
             "  - Meditation alternatives\n"
             "  - Journaling, exercise, gut health and mental health\n"
             "  - Imposter syndrome, codependency, emotional intelligence\n"
-            "  - Mental health apps — what works and what doesn't\n"
+            "  - Mental health apps  - what works and what doesn't\n"
             "  - Rumination and overthinking"
         ),
         "tone": (
@@ -339,7 +339,7 @@ def get_next_audience(history):
 def format_history_for_prompt(history):
     if not history: return "None yet."
     return "\n".join(
-        f"  {i}. [{e['date']}] \"{e['title']}\" — keyword: \"{e['primary_keyword']}\" (audience: {e.get('audience','unknown')})"
+        f"  {i}. [{e['date']}] \"{e['title']}\"  - keyword: \"{e['primary_keyword']}\" (audience: {e.get('audience','unknown')})"
         for i, e in enumerate(history, 1)
     )
 
@@ -399,12 +399,12 @@ def update_library_on_github(library, used_keyword):
     get_r   = requests.get(api_url, headers=hdrs, timeout=15)
     sha     = get_r.json().get("sha") if get_r.status_code == 200 else None
     encoded = base64.b64encode(json.dumps(library, indent=2, ensure_ascii=False).encode()).decode()
-    payload = {"message": f"blog: mark keyword used — {used_keyword}", "content": encoded}
+    payload = {"message": f"blog: mark keyword used  - {used_keyword}", "content": encoded}
     if sha: payload["sha"] = sha
     put = requests.put(api_url, headers=hdrs, json=payload, timeout=15)
     if put.status_code in (200, 201):
         remaining = sum(1 for k in library if not k["used"])
-        print(f"   Library updated — {remaining} keywords remaining")
+        print(f"   Library updated  - {remaining} keywords remaining")
     else:
         print(f"   Library update failed: {put.text}")
 
@@ -429,12 +429,12 @@ def research_topic(history):
             if result:
                 return result
         except Exception as e:
-            print(f"   [SERP] Failed: {e} — falling back to Claude")
+            print(f"   [SERP] Failed: {e}  - falling back to Claude")
     elif not SERP_API_KEY:
-        print("   [SERP] Skipped — no SERP_API_KEY set")
+        print("   [SERP] Skipped  - no SERP_API_KEY set")
 
     remaining = sum(1 for k in library if not k["used"])
-    print(f"   [RESEARCH] No library/SERP keyword for this audience ({remaining} remaining for others) — using Claude research")
+    print(f"   [RESEARCH] No library/SERP keyword for this audience ({remaining} remaining for others)  - using Claude research")
     return research_from_claude(audience, profile, history)
 
 
@@ -461,13 +461,20 @@ ALREADY PUBLISHED (avoid repeating):
 {history_txt}
 
 Tasks:
-1. Use the verified keyword as primary keyword — do NOT change it
+1. Use the verified keyword as primary keyword  - do NOT change it
 2. Write a compelling title that CONTAINS A NUMBER (e.g. "7 Signs...", "5 Ways...", "3 Things...") and contains the keyword
 3. Choose the best 5 secondary keywords
 4. Write a meta description (150-160 chars) that contains the primary keyword verbatim
 5. Write a DALL-E image prompt for a cinematic-warm scene
 
-Respond ONLY in this exact JSON — no markdown:
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Respond ONLY in this exact JSON  - no markdown:
 {{"topic":"title with number and keyword","primary_keyword":"{picked['keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta containing primary keyword verbatim","image_prompt":"specific cinematic-warm scene: what is happening, where, time of day, lighting","rationale":"why this keyword will rank","category":"{category}","audience":"{audience}"}}"""}]
     )
 
@@ -499,7 +506,7 @@ CRITERIA:
   - High demand, VERY low competition
   - Avoid terms dominated by WebMD, Healthline, Mayo Clinic, Psychology Today
   - Long-tail, question-based keywords big sites ignore
-  - Evergreen — ranks for months
+  - Evergreen  - ranks for months
   - 2-5 word primary keyword
 
 ALREADY PUBLISHED:
@@ -510,6 +517,13 @@ PREFERRED CATEGORIES:
 
 ALL CATEGORIES:
 {all_cats}
+
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Respond ONLY in this exact JSON:
 {{"topic":"title containing a number (e.g. 7 Signs / 5 Ways) and the keyword","primary_keyword":"keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"intent","meta_description":"150-160 char meta containing primary keyword verbatim","image_prompt":"specific cinematic-warm scene: what is happening, where, time of day, lighting","rationale":"SERP insight","category":"exact category","audience":"{audience}"}}"""}]
@@ -583,7 +597,14 @@ Tasks:
 4. Write a meta description (150-160 chars) containing the primary keyword verbatim
 5. Write a DALL-E image prompt for a cinematic-warm scene
 
-Respond ONLY in this exact JSON — no markdown:
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Respond ONLY in this exact JSON  - no markdown:
 {{"topic":"title with number and keyword","primary_keyword":"2-5 word keyword","secondary_keywords":["kw2","kw3","kw4","kw5"],"search_intent":"what reader is looking for","meta_description":"150-160 char meta containing primary keyword verbatim","image_prompt":"specific cinematic-warm scene: what is happening, where, time of day, lighting","rationale":"SERP insight","category":"exact category","audience":"{audience}","serp_paa_questions":{json.dumps(paa_questions[:5])}}}"""}]
     )
 
@@ -623,7 +644,7 @@ def write_blog_post(topic_data, history):
             + "\n".join(f'    - {q}' for q in serp_paa[:8]) +
             f'\n  - Add 1-2 more questions if needed to reach 5 total\n'
             f'  - At least 2 questions must include the exact phrase "{kw}"\n'
-            f'  - Answers must be 2-4 sentences — specific and helpful, not generic\n'
+            f'  - Answers must be 2-4 sentences  - specific and helpful, not generic\n'
             f'  - One answer should naturally mention MindCore AI as a useful tool'
         )
     else:
@@ -634,7 +655,7 @@ def write_blog_post(topic_data, history):
             f'  Then 5 questions and answers using <h3> for each question and <p> for each answer.\n'
             f'  - Questions must be natural, conversational, things people actually Google\n'
             f'  - At least 2 questions must include the exact phrase "{kw}"\n'
-            f'  - Answers must be 2-4 sentences — specific and helpful, not generic\n'
+            f'  - Answers must be 2-4 sentences  - specific and helpful, not generic\n'
             f'  - One answer should naturally mention MindCore AI as a useful tool'
         )
 
@@ -642,7 +663,7 @@ def write_blog_post(topic_data, history):
     cross_link_block = ""
     if len(existing_posts) >= 2:
         cross_link_block = (
-            "\nCROSS-POST LINKS (MANDATORY — link to exactly 2 of these existing posts "
+            "\nCROSS-POST LINKS (MANDATORY  - link to exactly 2 of these existing posts "
             "naturally within the content using relevant anchor text):\n"
         )
         for p in existing_posts:
@@ -673,11 +694,11 @@ CRITICAL KEYWORD RULES:
   2. EXACT phrase "{kw}" in the very first sentence
   3. EXACT phrase "{kw}" in at least 3 H2 subheadings
   4. EXACT phrase "{kw}" at least 8-10 times total
-  5. No synonyms or variations — EXACT phrase only
+  5. No synonyms or variations  - EXACT phrase only
   6. Keyword density: 1.0%-1.5%
   7. Minimum 1,200 words (not counting FAQ)
 
-MANDATORY LINKS — all must appear as proper HTML anchor tags:
+MANDATORY LINKS  - all must appear as proper HTML anchor tags:
 
   Internal site pages (include ALL 3):
 {int_links}
@@ -687,7 +708,7 @@ MANDATORY LINKS — all must appear as proper HTML anchor tags:
 
   MindCore AI app link (include naturally at least ONCE in the body content, separate from the CTA button):
   - Use this HTML inline in a sentence: {APP_INLINE_LINK}
-  - Example: "That is why tools like {APP_INLINE_LINK} were built — to be there at 3am when no one else is."
+  - Example: "That is why tools like {APP_INLINE_LINK} were built  - to be there at 3am when no one else is."
 {cross_link_block}
 GOOGLE PLAY CTA BUTTON (use this EXACT HTML in the final CTA section):
   {GP_CTA_LINK}
@@ -698,7 +719,7 @@ STRUCTURE:
 
   Other requirements:
   - At least one <ul> list in the main content
-  - Real, actionable advice — zero platitudes
+  - Real, actionable advice  - zero platitudes
 
 FORMAT:
   - Clean WordPress HTML: h1 h2 h3 p ul li strong em a
@@ -724,7 +745,7 @@ def expand_blog_post(content, topic_data, current_words):
     kw     = topic_data["primary_keyword"]
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
-        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}.
+        messages=[{"role": "user", "content": f"""Post is {current_words} words  - needs {MIN_WORD_COUNT}.
 Add ~{needed} words, expand sections or add 2 H2s. Same tone, HTML format.
 Use EXACT phrase "{kw}" at least 3 more times. Return COMPLETE post with EXCERPT.
 
@@ -909,7 +930,7 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
             elif upd.status_code == 429:
                 print(f"   Image attach rate limited (attempt {img_attempt + 1}/3)")
             else:
-                print(f"   Image attach failed: {upd.status_code} — {upd.text}")
+                print(f"   Image attach failed: {upd.status_code}  - {upd.text}")
                 break
 
     return post
@@ -921,7 +942,7 @@ def update_history_on_github(history, new_entry):
     token = os.environ.get("GITHUB_TOKEN", "")
     repo  = os.environ.get("GITHUB_REPOSITORY", "")
     if not token or not repo:
-        print("   Skipping — GITHUB_TOKEN not set")
+        print("   Skipping  - GITHUB_TOKEN not set")
         return
     api_url = f"https://api.github.com/repos/{repo}/contents/{HISTORY_FILE}"
     hdrs    = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
@@ -929,7 +950,7 @@ def update_history_on_github(history, new_entry):
     sha     = get_r.json().get("sha") if get_r.status_code == 200 else None
     history.append(new_entry)
     encoded = base64.b64encode(json.dumps(history, indent=2).encode()).decode()
-    payload = {"message": f"blog: log — {new_entry['title'][:60]}", "content": encoded}
+    payload = {"message": f"blog: log  - {new_entry['title'][:60]}", "content": encoded}
     if sha: payload["sha"] = sha
     put = requests.put(api_url, headers=hdrs, json=payload, timeout=15)
     print(f"   History committed ({len(history)} posts)" if put.status_code in (200, 201) else f"   History failed: {put.text}")

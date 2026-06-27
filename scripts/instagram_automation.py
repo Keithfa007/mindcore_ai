@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Instagram Daily Carousel — MANUAL UPLOAD MODE (v3.0)
+MindCore AI  - Instagram Daily Carousel  - MANUAL UPLOAD MODE (v3.0)
 
-CHANGES (v3.0 — 14 May 2026):
+CHANGES (v3.0  - 14 May 2026):
   Switched to manual-upload mode while @mind_core_ai cools down from
   Instagram's automation flag. Pipeline still generates the full daily
   carousel + caption on schedule, but instead of posting via Upload-Post,
@@ -11,9 +11,9 @@ CHANGES (v3.0 — 14 May 2026):
 
   Each package contains:
     - 7 numbered slide JPEGs (slide_01.jpg ... slide_07.jpg)
-    - README.txt — copy-paste-ready post details (caption, hashtags,
+    - README.txt  - copy-paste-ready post details (caption, hashtags,
       slide-by-slide reference, posting instructions)
-    - package.json — machine-readable metadata
+    - package.json  - machine-readable metadata
 
   Restore automated posting later by reverting to v2.x or setting
   ENABLE_AUTO_UPLOAD="true" in the workflow env.
@@ -72,10 +72,10 @@ SITE_URL = "https://mindcoreai.eu"
 STYLE_ANCHOR = (
     "Calm, minimal editorial illustration in a warm muted palette: soft beige, "
     "dusty rose, sage green, terracotta, cream. Soft natural morning light. "
-    "Hand-drawn quality with subtle paper texture. Generous negative space — "
+    "Hand-drawn quality with subtle paper texture. Generous negative space  - "
     "leave the upper third of the composition empty so text can be added. "
     "Quiet, contemplative still-life mood. No text, no logos, no words. "
-    "If a person appears, show only soft silhouette, hands, or back-view — "
+    "If a person appears, show only soft silhouette, hands, or back-view  - "
     "never a close-up face. Square 1:1 composition, gentle and reflective."
 )
 
@@ -133,11 +133,11 @@ SAFE_FALLBACK_SCENE = (
 )
 
 APP_FACTS = """
-MindCore AI — voice-first AI mental wellness companion.
+MindCore AI  - voice-first AI mental wellness companion.
 - Available 24/7, no judgment, no waiting rooms.
-- Built primarily for men 35+ navigating anxiety, burnout, loneliness, recovery —
+- Built primarily for men 35+ navigating anxiety, burnout, loneliness, recovery  -
   with expanding content for everyone navigating modern mental health.
-- 7-day trial €1.99 (NOT free — never say "free trial").
+- 7-day trial €1.99 (NOT free  - never say "free trial").
 - Premium €14.99/month. Pro €25/month.
 - Website: https://mindcoreai.eu
 """
@@ -155,7 +155,7 @@ def ensure_brand_hashtag(text: str) -> str:
             lines[i] = lines[i].rstrip() + f" {REQUIRED_BRAND_HASHTAG}"
             print(f"  ⚙ Brand hashtag appended to caption")
             return "\n".join(lines)
-    print(f"  ⚙ No hashtags found — appending brand line")
+    print(f"  ⚙ No hashtags found  - appending brand line")
     return text.rstrip() + f"\n\n{REQUIRED_BRAND_HASHTAG}"
 
 
@@ -212,7 +212,7 @@ def pick_topic(pools: dict, history: list) -> dict:
         other = "neutral" if audience == "men" else "men"
         available = [t for t in pools[other] if t["keyword"] not in recent_keywords]
         if available:
-            print(f"  {audience} pool on cooldown — falling back to {other}")
+            print(f"  {audience} pool on cooldown  - falling back to {other}")
         else:
             available = pools[audience]
     return random.choice(available)
@@ -239,7 +239,7 @@ def generate_carousel_content(topic: dict, fmt: dict) -> dict:
         always_hashtags = "#mindcoreai #MensMentalHealth #MentalHealthMatters"
     else:
         voice_guidance = (
-            "Warm, plain, direct, second-person. Universal — speaks to anyone navigating this. "
+            "Warm, plain, direct, second-person. Universal  - speaks to anyone navigating this. "
             "Not gendered. Not therapy-speak. Just honest."
         )
         brand_position = "voice-first AI mental wellness companion for anyone navigating modern mental health"
@@ -261,12 +261,12 @@ VOICE GUIDANCE: {voice_guidance}
 APP FACTS (for the final CTA slide and caption):
 {APP_FACTS}
 
-CAROUSEL STRUCTURE — EXACTLY {SLIDE_COUNT} slides:
+CAROUSEL STRUCTURE  - EXACTLY {SLIDE_COUNT} slides:
 - Slide 1: HOOK. Big, scroll-stopping. Max 8 words. Title only.
 - Slides 2 to {SLIDE_COUNT-1}: ONE concept per slide, following the SLIDE PATTERN above.
   Each has a short title (3-6 words) and a body (1-2 sentences, max 25 words total).
 - Slide {SLIDE_COUNT}: CTA. Title: "Save this. Send to a friend who needs it."
-  Body: "24/7 voice-first mental health support — link in bio. 🔗"
+  Body: "24/7 voice-first mental health support  - link in bio. 🔗"
 
 VOICE (general rules):
 - Plain, direct, second-person ("you").
@@ -282,6 +282,13 @@ ALSO WRITE A CAPTION (separate from slides) for the post:
   ALWAYS INCLUDE THESE BRAND HASHTAGS (non-negotiable): {always_hashtags}
   Plus 7 niche tags relevant to {topic['keyword']}. No spaces between # and word. No commas.
 
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
 {{
@@ -294,7 +301,7 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
     {{"title": "slide 6 title", "body": "slide 6 body"}}
   ],
   "cta_title": "Save this. Send to a friend who needs it.",
-  "cta_body": "24/7 voice-first mental health support — link in bio. 🔗",
+  "cta_body": "24/7 voice-first mental health support  - link in bio. 🔗",
   "caption": "the full IG caption with hashtags on a final line"
 }}"""
 
@@ -340,14 +347,14 @@ def generate_scene_prompts(content: dict, topic: dict) -> list:
         )
     else:
         figure_guidance = (
-            "Prefer NO people at all — focus on still life, objects, light, environment. "
+            "Prefer NO people at all  - focus on still life, objects, light, environment. "
             "If a figure is unavoidable, keep gender ambiguous (silhouette, hands, back-view only)."
         )
 
     slide_briefs = [
         f"Slide 1 (cover): {content['hook']}",
     ] + [
-        f"Slide {i+2}: {s['title']} — {s['body']}"
+        f"Slide {i+2}: {s['title']}  - {s['body']}"
         for i, s in enumerate(content['slides'])
     ] + [
         f"Slide {SLIDE_COUNT} (CTA): {content['cta_title']}",
@@ -357,13 +364,13 @@ def generate_scene_prompts(content: dict, topic: dict) -> list:
 
 Write {SLIDE_COUNT} STILL-LIFE scene descriptions (40-70 words each) for an
 Instagram carousel about everyday emotional life. The carousel topic is below
-for tonal context only — the SCENES themselves must NOT depict distress,
+for tonal context only  - the SCENES themselves must NOT depict distress,
 illness, or any clinical / mental health subject matter.
 
 CAROUSEL TOPIC (for tonal context only): {topic['keyword']}
 AUDIENCE: {audience}
 
-SLIDES (do not describe the words on each slide — just write a fitting calm scene):
+SLIDES (do not describe the words on each slide  - just write a fitting calm scene):
 {chr(10).join(slide_briefs)}
 
 ABSOLUTE RULES:
@@ -382,7 +389,21 @@ GOOD EXAMPLES:
 - "An empty park bench at dawn, dew on the wood. A pair of running shoes left beside it. Soft mist over a cream-coloured horizon."
 - "A pair of hands wrapped around a ceramic bowl of warm water, sleeves of a beige jumper rolled up. Terracotta tile counter."
 
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
 Return EXACTLY {SLIDE_COUNT} scene descriptions as a JSON array of strings.
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
 Return ONLY the JSON array, no preamble, no markdown:
 
 ["scene 1", "scene 2", ..., "scene {SLIDE_COUNT}"]"""
@@ -585,7 +606,7 @@ def _split_caption_and_hashtags(caption: str) -> tuple:
         # tolerate a trailing empty line below the hashtags
         if not stripped:
             continue
-        # not a hashtag line — body extends to here
+        # not a hashtag line  - body extends to here
         body_lines = lines[:i+1]
         break
     body_text = "\n".join(body_lines).rstrip()
@@ -617,7 +638,7 @@ def build_readme(
     slides_block = "\n".join(slide_lines)
 
     return f"""================================================================================
-  MINDCORE AI — INSTAGRAM CAROUSEL UPLOAD PACKAGE
+  MINDCORE AI  - INSTAGRAM CAROUSEL UPLOAD PACKAGE
   Generated: {run_date}
 ================================================================================
 
@@ -636,9 +657,9 @@ HOW TO POST (manual upload from your phone)
 --------------------------------------------------------------------------------
   1. Open the Instagram app on your phone
   2. Tap the [+] icon → POST
-  3. Tap the "Select multiple" icon (stacked squares) — top right of camera roll
+  3. Tap the "Select multiple" icon (stacked squares)  - top right of camera roll
   4. Select slide_01.jpg through slide_07.jpg IN ORDER
-     (very important: 01, 02, 03, 04, 05, 06, 07 — the order matters for the swipe)
+     (very important: 01, 02, 03, 04, 05, 06, 07  - the order matters for the swipe)
   5. Tap NEXT → NEXT (skip filters & edits unless you want to add anything)
   6. In the caption field: copy-paste the CAPTION BODY below
   7. Then add 2 line breaks and paste the HASHTAGS line
@@ -712,13 +733,13 @@ def save_package(
     # Pick a sensible posting-time hint based on the day of week (Malta CEST)
     weekday = now.weekday()  # 0 = Monday
     posting_time_hint = {
-        0: "Monday morning — 08:00–09:00 Malta (commute scroll)",
-        1: "Tuesday morning — 08:00–09:00 Malta",
-        2: "Wednesday morning — 08:00–09:00 Malta",
-        3: "Thursday morning — 08:00–09:00 Malta",
-        4: "Friday morning — 08:00–09:00 Malta",
-        5: "Saturday late morning — 11:00–12:00 Malta (leisure scroll)",
-        6: "Sunday late morning — 11:00–12:00 Malta (leisure scroll)",
+        0: "Monday morning  - 08:00–09:00 Malta (commute scroll)",
+        1: "Tuesday morning  - 08:00–09:00 Malta",
+        2: "Wednesday morning  - 08:00–09:00 Malta",
+        3: "Thursday morning  - 08:00–09:00 Malta",
+        4: "Friday morning  - 08:00–09:00 Malta",
+        5: "Saturday late morning  - 11:00–12:00 Malta (leisure scroll)",
+        6: "Sunday late morning  - 11:00–12:00 Malta (leisure scroll)",
     }[weekday]
 
     readme = build_readme(
@@ -812,7 +833,7 @@ def post_carousel_via_uploadpost(image_paths: list, caption: str) -> dict:
 # ── Main ────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("  MindCore AI — Instagram Daily Carousel (MANUAL UPLOAD MODE)")
+    print("  MindCore AI  - Instagram Daily Carousel (MANUAL UPLOAD MODE)")
     print(f"  Run at: {datetime.now(timezone.utc).isoformat()}")
     print(f"  Auto-upload via Upload-Post: {'ENABLED' if ENABLE_AUTO_UPLOAD else 'DISABLED (manual mode)'}")
     print("=" * 60)

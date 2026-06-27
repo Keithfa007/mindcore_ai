@@ -257,7 +257,7 @@ PRICE: {product.get('price_range', '')}
 
 VOICE: You are Keith, founder of MindCore AI. You struggled with anxiety, addiction, and sleepless nights for 20 years. You're 2 years clean. This product genuinely helped you. Write as if recommending to a friend.
 
-FORMAT — respond with EXACTLY this JSON structure, nothing else:
+FORMAT  - respond with EXACTLY this JSON structure, nothing else:
 {{
   "tiktok_title": "Short hook title under 85 chars",
   "description": "Longer caption 2-3 sentences, include why you personally use it.",
@@ -300,7 +300,7 @@ def post_to_platform(headers, platform_data, final_slides):
 
 def main():
     print("=" * 60)
-    print("MindCore AI — Affiliate Product Carousel v1.5")
+    print("MindCore AI  - Affiliate Product Carousel v1.5")
     print("=" * 60)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -399,7 +399,7 @@ def main():
             ("scheduled_date", scheduled),
         ]
         code, msg = post_to_platform(headers, eu_tt_data, final_slides)
-        print(f"  EU TikTok: {code} — {msg}")
+        print(f"  EU TikTok: {code}  - {msg}")
 
         # ── 2. EU Facebook (14:00 Malta / 12:00 UTC) ──
         print("  [2/3] EU Facebook...")
@@ -412,7 +412,7 @@ def main():
             ("scheduled_date", scheduled),
         ]
         code, msg = post_to_platform(headers, eu_fb_data, final_slides)
-        print(f"  EU Facebook: {code} — {msg}")
+        print(f"  EU Facebook: {code}  - {msg}")
 
         # ── 3. US TikTok (16:00 Malta / 14:00 UTC) ──
         print("  [3/3] US TikTok...")
@@ -434,7 +434,7 @@ def main():
             ("scheduled_date", us_scheduled),
         ]
         code, msg = post_to_platform(headers, us_tt_data, final_slides)
-        print(f"  US TikTok: {code} — {msg}")
+        print(f"  US TikTok: {code}  - {msg}")
 
         print(f"  Affiliate link: {affiliate_link}")
 
@@ -443,7 +443,7 @@ def main():
     save_history(history, {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "product_name": product["name"], "category": category["category"], "title": content["tiktok_title"], "affiliate_link": affiliate_link})
 
     print("\n" + "=" * 60)
-    print("DONE — Affiliate carousel posted!")
+    print("DONE  - Affiliate carousel posted!")
     print("=" * 60)
 
 

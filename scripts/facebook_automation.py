@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Facebook Daily Automation (v3.1 — Text-as-Image + 3-Pool Audience)
+MindCore AI  - Facebook Daily Automation (v3.1  - Text-as-Image + 3-Pool Audience)
 
 CHANGES (v3.1):
   Audience mix expanded from 70/30 (men/neutral) to 40/30/30 (men/female/neutral).
@@ -22,7 +22,7 @@ CHANGES (v3.0):
 PHASE 1 AUDIENCE STRATEGY (now multi-audience):
   40% men's content    (men 35+ wedge, our anchor)
   30% women's content  (matches female video pipeline expansion)
-  30% neutral content  (universal — no gender framing)
+  30% neutral content  (universal  - no gender framing)
 
 Required env vars:
   ANTHROPIC_API_KEY  - for content + headline generation
@@ -57,14 +57,14 @@ NEUTRAL_KEYWORDS_FILE   = Path("scripts/neutral_keywords.json")
 HISTORY_FILE            = Path("scripts/fb_post_history.json")
 HISTORY_LIMIT           = 25
 
-# Audience mix — keep the men's wedge primary but explicitly serve women + everyone.
+# Audience mix  - keep the men's wedge primary but explicitly serve women + everyone.
 AUDIENCE_WEIGHTS = {
     "men":     0.40,
     "female":  0.30,
     "neutral": 0.30,
 }
 
-# ── Brand palette (warm, muted — same as IG carousels & YouTube banner) ─────
+# ── Brand palette (warm, muted  - same as IG carousels & YouTube banner) ─────
 PALETTE = {
     "cream":      (250, 244, 230),
     "beige":      (236, 222, 196),
@@ -90,11 +90,11 @@ HEADLINE_MAX_WORDS = 15
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
 
 APP_FACTS = """
-MindCore AI — voice-first AI mental wellness companion.
+MindCore AI  - voice-first AI mental wellness companion.
 - Available 24/7, no judgment, no waiting rooms.
-- Built primarily for men 35+ navigating anxiety, burnout, loneliness, recovery —
+- Built primarily for men 35+ navigating anxiety, burnout, loneliness, recovery  -
   with expanding content for women and for anyone navigating modern mental health.
-- 7-day trial €1.99 (NOT free — never say \"free trial\").
+- 7-day trial €1.99 (NOT free  - never say \"free trial\").
 - Premium €14.99/month or €99.99/year.
 - Pro €25/month or €179.99/year.
 - Website: https://mindcoreai.eu
@@ -145,10 +145,10 @@ VOICE_BY_AUDIENCE = {
     "neutral": {
         "description": "voice-first AI mental wellness companion for anyone navigating modern mental health",
         "voice": (
-            "Voice: warm, plain, direct, second-person. Universal — speaks to "
+            "Voice: warm, plain, direct, second-person. Universal  - speaks to "
             "anyone navigating this. Not gendered. Not therapy-speak. Just honest."
         ),
-        "extra_hashtags": "",  # nothing extra — brand + #MentalHealthMatters cover it
+        "extra_hashtags": "",  # nothing extra  - brand + #MentalHealthMatters cover it
     },
 }
 
@@ -213,11 +213,11 @@ def pick_topic(pools: dict, history: list) -> dict:
         for other in cascade_order:
             available = [t for t in pools[other] if t["keyword"] not in recent_keywords]
             if available:
-                print(f"  {audience} pool on cooldown — falling back to {other}")
+                print(f"  {audience} pool on cooldown  - falling back to {other}")
                 break
         if not available:
-            # Everything's on cooldown — accept a repeat from the originally chosen audience.
-            print(f"  All pools on cooldown — picking from {audience} anyway")
+            # Everything's on cooldown  - accept a repeat from the originally chosen audience.
+            print(f"  All pools on cooldown  - picking from {audience} anyway")
             available = pools[audience]
 
     return random.choice(available)
@@ -234,28 +234,28 @@ def generate_headline(topic: dict, style: str) -> str:
     # *body* of the post can lean audience-coded; the headline stays open.
     audience_note = (
         "Universal pronouns ('you', 'anyone', 'someone'). The headline must "
-        "feel like 'that's me' on first read for anyone scrolling — even "
+        "feel like 'that's me' on first read for anyone scrolling  - even "
         "though the post's audience leans "
         f"{audience}. Do NOT mention gender in the headline. The headline "
-        "is the image — everyone scrolling will read it."
+        "is the image  - everyone scrolling will read it."
     )
 
     prompt = f"""You are writing the BIG TEXT that will be printed across an
 image for a Facebook post about everyday emotional life. This text is what
-people see in the feed — it must stop the scroll on its own.
+people see in the feed  - it must stop the scroll on its own.
 
 TOPIC: {topic['keyword']}
 ANGLE: {topic['angle']}
 STYLE: {style}
 AUDIENCE: {audience_note}
 
-REFERENCE EXAMPLES (the register we want — plain spoken truth, not poetry):
+REFERENCE EXAMPLES (the register we want  - plain spoken truth, not poetry):
 {examples_block}
 
 RULES:
 - Between {HEADLINE_MIN_WORDS} and {HEADLINE_MAX_WORDS} words. Shorter is stronger.
 - One sentence (or two very short ones). Plain, direct, recognisable.
-- Universal pronouns — 'you', 'anyone', 'someone'. Never 'men' or 'women' explicitly.
+- Universal pronouns  - 'you', 'anyone', 'someone'. Never 'men' or 'women' explicitly.
 - The reader should think 'that's me' on first read.
 - NO poetry. NO metaphors. NO clever wordplay. Just one true sentence.
 - NO clinical jargon (no 'mental illness', 'depression', 'anxiety disorder').
@@ -263,6 +263,13 @@ RULES:
   ❌ "close to the edge", "can't take it anymore", "the end", "give up", "ready to go"
   ✅ "carrying it alone", "tired of pretending", "everything feels heavy"
 - Must work as huge bold text on a square image.
+
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Return ONLY the headline text. No quotes, no preamble, no explanation."""
 
@@ -289,7 +296,7 @@ def generate_caption(topic: dict, style: str, headline: str) -> str:
         "  a) A short question that invites a comment "
         '("anyone else?", "what helped you?", "do you get this?").\n'
         "  b) A soft mention of MindCore AI as a place to talk when you "
-        "can't talk to anyone else — keep it casual, one sentence — "
+        "can't talk to anyone else  - keep it casual, one sentence  - "
         f"with the link {SITE_URL}.\n"
         '  c) A "share this with someone who needs it tonight" line.'
     )
@@ -297,7 +304,7 @@ def generate_caption(topic: dict, style: str, headline: str) -> str:
     extra_tag_line = (
         f"    For this {audience}-audience post also include: {voice_pack['extra_hashtags']}"
         if voice_pack["extra_hashtags"]
-        else f"    No audience-specific tag for neutral posts — keep the set universal."
+        else f"    No audience-specific tag for neutral posts  - keep the set universal."
     )
 
     prompt = f"""You are writing the caption that sits BELOW the image on Facebook.
@@ -312,20 +319,20 @@ AUDIENCE: {audience}
 
 VOICE GUIDANCE: {voice_pack['voice']}
 
-APP FACTS (only mention if it fits naturally — never force it):
+APP FACTS (only mention if it fits naturally  - never force it):
 {APP_FACTS}
 
 GENERAL RULES (this is the most important part):
 - 30 to 80 words MAX. Shorter is better.
 - Tone: a friend texting you, NOT a brand posting. Conversational, slightly
   loose. Lowercase is fine. Broken sentences are fine. One emoji at the end
-  is fine if it fits naturally (🫶 ☕ 💙 🙏 — never more than one).
+  is fine if it fits naturally (🫶 ☕ 💙 🙏  - never more than one).
 - DO NOT sound like a magazine column. NO polished editorial prose.
 - NO toxic positivity. NO "you got this!". NO "stay strong queen/king".
 - Speak in second person ("you") or universal ("we"). For audience-coded
-  posts you may use 'as a woman' or 'as a man' if it fits naturally — but
+  posts you may use 'as a woman' or 'as a man' if it fits naturally  - but
   never in a way that excludes the other.
-- First line still has to hook — first ~12 words are visible before truncation.
+- First line still has to hook  - first ~12 words are visible before truncation.
 - End with ONE of these CTAs (pick whichever fits the post best):
 {cta_options}
 - 4 to 6 hashtags at the very end on a single line.
@@ -334,10 +341,17 @@ GENERAL RULES (this is the most important part):
     Plus 1-2 niche tags relevant to "{topic['keyword']}".
 
 NEVER:
-- NEVER say "free trial" — the trial is €1.99 for 7 days.
+- NEVER say "free trial"  - the trial is €1.99 for 7 days.
 - NEVER use "close to the edge", "can't go on", "end it", or any suicidal-
   ideation flavoured phrasing.
 - NEVER fabricate features. Only use APP FACTS above.
+
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Return ONLY the caption text. No preamble, no markdown, no explanation."""
 
@@ -359,7 +373,7 @@ def ensure_brand_hashtag(caption: str) -> str:
             lines[i] = lines[i].rstrip() + f" {REQUIRED_BRAND_HASHTAG}"
             print(f"  ⚙ Brand hashtag appended to existing hashtag line")
             return "\n".join(lines)
-    print(f"  ⚙ No hashtags found in caption — appending brand line")
+    print(f"  ⚙ No hashtags found in caption  - appending brand line")
     return caption.rstrip() + f"\n\n{REQUIRED_BRAND_HASHTAG}"
 
 
@@ -531,7 +545,7 @@ def post_text_to_facebook(message: str, page_token: str) -> dict:
 # ── Main ────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("  MindCore AI — Facebook Daily Automation (v3.1 text-as-image + 3-pool)")
+    print("  MindCore AI  - Facebook Daily Automation (v3.1 text-as-image + 3-pool)")
     print(f"  Run at: {datetime.now(timezone.utc).isoformat()}")
     print("=" * 60)
 

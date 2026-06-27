@@ -2,7 +2,7 @@
 """
 MindCore AI -- Carousel Image Post Pipeline v3.0
 =================================================
-v3.0: SERP-driven topic selection — trending topics from real Google data.
+v3.0: SERP-driven topic selection  - trending topics from real Google data.
 v2.9: Facebook-specific title + description (no TikTok hashtags on FB).
 v2.7: Full image variety pools -- 10 prompts per slide per gender.
 
@@ -18,7 +18,7 @@ from PIL import Image,ImageDraw,ImageFont
 from scripts.fal_image import generate_fal_image
 
 ANTHROPIC_API_KEY=os.environ["ANTHROPIC_API_KEY"]
-OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY","")  # no longer needed — using fal.ai
+OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY","")  # no longer needed  - using fal.ai
 UPLOAD_POST_API_KEY=os.environ.get("UPLOAD_POST_API_KEY","")
 SERP_API_KEY=os.environ.get("SERP_API_KEY","")
 GITHUB_RUN_NUMBER=int(os.environ.get("GITHUB_RUN_NUMBER","1"))
@@ -135,7 +135,7 @@ def add_gradient_overlay(img,tsy):
 def generate_carousel_script(client,history,gender):
     used=[e.get("topic","") for e in history]; seeds=MALE_SEEDS if gender=="male" else FEMALE_SEEDS
     avoid=", ".join(used[-10:]) if used else "none"
-    # SERP-driven topic selection — find what's trending right now
+    # SERP-driven topic selection  - find what's trending right now
     seed=None
     if SERP_AVAILABLE and SERP_API_KEY:
         try:
@@ -149,7 +149,7 @@ def generate_carousel_script(client,history,gender):
                     seed=winner.get("topic", winner.get("keyword",""))
                     print(f"  [SERP] Winner: '{seed}' [{winner.get('source','?')}]")
         except Exception as e:
-            print(f"  [SERP] Failed: {e} — falling back to random seed")
+            print(f"  [SERP] Failed: {e}  - falling back to random seed")
     if not seed:
         seed=random.choice(seeds)
         print(f"  [SEED] Random: '{seed[:50]}'")
@@ -175,6 +175,13 @@ WORD LIMITS:
   s2-s5: command 2-4w, hero 2-4w, body 18w max, bold 7w max
   s4_bold = THE most screenshot-worthy line in the carousel
   cta_trigger = "Comment [WORD] if [emotional statement] 👇" (WORD: SAVED/SAME/THIS/YES/REAL)
+
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Return ONLY valid JSON:
 {{
@@ -208,7 +215,7 @@ Return ONLY valid JSON:
         result["facebook_description"]=result.get("full_prose_caption","")[:500]+" #mentalhealth #healing #selfcare #mindcoreai"
     print(f"  Topic: {result.get('topic')}")
     for i in range(1,6):
-        body=result.get(f"s{i}_body",""); print(f"  Slide {i}: [{result.get(f's{i}_command','')}] | [{result.get(f's{i}_hero','')}] | {body[:40] if body else '—'}")
+        body=result.get(f"s{i}_body",""); print(f"  Slide {i}: [{result.get(f's{i}_command','')}] | [{result.get(f's{i}_hero','')}] | {body[:40] if body else ' -'}")
     print(f"  FB title: {result.get('facebook_title','')[:60]}...")
     return result
 

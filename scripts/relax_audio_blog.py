@@ -37,13 +37,13 @@ EXTERNAL_LINKS = [
     ("NHS mental health support", "https://www.nhs.uk/mental-health/"),
 ]
 
-# Inline app link — used naturally within content
+# Inline app link  - used naturally within content
 APP_INLINE_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
     'target="_blank" rel="noopener noreferrer"><strong>MindCore AI</strong></a>'
 )
 
-# Official Google Play badge — used in the final CTA section
+# Official Google Play badge  - used in the final CTA section
 GP_CTA_LINK = (
     '<a href="https://play.google.com/store/apps/details?id=com.mindcoreai.app" '
     'target="_blank" rel="noopener noreferrer">'
@@ -66,7 +66,7 @@ def init_firebase():
 def get_latest_track(db):
     doc = db.collection("pipeline_state").document("relax_audio").get()
     if not doc.exists:
-        raise RuntimeError("No pipeline state found — run the audio pipeline first.")
+        raise RuntimeError("No pipeline state found  - run the audio pipeline first.")
     data          = doc.to_dict()
     title         = data.get("last_title")
     category_key  = data.get("last_category")
@@ -129,7 +129,7 @@ def validate_seo(content, title, meta, primary_keyword, slug):
 # -- SERP Research ------------------------------------------------------------
 def fetch_serp_data(title, seo_keywords):
     if not SERP_API_KEY:
-        print("   SERP_API_KEY not set — skipping SERP research")
+        print("   SERP_API_KEY not set  - skipping SERP research")
         return {}
     seed = seo_keywords.split(",")[0].strip() if seo_keywords else title
     print(f"   Fetching SERP data for: '{seed}'")
@@ -143,12 +143,12 @@ def fetch_serp_data(title, seo_keywords):
         print(f"   SERP: {len(paa)} PAA questions, {len(related)} related searches")
         return {"seed_query": seed, "people_also_ask": paa, "related_searches": related}
     except Exception as exc:
-        print(f"   SERP fetch failed ({exc}) — continuing without SERP data")
+        print(f"   SERP fetch failed ({exc})  - continuing without SERP data")
         return {}
 
 def format_serp_for_prompt(serp_data):
     if not serp_data:
-        return "No SERP data — use your own SEO knowledge."
+        return "No SERP data  - use your own SEO knowledge."
     lines = []
     paa = serp_data.get("people_also_ask", [])
     if paa:
@@ -213,11 +213,11 @@ CRITICAL KEYWORD RULES (Yoast SEO compliance):
   2. EXACT phrase "{primary_kw}" must be in the very FIRST sentence
   3. EXACT phrase "{primary_kw}" must appear in at least 3 H2 subheadings
   4. EXACT phrase "{primary_kw}" must appear at least 8-10 times total
-  5. Use EXACTLY "{primary_kw}" — no synonyms, no variations
+  5. Use EXACTLY "{primary_kw}"  - no synonyms, no variations
   6. Keyword density: 1.0%-1.5%
   7. Minimum 1,200 words of readable content
 
-MANDATORY LINKS — all must appear as proper HTML anchor tags:
+MANDATORY LINKS  - all must appear as proper HTML anchor tags:
   Internal site pages (include ALL 3):
 {int_links}
 
@@ -236,10 +236,10 @@ MANDATORY FAQ SECTION (must always be included):
   - At least 2 answers must include the exact phrase "{primary_kw}"
   - One answer should naturally mention MindCore AI as a helpful tool
 
-FINAL CTA SECTION (MANDATORY — use exactly this structure):
+FINAL CTA SECTION (MANDATORY  - use exactly this structure):
   After the FAQ, write a short concluding section with:
   1. A bold paragraph encouraging the reader to open MindCore AI and listen to the session:
-     <p><strong>Open MindCore AI now and listen to &#8220;{title}&#8221; — [complete with a motivating sentence about starting their journey].</strong></p>
+     <p><strong>Open MindCore AI now and listen to &#8220;{title}&#8221;  - [complete with a motivating sentence about starting their journey].</strong></p>
   2. Immediately followed by this EXACT Google Play badge HTML:
      {GP_CTA_LINK}
 
@@ -248,10 +248,17 @@ STRUCTURE:
 
   Other requirements:
   - At least one <ul> list in the main content
-  - Real, actionable content — zero fluff
+  - Real, actionable content  - zero fluff
 
 INSERT this audio player HTML after the intro paragraph:
   {audio_embed}
+
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 FORMAT:
   - Clean WordPress HTML: h1 h2 h3 p ul li strong em a audio img
@@ -267,7 +274,7 @@ FORMAT:
     print(f"   Written ({wc} words, keyword appears {kw_count} times)")
 
     if wc < MIN_WORD_COUNT:
-        print(f"   Only {wc} words — expanding...")
+        print(f"   Only {wc} words  - expanding...")
         content = expand_post(content, primary_kw, wc)
 
     return content, primary_kw
@@ -277,7 +284,7 @@ def expand_post(content, primary_kw, current_words):
     needed = MIN_WORD_COUNT - current_words
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
-        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}.
+        messages=[{"role": "user", "content": f"""Post is {current_words} words  - needs {MIN_WORD_COUNT}.
 Add ~{needed} words by expanding sections or adding 2 H2s. Same tone, HTML format.
 Use EXACT phrase "{primary_kw}" at least 3 more times. Return COMPLETE post with EXCERPT.
 
@@ -294,7 +301,7 @@ def generate_illustration(title, category_name):
     prompt = (
         f"A peaceful scene evoking '{category_name}' relaxation and mental wellness. "
         "Cinematic photography style, warm golden-hour lighting, soft focus background, "
-        "shallow depth of field, no faces shown — shoot from behind or hands/objects only. "
+        "shallow depth of field, no faces shown  - shoot from behind or hands/objects only. "
         "Warm amber and soft teal colour grading, photorealistic, hopeful atmosphere. "
         "No text, no words, no letters in the image."
     )
@@ -308,7 +315,7 @@ def generate_illustration(title, category_name):
         print("   Cinematic image generated (gpt-image-1)")
         return img
     except Exception as e1:
-        print(f"   gpt-image-1 failed: {e1} — trying dall-e-2...")
+        print(f"   gpt-image-1 failed: {e1}  - trying dall-e-2...")
 
     try:
         resp = openai_client.images.generate(model="dall-e-2", prompt=prompt[:1000], size="1024x1024", n=1)
@@ -408,7 +415,7 @@ def publish_to_wordpress(title, content, primary_keyword, media_id, media_url, c
         content = inject_image_into_content(content, media_url, primary_keyword)
 
     slug      = keyword_to_slug(primary_keyword)
-    meta_desc = excerpt[:155] if excerpt else f"{title} — MindCore AI guided relaxation."
+    meta_desc = excerpt[:155] if excerpt else f"{title}  - MindCore AI guided relaxation."
 
     validate_seo(content, title, meta_desc, primary_keyword, slug)
 
@@ -438,7 +445,7 @@ def publish_to_wordpress(title, content, primary_keyword, media_id, media_url, c
             break
         if resp.status_code == 429:
             wait = int(resp.headers.get("Retry-After", 30 * (attempt + 1)))
-            print(f"   Rate limited — waiting {wait}s (attempt {attempt + 1}/4)...")
+            print(f"   Rate limited  - waiting {wait}s (attempt {attempt + 1}/4)...")
             time.sleep(wait)
             continue
         raise RuntimeError(f"WordPress publish failed ({resp.status_code}): {resp.text}")
@@ -474,7 +481,7 @@ def publish_to_wordpress(title, content, primary_keyword, media_id, media_url, c
 
 # -- Main ---------------------------------------------------------------------
 def main():
-    print("\n== MindCore AI — Relax Audio Companion Blog Pipeline ==")
+    print("\n== MindCore AI  - Relax Audio Companion Blog Pipeline ==")
     print(f"   SERP API: {'active' if SERP_API_KEY else 'not configured (Claude fallback)'}")
 
     print("\n[1/6] Reading latest audio track from Firestore...")
@@ -494,7 +501,7 @@ def main():
         image_data          = generate_illustration(title, category_name)
         media_id, media_url = upload_image(image_data, alt_text=primary_keyword)
     except Exception as exc:
-        print(f"   Image failed: {exc} — continuing without image.")
+        print(f"   Image failed: {exc}  - continuing without image.")
 
     print("\n[5/6] Setting up WordPress category...")
     category_id = get_or_create_wp_category(WP_BLOG_CATEGORY)

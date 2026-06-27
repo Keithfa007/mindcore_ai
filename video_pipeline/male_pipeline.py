@@ -300,13 +300,27 @@ def rank_and_select_keyword_claude(candidates, client, topic_history, niche):
     candidate_list="\n".join([f"{i+1}. [{c['tail_type'].upper()} | {c['source'].upper()} | {c['word_count']}w] {c['text']}" for i,c in enumerate(sorted_cands[:50])])
     history_note=""
     if topic_history: history_note="\nRECENT TOPICS (DO NOT REPEAT):\n"+"\n".join(f"  - {t}" for t in topic_history)+"\nChoose something different.\n"
-    prompt=f"""Expert in SEO for men's mental health on TikTok and YouTube Shorts.\nNICHE: {niche['name']}\nVIEWER: {niche['viewer_persona']}\n{history_note}\nChoose the SINGLE BEST keyword for a short cinematic video for this viewer today.\nFAVOUR: emotional, specific, something this man types alone at night.\n\nCANDIDATES:\n{candidate_list}\n\nReturn ONLY valid JSON:\n{{"topic":"exact candidate text","question":"exact question this man asks himself","keyword":"1-5 word SEO keyword","tail_type":"short_tail|mid_tail|long_tail","competition_signal":"low|medium|high","why":"one sentence","source":"autocomplete|people_also_ask|related_search|organic_title"}}"""
+    prompt=f"""Expert in SEO for men's mental health on TikTok and YouTube Shorts.\nNICHE: {niche['name']}\nVIEWER: {niche['viewer_persona']}\n{history_note}\nChoose the SINGLE BEST keyword for a short cinematic video for this viewer today.\nFAVOUR: emotional, specific, something this man types alone at night.\n\nCANDIDATES:\n{candidate_list}\n\n
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Return ONLY valid JSON:\n{{"topic":"exact candidate text","question":"exact question this man asks himself","keyword":"1-5 word SEO keyword","tail_type":"short_tail|mid_tail|long_tail","competition_signal":"low|medium|high","why":"one sentence","source":"autocomplete|people_also_ask|related_search|organic_title"}}"""
     result=_call_claude_raw(prompt, client, max_tokens=500)
     print(f"  Winner: '{result.get('keyword')}' [{result.get('tail_type','?')}]"); return result
 
 def fetch_trending_topic_claude_fallback(seeds, topic_history, niche, client):
     seed=random.choice(seeds); hist=f"AVOID: {', '.join(topic_history)}. " if topic_history else ""
-    prompt=f"""SEO expert for men's mental health.\nNICHE: {niche['name']}\nVIEWER: {niche['viewer_persona']}\nGenerate ONE topic for a cinematic short video. Related to: "{seed}"\n{hist}Return ONLY valid JSON:\n{{"topic":"question or keyword","question":"exact question this man asks himself","keyword":"1-5 word SEO keyword","tail_type":"short_tail|mid_tail|long_tail","competition_signal":"low|medium|high","why":"one sentence","source":"claude_generated"}}"""
+    prompt=f"""SEO expert for men's mental health.\nNICHE: {niche['name']}\nVIEWER: {niche['viewer_persona']}\nGenerate ONE topic for a cinematic short video. Related to: "{seed}"\n{hist}
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Return ONLY valid JSON:\n{{"topic":"question or keyword","question":"exact question this man asks himself","keyword":"1-5 word SEO keyword","tail_type":"short_tail|mid_tail|long_tail","competition_signal":"low|medium|high","why":"one sentence","source":"claude_generated"}}"""
     return _call_claude_raw(prompt, client, max_tokens=400)
 
 def fetch_trending_topic(client, niche):
@@ -354,14 +368,28 @@ def generate_content_script(topic, niche, client):
     keyword=topic.get("keyword",topic["topic"]); question=topic.get("question",topic["topic"])
     formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     lo_prob,hi_prob=WORD_TARGETS_CONTENT["problem"]; lo_story,hi_story=WORD_TARGETS_CONTENT["story"]; lo_cta,hi_cta=WORD_TARGETS_CONTENT["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- end with EITHER: (a) emotional resolution -- "You're not alone." / "You kept going, and that matters." -- choose when confessional; OR (b) comment trigger -- "Comment TIRED if you know this feeling" -- choose when more direct. NO app mentions.)\nReturn ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover script for a 25-35 second short-form video.\n\nVIEWER: {niche['viewer_persona']}\nNICHE: {niche['name']}\nQUESTION THE VIEWER IS ASKING: "{question}"\nSEO KEYWORD: {keyword}\n\nThis is voiceover for atmospheric B-roll footage. Write for the ear only -- no visual cues, no stage directions.\nNo MindCore AI. Pure value. Every word must earn its place. No filler, no padding.\nThe viewer should feel understood, not sold to.\n\n{hook_block}\n\n4 SCENES (deliver in this order -- KEEP TIGHT):\nhook (8-12 words) | problem ({lo_prob}-{hi_prob} words -- name the pain, no fluff) | story ({lo_story}-{hi_story} words -- the emotional turn, tight) | solution_cta ({lo_cta}-{hi_cta} words -- end with EITHER: (a) emotional resolution -- "You're not alone." / "You kept going, and that matters." -- choose when confessional; OR (b) comment trigger -- "Comment TIRED if you know this feeling" -- choose when more direct. NO app mentions.)\n
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Return ONLY valid JSON:\n{{"video_type":"content","topic":"{topic['topic']}","seo_keyword":"{keyword}","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt, client, max_tokens=800)
 
 def generate_ad_script(app_facts, niche, client):
     ad_topic=random.choice(AD_TOPICS); formula=random.choice(HOOK_FORMULAS); hook_block=_build_hook_block(formula)
     print(f"  AD: pain point: {ad_topic['pain_point'][:65]}...")
     lo_prob,hi_prob=WORD_TARGETS_AD["problem"]; lo_story,hi_story=WORD_TARGETS_AD["story"]; lo_cta,hi_cta=WORD_TARGETS_AD["solution_cta"]
-    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly, then end with emotional resolution or engagement trigger. Match tone.)\nBANNED: "free trial", "first week free", "download now"\n\nReturn ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
+    prompt=f"""You are writing a punchy cinematic voiceover ad script for MindCore AI. Target: 25-35 seconds.\n\nVIEWER: {niche['viewer_persona']}\nPAIN POINT: {ad_topic['pain_point']}\nINSIGHT: {ad_topic['insight']}\nFEATURE: {ad_topic['feature']} (private, 24/7, Google Play)\n\n{hook_block}\n\nSCENES (KEEP TIGHT):\nhook -> problem ({lo_prob}-{hi_prob} words) -> story ({lo_story}-{hi_story} words, introduce MindCore AI naturally) -> solution_cta ({lo_cta}-{hi_cta} words -- mention Google Play briefly, then end with emotional resolution or engagement trigger. Match tone.)\nBANNED: "free trial", "first week free", "download now"\n\n
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Return ONLY valid JSON:\n{{"video_type":"ad","topic":"{ad_topic['pain_point'][:55]}","seo_keyword":"AI mental health companion for men","render_format":"cinematic","hook_formula":"{formula['name']}","hook":{{"voiceover":"..."}},"problem":{{"voiceover":"..."}},"story":{{"voiceover":"..."}},"solution_cta":{{"voiceover":"..."}}}}"""
     return _call_claude_raw(prompt, client, max_tokens=800)
 
 def build_full_script(script):
@@ -560,7 +588,14 @@ def generate_upload_guide(script, mode, niche, client):
 def generate_upload_metadata(script, mode, niche, client):
     seo_kw=script.get("seo_keyword",""); hook_vo=script.get("hook",{}).get("voiceover",""); vtype=script.get("video_type",mode).upper()
     niche_tags=" ".join(niche.get("hashtags",[]))
-    prompt=f"""Social media expert for men's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- first_comment: punchy question or invitation (max 150 chars). Must spark replies. Do NOT repeat the video CTA.\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
+    prompt=f"""Social media expert for men's mental health on TikTok, Facebook, and YouTube Shorts.\nNICHE: {niche['name']} | VIDEO TYPE: {vtype} | SEO KEYWORD: {seo_kw} | HOOK: {hook_vo}\nCRITICAL: ORIGINAL sentences only. Do NOT copy the script.\n- tiktok_caption: 1-2 sentences + 8-10 hashtags. Max 2200 chars. MUST include {REQUIRED_BRAND_HASHTAG} #mensmentalhealth {niche_tags} {GLOBAL_HASHTAGS}\n- facebook_title: max 255 chars\n- facebook_description: 2 sentences + 4-5 hashtags. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_title: max 100 chars\n- youtube_description: 2 sentences. Blank line. "Try MindCore AI: https://mindcoreai.eu". Blank line. 6-8 hashtags ending #Shorts. MUST include {REQUIRED_BRAND_HASHTAG}\n- youtube_tags: comma-separated 8-12 keywords (no # symbols)\n- first_comment: punchy question or invitation (max 150 chars). Must spark replies. Do NOT repeat the video CTA.\n
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
+Return ONLY valid JSON:\n{{"tiktok_caption":"...","facebook_title":"...","facebook_description":"...","youtube_title":"...","youtube_description":"...","youtube_tags":"...","first_comment":"..."}}"""
     for attempt in range(1,CLAUDE_MAX_RETRIES+1):
         try:
             msg=client.messages.create(model="claude-sonnet-4-6",max_tokens=1000,messages=[{"role":"user","content":prompt}])

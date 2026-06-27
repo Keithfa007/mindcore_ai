@@ -222,6 +222,13 @@ Tasks:
 4. Write a meta description (150-160 chars) with primary keyword
 5. Write a DALL-E image prompt for a cinematic-warm lifestyle scene
 
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
+
 Respond ONLY in this exact JSON \u2014 no markdown:
 {{"topic":"title","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"intent","meta_description":"meta","image_prompt":"scene","category":"{product_cat['wp_category']}"}}\n"""}]
     )
@@ -399,7 +406,7 @@ def resolve_category_id(category_name):
 
 # -- Step 5: Publish ----------------------------------------------------------
 def publish_to_wordpress(topic_data, content, media_id=None):
-    """Publish post. Image is set as featured only — NOT injected into content to avoid duplication."""
+    """Publish post. Image is set as featured only  - NOT injected into content to avoid duplication."""
     print("Publishing to WordPress via cloudscraper...")
     excerpt = ""
     if "EXCERPT:" in content:
@@ -441,7 +448,7 @@ def publish_to_wordpress(topic_data, content, media_id=None):
     post    = resp.json()
     post_id = post["id"]
     print(f"   Published -> {post.get('link', 'N/A')}")
-    # Attach featured image only — no content injection to avoid duplicate
+    # Attach featured image only  - no content injection to avoid duplicate
     if media_id:
         for img_attempt in range(3):
             wait_time = 10 * (img_attempt + 1)
@@ -503,7 +510,7 @@ def main():
     except Exception as exc:
         print(f"   Image failed: {exc}")
 
-    # Pass only media_id — no media_url to prevent content injection
+    # Pass only media_id  - no media_url to prevent content injection
     post = publish_to_wordpress(topic_data, content, media_id)
 
     update_history_on_github(history, {
