@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Quotes Pipeline v1.2
+MindCore AI  - Daily Quotes Pipeline v1.2
 =========================================
 v1.2: Fixed Upload-Post fields -- tiktok_title (90 chars) + description
       (full caption), matching carousel pipeline. Added post_mode=DIRECT_POST.
@@ -32,13 +32,13 @@ TK_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #fyp #foryou #ment
 FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #healing #selfcare #mindcoreai #quotestoliveby"
 
 QUOTE_CATEGORIES = [
-    {"name": "3am_truth", "instruction": "A raw truth that someone thinks at 3am but never says out loud. It should feel like eavesdropping on someone's inner monologue during their hardest moment. Not inspirational — honest.", "examples": ["You didn't stop feeling things. You just got tired of feeling them alone.", "The strongest people I know are exhausted."]},
+    {"name": "3am_truth", "instruction": "A raw truth that someone thinks at 3am but never says out loud. It should feel like eavesdropping on someone's inner monologue during their hardest moment. Not inspirational  - honest.", "examples": ["You didn't stop feeling things. You just got tired of feeling them alone.", "The strongest people I know are exhausted."]},
     {"name": "silent_strength", "instruction": "About the quiet strength in vulnerability, in asking for help, in admitting you're not okay. Reframe what strength actually means. Not toxic positivity.", "examples": ["Falling apart quietly doesn't make you weak. It means you've been strong for too long.", "Courage isn't loud. Sometimes it's the quiet voice at the end of the day saying: I'll try again tomorrow."]},
     {"name": "recovery_wisdom", "instruction": "A hard-won insight from the recovery journey. Something only someone who's been through it would know. Written as if spoken by someone 2 years clean looking back.", "examples": ["Recovery isn't a straight line. Some days the line disappears entirely. You walk it anyway.", "The thing about rock bottom is you find out what you're made of. Not who you thought you were."]},
     {"name": "the_unsaid", "instruction": "Something people feel every day but have never heard articulated. When they read it, their stomach should drop with recognition. Specific enough to feel personal, universal enough to be shared.", "examples": ["You can miss a version of yourself that nobody else ever met.", "The loneliest feeling is being surrounded by people who think you're fine."]},
-    {"name": "permission", "instruction": "Giving the reader permission to feel something they've been told is wrong to feel. Permission to rest, to break, to grieve, to not be okay, to put themselves first. Not preachy — just honest.", "examples": ["You don't owe anyone a performance of being okay.", "Rest is not giving up. It's refusing to break."]},
+    {"name": "permission", "instruction": "Giving the reader permission to feel something they've been told is wrong to feel. Permission to rest, to break, to grieve, to not be okay, to put themselves first. Not preachy  - just honest.", "examples": ["You don't owe anyone a performance of being okay.", "Rest is not giving up. It's refusing to break."]},
     {"name": "hard_reframe", "instruction": "Take something the reader believes about themselves (that they're broken, weak, too sensitive, too much, not enough) and reframe it with precision. The reframe must feel earned and true, not like a bumper sticker.", "examples": ["You're not too sensitive. You've been in rooms that couldn't hold what you carry.", "You didn't fail. You just ran out of reasons to keep pretending."]},
-    {"name": "midnight_honesty", "instruction": "The kind of thought that only comes after midnight when every defence is down. Not dramatic — just quietly devastating in its honesty. Should feel whispered, not shouted.", "examples": ["Some nights the hardest thing is admitting you need someone.", "The version of you that held everything together deserves someone who asks how."]},
+    {"name": "midnight_honesty", "instruction": "The kind of thought that only comes after midnight when every defence is down. Not dramatic  - just quietly devastating in its honesty. Should feel whispered, not shouted.", "examples": ["Some nights the hardest thing is admitting you need someone.", "The version of you that held everything together deserves someone who asks how."]},
 ]
 
 
@@ -56,17 +56,23 @@ def generate_quote(client, category):
 CATEGORY: {category['name']}
 INSTRUCTION: {category['instruction']}
 
-STYLE EXAMPLES (for tone reference only — do NOT copy these):
+STYLE EXAMPLES (for tone reference only  - do NOT copy these):
 {examples_block}
 
 RULES:
 - ONE quote only. 8-25 words. No more.
 - Raw, honest, human. NOT generic motivational ("believe in yourself", "you are enough", "stay positive")
 - No emojis, no hashtags, no attribution
-- Must hit emotionally on first read — gut-punch recognition
+- Must hit emotionally on first read  - gut-punch recognition
 - Written for someone scrolling at 2am who feels alone
 - The quote should feel like it was written BY someone who's been through it, not FOR them
-- Do NOT start with "You" more than 40% of the time — vary the opening
+- Do NOT start with "You" more than 40% of the time  - vary the opening
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Return ONLY the quote text. No quotes marks, no attribution, nothing else."""
 
@@ -76,7 +82,7 @@ Return ONLY the quote text. No quotes marks, no attribution, nothing else."""
                 model=ANTHROPIC_MODEL, max_tokens=100,
                 messages=[{"role": "user", "content": prompt}]
             ).content[0].text.strip().strip('"').strip("'")
-            for sep in [" —", " -", " ~", "\n"]:
+            for sep in ["  -", " -", " ~", "\n"]:
                 if sep in result:
                     result = result.split(sep)[0].strip()
             print(f'  Quote: "{result}"')
@@ -99,6 +105,12 @@ RULES:
 - Raw honest tone, not salesy
 - Can ask a question to drive comments
 - NO emojis, NO hashtags, NO links
+
+WRITING STYLE (MANDATORY):
+- NEVER use em dashes. Use commas, periods, or separate sentences instead.
+- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
+- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
+- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
 Return ONLY the caption text."""
     try:
@@ -183,7 +195,7 @@ def render_quote_image(quote_text, output_path):
         draw_text_centered(draw, quote_top + i * line_height, line, quote_font, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
     line_y_bottom = quote_top + total_text_height + 30
     draw.line([(line_left, line_y_bottom), (line_right, line_y_bottom)], fill=accent_color, width=2)
-    draw_text_centered(draw, line_y_bottom + 40, "— MindCore AI", attr_font, fill=(140, 140, 160))
+    draw_text_centered(draw, line_y_bottom + 40, " - MindCore AI", attr_font, fill=(140, 140, 160))
     img.save(output_path, "PNG", quality=95)
     jpg_path = output_path.replace(".png", ".jpg")
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
@@ -238,7 +250,7 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI — Daily Quotes Pipeline v1.2 ==")
+    print(f"== MindCore AI  - Daily Quotes Pipeline v1.2 ==")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | Photo + auto music")
 
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
