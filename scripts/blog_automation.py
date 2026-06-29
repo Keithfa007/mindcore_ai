@@ -21,6 +21,25 @@ except ImportError:
 
 # -- Clients ------------------------------------------------------------------
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+import time as _time
+import random as _random
+
+def _call_anthropic_with_retry(client, max_retries=5, **kwargs):
+    """Wrapper for Anthropic API calls with retry on 529 overloaded errors."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            return client.messages.create(**kwargs)
+        except Exception as e:
+            if "529" in str(e) or "overloaded" in str(e).lower():
+                wait = 30 * attempt + _random.randint(0, 30)
+                print(f"   Anthropic overloaded (attempt {attempt}/{max_retries}), waiting {wait}s...")
+                _time.sleep(wait)
+                if attempt == max_retries:
+                    raise
+            else:
+                raise
+
 # Image generation: fal.ai Flux Pro (baked in, no OpenAI needed)
 SERP_API_KEY     = os.environ.get("SERP_API_KEY", "")
 
@@ -442,7 +461,7 @@ def research_from_library(picked, audience, profile, history, library):
     history_txt = format_history_for_prompt(history)
     category    = LIBRARY_CATEGORY_MAP.get(picked["keyword"].lower(), profile["preferred_categories"][0])
 
-    response = anthropic_client.messages.create(
+    response = _call_anthropic_with_retry(anthropic_client, 
         model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO content strategist for mindcoreai.eu.
 
@@ -495,7 +514,7 @@ def research_from_claude(audience, profile, history):
     all_cats    = "\n".join(f"  - {c}" for c in CATEGORIES)
     pref_cats   = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
 
-    response = anthropic_client.messages.create(
+    response = _call_anthropic_with_retry(anthropic_client, 
         model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO strategist for mindcoreai.eu.
 
@@ -569,7 +588,7 @@ def research_from_serp(audience, profile, history):
         paa_block = "\nREAL PEOPLE ALSO ASK QUESTIONS (use 3-5 of these in the FAQ section):\n"
         paa_block += "\n".join(f"  - {q}" for q in paa_questions) + "\n"
 
-    response = anthropic_client.messages.create(
+    response = _call_anthropic_with_retry(anthropic_client, 
         model="claude-sonnet-4-6", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO content strategist for mindcoreai.eu.
 
@@ -675,7 +694,7 @@ def write_blog_post(topic_data, history):
             f'  - "{existing_posts[0]["title"]}" → {existing_posts[0]["url"]}\n'
         )
 
-    response = anthropic_client.messages.create(
+    response = _call_anthropic_with_retry(anthropic_client, 
         model="claude-opus-4-5", max_tokens=7000,
         messages=[{"role": "user", "content": f"""You are a senior mental wellness content writer for mindcoreai.eu.
 
@@ -743,7 +762,7 @@ FORMAT:
 def expand_blog_post(content, topic_data, current_words):
     needed = MIN_WORD_COUNT - current_words
     kw     = topic_data["primary_keyword"]
-    response = anthropic_client.messages.create(
+    response = _call_anthropic_with_retry(anthropic_client, 
         model="claude-opus-4-5", max_tokens=3000,
         messages=[{"role": "user", "content": f"""Post is {current_words} words  - needs {MIN_WORD_COUNT}.
 Add ~{needed} words, expand sections or add 2 H2s. Same tone, HTML format.
