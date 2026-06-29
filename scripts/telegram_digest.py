@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.3
+MindCore AI — Daily Telegram Digest v2.4
 =========================================
+v2.4: Fixed Firestore auth — removed duplicate with_scopes() call
+      that was silently failing (creds already scoped).
+
 Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
 - Today's scheduled pipelines
@@ -172,9 +175,8 @@ def get_firestore_users(creds):
     try:
         from google.auth.transport.requests import Request
 
-        creds_copy = creds.with_scopes(["https://www.googleapis.com/auth/datastore"])
-        creds_copy.refresh(Request())
-        token = creds_copy.token
+        creds.refresh(Request())
+        token = creds.token
 
         url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT}/databases/(default)/documents/users"
         headers = {"Authorization": f"Bearer {token}"}
@@ -368,7 +370,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.3 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.4 ==\n")
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
