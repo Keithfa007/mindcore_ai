@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.4
+MindCore AI — Daily Telegram Digest v2.5
 =========================================
-v2.4: Fixed Firestore auth — removed duplicate with_scopes() call
-      that was silently failing (creds already scoped).
+v2.5: Switched Firestore query to firebase_admin (same as FAQ/Learning
+      pipelines) using FIREBASE_SERVICE_ACCOUNT secret. Fixes 403 error.
+v2.4: Fixed Firestore auth — removed duplicate with_scopes() call.
 
 Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
@@ -40,8 +41,6 @@ def get_google_credentials():
             info, scopes=[
                 "https://www.googleapis.com/auth/analytics.readonly",
                 "https://www.googleapis.com/auth/webmasters.readonly",
-                "https://www.googleapis.com/auth/datastore",
-                "https://www.googleapis.com/auth/cloud-platform",
             ]
         )
     except Exception as e:
@@ -168,51 +167,43 @@ def get_todays_schedule():
     return schedule
 
 
-# ── App Users (Firestore REST API) ───────────────────────────────────────
+# ── App Users (Firebase Admin SDK) ───────────────────────────────────────
 
-def get_firestore_users(creds):
-    """Count users from Firestore users collection via REST API."""
+def get_firestore_users():
+    """Count users from Firestore users collection using firebase_admin."""
+    sa_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
+    if not sa_json:
+        print("   FIREBASE_SERVICE_ACCOUNT not set")
+        return None
     try:
-        from google.auth.transport.requests import Request
+        import firebase_admin
+        from firebase_admin import credentials, firestore
 
-        creds.refresh(Request())
-        token = creds.token
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(json.loads(sa_json))
+            firebase_admin.initialize_app(cred)
 
-        url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT}/databases/(default)/documents/users"
-        headers = {"Authorization": f"Bearer {token}"}
+        db = firestore.client()
+        docs = db.collection("users").stream()
 
         total = 0
         new_24h = 0
         cutoff = datetime.utcnow() - timedelta(hours=24)
-        page_token = None
 
-        while True:
-            params = {"pageSize": 300}
-            if page_token:
-                params["pageToken"] = page_token
-
-            resp = requests.get(url, headers=headers, params=params, timeout=30)
-            if resp.status_code != 200:
-                print(f"   Firestore API error: {resp.status_code} — {resp.text[:200]}")
-                return None
-
-            data = resp.json()
-            documents = data.get("documents", [])
-
-            for doc in documents:
-                total += 1
-                create_time = doc.get("createTime", "")
-                if create_time:
-                    try:
-                        created = datetime.strptime(create_time[:19], "%Y-%m-%dT%H:%M:%S")
-                        if created > cutoff:
-                            new_24h += 1
-                    except:
-                        pass
-
-            page_token = data.get("nextPageToken")
-            if not page_token:
-                break
+        for doc in docs:
+            total += 1
+            data = doc.to_dict()
+            created = data.get("createdAt")
+            if created:
+                try:
+                    if hasattr(created, "timestamp"):
+                        created_dt = datetime.utcfromtimestamp(created.timestamp())
+                    else:
+                        created_dt = datetime.strptime(str(created)[:19], "%Y-%m-%dT%H:%M:%S")
+                    if created_dt > cutoff:
+                        new_24h += 1
+                except:
+                    pass
 
         return {"total": total, "new_24h": new_24h}
     except Exception as e:
@@ -370,7 +361,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.4 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.5 ==\n")
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
@@ -392,11 +383,11 @@ def main():
     print(f"   {len(todays_schedule)} pipelines scheduled today")
 
     print("4. App users (Firestore)...")
-    creds = get_google_credentials()
-    firebase_users = get_firestore_users(creds) if creds else None
+    firebase_users = get_firestore_users()
     print(f"   {'OK — ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
 
     print("5. Google Analytics (7 days)...")
+    creds = get_google_credentials()
     analytics = get_analytics_stats(creds) if creds else None
     print(f"   {'OK' if analytics else 'skipped'}")
 
