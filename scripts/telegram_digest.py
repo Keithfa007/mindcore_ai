@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.6
+MindCore AI — Daily Telegram Digest v2.7
 =========================================
-v2.6: Added Upload-Post social media analytics (TikTok, Facebook, YouTube, Instagram).
+v2.7: Debug logging for Upload-Post API + added impressions field.
+v2.6: Added Upload-Post social media analytics.
 v2.5: Switched Firestore query to firebase_admin.
 v2.4: Fixed Firestore auth.
 
@@ -236,13 +237,16 @@ def get_social_media_stats():
 
         for platform in ["tiktok", "facebook", "youtube", "instagram"]:
             pdata = data.get(platform, {})
+            print(f"   [{platform}] raw: {json.dumps(pdata)[:300]}")
             if isinstance(pdata, dict) and not pdata.get("message"):
                 results[platform] = {
                     "followers": pdata.get("followers", pdata.get("subscribers", 0)),
                     "views": pdata.get("views", 0),
                     "reach": pdata.get("reach", 0),
+                    "impressions": pdata.get("impressions", 0),
                     "likes": pdata.get("likes", 0),
                     "comments": pdata.get("comments", 0),
+                    "shares": pdata.get("shares", 0),
                 }
 
         return results if results else None
@@ -391,8 +395,11 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
             parts = []
             views = pdata.get("views", 0)
             reach = pdata.get("reach", 0)
+            impressions = pdata.get("impressions", 0)
             if views:
                 parts.append(f"{format_number(views)} views")
+            elif impressions:
+                parts.append(f"{format_number(impressions)} impressions")
             elif reach:
                 parts.append(f"{format_number(reach)} reach")
             if pdata.get("likes"):
@@ -441,7 +448,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.6 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.7 ==\n")
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
