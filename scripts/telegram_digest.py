@@ -232,6 +232,7 @@ def get_social_media_stats():
         results = {}
         for platform in ["tiktok", "facebook", "youtube"]:
             pdata = data.get(platform, {})
+            print(f"   [{platform}] keys: {list(pdata.keys()) if isinstance(pdata, dict) else type(pdata)}")
             if not isinstance(pdata, dict):
                 continue
             if pdata.get("message") or pdata.get("success") is False:
@@ -376,6 +377,8 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
                 parts.append(f"{format_number(pdata['followers'])} followers")
             if parts:
                 lines.append(f"  {name}: {' | '.join(parts)}")
+            else:
+                lines.append(f"  {name}: no 30-day data")
         lines.append("")
 
     if analytics:
