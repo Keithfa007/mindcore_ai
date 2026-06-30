@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.7
+MindCore AI — Daily Telegram Digest v2.8
 =========================================
-v2.7: Debug logging for Upload-Post API + added impressions field.
+v2.8: Auto-fetch Facebook page_id, impressions display fix, removed Instagram.
+v2.7: Debug logging for Upload-Post API.
 v2.6: Added Upload-Post social media analytics.
 v2.5: Switched Firestore query to firebase_admin.
-v2.4: Fixed Firestore auth.
 
 Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
 - Today's scheduled pipelines
 - App users (Firestore users collection)
 - Social media analytics (Upload-Post API)
-- Website stats 7-day average (Google Analytics GA4)
+- Website stats 7-day (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
 """
 
@@ -52,14 +52,11 @@ def get_google_credentials():
         return None
 
 
-# ── Pipeline Health ──────────────────────────────────────────────────────
-
 def get_workflow_runs():
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     resp = requests.get(f"https://api.github.com/repos/{REPO}/actions/workflows", headers=headers, timeout=30)
     if resp.status_code != 200:
         return None, f"GitHub API error: {resp.status_code}"
-
     results = []
     for wf in resp.json().get("workflows", []):
         if wf.get("state") != "active":
@@ -88,20 +85,15 @@ def get_recent_failures():
     return [{"name": r["name"], "updated": r["updated_at"]} for r in resp.json().get("workflow_runs", [])]
 
 
-# ── Today's Schedule ─────────────────────────────────────────────────────
-
 def cron_matches_today(cron_expr):
     parts = cron_expr.strip().split()
     if len(parts) < 5:
         return None
-
     minute, hour, dom, month, dow = parts[:5]
     today = datetime.utcnow()
     today_dow = today.weekday()
     today_dom = today.day
-
     cron_to_python_dow = {0: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6}
-
     dow_match = False
     if dow == "*":
         dow_match = True
@@ -115,7 +107,6 @@ def cron_matches_today(cron_expr):
             else:
                 if cron_to_python_dow.get(int(part)) == today_dow:
                     dow_match = True
-
     dom_match = False
     if dom == "*":
         dom_match = True
@@ -123,10 +114,8 @@ def cron_matches_today(cron_expr):
         for part in dom.split(","):
             if int(part) == today_dom:
                 dom_match = True
-
     if not (dow_match and dom_match):
         return None
-
     if hour == "*":
         return "all day"
     hours = []
@@ -137,26 +126,20 @@ def cron_matches_today(cron_expr):
 
 def get_todays_schedule():
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-
     resp = requests.get(f"https://api.github.com/repos/{REPO}/contents/.github/workflows",
                         headers=headers, timeout=30)
     if resp.status_code != 200:
         return []
-
     schedule = []
     for f in resp.json():
         if not f["name"].endswith(".yml") and not f["name"].endswith(".yaml"):
             continue
-
         file_resp = requests.get(f["url"], headers=headers, timeout=30)
         if file_resp.status_code != 200:
             continue
-
         content = base64.b64decode(file_resp.json().get("content", "")).decode("utf-8", errors="ignore")
-
         name_match = re.search(r'^name:\s*(.+)$', content, re.MULTILINE)
         wf_name = name_match.group(1).strip().strip("'\"") if name_match else f["name"]
-
         cron_matches = re.findall(r"cron:\s*['\"](.+?)['\"]", content)
         for cron in cron_matches:
             hours = cron_matches_today(cron)
@@ -166,15 +149,11 @@ def get_todays_schedule():
                         schedule.append({"name": wf_name, "hour": h, "minute": int(cron.split()[0])})
                 else:
                     schedule.append({"name": wf_name, "hour": 0, "minute": 0, "all_day": True})
-
     schedule.sort(key=lambda x: (x.get("hour", 0), x.get("minute", 0)))
     return schedule
 
 
-# ── App Users (Firebase Admin SDK) ───────────────────────────────────────
-
 def get_firestore_users():
-    """Count users from Firestore users collection using firebase_admin."""
     sa_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
     if not sa_json:
         print("   FIREBASE_SERVICE_ACCOUNT not set")
@@ -182,18 +161,14 @@ def get_firestore_users():
     try:
         import firebase_admin
         from firebase_admin import credentials, firestore
-
         if not firebase_admin._apps:
             cred = credentials.Certificate(json.loads(sa_json))
             firebase_admin.initialize_app(cred)
-
         db = firestore.client()
         docs = db.collection("users").stream()
-
         total = 0
         new_24h = 0
         cutoff = datetime.utcnow() - timedelta(hours=24)
-
         for doc in docs:
             total += 1
             data = doc.to_dict()
@@ -208,76 +183,88 @@ def get_firestore_users():
                         new_24h += 1
                 except:
                     pass
-
         return {"total": total, "new_24h": new_24h}
     except Exception as e:
         print(f"   Firestore users error: {e}")
         return None
 
 
-# ── Social Media Analytics (Upload-Post API) ─────────────────────────────
-
 def get_social_media_stats():
-    """Fetch social media analytics from Upload-Post API."""
     if not UPLOAD_POST_API_KEY:
         print("   UPLOAD_POST_API_KEY not set")
         return None
     try:
         url = f"https://api.upload-post.com/api/analytics/{UPLOAD_POST_USER}"
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
-        params = {"platforms": "tiktok,facebook,youtube,instagram"}
 
-        resp = requests.get(url, headers=headers, params=params, timeout=30)
+        # Fetch Facebook page ID first
+        fb_page_id = None
+        try:
+            fb_resp = requests.get(
+                "https://api.upload-post.com/api/uploadposts/facebook/pages",
+                headers=headers, params={"user": UPLOAD_POST_USER}, timeout=15)
+            if fb_resp.status_code == 200:
+                pages = fb_resp.json()
+                if isinstance(pages, list) and pages:
+                    fb_page_id = pages[0].get("id", pages[0].get("page_id"))
+                    print(f"   Facebook page ID: {fb_page_id}")
+        except Exception as e:
+            print(f"   Facebook pages lookup: {e}")
+
+        # Fetch TikTok + YouTube
+        resp = requests.get(url, headers=headers, params={"platforms": "tiktok,youtube"}, timeout=30)
         if resp.status_code != 200:
-            print(f"   Upload-Post API error: {resp.status_code} - {resp.text[:200]}")
+            print(f"   Upload-Post API error: {resp.status_code}")
             return None
-
         data = resp.json()
+
+        # Fetch Facebook separately with page_id
+        if fb_page_id:
+            try:
+                fb_resp = requests.get(url, headers=headers,
+                    params={"platforms": "facebook", "page_id": fb_page_id}, timeout=30)
+                if fb_resp.status_code == 200:
+                    fb_data = fb_resp.json()
+                    data["facebook"] = fb_data.get("facebook", {})
+            except Exception as e:
+                print(f"   Facebook analytics: {e}")
+
         results = {}
-
-        for platform in ["tiktok", "facebook", "youtube", "instagram"]:
+        for platform in ["tiktok", "facebook", "youtube"]:
             pdata = data.get(platform, {})
-            print(f"   [{platform}] raw: {json.dumps(pdata)[:300]}")
-            if isinstance(pdata, dict) and not pdata.get("message"):
-                results[platform] = {
-                    "followers": pdata.get("followers", pdata.get("subscribers", 0)),
-                    "views": pdata.get("views", 0),
-                    "reach": pdata.get("reach", 0),
-                    "impressions": pdata.get("impressions", 0),
-                    "likes": pdata.get("likes", 0),
-                    "comments": pdata.get("comments", 0),
-                    "shares": pdata.get("shares", 0),
-                }
-
+            if not isinstance(pdata, dict):
+                continue
+            if pdata.get("message") or pdata.get("success") is False:
+                continue
+            results[platform] = {
+                "followers": pdata.get("followers", pdata.get("subscribers", 0)),
+                "views": pdata.get("views", 0),
+                "reach": pdata.get("reach", 0),
+                "impressions": pdata.get("impressions", 0),
+                "likes": pdata.get("likes", 0),
+                "comments": pdata.get("comments", 0),
+                "shares": pdata.get("shares", 0),
+            }
         return results if results else None
     except Exception as e:
         print(f"   Social media stats error: {e}")
         return None
 
 
-# ── Google Analytics (7-day) ─────────────────────────────────────────────
-
 def get_analytics_stats(creds):
     try:
         from google.analytics.data_v1beta import BetaAnalyticsDataClient
         from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Metric
-
         client = BetaAnalyticsDataClient(credentials=creds)
         end_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
         start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
-
         request = RunReportRequest(
             property=f"properties/{GA4_PROPERTY_ID}",
             date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
-            metrics=[
-                Metric(name="sessions"),
-                Metric(name="activeUsers"),
-                Metric(name="bounceRate"),
-                Metric(name="screenPageViews"),
-            ],
+            metrics=[Metric(name="sessions"), Metric(name="activeUsers"),
+                     Metric(name="bounceRate"), Metric(name="screenPageViews")],
         )
         response = client.run_report(request)
-
         if response.rows:
             row = response.rows[0]
             return {
@@ -285,28 +272,22 @@ def get_analytics_stats(creds):
                 "users": int(row.metric_values[1].value),
                 "bounce_rate": round(float(row.metric_values[2].value) * 100, 1),
                 "pageviews": int(row.metric_values[3].value),
-                "period": f"{start_date} to {end_date}",
             }
     except Exception as e:
         print(f"   Analytics error: {e}")
     return None
 
 
-# ── Google Search Console ────────────────────────────────────────────────
-
 def get_search_console_stats(creds):
     try:
         from googleapiclient.discovery import build
-
         service = build("searchconsole", "v1", credentials=creds)
         end_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
         start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
-
         response = service.searchanalytics().query(
             siteUrl=SITE_URL,
             body={"startDate": start_date, "endDate": end_date, "dimensions": []},
         ).execute()
-
         if response.get("rows"):
             row = response["rows"][0]
             return {
@@ -314,14 +295,11 @@ def get_search_console_stats(creds):
                 "impressions": int(row.get("impressions", 0)),
                 "ctr": round(row.get("ctr", 0) * 100, 1),
                 "position": round(row.get("position", 0), 1),
-                "period": f"{start_date} to {end_date}",
             }
     except Exception as e:
         print(f"   Search Console error: {e}")
     return None
 
-
-# ── Message Builder ──────────────────────────────────────────────────────
 
 def format_time(iso_str):
     if not iso_str:
@@ -333,7 +311,6 @@ def format_time(iso_str):
 
 
 def format_number(n):
-    """Format large numbers: 1500 -> 1.5K, 1500000 -> 1.5M"""
     if not n or n == 0:
         return "0"
     if n >= 1_000_000:
@@ -347,7 +324,6 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
     now = datetime.utcnow().strftime("%A, %b %d %Y \u2014 %H:%M UTC")
     lines = ["\U0001f4ca *MindCore AI \u2014 Daily Digest*", f"_{now}_", ""]
 
-    # ── Pipelines ──
     total = len(workflows)
     passed = sum(1 for w in workflows if w["conclusion"] == "success")
     failed = sum(1 for w in workflows if w["conclusion"] == "failure")
@@ -358,7 +334,6 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
                 lines.append(f"  \u274c {w['name']}")
     lines.append("")
 
-    # ── Today's Schedule ──
     if todays_schedule:
         lines.append(f"\U0001f4c5 *Today's Schedule ({len(todays_schedule)} pipelines):*")
         for s in todays_schedule:
@@ -369,7 +344,6 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
                 lines.append(f"  \u23f0 {malta_h:02d}:{s['minute']:02d} \u2014 {s['name']}")
         lines.append("")
 
-    # ── App Users ──
     if firebase_users:
         new_emoji = "\U0001f389" if firebase_users["new_24h"] > 0 else ""
         lines.append(f"\U0001f465 *App Users:* {firebase_users['total']} total")
@@ -379,23 +353,17 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
             lines.append("  No new signups yesterday")
         lines.append("")
 
-    # ── Social Media ──
     if social_stats:
         lines.append("\U0001f4f1 *Social Media:*")
-        for platform in ["tiktok", "facebook", "youtube", "instagram"]:
+        for platform in ["tiktok", "facebook", "youtube"]:
             pdata = social_stats.get(platform)
             if not pdata:
                 continue
-            name = platform.capitalize()
-            if platform == "tiktok":
-                name = "TikTok"
-            elif platform == "youtube":
-                name = "YouTube"
-
+            name = {"tiktok": "TikTok", "facebook": "Facebook", "youtube": "YouTube"}.get(platform, platform.capitalize())
             parts = []
             views = pdata.get("views", 0)
-            reach = pdata.get("reach", 0)
             impressions = pdata.get("impressions", 0)
+            reach = pdata.get("reach", 0)
             if views:
                 parts.append(f"{format_number(views)} views")
             elif impressions:
@@ -406,26 +374,22 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
                 parts.append(f"{format_number(pdata['likes'])} likes")
             if pdata.get("followers"):
                 parts.append(f"{format_number(pdata['followers'])} followers")
-
             if parts:
                 lines.append(f"  {name}: {' | '.join(parts)}")
         lines.append("")
 
-    # ── Website (Analytics) ──
     if analytics:
         lines.append("\U0001f310 *Website (7 days):*")
         lines.append(f"  Users: {analytics['users']} | Sessions: {analytics['sessions']}")
         lines.append(f"  Pageviews: {analytics['pageviews']} | Bounce: {analytics['bounce_rate']}%")
         lines.append("")
 
-    # ── Search Console ──
     if search_console:
         lines.append("\U0001f50d *Google Search (7 days):*")
         lines.append(f"  Impressions: {search_console['impressions']} | Clicks: {search_console['clicks']}")
         lines.append(f"  CTR: {search_console['ctr']}% | Avg Position: {search_console['position']}")
         lines.append("")
 
-    # ── 24h Failures Detail ──
     if failures:
         lines.append("*\U0001f6a8 Failed in last 24h:*")
         for f in failures[:5]:
@@ -448,8 +412,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.7 ==\n")
-
+    print("== MindCore AI \u2014 Daily Digest v2.8 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
@@ -492,7 +455,6 @@ def main():
     print("8. Sending digest...")
     message = build_message(workflows, failures, todays_schedule, firebase_users, social_stats, analytics, search_console)
     send_telegram(message)
-
     print("\n== Done ==")
 
 
