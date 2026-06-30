@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.5
+MindCore AI — Daily Telegram Digest v2.6
 =========================================
-v2.5: Switched Firestore query to firebase_admin (same as FAQ/Learning
-      pipelines) using FIREBASE_SERVICE_ACCOUNT secret. Fixes 403 error.
-v2.4: Fixed Firestore auth — removed duplicate with_scopes() call.
+v2.6: Added Upload-Post social media analytics (TikTok, Facebook, YouTube, Instagram).
+v2.5: Switched Firestore query to firebase_admin.
+v2.4: Fixed Firestore auth.
 
 Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
 - Today's scheduled pipelines
 - App users (Firestore users collection)
+- Social media analytics (Upload-Post API)
 - Website stats 7-day average (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
 """
@@ -24,10 +25,12 @@ from datetime import datetime, timedelta
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 GITHUB_TOKEN       = os.environ.get("GITHUB_TOKEN", "")
+UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
 REPO               = "Keithfa007/mindcore_ai"
 GA4_PROPERTY_ID    = "516837337"
 SITE_URL           = "https://mindcoreai.eu/"
 FIREBASE_PROJECT   = "mindcore-ai"
+UPLOAD_POST_USER   = "MindCoreAI"
 
 
 def get_google_credentials():
@@ -211,6 +214,43 @@ def get_firestore_users():
         return None
 
 
+# ── Social Media Analytics (Upload-Post API) ─────────────────────────────
+
+def get_social_media_stats():
+    """Fetch social media analytics from Upload-Post API."""
+    if not UPLOAD_POST_API_KEY:
+        print("   UPLOAD_POST_API_KEY not set")
+        return None
+    try:
+        url = f"https://api.upload-post.com/api/analytics/{UPLOAD_POST_USER}"
+        headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
+        params = {"platforms": "tiktok,facebook,youtube,instagram"}
+
+        resp = requests.get(url, headers=headers, params=params, timeout=30)
+        if resp.status_code != 200:
+            print(f"   Upload-Post API error: {resp.status_code} - {resp.text[:200]}")
+            return None
+
+        data = resp.json()
+        results = {}
+
+        for platform in ["tiktok", "facebook", "youtube", "instagram"]:
+            pdata = data.get(platform, {})
+            if isinstance(pdata, dict) and not pdata.get("message"):
+                results[platform] = {
+                    "followers": pdata.get("followers", pdata.get("subscribers", 0)),
+                    "views": pdata.get("views", 0),
+                    "reach": pdata.get("reach", 0),
+                    "likes": pdata.get("likes", 0),
+                    "comments": pdata.get("comments", 0),
+                }
+
+        return results if results else None
+    except Exception as e:
+        print(f"   Social media stats error: {e}")
+        return None
+
+
 # ── Google Analytics (7-day) ─────────────────────────────────────────────
 
 def get_analytics_stats(creds):
@@ -288,7 +328,18 @@ def format_time(iso_str):
         return iso_str
 
 
-def build_message(workflows, failures, todays_schedule, firebase_users, analytics, search_console):
+def format_number(n):
+    """Format large numbers: 1500 -> 1.5K, 1500000 -> 1.5M"""
+    if not n or n == 0:
+        return "0"
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.1f}K"
+    return str(n)
+
+
+def build_message(workflows, failures, todays_schedule, firebase_users, social_stats, analytics, search_console):
     now = datetime.utcnow().strftime("%A, %b %d %Y \u2014 %H:%M UTC")
     lines = ["\U0001f4ca *MindCore AI \u2014 Daily Digest*", f"_{now}_", ""]
 
@@ -322,6 +373,35 @@ def build_message(workflows, failures, todays_schedule, firebase_users, analytic
             lines.append(f"  {new_emoji} {firebase_users['new_24h']} new in last 24h")
         else:
             lines.append("  No new signups yesterday")
+        lines.append("")
+
+    # ── Social Media ──
+    if social_stats:
+        lines.append("\U0001f4f1 *Social Media:*")
+        for platform in ["tiktok", "facebook", "youtube", "instagram"]:
+            pdata = social_stats.get(platform)
+            if not pdata:
+                continue
+            name = platform.capitalize()
+            if platform == "tiktok":
+                name = "TikTok"
+            elif platform == "youtube":
+                name = "YouTube"
+
+            parts = []
+            views = pdata.get("views", 0)
+            reach = pdata.get("reach", 0)
+            if views:
+                parts.append(f"{format_number(views)} views")
+            elif reach:
+                parts.append(f"{format_number(reach)} reach")
+            if pdata.get("likes"):
+                parts.append(f"{format_number(pdata['likes'])} likes")
+            if pdata.get("followers"):
+                parts.append(f"{format_number(pdata['followers'])} followers")
+
+            if parts:
+                lines.append(f"  {name}: {' | '.join(parts)}")
         lines.append("")
 
     # ── Website (Analytics) ──
@@ -361,7 +441,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.5 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.6 ==\n")
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
@@ -384,19 +464,26 @@ def main():
 
     print("4. App users (Firestore)...")
     firebase_users = get_firestore_users()
-    print(f"   {'OK — ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
+    print(f"   {'OK - ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
 
-    print("5. Google Analytics (7 days)...")
+    print("5. Social media (Upload-Post)...")
+    social_stats = get_social_media_stats()
+    if social_stats:
+        print(f"   OK - {len(social_stats)} platforms")
+    else:
+        print("   skipped")
+
+    print("6. Google Analytics (7 days)...")
     creds = get_google_credentials()
     analytics = get_analytics_stats(creds) if creds else None
     print(f"   {'OK' if analytics else 'skipped'}")
 
-    print("6. Search Console...")
+    print("7. Search Console...")
     search_console = get_search_console_stats(creds) if creds else None
     print(f"   {'OK' if search_console else 'skipped'}")
 
-    print("7. Sending digest...")
-    message = build_message(workflows, failures, todays_schedule, firebase_users, analytics, search_console)
+    print("8. Sending digest...")
+    message = build_message(workflows, failures, todays_schedule, firebase_users, social_stats, analytics, search_console)
     send_telegram(message)
 
     print("\n== Done ==")
