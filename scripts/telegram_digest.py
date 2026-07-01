@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.8
+MindCore AI — Daily Telegram Digest v2.9
 =========================================
+v2.9: Added US TikTok analytics, renamed EU TikTok label.
 v2.8: Auto-fetch Facebook page_id, impressions display fix, removed Instagram.
-v2.7: Debug logging for Upload-Post API.
 v2.6: Added Upload-Post social media analytics.
 v2.5: Switched Firestore query to firebase_admin.
 
@@ -11,7 +11,7 @@ Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
 - Today's scheduled pipelines
 - App users (Firestore users collection)
-- Social media analytics (Upload-Post API)
+- Social media analytics (Upload-Post API) — EU + US TikTok
 - Website stats 7-day (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
 """
@@ -32,6 +32,7 @@ GA4_PROPERTY_ID    = "516837337"
 SITE_URL           = "https://mindcoreai.eu/"
 FIREBASE_PROJECT   = "mindcore-ai"
 UPLOAD_POST_USER   = "MindCoreAI"
+UPLOAD_POST_USER_US = "MindCoreAI_US"
 
 
 def get_google_credentials():
@@ -189,15 +190,27 @@ def get_firestore_users():
         return None
 
 
+def _fetch_platform_stats(url, headers, platforms_param, extra_params=None):
+    """Helper to fetch and parse Upload-Post analytics for given platforms."""
+    params = {"platforms": platforms_param}
+    if extra_params:
+        params.update(extra_params)
+    resp = requests.get(url, headers=headers, params=params, timeout=30)
+    if resp.status_code != 200:
+        return {}
+    return resp.json()
+
+
 def get_social_media_stats():
     if not UPLOAD_POST_API_KEY:
         print("   UPLOAD_POST_API_KEY not set")
         return None
     try:
-        url = f"https://api.upload-post.com/api/analytics/{UPLOAD_POST_USER}"
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
+        eu_url = f"https://api.upload-post.com/api/analytics/{UPLOAD_POST_USER}"
+        us_url = f"https://api.upload-post.com/api/analytics/{UPLOAD_POST_USER_US}"
 
-        # Fetch Facebook page ID first
+        # Fetch Facebook page ID
         fb_page_id = None
         try:
             fb_resp = requests.get(
@@ -207,45 +220,56 @@ def get_social_media_stats():
                 pages = fb_resp.json()
                 if isinstance(pages, list) and pages:
                     fb_page_id = pages[0].get("id", pages[0].get("page_id"))
-                    print(f"   Facebook page ID: {fb_page_id}")
         except Exception as e:
             print(f"   Facebook pages lookup: {e}")
 
-        # Fetch TikTok + YouTube
-        resp = requests.get(url, headers=headers, params={"platforms": "tiktok,youtube"}, timeout=30)
-        if resp.status_code != 200:
-            print(f"   Upload-Post API error: {resp.status_code}")
-            return None
-        data = resp.json()
+        # EU: TikTok + YouTube
+        eu_data = _fetch_platform_stats(eu_url, headers, "tiktok,youtube")
 
-        # Fetch Facebook separately with page_id
+        # EU: Facebook (needs page_id)
         if fb_page_id:
-            try:
-                fb_resp = requests.get(url, headers=headers,
-                    params={"platforms": "facebook", "page_id": fb_page_id}, timeout=30)
-                if fb_resp.status_code == 200:
-                    fb_data = fb_resp.json()
-                    data["facebook"] = fb_data.get("facebook", {})
-            except Exception as e:
-                print(f"   Facebook analytics: {e}")
+            fb_data = _fetch_platform_stats(eu_url, headers, "facebook", {"page_id": fb_page_id})
+            eu_data["facebook"] = fb_data.get("facebook", {})
+
+        # US: TikTok
+        us_data = _fetch_platform_stats(us_url, headers, "tiktok")
 
         results = {}
-        for platform in ["tiktok", "facebook", "youtube"]:
-            pdata = data.get(platform, {})
-            print(f"   [{platform}] keys: {list(pdata.keys()) if isinstance(pdata, dict) else type(pdata)}")
+        platform_map = {
+            "tiktok": ("TikTok (EU)", eu_data),
+            "facebook": ("Facebook", eu_data),
+            "youtube": ("YouTube", eu_data),
+        }
+
+        for key, (label, source) in platform_map.items():
+            pdata = source.get(key, {})
             if not isinstance(pdata, dict):
                 continue
             if pdata.get("message") or pdata.get("success") is False:
                 continue
-            results[platform] = {
+            results[key] = {
                 "followers": pdata.get("followers", pdata.get("subscribers", 0)),
                 "views": pdata.get("views", 0),
-                "reach": pdata.get("reach", 0),
                 "impressions": pdata.get("impressions", 0),
+                "reach": pdata.get("reach", 0),
                 "likes": pdata.get("likes", 0),
                 "comments": pdata.get("comments", 0),
                 "shares": pdata.get("shares", 0),
             }
+
+        # US TikTok
+        us_tk = us_data.get("tiktok", {})
+        if isinstance(us_tk, dict) and not us_tk.get("message") and us_tk.get("success") is not False:
+            results["tiktok_us"] = {
+                "followers": us_tk.get("followers", 0),
+                "views": us_tk.get("views", 0),
+                "impressions": us_tk.get("impressions", 0),
+                "reach": us_tk.get("reach", 0),
+                "likes": us_tk.get("likes", 0),
+                "comments": us_tk.get("comments", 0),
+                "shares": us_tk.get("shares", 0),
+            }
+
         return results if results else None
     except Exception as e:
         print(f"   Social media stats error: {e}")
@@ -356,11 +380,11 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
 
     if social_stats:
         lines.append("\U0001f4f1 *Social Media:*")
-        for platform in ["tiktok", "facebook", "youtube"]:
+        for platform in ["tiktok", "tiktok_us", "facebook", "youtube"]:
             pdata = social_stats.get(platform)
             if not pdata:
                 continue
-            name = {"tiktok": "TikTok", "facebook": "Facebook", "youtube": "YouTube"}.get(platform, platform.capitalize())
+            name = {"tiktok": "TikTok (EU)", "tiktok_us": "TikTok (US)", "facebook": "Facebook", "youtube": "YouTube"}.get(platform, platform.capitalize())
             parts = []
             views = pdata.get("views", 0)
             impressions = pdata.get("impressions", 0)
@@ -415,7 +439,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.8 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v2.9 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
@@ -439,7 +463,7 @@ def main():
     firebase_users = get_firestore_users()
     print(f"   {'OK - ' + str(firebase_users['total']) + ' users' if firebase_users else 'skipped'}")
 
-    print("5. Social media (Upload-Post)...")
+    print("5. Social media (Upload-Post EU + US)...")
     social_stats = get_social_media_stats()
     if social_stats:
         print(f"   OK - {len(social_stats)} platforms")
