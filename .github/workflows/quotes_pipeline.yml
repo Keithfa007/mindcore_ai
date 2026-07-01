@@ -1,16 +1,14 @@
-name: Daily Quote -- EU (TikTok + Facebook)
+name: Daily Quote -- X (Twitter)
 
-# PAUSED -- July 2026
-# Reducing EU TikTok posting volume to improve algorithmic reach.
-# Re-enable by uncommenting the schedule below.
+# Repurposed from TikTok+Facebook to X only -- July 2026
 on:
-  # schedule:
-  #   - cron: "30 0 * * *"
+  schedule:
+    - cron: "30 0 * * *"
   workflow_dispatch:
 
 jobs:
-  eu-quote:
-    name: EU Quote -- 8am Malta
+  x-quote:
+    name: Daily Quote to X
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -37,6 +35,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: eu-quote-run-${{ github.run_number }}
+          name: x-quote-run-${{ github.run_number }}
           path: scripts/quotes_output/
           retention-days: 14
