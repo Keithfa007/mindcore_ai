@@ -1,9 +1,10 @@
 name: Daily Quote -- X (Twitter)
 
-# Repurposed from TikTok+Facebook to X only -- July 2026
+# Two posts per day to X: morning (08:00 Malta) and evening (20:00 Malta)
 on:
   schedule:
-    - cron: "30 0 * * *"
+    - cron: "30 0 * * *"   # Morning run → posts at 06:00 UTC (08:00 Malta)
+    - cron: "0 16 * * *"   # Evening run → posts at 18:00 UTC (20:00 Malta)
   workflow_dispatch:
 
 jobs:
@@ -17,6 +18,17 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set post time based on run hour
+        run: |
+          HOUR=$(date -u +%H)
+          if [ "$HOUR" -lt 12 ]; then
+            echo "POST_HOUR_UTC=6" >> $GITHUB_ENV
+            echo "Morning run: posting at 06:00 UTC (08:00 Malta)"
+          else
+            echo "POST_HOUR_UTC=18" >> $GITHUB_ENV
+            echo "Evening run: posting at 18:00 UTC (20:00 Malta)"
+          fi
+
       - name: Install fonts + dependencies
         run: |
           sudo apt-get update
@@ -28,7 +40,6 @@ jobs:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "6"
           PYTHONPATH:          ${{ github.workspace }}
         run: python scripts/quotes_pipeline.py
 
