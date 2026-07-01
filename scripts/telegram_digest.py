@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v2.9
+MindCore AI — Daily Telegram Digest v3.0
 =========================================
 v2.9: Added US TikTok analytics, renamed EU TikTok label.
 v2.8: Auto-fetch Facebook page_id, impressions display fix, removed Instagram.
@@ -224,7 +224,7 @@ def get_social_media_stats():
             print(f"   Facebook pages lookup: {e}")
 
         # EU: TikTok + YouTube
-        eu_data = _fetch_platform_stats(eu_url, headers, "tiktok,youtube")
+        eu_data = _fetch_platform_stats(eu_url, headers, "tiktok,youtube,x")
 
         # EU: Facebook (needs page_id)
         if fb_page_id:
@@ -239,6 +239,7 @@ def get_social_media_stats():
             "tiktok": ("TikTok (EU)", eu_data),
             "facebook": ("Facebook", eu_data),
             "youtube": ("YouTube", eu_data),
+            "x": ("X", eu_data),
         }
 
         for key, (label, source) in platform_map.items():
@@ -380,11 +381,11 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
 
     if social_stats:
         lines.append("\U0001f4f1 *Social Media:*")
-        for platform in ["tiktok", "tiktok_us", "facebook", "youtube"]:
+        for platform in ["tiktok", "tiktok_us", "x", "facebook", "youtube"]:
             pdata = social_stats.get(platform)
             if not pdata:
                 continue
-            name = {"tiktok": "TikTok (EU)", "tiktok_us": "TikTok (US)", "facebook": "Facebook", "youtube": "YouTube"}.get(platform, platform.capitalize())
+            name = {"tiktok": "TikTok (EU)", "tiktok_us": "TikTok (US)", "x": "X", "facebook": "Facebook", "youtube": "YouTube"}.get(platform, platform.capitalize())
             parts = []
             views = pdata.get("views", 0)
             impressions = pdata.get("impressions", 0)
@@ -439,7 +440,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v2.9 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v3.0 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
