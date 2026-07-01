@@ -1,8 +1,11 @@
 name: Daily Quote -- EU (TikTok + Facebook)
 
+# PAUSED -- July 2026
+# Reducing EU TikTok posting volume to improve algorithmic reach.
+# Re-enable by uncommenting the schedule below.
 on:
-  schedule:
-    - cron: "30 0 * * *"
+  # schedule:
+  #   - cron: "30 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -27,7 +30,7 @@ jobs:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "6"  # 6:00 UTC = 8am Malta
+          POST_HOUR_UTC:       "6"
           PYTHONPATH:          ${{ github.workspace }}
         run: python scripts/quotes_pipeline.py
 

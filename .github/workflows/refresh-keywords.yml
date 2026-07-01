@@ -1,9 +1,10 @@
 name: Refresh FB Keywords (Monthly)
 
+# PAUSED -- July 2026
+# FB Automation pipeline is paused, so keyword refresh serves no purpose.
 on:
-  schedule:
-    # 1st of every month at 06:00 UTC — runs before the day's scheduled post
-    - cron: "0 6 1 * *"
+  # schedule:
+  #   - cron: "0 6 1 * *"
   workflow_dispatch:
 
 jobs:

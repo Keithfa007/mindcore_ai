@@ -2,7 +2,7 @@ name: Female Video Pipeline -- Daily
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 * * 2,4,6"  # Tue/Thu/Sat only
   workflow_dispatch:
 
 jobs:

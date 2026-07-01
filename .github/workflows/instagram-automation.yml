@@ -1,26 +1,13 @@
 name: Instagram Daily Carousel
 
+# PAUSED -- July 2026
+# Instagram account was flagged for automation. Manual upload only.
 on:
-  # AUTO-UPLOAD RE-ENABLED (18 May 2026) at REDUCED cadence.
-  # Context: @mind_core_ai was flagged 14 May for suspected automation and
-  # placed in manual-package mode. As of 18 May the IG<->Upload-Post
-  # connection has held for 3 consecutive days with no auto-disconnect,
-  # so automated posting is restored at a deliberately LOWER 4x/week cadence
-  # (Mon/Wed/Fri/Sun) to stay under spam-detection thresholds.
-  #
-  # RAMP PLAN:
-  #   - Weeks 1-2 at 4x/week (current). Watch for ANY auto-disconnect.
-  #   - If stable for 2 weeks, may add Tue/Thu back (6x/week).
-  #   - Full 7x/week only after a month of clean operation.
-  #
-  # IF IT GETS FLAGGED AGAIN:
-  #   Set ENABLE_AUTO_UPLOAD back to "false" (reverts to manual-package mode,
-  #   pipeline keeps generating packages to manual_upload_packages/<date>/).
-  schedule:
-    - cron: "0 6 * * 1"   # Monday    08:00 Malta
-    - cron: "0 6 * * 3"   # Wednesday 08:00 Malta
-    - cron: "0 6 * * 5"   # Friday    08:00 Malta
-    - cron: "0 9 * * 0"   # Sunday    11:00 Malta
+  # schedule:
+  #   - cron: "0 6 * * 1"
+  #   - cron: "0 6 * * 3"
+  #   - cron: "0 6 * * 5"
+  #   - cron: "0 9 * * 0"
   workflow_dispatch:
 
 jobs:
@@ -29,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
-      contents: write   # needed to commit post history back to the repo
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -51,8 +38,6 @@ jobs:
           OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           UPLOADPOST_USER:     ${{ secrets.UPLOADPOST_USER }}
-          # Auto-upload re-enabled 18 May 2026. Set to "false" to revert to
-          # manual-package mode if Instagram flags the account again.
           ENABLE_AUTO_UPLOAD:  "true"
         run: python scripts/instagram_automation.py
 
