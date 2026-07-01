@@ -428,6 +428,19 @@ def update_library_on_github(library, used_keyword):
         print(f"   Library update failed: {put.text}")
 
 
+
+# -- Online-Therapy.com Affiliate CTA (appended to every blog post) -----------
+ONLINE_THERAPY_CTA = """
+<div style="background:#1a1a2e;border-radius:12px;padding:28px;margin-top:40px;border:1px solid rgba(212,165,116,0.2);">
+  <h3 style="color:#ffffff;font-size:20px;margin:0 0 12px;font-weight:600;">Need Professional Support?</h3>
+  <p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;">
+    If you're ready to take the next step, I personally recommend Online-Therapy.com. It offers CBT-based therapy with licensed therapists, completely online. Worksheets, live sessions, messaging, and a personal therapist you can reach anytime. Affordable, private, and built for people who want real support without the waiting room.
+  </p>
+  <a href="https://go.online-therapy.com/SHY0" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#d4a574;color:#1a1a2e;padding:12px 28px;border-radius:8px;font-weight:600;font-size:15px;text-decoration:none;">Try Online-Therapy.com &rarr;</a>
+</div>
+<img src="https://go.online-therapy.com/aff_i?offer_id=2&aff_id=3963" width="0" height="0" style="position:absolute;visibility:hidden;" border="0" />
+"""
+
 # -- Step 1: Research topic ---------------------------------------------------
 def research_topic(history):
     audience = get_next_audience(history)
@@ -887,6 +900,9 @@ def publish_to_wordpress(topic_data, content, media_id=None, media_url=None):
 
     if media_url:
         content = inject_image_into_content(content, media_url, topic_data["primary_keyword"])
+
+    # Append Online-Therapy.com affiliate CTA to every blog post
+    content += ONLINE_THERAPY_CTA
 
     slug     = keyword_to_slug(topic_data["primary_keyword"])
     cat_name = topic_data.get("category", "")
