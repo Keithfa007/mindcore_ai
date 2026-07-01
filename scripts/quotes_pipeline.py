@@ -25,8 +25,8 @@ GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 POST_HOUR_UTC       = int(os.environ.get("POST_HOUR_UTC", "6"))
 
 OUTPUT_DIR = Path("scripts/quotes_output")
-WIDTH  = 1080
-HEIGHT = 1920
+WIDTH  = 1200
+HEIGHT = 675
 
 X_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #healing #selfcare #recovery #anxiety #mentalwellness"
 
@@ -182,20 +182,20 @@ def draw_text_centered(draw, y, text, font, fill=(255, 255, 255), stroke_width=0
 def render_quote_image(quote_text, output_path):
     img = create_gradient_background()
     draw = ImageDraw.Draw(img)
-    quote_font = get_font(62, bold=True)
-    attr_font = get_font(32, bold=False)
+    quote_font = get_font(44, bold=True)
+    attr_font = get_font(24, bold=False)
     lines = wrap_text_lines(quote_text, quote_font, int(WIDTH * 0.82))
-    line_height = 82
+    line_height = 58
     total_text_height = len(lines) * line_height
-    quote_top = int(HEIGHT * 0.38) - (total_text_height // 2)
+    quote_top = int(HEIGHT * 0.45) - (total_text_height // 2)
     accent_color = (180, 160, 120)
     line_left, line_right = WIDTH // 2 - 80, WIDTH // 2 + 80
-    draw.line([(line_left, quote_top - 50), (line_right, quote_top - 50)], fill=accent_color, width=2)
+    draw.line([(line_left, quote_top - 35), (line_right, quote_top - 35)], fill=accent_color, width=2)
     for i, line in enumerate(lines):
         draw_text_centered(draw, quote_top + i * line_height, line, quote_font, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
-    line_y_bottom = quote_top + total_text_height + 30
+    line_y_bottom = quote_top + total_text_height + 20
     draw.line([(line_left, line_y_bottom), (line_right, line_y_bottom)], fill=accent_color, width=2)
-    draw_text_centered(draw, line_y_bottom + 40, " - MindCore AI", attr_font, fill=(140, 140, 160))
+    draw_text_centered(draw, line_y_bottom + 25, " - MindCore AI", attr_font, fill=(140, 140, 160))
     img.save(output_path, "PNG", quality=95)
     jpg_path = output_path.replace(".png", ".jpg")
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
