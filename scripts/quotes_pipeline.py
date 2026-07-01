@@ -28,8 +28,8 @@ OUTPUT_DIR = Path("scripts/quotes_output")
 WIDTH  = 1080
 HEIGHT = 1920
 
-TK_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #fyp #foryou #mentalhealthawareness #healing #selfcare #therapytok #mentalhealthtiktok #quotestoliveby #realtalk"
-FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #healing #selfcare #mindcoreai #quotestoliveby"
+X_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #healing #selfcare #recovery #anxiety #mentalwellness"
+
 
 QUOTE_CATEGORIES = [
     {"name": "3am_truth", "instruction": "A raw truth that someone thinks at 3am but never says out loud. It should feel like eavesdropping on someone's inner monologue during their hardest moment. Not inspirational  - honest.", "examples": ["You didn't stop feeling things. You just got tired of feeling them alone.", "The strongest people I know are exhausted."]},
@@ -216,12 +216,8 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
         return {"skipped": True, "reason": "no API key"}
     data = [
         ("user", UPLOAD_POST_USER),
-        ("platform[]", "tiktok"),
-        ("platform[]", "facebook"),
-        ("tiktok_title", tiktok_title[:90]),
-        ("description", description[:4000]),
-        ("facebook_title", fb_title[:255]),
-        ("facebook_description", fb_description[:5000]),
+        ("platform[]", "x"),
+        ("title", tiktok_title[:280]),
         ("post_mode", "DIRECT_POST"),
         ("auto_add_music", "true"),
         ("photo_cover_index", "0"),
@@ -270,11 +266,11 @@ def main():
 
     print("4. Uploading as photo post (TikTok auto trending audio)...")
     # tiktok_title: short (max 90 chars) -- just the quote truncated
-    tiktok_title = quote[:90]
-    # description: full caption + hashtags (TikTok shows this below the title)
-    description = f"{caption}\n\n{TK_HASHTAGS}"
-    fb_title = quote[:255]
-    fb_description = f"{quote}\n\n{caption}\n\n{FB_HASHTAGS}"
+    tiktok_title = f"{quote}\n\n{caption}\n\n{X_HASHTAGS}"[:280]
+    # X: single text field with quote + caption + hashtags
+    description = ""
+    fb_title = ""
+    fb_description = ""
 
     result = upload_photo_to_platforms(jpg_path, tiktok_title, description, fb_title, fb_description, scheduled_date=scheduled_date)
     if result.get("status_code") in (200, 202):
