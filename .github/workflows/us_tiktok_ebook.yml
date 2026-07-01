@@ -1,8 +1,8 @@
-name: US TikTok -- Ebook Promo (4x/week)
+name: US TikTok -- Ebook Promo (Tue/Thu)
 
 on:
   schedule:
-    - cron: "0 8 * * 0,1,3,5"  # Sun/Mon/Wed/Fri -- same days as EU
+    - cron: "0 8 * * 2,4"  # Tue/Thu -- same days as EU
   workflow_dispatch:
 
 jobs:
@@ -18,16 +18,10 @@ jobs:
 
       - name: Configure for US market
         run: |
-          # Swap Upload-Post user to US account
           sed -i 's/UPLOAD_POST_USER    = "MindCoreAI"/UPLOAD_POST_USER    = "MindCoreAI_US"/' scripts/ebook_promo_pipeline.py
-
-          # Swap hashtags to US-targeted
           sed -i 's/TK_HASHTAGS = .*/TK_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #mentalhealthtiktok #therapytok #recovery #addiction #sobriety #sobertok #ebook #selfhelp #healing #fyp #mentalhealthusa"/' scripts/ebook_promo_pipeline.py
           sed -i 's/FB_HASHTAGS = .*/FB_HASHTAGS = "#mentalhealth #mentalhealthmatters #recovery #addiction #healing #selfhelp #mindcoreai #mentalhealthusa"/' scripts/ebook_promo_pipeline.py
-
-          # Swap scheduled post time to 3pm EDT (19:00 UTC)
           sed -i 's/scheduled_date = get_scheduled_time(10)/scheduled_date = get_scheduled_time(19)/' scripts/ebook_promo_pipeline.py
-
           echo "US config: MindCoreAI_US | POST 19:00 UTC (3pm EDT) | US hashtags"
 
       - name: Install dependencies
