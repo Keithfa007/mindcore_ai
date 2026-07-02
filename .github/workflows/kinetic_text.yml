@@ -2,6 +2,15 @@ name: Kinetic Text Pipeline (Prototype)
 
 on:
   workflow_dispatch:
+    inputs:
+      gender:
+        description: 'Voice gender (male or female)'
+        required: true
+        default: 'male'
+        type: choice
+        options:
+          - male
+          - female
 
 jobs:
   kinetic:
@@ -24,7 +33,6 @@ jobs:
           mkdir -p /tmp/fonts
           curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-ExtraBold.ttf" -o /tmp/fonts/Montserrat-ExtraBold.ttf
           curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Medium.ttf" -o /tmp/fonts/Montserrat-Medium.ttf
-          ls -la /tmp/fonts/
 
       - name: Run kinetic text pipeline
         env:
@@ -32,9 +40,9 @@ jobs:
           ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
           FAL_KEY:             ${{ secrets.FAL_KEY }}
           SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
+          GENDER:              ${{ inputs.gender }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
           POST_HOUR_UTC:       "15"
-          # UPLOAD_POST_API_KEY intentionally omitted — review mode only
         run: python video_pipeline/kinetic_text_pipeline.py
 
       - name: Commit topic history
@@ -49,6 +57,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: kinetic-run-${{ github.run_number }}
+          name: kinetic-${{ inputs.gender }}-${{ github.run_number }}
           path: video_pipeline/output_kinetic/
           retention-days: 14
