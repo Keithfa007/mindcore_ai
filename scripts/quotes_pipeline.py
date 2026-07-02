@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI  - Daily Quotes Pipeline v1.2
+MindCore AI  - Daily Quotes Pipeline v1.3
 =========================================
+v1.3: Reduced X hashtags to 2 (from 8). Cleaner tweets.
 v1.2: Fixed Upload-Post fields -- tiktok_title (90 chars) + description
       (full caption), matching carousel pipeline. Added post_mode=DIRECT_POST.
 v1.1: Photo upload with auto_add_music.
@@ -28,7 +29,7 @@ OUTPUT_DIR = Path("scripts/quotes_output")
 WIDTH  = 1200
 HEIGHT = 675
 
-X_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #healing #selfcare #recovery #anxiety #mentalwellness"
+X_HASHTAGS = "#mentalhealth #mindcoreai"
 
 
 QUOTE_CATEGORIES = [
@@ -94,7 +95,7 @@ Return ONLY the quote text. No quotes marks, no attribution, nothing else."""
 
 
 def generate_caption(client, quote, category):
-    prompt = f"""Write a SHORT TikTok/Facebook caption for this mental health quote post.
+    prompt = f"""Write a SHORT X/Twitter caption for this mental health quote post.
 
 QUOTE: "{quote}"
 CATEGORY: {category['name']}
@@ -103,7 +104,7 @@ BRAND: MindCore AI
 RULES:
 - 1-2 short sentences that complement the quote (don't repeat it)
 - Raw honest tone, not salesy
-- Can ask a question to drive comments
+- Can ask a question to drive replies
 - NO emojis, NO hashtags, NO links
 
 WRITING STYLE (MANDATORY):
@@ -211,7 +212,7 @@ def get_scheduled_time(hour_utc):
 
 
 def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, fb_description, scheduled_date=None):
-    """Upload as photo post with auto_add_music -- matches carousel pipeline upload format."""
+    """Upload quote image to X via Upload-Post."""
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
     data = [
@@ -219,7 +220,6 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
         ("platform[]", "x"),
         ("title", tiktok_title[:280]),
         ("post_mode", "DIRECT_POST"),
-        ("auto_add_music", "true"),
         ("photo_cover_index", "0"),
     ]
     if scheduled_date:
@@ -236,7 +236,7 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
         result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
         result["status_code"] = resp.status_code
         if scheduled_date: result["scheduled_date"] = scheduled_date
-        print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code} | auto_add_music=true")
+        print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
         if not resp.ok: print(f"  {resp.text[:300]}")
         return result
     except Exception as e:
@@ -246,8 +246,8 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI  - Daily Quotes Pipeline v1.2 ==")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | Photo + auto music")
+    print(f"== MindCore AI  - Daily Quotes Pipeline v1.3 ==")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | X quote")
 
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -264,10 +264,8 @@ def main():
     print("3. Rendering image...")
     jpg_path = render_quote_image(quote, str(OUTPUT_DIR / "quote_image.png"))
 
-    print("4. Uploading as photo post (TikTok auto trending audio)...")
-    # tiktok_title: short (max 90 chars) -- just the quote truncated
+    print("4. Uploading to X...")
     tiktok_title = f"{quote}\n\n{caption}\n\n{X_HASHTAGS}"[:280]
-    # X: single text field with quote + caption + hashtags
     description = ""
     fb_title = ""
     fb_description = ""
@@ -280,8 +278,8 @@ def main():
 
     (OUTPUT_DIR / "quote_metadata.json").write_text(json.dumps({
         "run": GITHUB_RUN_NUMBER, "category": category["name"],
-        "quote": quote, "caption": caption, "tiktok_title": tiktok_title,
-        "scheduled": scheduled_date, "upload_type": "photo", "auto_music": True,
+        "quote": quote, "caption": caption, "tweet_text": tiktok_title,
+        "scheduled": scheduled_date, "upload_type": "photo", "platform": "x",
     }, indent=2))
     print("\n== Done ==")
 
