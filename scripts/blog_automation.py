@@ -504,6 +504,26 @@ def research_from_library(picked, audience, profile, history, library):
     history_txt = format_history_for_prompt(history)
     category    = LIBRARY_CATEGORY_MAP.get(picked["keyword"].lower(), profile["preferred_categories"][0])
 
+    # SERP enrichment: fetch real PAA questions for this keyword
+    paa_block = ""
+    if SERP_AVAILABLE and SERP_API_KEY:
+        try:
+            print(f"   [SERP] Enriching library keyword with real search data...")
+            serp_candidates = research_topics([picked["keyword"]], SERP_API_KEY, country="gb", num_seeds=1, num_autocomplete=2)
+            paa_questions = [c["text"] for c in serp_candidates if c.get("source") == "people_also_ask"][:8]
+            related_terms = [c["text"] for c in serp_candidates if c.get("source") in ("autocomplete", "related_searches")][:6]
+            if paa_questions:
+                paa_block = "\nREAL GOOGLE 'PEOPLE ALSO ASK' QUESTIONS (use 3-5 of these in the blog FAQ section):\n"
+                paa_block += "\n".join(f"  - {q}" for q in paa_questions) + "\n"
+                print(f"   [SERP] Found {len(paa_questions)} PAA questions + {len(related_terms)} related terms")
+            if related_terms:
+                paa_block += "\nRELATED SEARCH TERMS (weave 2-3 of these naturally into the post):\n"
+                paa_block += "\n".join(f"  - {t}" for t in related_terms) + "\n"
+        except Exception as e:
+            print(f"   [SERP] Enrichment failed (non-fatal): {e}")
+    else:
+        print("   [SERP] Skipped enrichment (no API key)")
+
     response = _call_anthropic_with_retry(anthropic_client, 
         model="claude-opus-4-5", max_tokens=2000,
         messages=[{"role": "user", "content": f"""You are an expert SEO content strategist for mindcoreai.eu.
@@ -519,6 +539,7 @@ TARGET AUDIENCE: {profile['label']}
 AUDIENCE CONTEXT:
 {profile['description']}
 
+{paa_block}
 ALREADY PUBLISHED (avoid repeating):
 {history_txt}
 
