@@ -247,6 +247,34 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
         return result
     except Exception as e: print(f"   Upload failed: {e}"); return {"error": str(e)}
 
+
+
+def upload_to_x(cover_path, caption, scheduled_date=None):
+    """Upload ebook cover image + caption to X (no links in tweet, link in bio)."""
+    if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
+    x_caption = f"{caption}\n\nChapter 1 is free. Link in bio.\n\n#mentalhealth #mindcoreai"[:280]
+    data = [
+        ("user", UPLOAD_POST_USER),
+        ("platform[]", "x"),
+        ("title", x_caption),
+        ("post_mode", "DIRECT_POST"),
+        ("photo_cover_index", "0"),
+    ]
+    if scheduled_date: data.append(("scheduled_date", scheduled_date))
+    try:
+        f = open(cover_path, "rb")
+        files = [("photos[]", ("ebook_cover.png", f, "image/png"))]
+        resp = requests.post("https://api.upload-post.com/api/upload_photos",
+                             headers={"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"},
+                             files=files, data=data, timeout=180)
+        f.close()
+        result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
+        print(f"   X Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
+        if not resp.ok: print(f"   {resp.text[:300]}")
+        return result
+    except Exception as e:
+        print(f"   X Upload failed: {e}"); return {"error": str(e)}
+
 def main():
     print(f"== MindCore AI  - Ebook Promotion Pipeline v2.7 ==\n")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
