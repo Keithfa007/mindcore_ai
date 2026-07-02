@@ -1,0 +1,58 @@
+name: Kinetic Text Female (EU)
+
+on:
+  schedule:
+    - cron: "0 11 * * 2"   # Tue 11:00 UTC
+    - cron: "0 11 * * 4"   # Thu 11:00 UTC
+    - cron: "0 11 * * 6"   # Sat 11:00 UTC
+  workflow_dispatch:
+
+jobs:
+  kinetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation unzip
+          pip install anthropic requests openai-whisper Pillow
+
+      - name: Download Montserrat font
+        run: |
+          mkdir -p /tmp/fonts
+          curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-ExtraBold.ttf" -o /tmp/fonts/Montserrat-ExtraBold.ttf
+          curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Medium.ttf" -o /tmp/fonts/Montserrat-Medium.ttf
+
+      - name: Run kinetic text pipeline (female)
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
+          FAL_KEY:             ${{ secrets.FAL_KEY }}
+          SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          GENDER:              "female"
+          GITHUB_RUN_NUMBER:   ${{ github.run_number }}
+          POST_HOUR_UTC:       "13"
+        run: python video_pipeline/kinetic_text_pipeline.py
+
+      - name: Commit topic history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add video_pipeline/kinetic_topic_history.json
+          git diff --staged --quiet || git commit -m "chore: kinetic topic history [skip ci]"
+          git push
+        continue-on-error: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kinetic-female-${{ github.run_number }}
+          path: video_pipeline/output_kinetic/
+          retention-days: 7
