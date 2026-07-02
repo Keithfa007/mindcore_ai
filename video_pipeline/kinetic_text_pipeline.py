@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Kinetic Text Video Pipeline v1.0
+MindCore AI — Kinetic Text Video Pipeline v2.0
 ===============================================
 Combines kinetic typography + voiceover subtitles.
 No stock video needed — pure text + voice on dark background.
+
+v2.0 changes:
+- One line at a time (centered, large) instead of accumulating
+- Brand amber (#d4a574) glow effect on active text
+- 56px font (up from 40px)
+- Subtle progress bar at bottom
+- Smoother fade transitions between lines
 
 Flow:
 1. Claude generates short raw script (15-25 seconds)
 2. ElevenLabs generates voiceover
 3. Whisper transcribes for word-level timestamps
-4. FFmpeg renders kinetic text video synced to audio
-5. Upload-Post publishes to TikTok + Facebook + YouTube
+4. Pillow renders kinetic text frames synced to audio
+5. FFmpeg encodes video
+6. Upload-Post publishes to TikTok + Facebook + YouTube
 """
 
 import os, sys, json, random, subprocess, tempfile, datetime, time, math
@@ -221,8 +229,6 @@ def build_line_timestamps(script_lines, word_timestamps, audio_duration):
     return line_times
 
 
-
-
 def wrap_text_for_video(text, font, max_width):
     words = text.split()
     lines = []
@@ -242,46 +248,62 @@ def wrap_text_for_video(text, font, max_width):
     return lines
 
 
+def ease_in_out(t):
+    """Smooth ease-in-out curve (0 to 1)."""
+    return t * t * (3 - 2 * t)
+
+
 def create_kinetic_video(audio_path, line_timestamps, output_path, audio_duration):
-    """Create video with kinetic text synced to audio using Pillow frames + FFmpeg."""
-    from PIL import Image, ImageDraw, ImageFont
+    """Create video with one-line-at-a-time kinetic text, amber glow, progress bar."""
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
     import tempfile, shutil
 
     FPS = 24
     total_frames = int((audio_duration + 0.5) * FPS)
+    FADE_DURATION = 0.35  # seconds for fade in/out
 
-    font_bold = None
-    font_light = None
-    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]:
+    # Brand colours
+    AMBER = (212, 165, 116)       # #d4a574
+    AMBER_DIM = (140, 108, 76)    # dimmed amber for fading out
+    WHITE = (255, 255, 255)
+    GLOW_COLOR = (212, 165, 116, 80)  # semi-transparent amber for glow
+
+    # Load fonts
+    font_main = None
+    font_watermark = None
+    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]:
         try:
-            font_bold = ImageFont.truetype(p, 40)
+            font_main = ImageFont.truetype(p, 56)
             break
         except:
             continue
-    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]:
+    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]:
         try:
-            font_light = ImageFont.truetype(p, 26)
+            font_watermark = ImageFont.truetype(p, 24)
             break
         except:
             continue
-    if not font_bold:
-        font_bold = ImageFont.load_default()
-    if not font_light:
-        font_light = ImageFont.load_default()
+    if not font_main:
+        font_main = ImageFont.load_default()
+    if not font_watermark:
+        font_watermark = ImageFont.load_default()
 
-    max_text_width = int(WIDTH * 0.85)
+    max_text_width = int(WIDTH * 0.82)
+    line_h = 68  # line height for 56px font
+
+    # Pre-wrap all lines
     wrapped_blocks = []
     for lt in line_timestamps:
-        wrapped = wrap_text_for_video(lt["text"], font_bold, max_text_width)
-        wrapped_blocks.append({"lines": wrapped, "start": lt["start"], "end": lt.get("end", audio_duration)})
+        wrapped = wrap_text_for_video(lt["text"], font_main, max_text_width)
+        wrapped_blocks.append({
+            "lines": wrapped,
+            "start": lt["start"],
+            "end": lt.get("end", audio_duration),
+        })
 
-    line_h = 52
-    gap = 24
-    total_lines_count = sum(len(b["lines"]) for b in wrapped_blocks)
-    total_height = total_lines_count * line_h + (len(wrapped_blocks) - 1) * gap
-    base_y = (HEIGHT // 2) - (total_height // 2)
-
-    # Create dark gradient background
+    # Create dark gradient background (cached, reused every frame)
     bg = Image.new("RGB", (WIDTH, HEIGHT))
     bg_draw = ImageDraw.Draw(bg)
     for y in range(HEIGHT):
@@ -292,56 +314,141 @@ def create_kinetic_video(audio_path, line_timestamps, output_path, audio_duratio
         bv = int(32 + (12 - 32) * ease)
         bg_draw.line([(0, y), (WIDTH, y)], fill=(r, g, bv))
 
-    # Write frames to temp directory
+    # Pre-render watermark position
+    wt = "MindCore AI"
+    wb = font_watermark.getbbox(wt)
+    ww = wb[2] - wb[0]
+    watermark_x = (WIDTH - ww) // 2
+    watermark_y = HEIGHT - 90
+
+    # Progress bar dimensions
+    bar_y = HEIGHT - 40
+    bar_h = 4
+    bar_margin = 80
+
     frames_dir = tempfile.mkdtemp(prefix="kinetic_frames_")
-    print(f"  Rendering {total_frames} frames at {FPS}fps to {frames_dir}...")
+    print(f"  Rendering {total_frames} frames at {FPS}fps...")
 
     for fn in range(total_frames):
         t = fn / FPS
         frame = bg.copy()
         draw = ImageDraw.Draw(frame)
-        cy = base_y
 
-        for block in wrapped_blocks:
-            at = block["start"]
-            if t < at:
-                ar = 0.0
-            elif t < at + 0.4:
-                ar = (t - at) / 0.4
-            else:
-                ar = 1.0
+        # Determine which block is active and which is fading out
+        active_idx = -1
+        for i, block in enumerate(wrapped_blocks):
+            if t >= block["start"]:
+                active_idx = i
 
-            if ar <= 0:
-                cy += len(block["lines"]) * line_h + gap
+        # Draw the active line (and possibly the outgoing line)
+        for i, block in enumerate(wrapped_blocks):
+            is_active = (i == active_idx)
+            is_previous = (i == active_idx - 1)
+            is_future_active = (i == active_idx + 1) if active_idx + 1 < len(wrapped_blocks) else False
+
+            if not is_active and not is_previous:
                 continue
 
-            active = True
-            for o in wrapped_blocks:
-                if o["start"] > block["start"] and t >= o["start"]:
-                    active = False
-                    break
+            block_lines = block["lines"]
+            block_height = len(block_lines) * line_h
+            center_y = (HEIGHT // 2) - (block_height // 2) - 30  # slightly above center
 
-            if active:
-                brt = int(255 * ar)
-                col = (brt, brt, brt)
-            else:
-                brt = int(120 * ar)
-                col = (brt, brt, min(brt + 15, 255))
+            if is_active:
+                # Fade in: from block start to block start + FADE_DURATION
+                elapsed = t - block["start"]
+                if elapsed < FADE_DURATION:
+                    alpha = ease_in_out(min(elapsed / FADE_DURATION, 1.0))
+                else:
+                    alpha = 1.0
 
-            for line in block["lines"]:
-                bbox = font_bold.getbbox(line)
-                tw = bbox[2] - bbox[0]
-                x = (WIDTH - tw) // 2
-                sb = int(40 * ar)
-                draw.text((x + 2, cy + 2), line, font=font_bold, fill=(sb, sb, sb))
-                draw.text((x, cy), line, font=font_bold, fill=col)
-                cy += line_h
-            cy += gap
+                # Compute text colour: white with amber tint
+                r_val = int(WHITE[0] * alpha)
+                g_val = int(WHITE[1] * alpha)
+                b_val = int(WHITE[2] * alpha)
+                text_col = (r_val, g_val, b_val)
 
-        wt = "MindCore AI"
-        wb = font_light.getbbox(wt)
-        ww = wb[2] - wb[0]
-        draw.text(((WIDTH - ww) // 2, HEIGHT - 100), wt, font=font_light, fill=(136, 136, 170))
+                # Draw glow effect behind text (amber blur)
+                if alpha > 0.3:
+                    glow_layer = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+                    glow_draw = ImageDraw.Draw(glow_layer)
+                    gy = center_y
+                    glow_alpha = int(60 * alpha)
+                    for line in block_lines:
+                        bbox = font_main.getbbox(line)
+                        tw = bbox[2] - bbox[0]
+                        x = (WIDTH - tw) // 2
+                        glow_draw.text((x, gy), line, font=font_main,
+                                       fill=(AMBER[0], AMBER[1], AMBER[2], glow_alpha))
+                        gy += line_h
+                    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=12))
+                    frame.paste(Image.alpha_composite(
+                        frame.convert("RGBA"), glow_layer
+                    ).convert("RGB"))
+                    draw = ImageDraw.Draw(frame)
+
+                # Draw main text
+                cy = center_y
+                for line in block_lines:
+                    bbox = font_main.getbbox(line)
+                    tw = bbox[2] - bbox[0]
+                    x = (WIDTH - tw) // 2
+                    # Subtle shadow
+                    shadow_a = int(50 * alpha)
+                    draw.text((x + 3, cy + 3), line, font=font_main, fill=(shadow_a, shadow_a, shadow_a))
+                    draw.text((x, cy), line, font=font_main, fill=text_col)
+                    cy += line_h
+
+            elif is_previous:
+                # Fade out the previous line
+                next_block = wrapped_blocks[active_idx]
+                elapsed_since_next = t - next_block["start"]
+                if elapsed_since_next < FADE_DURATION:
+                    alpha = 1.0 - ease_in_out(min(elapsed_since_next / FADE_DURATION, 1.0))
+                else:
+                    alpha = 0.0
+
+                if alpha <= 0.02:
+                    continue
+
+                block_lines = block["lines"]
+                block_height = len(block_lines) * line_h
+                center_y = (HEIGHT // 2) - (block_height // 2) - 30
+
+                r_val = int(AMBER_DIM[0] * alpha)
+                g_val = int(AMBER_DIM[1] * alpha)
+                b_val = int(AMBER_DIM[2] * alpha)
+                text_col = (r_val, g_val, b_val)
+
+                cy = center_y
+                for line in block_lines:
+                    bbox = font_main.getbbox(line)
+                    tw = bbox[2] - bbox[0]
+                    x = (WIDTH - tw) // 2
+                    draw.text((x, cy), line, font=font_main, fill=text_col)
+                    cy += line_h
+
+        # Watermark
+        draw.text((watermark_x, watermark_y), wt, font=font_watermark, fill=(136, 136, 170))
+
+        # Progress bar
+        if audio_duration > 0:
+            progress = min(t / audio_duration, 1.0)
+            bar_left = bar_margin
+            bar_right = WIDTH - bar_margin
+            bar_total_width = bar_right - bar_left
+
+            # Background track
+            draw.rectangle(
+                [(bar_left, bar_y), (bar_right, bar_y + bar_h)],
+                fill=(40, 40, 60)
+            )
+            # Filled portion (amber)
+            fill_width = int(bar_total_width * progress)
+            if fill_width > 0:
+                draw.rectangle(
+                    [(bar_left, bar_y), (bar_left + fill_width, bar_y + bar_h)],
+                    fill=AMBER
+                )
 
         frame.save(os.path.join(frames_dir, f"frame_{fn:05d}.png"), "PNG")
 
@@ -350,7 +457,6 @@ def create_kinetic_video(audio_path, line_timestamps, output_path, audio_duratio
 
     print(f"  All frames written. Encoding with FFmpeg...")
 
-    # Use FFmpeg to combine frames + audio
     cmd = [
         "ffmpeg", "-y",
         "-framerate", str(FPS),
@@ -425,7 +531,7 @@ def upload_video(video_path, caption, scheduled_date=None):
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI - Kinetic Text Pipeline v1.0 ==")
+    print(f"== MindCore AI - Kinetic Text Pipeline v2.0 ==")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC}:00 UTC")
 
     if not ANTHROPIC_API_KEY:
