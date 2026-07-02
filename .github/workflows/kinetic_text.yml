@@ -16,8 +16,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation unzip
           pip install anthropic requests openai-whisper Pillow
+
+      - name: Download Montserrat font
+        run: |
+          mkdir -p /tmp/fonts
+          curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-ExtraBold.ttf" -o /tmp/fonts/Montserrat-ExtraBold.ttf
+          curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Medium.ttf" -o /tmp/fonts/Montserrat-Medium.ttf
+          ls -la /tmp/fonts/
 
       - name: Run kinetic text pipeline
         env:
