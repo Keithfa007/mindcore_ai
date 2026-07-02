@@ -285,7 +285,10 @@ def create_kinetic_video(audio_path, line_timestamps, output_path, audio_duratio
         bg_draw.line([(0, y), (WIDTH, y)], fill=(r, g, bv))
     print(f"  Rendering {total_frames} frames at {FPS}fps...")
     cmd = ["ffmpeg", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{WIDTH}x{HEIGHT}", "-r", str(FPS), "-i", "pipe:0", "-i", audio_path, "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-c:a", "aac", "-b:a", "128k", "-pix_fmt", "yuv420p", "-shortest", output_path]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    import tempfile as _tf
+    stderr_log = os.path.join(_tf.gettempdir(), "ffmpeg_kinetic.log")
+    stderr_file = open(stderr_log, "w")
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=stderr_file)
     for fn in range(total_frames):
         t = fn / FPS
         frame = bg.copy()
@@ -331,8 +334,10 @@ def create_kinetic_video(audio_path, line_timestamps, output_path, audio_duratio
             print(f"    Frame {fn}/{total_frames} ({t:.1f}s)")
     proc.stdin.close()
     proc.wait()
+    stderr_file.close()
     if proc.returncode != 0:
-        stderr = proc.stderr.read().decode()
+        with open(stderr_log) as ef:
+            stderr = ef.read()
         print(f"  FFmpeg error: {stderr[-500:]}")
         raise RuntimeError("FFmpeg encoding failed")
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
