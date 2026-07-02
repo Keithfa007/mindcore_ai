@@ -343,6 +343,35 @@ def validate_seo(content, title, meta, primary_keyword, slug):
 
 
 # -- History ------------------------------------------------------------------
+
+# ── Deduplication guard: prevent semantically similar posts ──────────────
+KEYWORD_SIMILARITY_GROUPS = [
+    ["sober", "sobriety", "recovery app", "clean app", "addiction app"],
+    ["mood track", "mood diary", "mood journal", "mood log"],
+    ["self improvement", "personal growth", "self improving", "wellbeing app"],
+    ["anxiety relief", "anxiety app", "emotional support", "stress companion"],
+    ["meditation sleep", "bedtime meditation", "sleep meditation", "fall asleep meditation"],
+    ["ai companion", "ai chat", "ai mental health", "ai wellness"],
+    ["weighted blanket", "anxiety blanket"],
+    ["mental health app", "mental wellness app", "wellness app"],
+    ["women mental", "perimenopause", "postpartum"],
+]
+
+def is_duplicate_keyword(new_keyword, history):
+    """Check if new keyword is too similar to any already-published keyword."""
+    used_keywords = [e.get("primary_keyword", "").lower() for e in history]
+    new_lower = new_keyword.lower()
+    
+    for group in KEYWORD_SIMILARITY_GROUPS:
+        new_matches = any(term in new_lower for term in group)
+        if new_matches:
+            for used_kw in used_keywords:
+                used_matches = any(term in used_kw for term in group)
+                if used_matches:
+                    print(f"   DEDUP: '{new_keyword}' blocked (similar to '{used_kw}')")
+                    return True
+    return False
+
 def load_history():
     if not os.path.exists(HISTORY_FILE):
         return []
@@ -389,6 +418,7 @@ def pick_from_library(library, audience, history):
         kw for kw in library
         if not kw["used"]
         and kw["keyword"].lower() not in used_keywords
+            and not is_duplicate_keyword(kw["keyword"], history)
         and kw["audience"] == audience
     ]
     if not candidates and audience != "neutral":
