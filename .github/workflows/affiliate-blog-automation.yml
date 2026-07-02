@@ -1,9 +1,9 @@
 name: MindCore AI -- Affiliate Blog Automation
 
+# Wednesday only (reduced from Wed+Fri to keep 3:1 ratio of original to affiliate content)
 on:
   schedule:
     - cron: '0 10 * * 3'
-    - cron: '0 10 * * 5'
   workflow_dispatch:
 
 jobs:
