@@ -1,8 +1,11 @@
 name: Female Video Pipeline -- Daily
 
+# PAUSED -- July 2026
+# EU replaced by Kinetic Text Female pipeline.
+# US female pipeline (us_tiktok_pipeline.yml) still active.
 on:
-  schedule:
-    - cron: "0 0 * * 2,4,6"  # Tue/Thu/Sat only
+  # schedule:
+  #   - cron: "0 0 * * 2,4,6"  # Tue/Thu/Sat only
   workflow_dispatch:
 
 jobs:

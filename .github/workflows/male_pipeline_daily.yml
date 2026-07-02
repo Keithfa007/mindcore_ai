@@ -1,8 +1,11 @@
 name: Male Video Pipeline -- Daily
 
+# PAUSED -- July 2026
+# EU replaced by Kinetic Text Male pipeline.
+# US male pipeline (us_tiktok_male.yml) still active.
 on:
-  schedule:
-    - cron: "0 0 * * 0,1,3,5"  # Sun/Mon/Wed/Fri only
+  # schedule:
+  #   - cron: "0 0 * * 0,1,3,5"  # Sun/Mon/Wed/Fri only
   workflow_dispatch:
 
 jobs:
