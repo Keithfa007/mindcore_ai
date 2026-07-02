@@ -2,9 +2,7 @@ name: Kinetic Text Female (EU)
 
 on:
   schedule:
-    - cron: "0 11 * * 2"   # Tue 11:00 UTC
-    - cron: "0 11 * * 4"   # Thu 11:00 UTC
-    - cron: "0 11 * * 6"   # Sat 11:00 UTC
+    - cron: "0 0 * * 2,4,6"   # Tue/Thu/Sat 00:00 UTC (same as old female pipeline)
   workflow_dispatch:
 
 jobs:
