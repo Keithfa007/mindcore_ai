@@ -313,6 +313,9 @@ def main():
         else:
             print(f"   Check result  - {result.get('status_code', 'unknown')}")
 
+        print("6. Uploading to X (cover image + caption)...")
+        x_result = upload_to_x(cover, caption, scheduled_date=scheduled_date)
+
     print("\n== Done ==")
 
 if __name__ == "__main__":
