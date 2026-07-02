@@ -1,24 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Kinetic Text Video Pipeline v3.0
+MindCore AI — Kinetic Text Video Pipeline v3.1
 ===============================================
-Cinematic kinetic typography with AI-generated backgrounds.
+Cinematic word-by-word karaoke with AI backgrounds.
 
-v3.0 changes:
-- fal.ai Flux Schnell background image with Ken Burns (slow zoom/pan)
-- No-overlap transitions: outgoing line slides up + fades, incoming fades in after
-- Emotional voiceover: lower stability, style parameter, natural pauses
-- Stronger text styling: text shadow, amber glow, slight scale effect
-- Progress bar + watermark retained
-
-Flow:
-1. Claude generates short raw script with natural pause markers
-2. fal.ai generates moody background image matching content angle
-3. ElevenLabs generates emotional voiceover
-4. Whisper transcribes for word-level timestamps
-5. Pillow renders frames: Ken Burns background + kinetic text
-6. FFmpeg encodes video
-7. Upload-Post publishes to TikTok + Facebook + YouTube
+v3.1 changes:
+- Word-by-word highlight synced to Whisper timestamps (karaoke style)
+- Unspoken words: dim gray | Active word: amber glow | Spoken words: white
+- Montserrat Extra Bold font (downloaded in workflow)
+- Smoother sentence transitions (old sentence fades out before new appears)
+- AI background + Ken Burns + emotional voice retained from v3.0
 """
 
 import os, sys, json, random, subprocess, tempfile, datetime, time, math
@@ -105,7 +96,6 @@ RULES:
 - NO emojis, NO hashtags, NO "hey guys", NO motivational cliches.
 - Do NOT start with "I" more than twice.
 - Write with natural breathing points. Use short sentences mixed with longer ones.
-- Put a blank line between sentences that need a dramatic pause.
 
 WRITING STYLE (MANDATORY):
 - NEVER use em dashes. Use commas, periods, or separate sentences instead.
@@ -158,21 +148,16 @@ Return ONLY the caption text."""
 # ── Background Image ─────────────────────────────────────────────────────
 
 def generate_background_image(angle, output_path):
-    """Generate a moody background image using fal.ai Flux Schnell."""
     if not FAL_KEY:
         print("  FAL_KEY not set, using gradient fallback")
         return None
-
     prompt = angle.get("bg_prompt", "dark moody atmospheric background, cinematic, no text")
-    # Portrait 9:16 for TikTok
     payload = {
         "prompt": prompt,
         "image_size": {"width": 1080, "height": 1920},
-        "num_images": 1,
-        "num_inference_steps": 4,
+        "num_images": 1, "num_inference_steps": 4,
         "enable_safety_checker": False,
     }
-
     try:
         resp = requests.post(
             "https://fal.run/fal-ai/flux/schnell",
@@ -182,28 +167,18 @@ def generate_background_image(angle, output_path):
         if not resp.ok:
             print(f"  fal.ai error {resp.status_code}: {resp.text[:200]}")
             return None
-
         data = resp.json()
         images = data.get("images", [])
-        if not images:
+        if not images or not images[0].get("url"):
             print("  fal.ai returned no images")
             return None
-
-        img_url = images[0].get("url", "")
-        if not img_url:
-            print("  fal.ai image has no URL")
-            return None
-
-        img_resp = requests.get(img_url, timeout=60)
+        img_resp = requests.get(images[0]["url"], timeout=60)
         if img_resp.ok:
             with open(output_path, "wb") as f:
                 f.write(img_resp.content)
-            size_kb = os.path.getsize(output_path) / 1024
-            print(f"  Background image generated ({size_kb:.0f} KB)")
+            print(f"  Background generated ({os.path.getsize(output_path) // 1024} KB)")
             return output_path
-        else:
-            print(f"  Failed to download image: {img_resp.status_code}")
-            return None
+        return None
     except Exception as e:
         print(f"  fal.ai failed: {e}")
         return None
@@ -212,13 +187,11 @@ def generate_background_image(angle, output_path):
 # ── Voiceover ─────────────────────────────────────────────────────────────
 
 def prepare_emotional_text(script_lines):
-    """Add natural pauses between sentences for more emotional delivery."""
-    # Join with ellipsis pauses to create natural breathing breaks
     parts = []
     for i, line in enumerate(script_lines):
         parts.append(line)
         if i < len(script_lines) - 1:
-            parts.append("...")  # ElevenLabs interprets this as a natural pause
+            parts.append("...")
     return " ".join(parts)
 
 
@@ -226,7 +199,6 @@ def generate_voiceover(script_lines, output_path):
     if not ELEVENLABS_API_KEY:
         print("  ELEVENLABS_API_KEY not set")
         return False
-
     script_text = prepare_emotional_text(script_lines)
     url = f"{ELEVENLABS_API_URL}/{ELEVENLABS_VOICE_ID}"
     headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
@@ -234,10 +206,8 @@ def generate_voiceover(script_lines, output_path):
         "text": script_text,
         "model_id": "eleven_multilingual_v2",
         "voice_settings": {
-            "stability": 0.30,           # low = more expressive, emotional variation
-            "similarity_boost": 0.65,     # moderate similarity to original voice
-            "style": 0.60,               # emotional expressiveness (v2 only)
-            "use_speaker_boost": True,    # clearer, more present sound
+            "stability": 0.30, "similarity_boost": 0.65,
+            "style": 0.60, "use_speaker_boost": True,
         },
     }
     try:
@@ -249,15 +219,14 @@ def generate_voiceover(script_lines, output_path):
             for chunk in resp.iter_content(chunk_size=65536):
                 if chunk:
                     f.write(chunk)
-        size_kb = os.path.getsize(output_path) / 1024
-        print(f"  Voiceover generated ({size_kb:.0f} KB) [emotional mode]")
+        print(f"  Voiceover generated ({os.path.getsize(output_path) // 1024} KB) [emotional]")
         return True
     except Exception as e:
         print(f"  ElevenLabs failed: {e}")
         return False
 
 
-# ── Whisper ────────────────────────────────────────────────────────────────
+# ── Whisper & Timestamps ──────────────────────────────────────────────────
 
 def get_word_timestamps(audio_path):
     try:
@@ -265,14 +234,10 @@ def get_word_timestamps(audio_path):
         model = whisper.load_model("base")
         result = model.transcribe(audio_path, word_timestamps=True)
         words = []
-        for segment in result.get("segments", []):
-            for word_data in segment.get("words", []):
-                words.append({
-                    "word": word_data["word"].strip(),
-                    "start": word_data["start"],
-                    "end": word_data["end"],
-                })
-        print(f"  Whisper: {len(words)} words transcribed")
+        for seg in result.get("segments", []):
+            for w in seg.get("words", []):
+                words.append({"word": w["word"].strip(), "start": w["start"], "end": w["end"]})
+        print(f"  Whisper: {len(words)} words")
         return words
     except Exception as e:
         print(f"  Whisper failed: {e}")
@@ -280,345 +245,332 @@ def get_word_timestamps(audio_path):
 
 
 def get_audio_duration(audio_path):
-    result = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-         "-of", "csv=p=0", audio_path],
-        capture_output=True, text=True
-    )
-    return float(result.stdout.strip())
+    r = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", audio_path],
+        capture_output=True, text=True)
+    return float(r.stdout.strip())
 
 
-def build_line_timestamps(script_lines, word_timestamps, audio_duration):
-    if not word_timestamps:
-        interval = audio_duration / len(script_lines)
-        return [{"text": line, "start": i * interval, "end": (i + 1) * interval}
-                for i, line in enumerate(script_lines)]
-
-    line_times = []
-    word_idx = 0
-    total_words = len(word_timestamps)
+def build_sentence_word_data(script_lines, word_timestamps, audio_duration):
+    """Build per-sentence, per-word timestamp data for karaoke rendering."""
+    sentences = []
+    w_idx = 0
+    total_w = len(word_timestamps) if word_timestamps else 0
 
     for line in script_lines:
-        line_word_count = len(line.split())
-        if word_idx >= total_words:
-            break
-        start_time = word_timestamps[word_idx]["start"]
-        end_idx = min(word_idx + line_word_count - 1, total_words - 1)
-        end_time = word_timestamps[end_idx]["end"]
-        line_times.append({"text": line, "start": start_time, "end": end_time})
-        word_idx = end_idx + 1
+        words = line.split()
+        sent = {"text": line, "words": []}
+        for word in words:
+            if w_idx < total_w:
+                wt = word_timestamps[w_idx]
+                sent["words"].append({"text": word, "start": wt["start"], "end": wt["end"]})
+                w_idx += 1
+            else:
+                last_end = sent["words"][-1]["end"] if sent["words"] else 0
+                sent["words"].append({"text": word, "start": last_end, "end": last_end + 0.3})
+        if sent["words"]:
+            sent["start"] = sent["words"][0]["start"]
+            sent["end"] = sent["words"][-1]["end"]
+        else:
+            sent["start"] = 0
+            sent["end"] = 0
+        sentences.append(sent)
 
-    return line_times
+    return sentences
 
 
 # ── Video Rendering ────────────────────────────────────────────────────────
-
-def wrap_text_for_video(text, font, max_width):
-    words = text.split()
-    lines = []
-    current = ""
-    for word in words:
-        test = f"{current} {word}".strip()
-        bbox = font.getbbox(test)
-        tw = bbox[2] - bbox[0]
-        if tw <= max_width:
-            current = test
-        else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-    return lines
-
 
 def ease_in_out(t):
     return t * t * (3 - 2 * t)
 
 
-def create_kinetic_video(audio_path, line_timestamps, output_path, audio_duration, bg_image_path=None):
-    """Render cinematic kinetic text video with AI background + Ken Burns."""
+def build_word_positions(words, font, max_width, center_x, base_y, line_h):
+    """Calculate pixel (x, y) for each word, wrapping and centering lines."""
+    space_w = font.getbbox("n")[2] - font.getbbox("n")[0]  # approximate space width
+
+    # Pass 1: assign words to wrapped lines
+    lines = []
+    cur_line = []
+    cur_w = 0
+    for i, word in enumerate(words):
+        bbox = font.getbbox(word["text"])
+        ww = bbox[2] - bbox[0]
+        test = cur_w + (space_w if cur_line else 0) + ww
+        if test <= max_width or not cur_line:
+            cur_line.append({"idx": i, "text": word["text"], "w": ww})
+            cur_w = test
+        else:
+            lines.append((cur_line, cur_w))
+            cur_line = [{"idx": i, "text": word["text"], "w": ww}]
+            cur_w = ww
+    if cur_line:
+        lines.append((cur_line, cur_w))
+
+    # Pass 2: compute centered positions
+    positions = [None] * len(words)
+    y = base_y
+    for line_words, line_width in lines:
+        x = center_x - line_width // 2
+        for lw in line_words:
+            positions[lw["idx"]] = {"x": x, "y": y, "w": lw["w"]}
+            x += lw["w"] + space_w
+        y += line_h
+
+    return positions, len(lines)
+
+
+def create_kinetic_video(audio_path, sentences, output_path, audio_duration, bg_image_path=None):
+    """Render word-by-word karaoke video with AI background."""
     from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
     import tempfile, shutil
 
     FPS = 24
     total_frames = int((audio_duration + 0.5) * FPS)
-    FADE_IN = 0.30     # seconds for new line to fade in
-    FADE_OUT = 0.25    # seconds for old line to fade out (starts before new line)
-    OVERLAP_GAP = 0.0  # old line fully fades before new one starts fading in
+    SENT_FADE_IN = 0.25
+    SENT_FADE_OUT = 0.20
 
-    # Brand colours
+    # Colours
     AMBER = (212, 165, 116)
     WHITE = (255, 255, 255)
+    DIM = (90, 90, 110)
+    BLACK = (0, 0, 0)
 
-    # Load fonts
+    # Load fonts — prefer Montserrat if available
     font_main = None
-    font_watermark = None
-    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    for p in ["/tmp/fonts/Montserrat-ExtraBold.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
               "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]:
         try:
-            font_main = ImageFont.truetype(p, 56)
-            break
-        except:
-            continue
-    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-              "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]:
-        try:
-            font_watermark = ImageFont.truetype(p, 24)
+            font_main = ImageFont.truetype(p, 54)
+            print(f"  Font: {os.path.basename(p)}")
             break
         except:
             continue
     if not font_main:
         font_main = ImageFont.load_default()
-    if not font_watermark:
-        font_watermark = ImageFont.load_default()
 
-    max_text_width = int(WIDTH * 0.82)
-    line_h = 68
+    font_wm = None
+    for p in ["/tmp/fonts/Montserrat-Medium.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]:
+        try:
+            font_wm = ImageFont.truetype(p, 22)
+            break
+        except:
+            continue
+    if not font_wm:
+        font_wm = ImageFont.load_default()
 
-    # Pre-wrap all lines
-    wrapped_blocks = []
-    for lt in line_timestamps:
-        wrapped = wrap_text_for_video(lt["text"], font_main, max_text_width)
-        wrapped_blocks.append({
-            "lines": wrapped,
-            "start": lt["start"],
-            "end": lt.get("end", audio_duration),
-        })
+    max_text_w = int(WIDTH * 0.84)
+    line_h = 72
+    center_x = WIDTH // 2
 
-    # ── Background setup ──────────────────────────────────────────────
+    # Pre-compute word positions for each sentence
+    for sent in sentences:
+        block_lines_count_estimate = max(1, len(sent["words"]) // 4)
+        block_h = block_lines_count_estimate * line_h
+        base_y = (HEIGHT // 2) - (block_h // 2) - 20
+        positions, n_lines = build_word_positions(
+            sent["words"], font_main, max_text_w, center_x, base_y, line_h
+        )
+        # Recompute base_y with actual line count
+        actual_h = n_lines * line_h
+        base_y = (HEIGHT // 2) - (actual_h // 2) - 20
+        positions, _ = build_word_positions(
+            sent["words"], font_main, max_text_w, center_x, base_y, line_h
+        )
+        sent["positions"] = positions
+
+    # ── Background ────────────────────────────────────────────────
     bg_source = None
     if bg_image_path and os.path.exists(bg_image_path):
         try:
             bg_source = Image.open(bg_image_path).convert("RGB")
-            # Make it 20% larger than frame for Ken Burns room
             kb_scale = 1.20
             bg_source = bg_source.resize(
-                (int(WIDTH * kb_scale), int(HEIGHT * kb_scale)),
-                Image.LANCZOS
-            )
-            # Darken the image for text readability
+                (int(WIDTH * kb_scale), int(HEIGHT * kb_scale)), Image.LANCZOS)
             enhancer = ImageEnhance.Brightness(bg_source)
-            bg_source = enhancer.enhance(0.35)  # 35% brightness (very dark)
-            print(f"  Background: AI image loaded ({bg_source.size[0]}x{bg_source.size[1]})")
+            bg_source = enhancer.enhance(0.32)
+            print(f"  BG: AI image ({bg_source.size[0]}x{bg_source.size[1]})")
         except Exception as e:
-            print(f"  Background image load failed: {e}")
+            print(f"  BG load failed: {e}")
             bg_source = None
 
-    # Fallback: dark gradient
     if bg_source is None:
         bg_fallback = Image.new("RGB", (WIDTH, HEIGHT))
-        draw_bg = ImageDraw.Draw(bg_fallback)
+        d = ImageDraw.Draw(bg_fallback)
         for y in range(HEIGHT):
-            ratio = y / HEIGHT
-            ease = ratio * ratio * (3 - 2 * ratio)
-            r = int(12 + (6 - 12) * ease)
-            g = int(16 + (6 - 16) * ease)
-            bv = int(32 + (12 - 32) * ease)
-            draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, bv))
-        print("  Background: dark gradient fallback")
+            r = y / HEIGHT
+            e = r * r * (3 - 2 * r)
+            d.line([(0, y), (WIDTH, y)],
+                   fill=(int(12 + (6-12)*e), int(16 + (6-16)*e), int(32 + (12-32)*e)))
+        print("  BG: gradient fallback")
 
-    # Dark overlay for vignette effect (applied on top of Ken Burns frames)
+    # Vignette overlay
     vignette = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-    vig_draw = ImageDraw.Draw(vignette)
-    # Top and bottom darkening
-    for y in range(300):
-        alpha = int(180 * (1.0 - y / 300))
-        vig_draw.line([(0, y), (WIDTH, y)], fill=(0, 0, 0, alpha))
-    for y in range(HEIGHT - 300, HEIGHT):
-        alpha = int(180 * ((y - (HEIGHT - 300)) / 300))
-        vig_draw.line([(0, y), (WIDTH, y)], fill=(0, 0, 0, alpha))
+    vd = ImageDraw.Draw(vignette)
+    for y in range(350):
+        a = int(200 * (1.0 - y / 350))
+        vd.line([(0, y), (WIDTH, y)], fill=(0, 0, 0, a))
+    for y in range(HEIGHT - 350, HEIGHT):
+        a = int(200 * ((y - (HEIGHT - 350)) / 350))
+        vd.line([(0, y), (WIDTH, y)], fill=(0, 0, 0, a))
 
-    # Watermark position
+    # Watermark
     wt = "MindCore AI"
-    wb = font_watermark.getbbox(wt)
-    ww = wb[2] - wb[0]
-    watermark_x = (WIDTH - ww) // 2
-    watermark_y = HEIGHT - 90
+    wb = font_wm.getbbox(wt)
+    wm_x = (WIDTH - (wb[2] - wb[0])) // 2
+    wm_y = HEIGHT - 85
 
-    # Progress bar
-    bar_y = HEIGHT - 40
+    bar_y = HEIGHT - 38
     bar_h = 4
-    bar_margin = 80
+    bar_m = 80
 
-    frames_dir = tempfile.mkdtemp(prefix="kinetic_frames_")
+    frames_dir = tempfile.mkdtemp(prefix="kinetic_")
     print(f"  Rendering {total_frames} frames at {FPS}fps...")
 
     for fn in range(total_frames):
         t = fn / FPS
         progress = t / audio_duration if audio_duration > 0 else 0
 
-        # ── Ken Burns background ──────────────────────────────────
+        # ── Ken Burns BG ──────────────────────────────────────────
         if bg_source is not None:
-            # Slow zoom: 1.0 to 1.15 over the video duration
             zoom = 1.0 + 0.15 * progress
-            # Slow pan: drift from center-left to center-right
-            pan_x = 0.5 + 0.1 * math.sin(progress * math.pi)
-            pan_y = 0.5 + 0.05 * math.cos(progress * math.pi * 0.7)
-
-            src_w = bg_source.width
-            src_h = bg_source.height
-            crop_w = int(WIDTH / zoom)
-            crop_h = int(HEIGHT / zoom)
-
-            # Center the crop with pan offset
-            cx = int(pan_x * (src_w - crop_w))
-            cy = int(pan_y * (src_h - crop_h))
-            cx = max(0, min(cx, src_w - crop_w))
-            cy = max(0, min(cy, src_h - crop_h))
-
-            cropped = bg_source.crop((cx, cy, cx + crop_w, cy + crop_h))
-            frame = cropped.resize((WIDTH, HEIGHT), Image.LANCZOS)
-
-            # Apply vignette overlay
-            frame_rgba = frame.convert("RGBA")
-            frame_rgba = Image.alpha_composite(frame_rgba, vignette)
-            frame = frame_rgba.convert("RGB")
+            px = 0.5 + 0.1 * math.sin(progress * math.pi)
+            py = 0.5 + 0.05 * math.cos(progress * math.pi * 0.7)
+            sw, sh = bg_source.size
+            cw, ch = int(WIDTH / zoom), int(HEIGHT / zoom)
+            cx = max(0, min(int(px * (sw - cw)), sw - cw))
+            cy = max(0, min(int(py * (sh - ch)), sh - ch))
+            frame = bg_source.crop((cx, cy, cx + cw, cy + ch)).resize((WIDTH, HEIGHT), Image.LANCZOS)
+            frame = Image.alpha_composite(frame.convert("RGBA"), vignette).convert("RGB")
         else:
             frame = bg_fallback.copy()
 
         draw = ImageDraw.Draw(frame)
 
-        # ── Determine active line ─────────────────────────────────
+        # ── Active sentence ───────────────────────────────────────
         active_idx = -1
-        for i, block in enumerate(wrapped_blocks):
-            if t >= block["start"]:
+        for i, s in enumerate(sentences):
+            if t >= s["start"]:
                 active_idx = i
 
-        # ── Draw text: one line at a time, no overlap ─────────────
-        for i, block in enumerate(wrapped_blocks):
-            is_active = (i == active_idx)
-            is_outgoing = (i == active_idx - 1) if active_idx > 0 else False
+        # ── Draw words ────────────────────────────────────────────
+        for si, sent in enumerate(sentences):
+            is_active = (si == active_idx)
+            is_outgoing = (si == active_idx - 1) if active_idx > 0 else False
 
             if not is_active and not is_outgoing:
                 continue
 
-            block_lines = block["lines"]
-            block_height = len(block_lines) * line_h
-            base_y = (HEIGHT // 2) - (block_height // 2) - 20
+            positions = sent.get("positions", [])
+            if not positions or any(p is None for p in positions):
+                continue
 
             if is_outgoing:
-                # Outgoing line: fade out + slide up
-                next_start = wrapped_blocks[active_idx]["start"]
-                fade_start = next_start - FADE_OUT
-                if t < fade_start:
+                # Fade out old sentence
+                next_s = sentences[active_idx]["start"]
+                fade_begin = next_s - SENT_FADE_OUT
+                if t >= next_s:
+                    continue
+                if t < fade_begin:
                     alpha = 1.0
-                    y_offset = 0
-                elif t < next_start:
-                    raw = (t - fade_start) / FADE_OUT
-                    alpha = 1.0 - ease_in_out(min(raw, 1.0))
-                    y_offset = -int(40 * ease_in_out(min(raw, 1.0)))  # slide up 40px
+                    y_off = 0
                 else:
-                    continue  # fully gone
+                    raw = (t - fade_begin) / SENT_FADE_OUT
+                    alpha = 1.0 - ease_in_out(min(raw, 1.0))
+                    y_off = -int(30 * ease_in_out(min(raw, 1.0)))
 
                 if alpha < 0.03:
                     continue
 
-                cy = base_y + y_offset
-                for line in block_lines:
-                    bbox = font_main.getbbox(line)
-                    tw = bbox[2] - bbox[0]
-                    x = (WIDTH - tw) // 2
-                    r_val = int(AMBER[0] * alpha * 0.5)
-                    g_val = int(AMBER[1] * alpha * 0.5)
-                    b_val = int(AMBER[2] * alpha * 0.5)
-                    draw.text((x, cy), line, font=font_main, fill=(r_val, g_val, b_val))
-                    cy += line_h
+                for wi, w in enumerate(sent["words"]):
+                    pos = positions[wi]
+                    c = (int(DIM[0] * alpha), int(DIM[1] * alpha), int(DIM[2] * alpha))
+                    draw.text((pos["x"], pos["y"] + y_off), w["text"], font=font_main, fill=c)
 
             elif is_active:
-                # Active line: fade in
-                elapsed = t - block["start"]
-                if elapsed < FADE_IN:
-                    alpha = ease_in_out(min(elapsed / FADE_IN, 1.0))
-                else:
-                    alpha = 1.0
+                # Sentence fade-in alpha
+                elapsed = t - sent["start"]
+                sent_alpha = ease_in_out(min(elapsed / SENT_FADE_IN, 1.0)) if elapsed < SENT_FADE_IN else 1.0
 
-                # Text colour: bright white
-                r_val = int(255 * alpha)
-                g_val = int(255 * alpha)
-                b_val = int(255 * alpha)
-                text_col = (r_val, g_val, b_val)
+                # Collect active-word indices for glow
+                active_word_idx = -1
+                for wi, w in enumerate(sent["words"]):
+                    if w["start"] <= t < w["end"]:
+                        active_word_idx = wi
+                        break
+                    elif t >= w["end"]:
+                        active_word_idx = wi  # last finished word
 
-                cy = base_y
+                # Draw glow behind active word
+                if active_word_idx >= 0 and sent_alpha > 0.5:
+                    for wi, w in enumerate(sent["words"]):
+                        if w["start"] <= t < w["end"]:
+                            pos = positions[wi]
+                            glow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+                            gd = ImageDraw.Draw(glow)
+                            gd.text((pos["x"], pos["y"]), w["text"], font=font_main,
+                                    fill=(AMBER[0], AMBER[1], AMBER[2], int(100 * sent_alpha)))
+                            glow = glow.filter(ImageFilter.GaussianBlur(radius=14))
+                            frame = Image.alpha_composite(frame.convert("RGBA"), glow).convert("RGB")
+                            draw = ImageDraw.Draw(frame)
+                            break
 
-                # Glow effect (amber blur behind text)
-                if alpha > 0.4:
-                    glow_layer = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-                    glow_draw = ImageDraw.Draw(glow_layer)
-                    gy = cy
-                    glow_alpha = int(80 * alpha)
-                    for line in block_lines:
-                        bbox = font_main.getbbox(line)
-                        tw = bbox[2] - bbox[0]
-                        x = (WIDTH - tw) // 2
-                        glow_draw.text((x, gy), line, font=font_main,
-                                       fill=(AMBER[0], AMBER[1], AMBER[2], glow_alpha))
-                        gy += line_h
-                    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=16))
-                    frame = Image.alpha_composite(
-                        frame.convert("RGBA"), glow_layer
-                    ).convert("RGB")
-                    draw = ImageDraw.Draw(frame)
+                # Draw each word
+                for wi, w in enumerate(sent["words"]):
+                    pos = positions[wi]
+                    word_started = t >= w["start"]
+                    word_active = w["start"] <= t < w["end"]
 
-                # Main text with shadow
-                for line in block_lines:
-                    bbox = font_main.getbbox(line)
-                    tw = bbox[2] - bbox[0]
-                    x = (WIDTH - tw) // 2
-                    # Shadow (dark, offset)
-                    sh_a = int(80 * alpha)
-                    draw.text((x + 3, cy + 3), line, font=font_main, fill=(0, 0, 0, ))
-                    draw.text((x + 2, cy + 2), line, font=font_main, fill=(sh_a, sh_a, sh_a))
-                    # Main text
-                    draw.text((x, cy), line, font=font_main, fill=text_col)
-                    cy += line_h
+                    if word_active:
+                        # Currently speaking: bright white
+                        c = (int(255 * sent_alpha), int(255 * sent_alpha), int(255 * sent_alpha))
+                    elif word_started:
+                        # Already spoken: white
+                        c = (int(240 * sent_alpha), int(240 * sent_alpha), int(240 * sent_alpha))
+                    else:
+                        # Not yet spoken: dim
+                        c = (int(DIM[0] * sent_alpha), int(DIM[1] * sent_alpha), int(DIM[2] * sent_alpha))
 
-        # ── Watermark ─────────────────────────────────────────────
-        draw.text((watermark_x, watermark_y), wt, font=font_watermark, fill=(180, 180, 200))
+                    # Text shadow
+                    sh = (int(20 * sent_alpha), int(20 * sent_alpha), int(20 * sent_alpha))
+                    draw.text((pos["x"] + 2, pos["y"] + 2), w["text"], font=font_main, fill=sh)
+                    draw.text((pos["x"], pos["y"]), w["text"], font=font_main, fill=c)
 
-        # ── Progress bar ──────────────────────────────────────────
+        # ── Watermark + progress ──────────────────────────────────
+        draw.text((wm_x, wm_y), wt, font=font_wm, fill=(180, 180, 200))
         if audio_duration > 0:
-            bar_progress = min(t / audio_duration, 1.0)
-            bar_left = bar_margin
-            bar_right = WIDTH - bar_margin
-            bar_total_width = bar_right - bar_left
-
-            draw.rectangle([(bar_left, bar_y), (bar_right, bar_y + bar_h)], fill=(40, 40, 60))
-            fill_w = int(bar_total_width * bar_progress)
-            if fill_w > 0:
-                draw.rectangle([(bar_left, bar_y), (bar_left + fill_w, bar_y + bar_h)], fill=AMBER)
+            bp = min(t / audio_duration, 1.0)
+            bw = WIDTH - 2 * bar_m
+            draw.rectangle([(bar_m, bar_y), (WIDTH - bar_m, bar_y + bar_h)], fill=(40, 40, 60))
+            fw = int(bw * bp)
+            if fw > 0:
+                draw.rectangle([(bar_m, bar_y), (bar_m + fw, bar_y + bar_h)], fill=AMBER)
 
         frame.save(os.path.join(frames_dir, f"frame_{fn:05d}.png"), "PNG")
-
         if fn % (FPS * 5) == 0:
             print(f"    Frame {fn}/{total_frames} ({t:.1f}s)")
 
-    print(f"  All frames written. Encoding with FFmpeg...")
-
+    print("  Encoding with FFmpeg...")
     cmd = [
-        "ffmpeg", "-y",
-        "-framerate", str(FPS),
+        "ffmpeg", "-y", "-framerate", str(FPS),
         "-i", os.path.join(frames_dir, "frame_%05d.png"),
         "-i", audio_path,
         "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-        "-c:a", "aac", "-b:a", "128k",
-        "-pix_fmt", "yuv420p",
-        "-shortest",
+        "-c:a", "aac", "-b:a", "128k", "-pix_fmt", "yuv420p", "-shortest",
         output_path,
     ]
-
     result = subprocess.run(cmd, capture_output=True, text=True)
     shutil.rmtree(frames_dir, ignore_errors=True)
-
     if result.returncode != 0:
         print(f"  FFmpeg error: {result.stderr[-500:]}")
         raise RuntimeError("FFmpeg encoding failed")
-
-    size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    print(f"  Video created ({size_mb:.1f} MB, {audio_duration:.1f}s)")
+    print(f"  Video: {os.path.getsize(output_path) / (1024*1024):.1f} MB, {audio_duration:.1f}s")
 
 
-# ── Upload & Scheduling ──────────────────────────────────────────────────
+# ── Upload ────────────────────────────────────────────────────────────────
 
 def get_scheduled_time(hour_utc):
     now = datetime.datetime.utcnow()
@@ -631,38 +583,29 @@ def get_scheduled_time(hour_utc):
 def upload_video(video_path, caption, scheduled_date=None):
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
-
     tiktok_caption = f"{caption}\n\n{TK_HASHTAGS}"
     fb_description = f"{caption}\n\n{FB_HASHTAGS}"
-
     data = [
         ("user", UPLOAD_POST_USER),
-        ("platform[]", "tiktok"),
-        ("platform[]", "facebook"),
-        ("platform[]", "youtube"),
+        ("platform[]", "tiktok"), ("platform[]", "facebook"), ("platform[]", "youtube"),
         ("title", tiktok_caption[:2200]),
-        ("facebook_title", caption[:255]),
-        ("facebook_description", fb_description),
+        ("facebook_title", caption[:255]), ("facebook_description", fb_description),
         ("youtube_title", caption[:100]),
         ("youtube_description", f"{caption}\n\n#mentalhealth #mindcoreai #recovery #Shorts"),
         ("youtube_tags", "mental health,recovery,addiction,sobriety,mindcore ai,healing"),
     ]
     if scheduled_date:
         data.append(("scheduled_date", scheduled_date))
-
     try:
         with open(video_path, "rb") as f:
             resp = requests.post(
                 "https://api.upload-post.com/api/upload",
                 headers={"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"},
                 files=[("video", ("kinetic.mp4", f, "video/mp4"))],
-                data=data, timeout=180,
-            )
-        result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
+                data=data, timeout=180)
+        result = resp.json() if "json" in resp.headers.get("content-type", "") else {"raw": resp.text}
         result["status_code"] = resp.status_code
-        print(f"  Upload {'OK' if resp.ok else 'WARNING'}: {resp.status_code}")
-        if not resp.ok:
-            print(f"  {resp.text[:300]}")
+        print(f"  Upload {'OK' if resp.ok else 'WARN'}: {resp.status_code}")
         return result
     except Exception as e:
         print(f"  Upload failed: {e}")
@@ -673,9 +616,8 @@ def upload_video(video_path, caption, scheduled_date=None):
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI - Kinetic Text Pipeline v3.0 ==")
+    print(f"== MindCore AI - Kinetic Text Pipeline v3.1 ==")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC}:00 UTC")
-
     if not ANTHROPIC_API_KEY:
         sys.exit("ERROR: ANTHROPIC_API_KEY not set")
 
@@ -685,7 +627,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         audio_path = os.path.join(tmp, "voiceover.mp3")
         video_path = os.path.join(tmp, "kinetic.mp4")
-        bg_image_path = os.path.join(tmp, "background.png")
+        bg_path = os.path.join(tmp, "background.png")
 
         print("\n1. Picking angle...")
         angle = get_angle_for_run()
@@ -697,33 +639,29 @@ def main():
         caption = generate_caption(client, script_lines, angle)
         print(f"  Caption: {caption}")
 
-        print("\n4. Generating background image (fal.ai)...")
-        bg_result = generate_background_image(angle, bg_image_path)
+        print("\n4. Background image (fal.ai)...")
+        bg_result = generate_background_image(angle, bg_path)
 
-        print("\n5. Generating voiceover (emotional mode)...")
-        has_voice = generate_voiceover(script_lines, audio_path)
-        if not has_voice:
+        print("\n5. Voiceover (emotional)...")
+        if not generate_voiceover(script_lines, audio_path):
             sys.exit("ERROR: Voiceover generation failed")
 
-        print("\n6. Getting word timestamps (Whisper)...")
+        print("\n6. Word timestamps (Whisper)...")
         word_timestamps = get_word_timestamps(audio_path)
         audio_duration = get_audio_duration(audio_path)
-        print(f"  Audio duration: {audio_duration:.1f}s")
+        print(f"  Duration: {audio_duration:.1f}s")
 
-        print("\n7. Building line timestamps...")
-        line_timestamps = build_line_timestamps(script_lines, word_timestamps, audio_duration)
-        for lt in line_timestamps:
-            print(f"  [{lt['start']:.1f}s] {lt['text']}")
+        print("\n7. Building word-level data...")
+        sentences = build_sentence_word_data(script_lines, word_timestamps, audio_duration)
+        for s in sentences:
+            print(f"  [{s['start']:.1f}-{s['end']:.1f}s] {s['text']} ({len(s['words'])} words)")
 
-        print("\n8. Creating kinetic text video...")
-        create_kinetic_video(audio_path, line_timestamps, video_path, audio_duration,
+        print("\n8. Rendering video...")
+        create_kinetic_video(audio_path, sentences, video_path, audio_duration,
                             bg_image_path=bg_result)
 
         import shutil
-        output_copy = OUTPUT_DIR / f"kinetic_{GITHUB_RUN_NUMBER}.mp4"
-        shutil.copy2(video_path, output_copy)
-
-        # Also save the background image for review
+        shutil.copy2(video_path, OUTPUT_DIR / f"kinetic_{GITHUB_RUN_NUMBER}.mp4")
         if bg_result and os.path.exists(bg_result):
             shutil.copy2(bg_result, OUTPUT_DIR / f"bg_{GITHUB_RUN_NUMBER}.png")
 
@@ -735,10 +673,8 @@ def main():
     (OUTPUT_DIR / "kinetic_metadata.json").write_text(json.dumps({
         "run": GITHUB_RUN_NUMBER, "angle": angle["name"],
         "script": script_lines, "caption": caption,
-        "scheduled": scheduled_date, "platform": "tiktok+facebook+youtube",
-        "bg_image": bool(bg_result),
+        "scheduled": scheduled_date, "bg_image": bool(bg_result),
     }, indent=2))
-
     print("\n== Done ==")
 
 
