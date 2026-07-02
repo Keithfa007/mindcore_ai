@@ -23,6 +23,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
+          FAL_KEY:             ${{ secrets.FAL_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
           POST_HOUR_UTC:       "15"
           # UPLOAD_POST_API_KEY intentionally omitted — review mode only
