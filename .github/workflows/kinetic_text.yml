@@ -31,10 +31,20 @@ jobs:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
           FAL_KEY:             ${{ secrets.FAL_KEY }}
+          SERP_API_KEY:        ${{ secrets.SERP_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
           POST_HOUR_UTC:       "15"
           # UPLOAD_POST_API_KEY intentionally omitted — review mode only
         run: python video_pipeline/kinetic_text_pipeline.py
+
+      - name: Commit topic history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add video_pipeline/kinetic_topic_history.json
+          git diff --staged --quiet || git commit -m "chore: kinetic topic history [skip ci]"
+          git push
+        continue-on-error: true
 
       - uses: actions/upload-artifact@v4
         if: always()
