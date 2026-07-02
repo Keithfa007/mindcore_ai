@@ -1,8 +1,10 @@
 """
-MindCore AI -- ElevenLabs TTS v1.0
+MindCore AI -- ElevenLabs TTS v2.0
 ===================================
 Shared TTS module for all video pipelines + ebook promo.
 Replaces Fish Audio for voiceovers. Fish Audio stays for in-app voice only.
+
+v2.0: Emotional voice settings (stability 0.30, style 0.60, speaker_boost).
 
 Voices:
   Male:   jfIS2w2yJi0grJZPyEsk
@@ -21,7 +23,7 @@ FEMALE_VOICE_ID = "uIZsnBL0YK1S5j69bAih"
 
 
 def generate_elevenlabs_tts(text, output_path, voice_id, model_id="eleven_multilingual_v2"):
-    """Generate TTS audio using ElevenLabs API.
+    """Generate TTS audio using ElevenLabs API with emotional settings.
 
     Args:
         text: Script text to synthesize
@@ -44,12 +46,14 @@ def generate_elevenlabs_tts(text, output_path, voice_id, model_id="eleven_multil
         "text": text,
         "model_id": model_id,
         "voice_settings": {
-            "stability": 0.50,
-            "similarity_boost": 0.75,
+            "stability": 0.30,
+            "similarity_boost": 0.65,
+            "style": 0.60,
+            "use_speaker_boost": True,
         },
     }
 
-    print(f"  ElevenLabs TTS: voice {voice_id[:8]}... | {len(text)} chars | model: {model_id}")
+    print(f"  ElevenLabs TTS: voice {voice_id[:8]}... | {len(text)} chars | model: {model_id} | emotional")
     resp = requests.post(url, headers=headers, json=payload, stream=True, timeout=120)
 
     if not resp.ok:
@@ -61,5 +65,5 @@ def generate_elevenlabs_tts(text, output_path, voice_id, model_id="eleven_multil
                 f.write(chunk)
 
     size_kb = Path(output_path).stat().st_size / 1024
-    print(f"  TTS: {size_kb:.0f} KB")
+    print(f"  TTS: {size_kb:.0f} KB [emotional]")
     return output_path
