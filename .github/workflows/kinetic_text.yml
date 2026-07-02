@@ -16,8 +16,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          pip install anthropic requests openai-whisper
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation
+          pip install anthropic requests openai-whisper Pillow
 
       - name: Run kinetic text pipeline
         env:
