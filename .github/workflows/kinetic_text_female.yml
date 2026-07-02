@@ -2,7 +2,7 @@ name: Kinetic Text Female (EU)
 
 on:
   schedule:
-    - cron: "0 0 * * 2,4,6"   # Tue/Thu/Sat 00:00 UTC (same as old female pipeline)
+    - cron: "0 0 * * 2,4,6"   # Tue/Thu/Sat 00:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -43,6 +43,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
           git add video_pipeline/kinetic_topic_history.json
           git diff --staged --quiet || git commit -m "chore: kinetic topic history [skip ci]"
           git push
