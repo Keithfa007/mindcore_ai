@@ -1,5 +1,5 @@
 // lib/pages/voice_chat_screen.dart
-// Voice chat TTS switched from Fish Audio to ElevenLabs — July 2026
+// Voice chat TTS: ElevenLabs turbo model for low-latency conversation
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -109,7 +109,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         },
         body: jsonEncode({
           'text': 'hi',
-          'model_id': 'eleven_multilingual_v2',
+          'model_id': 'eleven_turbo_v2_5',
           'voice_settings': {
             'stability': 0.45,
             'similarity_boost': 0.70,
@@ -137,7 +137,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
         },
         body: jsonEncode({
           'text': text.trim(),
-          'model_id': 'eleven_multilingual_v2',
+          'model_id': 'eleven_turbo_v2_5',
           'voice_settings': {
             'stability': 0.45,
             'similarity_boost': 0.70,
