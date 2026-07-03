@@ -12,10 +12,11 @@ class TtsChunkCoordinator {
   final Queue<String> _queue = Queue<String>();
   bool _draining = false;
 
-  static const int _minChunk = 120;
-  static const int _idealChunk = 180;
-  static const int _maxChunk = 240;
-  static const int _finalMinChunk = 40;
+  // Reduced chunk sizes for faster time-to-first-audio in voice chat
+  static const int _minChunk = 60;
+  static const int _idealChunk = 100;
+  static const int _maxChunk = 160;
+  static const int _finalMinChunk = 20;
 
   void startSession(String sessionId) {
     if (_sessionId == sessionId) return;
