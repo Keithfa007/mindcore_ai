@@ -1,6 +1,6 @@
 name: Daily Quote -- X (Twitter)
 
-# Generates 2 quotes at 00:30 UTC, scheduled to post at 08:00 and 20:00 Malta
+# 1 quote/day, generated at 00:30 UTC, scheduled to post at 16:00 Malta (14:00 UTC)
 on:
   schedule:
     - cron: "30 0 * * *"
@@ -8,7 +8,7 @@ on:
 
 jobs:
   x-quotes:
-    name: Generate 2 X quotes (morning + evening)
+    name: Generate X quote
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -23,21 +23,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends fonts-liberation
           pip install anthropic requests Pillow
 
-      - name: Morning quote (08:00 Malta / 06:00 UTC)
+      - name: Generate and schedule quote (16:00 Malta / 14:00 UTC)
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "6"
-          PYTHONPATH:          ${{ github.workspace }}
-        run: python scripts/quotes_pipeline.py
-
-      - name: Evening quote (20:00 Malta / 18:00 UTC)
-        env:
-          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
-          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
-          GITHUB_RUN_NUMBER:   "${{ github.run_number }}1"
-          POST_HOUR_UTC:       "18"
+          POST_HOUR_UTC:       "14"
           PYTHONPATH:          ${{ github.workspace }}
         run: python scripts/quotes_pipeline.py
 
