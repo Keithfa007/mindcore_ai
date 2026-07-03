@@ -4,11 +4,11 @@ class LiveVoicePreferences {
   LiveVoicePreferences._();
   static final LiveVoicePreferences instance = LiveVoicePreferences._();
 
-  // ── Fish Audio voice IDs ──────────────────────────────────────────────────
-  // Male: warm, calm — fish.audio model 4ea1bbc944004fa89ea67021d86129ef
-  static const String maleVoiceId   = '4ea1bbc944004fa89ea67021d86129ef';
-  // Female: warm, relaxing — fish.audio model 072bc615ad46485889e4eecc823985c5
-  static const String femaleVoiceId = '072bc615ad46485889e4eecc823985c5';
+  // ── ElevenLabs voice IDs (replaced Fish Audio July 2026) ──────────────
+  // Male: warm, emotional — ElevenLabs voice jfIS2w2yJi0grJZPyEsk
+  static const String maleVoiceId   = 'jfIS2w2yJi0grJZPyEsk';
+  // Female: warm, emotional — ElevenLabs voice uIZsnBL0YK1S5j69bAih
+  static const String femaleVoiceId = 'uIZsnBL0YK1S5j69bAih';
 
   // ── Preference keys ───────────────────────────────────────────────────────
   static const _kAutoSpeakChatReplies  = 'voice_auto_speak_chat_replies_v1';
@@ -40,7 +40,7 @@ class LiveVoicePreferences {
   double get ambientBlendLevel     => _ambientBlendLevel;
   String get companionGender       => _companionGender;
 
-  /// Returns the active Fish Audio voice ID based on the user's gender preference.
+  /// Returns the active ElevenLabs voice ID based on the user's gender preference.
   String get activeVoiceId =>
       _companionGender == 'female' ? femaleVoiceId : maleVoiceId;
 
