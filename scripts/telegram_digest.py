@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v3.0
+MindCore AI — Daily Telegram Digest v3.1
 =========================================
+v3.1: Fixed schedule to skip commented-out (paused) cron lines.
 v2.9: Added US TikTok analytics, renamed EU TikTok label.
 v2.8: Auto-fetch Facebook page_id, impressions display fix, removed Instagram.
 v2.6: Added Upload-Post social media analytics.
@@ -141,7 +142,15 @@ def get_todays_schedule():
         content = base64.b64decode(file_resp.json().get("content", "")).decode("utf-8", errors="ignore")
         name_match = re.search(r'^name:\s*(.+)$', content, re.MULTILINE)
         wf_name = name_match.group(1).strip().strip("'\"") if name_match else f["name"]
-        cron_matches = re.findall(r"cron:\s*['\"](.+?)['\"]", content)
+        # Only match uncommented cron lines (skip paused pipelines)
+        cron_matches = []
+        for line in content.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                continue
+            m = re.search(r"cron:\s*['\"](.*?)['\"]", stripped)
+            if m:
+                cron_matches.append(m.group(1))
         for cron in cron_matches:
             hours = cron_matches_today(cron)
             if hours is not None:
@@ -440,7 +449,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v3.0 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v3.1 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
