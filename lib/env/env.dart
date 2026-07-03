@@ -14,11 +14,13 @@ class Env {
   static const ytKey =
       String.fromEnvironment('YOUTUBE_API_KEY', defaultValue: '');
 
-  // Fish Audio TTS
+  // ElevenLabs TTS (replaced Fish Audio July 2026)
+  static const elevenLabsKey =
+      String.fromEnvironment('ELEVENLABS_API_KEY', defaultValue: '');
+
+  // Legacy Fish Audio keys — kept for backward compatibility only
   static const fishAudioKey =
       String.fromEnvironment('FISH_AUDIO_API_KEY', defaultValue: '');
-
-  // Default to the chosen voice — can be overridden via env
   static const fishAudioVoiceId =
       String.fromEnvironment('FISH_AUDIO_VOICE_ID',
           defaultValue: '0b74ead073f2474a904f69033535b98e');
