@@ -1,4 +1,5 @@
 // lib/pages/voice_chat_screen.dart
+// Voice chat TTS switched from Fish Audio to ElevenLabs — July 2026
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -97,16 +98,24 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     try {
       await LiveVoicePreferences.instance.load();
       await _chunkPlayer.setVolume(1.0);
-      final key = Env.fishAudioKey;
+      final key = Env.elevenLabsKey;
       if (key.isEmpty) return;
       await http.post(
-        Uri.parse('https://api.fish.audio/v1/tts'),
-        headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
+        Uri.parse('https://api.elevenlabs.io/v1/text-to-speech/${LiveVoicePreferences.instance.activeVoiceId}'),
+        headers: {
+          'xi-api-key': key,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
         body: jsonEncode({
           'text': 'hi',
-          'reference_id': LiveVoicePreferences.instance.activeVoiceId,
-          'format': 'mp3',
-          'latency': 'balanced',
+          'model_id': 'eleven_multilingual_v2',
+          'voice_settings': {
+            'stability': 0.45,
+            'similarity_boost': 0.70,
+            'style': 0.35,
+            'use_speaker_boost': true,
+          },
         }),
       ).timeout(const Duration(seconds: 8));
     } catch (_) {}
@@ -116,17 +125,25 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   Future<Uint8List?> _synthesise(String text) async {
     try {
-      final key     = Env.fishAudioKey;
+      final key     = Env.elevenLabsKey;
       final voiceId = LiveVoicePreferences.instance.activeVoiceId;
       if (key.isEmpty || text.trim().isEmpty) return null;
       final res = await http.post(
-        Uri.parse('https://api.fish.audio/v1/tts'),
-        headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
+        Uri.parse('https://api.elevenlabs.io/v1/text-to-speech/$voiceId'),
+        headers: {
+          'xi-api-key': key,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
         body: jsonEncode({
           'text': text.trim(),
-          'reference_id': voiceId,
-          'format': 'mp3',
-          'latency': 'balanced',
+          'model_id': 'eleven_multilingual_v2',
+          'voice_settings': {
+            'stability': 0.45,
+            'similarity_boost': 0.70,
+            'style': 0.35,
+            'use_speaker_boost': true,
+          },
         }),
       ).timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) return null;
