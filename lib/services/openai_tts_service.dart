@@ -1,4 +1,5 @@
-// OpenAI chat + Fish Audio TTS service for MindCore AI.
+// ElevenLabs TTS service for MindCore AI.
+// Replaced Fish Audio in July 2026 for unified voice provider.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -72,18 +73,16 @@ class OpenAiTtsService extends ChangeNotifier {
 
   static final OpenAiTtsService instance = OpenAiTtsService._internal();
 
-  // ── Fish Audio constants ───────────────────────────────────────────────
-  static const String _fishEndpoint = 'https://api.fish.audio/v1/tts';
-  static const String _fishFormat   = 'mp3';
-  // 'balanced' reduces latency ~35% vs 'normal' — ideal for short voice replies
-  static const String _fishLatency  = 'balanced';
-  // Synthesis timeout — balanced mode + short replies complete well within 12s
-  static const Duration _synthesisTimeout = Duration(seconds: 12);
+  // ── ElevenLabs constants ───────────────────────────────────────────────
+  static const String _elevenLabsBaseUrl = 'https://api.elevenlabs.io/v1/text-to-speech';
+  static const String _elevenLabsModel   = 'eleven_multilingual_v2';
+  // Synthesis timeout — ElevenLabs typically responds within 5-10s for short text
+  static const Duration _synthesisTimeout = Duration(seconds: 15);
 
-  static String get _fishApiKey {
-    const fromEnv = Env.fishAudioKey;
+  static String get _elevenLabsApiKey {
+    const fromEnv = Env.elevenLabsKey;
     if (fromEnv.isNotEmpty) return fromEnv;
-    return dotenv.env['FISH_AUDIO_API_KEY']?.trim() ?? '';
+    return dotenv.env['ELEVENLABS_API_KEY']?.trim() ?? '';
   }
 
   // ── Player & state ─────────────────────────────────────────────────────
@@ -182,9 +181,9 @@ class OpenAiTtsService extends ChangeNotifier {
     if (!_enabled) return false;
     if (!force && !isSurfaceEnabled(surface)) return false;
 
-    final apiKey = _fishApiKey;
+    final apiKey = _elevenLabsApiKey;
     if (apiKey.isEmpty) {
-      debugPrint('[TTS] FISH_AUDIO_API_KEY is not set.');
+      debugPrint('[TTS] ELEVENLABS_API_KEY is not set.');
       return false;
     }
 
@@ -276,36 +275,42 @@ class OpenAiTtsService extends ChangeNotifier {
 
   Future<void> flushVoiceBuffer() async {}
 
-  // ── Fish Audio synthesis ───────────────────────────────────────────────
+  // ── ElevenLabs synthesis ───────────────────────────────────────────────
   Future<Uint8List?> _synthesize({
     required String text,
     required String apiKey,
     required String voiceId,
   }) async {
     try {
+      final url = '$_elevenLabsBaseUrl/$voiceId';
       final res = await http
           .post(
-            Uri.parse(_fishEndpoint),
+            Uri.parse(url),
             headers: {
-              'Authorization': 'Bearer $apiKey',
-              'Content-Type':  'application/json',
+              'xi-api-key':   apiKey,
+              'Content-Type': 'application/json',
+              'Accept':       'audio/mpeg',
             },
             body: jsonEncode({
-              'text':         text,
-              'reference_id': voiceId,  // active voice from user preference
-              'format':       _fishFormat,
-              'latency':      _fishLatency,
+              'text':      text,
+              'model_id':  _elevenLabsModel,
+              'voice_settings': {
+                'stability':        0.45,
+                'similarity_boost': 0.70,
+                'style':            0.35,
+                'use_speaker_boost': true,
+              },
             }),
           )
           .timeout(_synthesisTimeout);
 
       if (res.statusCode != 200) {
-        debugPrint('[TTS] Fish Audio error ${res.statusCode}: ${res.body}');
+        debugPrint('[TTS] ElevenLabs error ${res.statusCode}: ${res.body}');
         return null;
       }
       return Uint8List.fromList(res.bodyBytes);
     } catch (e) {
-      debugPrint('[TTS] Fish Audio exception: $e');
+      debugPrint('[TTS] ElevenLabs exception: $e');
       return null;
     }
   }
