@@ -178,7 +178,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
                     children: [
                       const SectionHeroCard(
                         title: 'Voice Settings',
-                        subtitle: 'Powered by Fish Audio — natural, calm speech',
+                        subtitle: 'Natural, emotionally aware speech',
                       ),
                       const SizedBox(height: 8),
 
@@ -226,16 +226,6 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
                                   setState(() => _speed = v);
                                   await OpenAiTtsService.instance.setBaseSpeed(v);
                                 },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                        child: Text(
-                          'Note: Fish Audio voice pacing is primarily controlled '
-                          'by the voice model itself.',
-                          style: tt.bodySmall?.copyWith(
-                            color: cs.onSurface.withValues(alpha: 0.45),
-                          ),
                         ),
                       ),
                       const SizedBox(height: 8),
