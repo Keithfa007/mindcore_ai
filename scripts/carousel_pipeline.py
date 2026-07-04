@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI -- Carousel Image Post Pipeline v3.0
+MindCore AI -- Carousel Image Post Pipeline v3.1
 =================================================
 v3.0: SERP-driven topic selection  - trending topics from real Google data.
 v2.9: Facebook-specific title + description (no TikTok hashtags on FB).
@@ -286,10 +286,12 @@ def upload_carousel(image_paths,tiktok_title,description,cfg,scheduled_date,face
         ("user",user),
         ("platform[]","tiktok"),
         ("platform[]","facebook"),
+        ("platform[]","pinterest"),
         ("tiktok_title",tiktok_title),
         ("description",description),
         ("facebook_title",facebook_title or tiktok_title),
         ("facebook_description",facebook_description or description),
+        ("pinterest_description",f"{tiktok_title}\n\n{description[:300]}\n\nmindcoreai.eu"),
         ("post_mode","DIRECT_POST"),
         ("auto_add_music","true"),
         ("photo_cover_index","0"),
@@ -319,7 +321,7 @@ def main():
         with open(cp) as f: cfg=json.load(f)
     upload_enabled=cfg.get("upload_enabled",False) and bool(UPLOAD_POST_API_KEY)
     gender=get_gender_mode(); history=load_history(); scheduled_date=get_scheduled_post_time()
-    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v3.0")
+    print(f"\n  MindCore AI -- Carousel Image Post Pipeline v3.1")
     print(f"  Run #{GITHUB_RUN_NUMBER} | 6 slides | Gender: {gender.upper()} | ~$0.48")
     print(f"  SERP: {'ENABLED' if (SERP_AVAILABLE and SERP_API_KEY) else 'DISABLED'}")
     print(f"  Image pools: 10 prompts per slide | Facebook: separate title + description")
@@ -354,7 +356,7 @@ def main():
         print(f"\n  Uploading {gender} carousel -- scheduled for {scheduled_date}...")
         result=upload_carousel(image_paths,tiktok_title,description,cfg,scheduled_date,facebook_title,facebook_description)
         (OUTPUT_DIR/"carousel_upload_result.json").write_text(json.dumps(result,indent=2))
-        if result.get("status_code")==200: print(f"  Scheduled OK -- fires at {scheduled_date} (TikTok + Facebook)")
+        if result.get("status_code")==200: print(f"  Scheduled OK -- fires at {scheduled_date} (TikTok + Facebook + Pinterest)")
     else:
         print("\n  Upload DISABLED"); (OUTPUT_DIR/"carousel_upload_result.json").write_text(json.dumps({"skipped":True}))
     save_history(history,{"date":datetime.now(timezone.utc).strftime("%Y-%m-%d"),"topic":script.get("topic",""),"gender":gender,"headline":f"{script.get('s1_command')} / {script.get('s1_hero')}","scheduled_date":scheduled_date,"run":GITHUB_RUN_NUMBER})
