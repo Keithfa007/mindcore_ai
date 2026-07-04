@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-MindCore AI  - Daily Quotes Pipeline v1.3
+MindCore AI  - Daily Quotes Pipeline v1.4
 =========================================
+v1.4: Added quotes_history.json to prevent repetitive quotes.
+      Last 50 quotes injected into prompt so Claude avoids repeats.
 v1.3: Reduced X hashtags to 2 (from 8). Cleaner tweets.
 v1.2: Fixed Upload-Post fields -- tiktok_title (90 chars) + description
       (full caption), matching carousel pipeline. Added post_mode=DIRECT_POST.
@@ -26,6 +28,8 @@ GITHUB_RUN_NUMBER   = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 POST_HOUR_UTC       = int(os.environ.get("POST_HOUR_UTC", "6"))
 
 OUTPUT_DIR = Path("scripts/quotes_output")
+HISTORY_FILE = Path("scripts/quotes_history.json")
+HISTORY_MAX = 50
 WIDTH  = 1200
 HEIGHT = 675
 
@@ -43,6 +47,34 @@ QUOTE_CATEGORIES = [
 ]
 
 
+def load_quotes_history():
+    """Load recent quotes history to prevent repetition."""
+    if HISTORY_FILE.exists():
+        try:
+            data = json.loads(HISTORY_FILE.read_text())
+            print(f"  Loaded {len(data)} quotes from history")
+            return data
+        except Exception as e:
+            print(f"  Warning: Could not load quotes history: {e}")
+    return []
+
+
+def save_quote_to_history(history, quote, category_name):
+    """Append new quote to history and trim to HISTORY_MAX."""
+    entry = {
+        "quote": quote,
+        "category": category_name,
+        "date": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
+        "run": GITHUB_RUN_NUMBER,
+    }
+    history.append(entry)
+    if len(history) > HISTORY_MAX:
+        history = history[-HISTORY_MAX:]
+    HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    print(f"  Saved to history ({len(history)} total)")
+    return history
+
+
 def get_category_for_run():
     idx = GITHUB_RUN_NUMBER % len(QUOTE_CATEGORIES)
     cat = QUOTE_CATEGORIES[idx]
@@ -50,8 +82,17 @@ def get_category_for_run():
     return cat
 
 
-def generate_quote(client, category):
+def generate_quote(client, category, history):
     examples_block = "\n".join(f'  - "{e}"' for e in category["examples"])
+
+    # Build history block for deduplication
+    history_block = ""
+    if history:
+        recent_quotes = [h["quote"] for h in history[-HISTORY_MAX:]]
+        history_block = "\n\nPREVIOUSLY USED QUOTES (do NOT repeat these or write anything too similar in theme, phrasing, or structure):\n"
+        for q in recent_quotes:
+            history_block += f'  - "{q}"\n'
+
     prompt = f"""You are generating a single powerful quote for a mental health brand called MindCore AI.
 
 CATEGORY: {category['name']}
@@ -59,7 +100,7 @@ INSTRUCTION: {category['instruction']}
 
 STYLE EXAMPLES (for tone reference only  - do NOT copy these):
 {examples_block}
-
+{history_block}
 RULES:
 - ONE quote only. 8-25 words. No more.
 - Raw, honest, human. NOT generic motivational ("believe in yourself", "you are enough", "stay positive")
@@ -68,6 +109,7 @@ RULES:
 - Written for someone scrolling at 2am who feels alone
 - The quote should feel like it was written BY someone who's been through it, not FOR them
 - Do NOT start with "You" more than 40% of the time  - vary the opening
+- Must be COMPLETELY ORIGINAL  - not a rewording of any previous quote listed above
 
 WRITING STYLE (MANDATORY):
 - NEVER use em dashes. Use commas, periods, or separate sentences instead.
@@ -246,7 +288,7 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI  - Daily Quotes Pipeline v1.3 ==")
+    print(f"== MindCore AI  - Daily Quotes Pipeline v1.4 ==")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | X quote")
 
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
@@ -254,17 +296,23 @@ def main():
     category = get_category_for_run()
     scheduled_date = get_scheduled_time(POST_HOUR_UTC)
 
-    print("\n1. Generating quote...")
-    quote = generate_quote(client, category)
+    print("\n1. Loading quotes history...")
+    history = load_quotes_history()
 
-    print("2. Generating caption...")
+    print("2. Generating quote...")
+    quote = generate_quote(client, category, history)
+
+    print("3. Saving to history...")
+    save_quote_to_history(history, quote, category["name"])
+
+    print("4. Generating caption...")
     caption = generate_caption(client, quote, category)
     print(f"  Caption: {caption}")
 
-    print("3. Rendering image...")
+    print("5. Rendering image...")
     jpg_path = render_quote_image(quote, str(OUTPUT_DIR / "quote_image.png"))
 
-    print("4. Uploading to X...")
+    print("6. Uploading to X...")
     tiktok_title = f"{quote}\n\n{caption}\n\n{X_HASHTAGS}"[:280]
     description = ""
     fb_title = ""
