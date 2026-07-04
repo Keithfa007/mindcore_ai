@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI  - Daily Quotes Pipeline v1.4
+MindCore AI  - Daily Quotes Pipeline v1.5
 =========================================
+v1.5: Added Pinterest as second platform (X + Pinterest).
 v1.4: Added quotes_history.json to prevent repetitive quotes.
       Last 50 quotes injected into prompt so Claude avoids repeats.
 v1.3: Reduced X hashtags to 2 (from 8). Cleaner tweets.
@@ -34,6 +35,7 @@ WIDTH  = 1200
 HEIGHT = 675
 
 X_HASHTAGS = "#mentalhealth #mindcoreai"
+PINTEREST_HASHTAGS = "#mentalhealth #mentalhealthmatters #mindcoreai #healing #selfcare #recovery #anxiety #mentalwellness #quotestoliveby #mentalhealthawareness"
 
 
 QUOTE_CATEGORIES = [
@@ -254,13 +256,16 @@ def get_scheduled_time(hour_utc):
 
 
 def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, fb_description, scheduled_date=None):
-    """Upload quote image to X via Upload-Post."""
+    """Upload quote image to X + Pinterest via Upload-Post."""
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
+    pinterest_desc = f"{tiktok_title}\n\nMindCore AI - Mental Wellness App\nmindcoreai.eu"
     data = [
         ("user", UPLOAD_POST_USER),
         ("platform[]", "x"),
+        ("platform[]", "pinterest"),
         ("title", tiktok_title[:280]),
+        ("pinterest_description", pinterest_desc[:500]),
         ("post_mode", "DIRECT_POST"),
         ("photo_cover_index", "0"),
     ]
@@ -288,8 +293,8 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI  - Daily Quotes Pipeline v1.4 ==")
-    print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | X quote")
+    print(f"== MindCore AI  - Daily Quotes Pipeline v1.5 ==")
+    print(f"  Run #{GITHUB_RUN_NUMBER} | Post: {POST_HOUR_UTC:02d}:00 UTC | X + Pinterest")
 
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -312,7 +317,7 @@ def main():
     print("5. Rendering image...")
     jpg_path = render_quote_image(quote, str(OUTPUT_DIR / "quote_image.png"))
 
-    print("6. Uploading to X...")
+    print("6. Uploading to X + Pinterest...")
     tiktok_title = f"{quote}\n\n{caption}\n\n{X_HASHTAGS}"[:280]
     description = ""
     fb_title = ""
@@ -327,7 +332,7 @@ def main():
     (OUTPUT_DIR / "quote_metadata.json").write_text(json.dumps({
         "run": GITHUB_RUN_NUMBER, "category": category["name"],
         "quote": quote, "caption": caption, "tweet_text": tiktok_title,
-        "scheduled": scheduled_date, "upload_type": "photo", "platform": "x",
+        "scheduled": scheduled_date, "upload_type": "photo", "platform": "x+pinterest",
     }, indent=2))
     print("\n== Done ==")
 
