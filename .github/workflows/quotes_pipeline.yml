@@ -32,6 +32,16 @@ jobs:
           PYTHONPATH:          ${{ github.workspace }}
         run: python scripts/quotes_pipeline.py
 
+      - name: Commit quotes history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git add scripts/quotes_history.json
+          git diff --staged --quiet || git commit -m "chore: quotes history [skip ci]"
+          git push
+        continue-on-error: true
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
