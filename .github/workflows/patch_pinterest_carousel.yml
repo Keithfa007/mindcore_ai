@@ -1,0 +1,22 @@
+name: Patch -- Pinterest Carousel
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run patch
+        run: python scripts/patch_pinterest_carousel.py
+      - name: Verify
+        run: grep -n "pinterest" scripts/carousel_pipeline.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/carousel_pipeline.py
+          git diff --staged --quiet || git commit -m "feat: carousel v3.1 — add Pinterest platform"
+          git push
