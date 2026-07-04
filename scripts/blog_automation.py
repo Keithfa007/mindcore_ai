@@ -1043,6 +1043,49 @@ def update_history_on_github(history, new_entry):
 
 
 # -- Main ---------------------------------------------------------------------
+
+
+def pin_to_pinterest(image_data, post_title, post_url, primary_keyword):
+    """Pin the blog featured image to Pinterest via Upload-Post."""
+    if not UPLOAD_POST_API_KEY:
+        print("   Pinterest: skipped (no UPLOAD_POST_API_KEY)")
+        return
+    import tempfile
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        tmp.write(image_data)
+        tmp.close()
+        pinterest_desc = (
+            f"{post_title}\n\n"
+            f"Read the full article: {post_url}\n\n"
+            f"#mentalhealth #mentalhealthmatters #mindcoreai #healing #selfcare "
+            f"#recovery #anxiety #mentalwellness #{primary_keyword.replace(' ', '').lower()}"
+        )[:500]
+        data = [
+            ("user", "MindCoreAI"),
+            ("platform[]", "pinterest"),
+            ("title", post_title[:280]),
+            ("pinterest_description", pinterest_desc),
+            ("post_mode", "DIRECT_POST"),
+            ("photo_cover_index", "0"),
+        ]
+        f = open(tmp.name, "rb")
+        files = [("photos[]", ("blog_pin.jpg", f, "image/jpeg"))]
+        resp = requests.post(
+            UPLOAD_POST_PHOTOS_URL,
+            headers={"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"},
+            files=files, data=data, timeout=180,
+        )
+        f.close()
+        os.unlink(tmp.name)
+        if resp.ok:
+            print(f"   Pinterest: pinned OK ({resp.status_code})")
+        else:
+            print(f"   Pinterest: WARNING {resp.status_code} - {resp.text[:200]}")
+    except Exception as e:
+        print(f"   Pinterest: failed - {e}")
+
+
 def main():
     print("\n== MindCore AI - Blog Automation Pipeline ==")
     history = load_history()
@@ -1053,6 +1096,7 @@ def main():
 
     media_id  = None
     media_url = None
+    image_data = None
     try:
         image_data          = generate_illustration(topic_data["image_prompt"])
         media_id, media_url = upload_image_to_wordpress(image_data, alt_text=topic_data["primary_keyword"])
@@ -1060,6 +1104,15 @@ def main():
         print(f"   Image failed: {exc}")
 
     post = publish_to_wordpress(topic_data, content, media_id, media_url)
+
+    # Pin to Pinterest
+    if image_data and post.get("link"):
+        print("\n6. Pinning to Pinterest...")
+        pin_to_pinterest(image_data, topic_data["topic"], post["link"], topic_data["primary_keyword"])
+    elif image_data:
+        post_slug = keyword_to_slug(topic_data["primary_keyword"])
+        print("\n6. Pinning to Pinterest...")
+        pin_to_pinterest(image_data, topic_data["topic"], f"https://mindcoreai.eu/{post_slug}/", topic_data["primary_keyword"])
 
     if topic_data.get("_library_entry") and topic_data.get("_library") is not None:
         update_library_on_github(topic_data["_library"], topic_data["primary_keyword"])
