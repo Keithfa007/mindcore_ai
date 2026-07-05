@@ -185,7 +185,7 @@ def generate_voiceover(script_text, output_path):
     if not ELEVENLABS_API_KEY: print("   ELEVENLABS_API_KEY not set"); return False
     url = f"{ELEVENLABS_API_URL}/{ELEVENLABS_VOICE_ID}"
     headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
-    payload = {"text": script_text, "model_id": "eleven_multilingual_v2", "voice_settings": {"stability": 0.50, "similarity_boost": 0.75}}
+    payload = {"text": script_text, "model_id": "eleven_multilingual_v2", "voice_settings": {"stability": 0.30, "similarity_boost": 0.75, "style": 0.60, "use_speaker_boost": True}}
     try:
         print(f"   ElevenLabs TTS: {len(script_text)} chars")
         resp = requests.post(url, headers=headers, json=payload, stream=True, timeout=120)
