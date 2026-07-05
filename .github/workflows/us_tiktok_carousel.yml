@@ -19,9 +19,11 @@ jobs:
       - name: Configure for US market
         run: |
           cp video_pipeline/heygen_config_us.json video_pipeline/heygen_config.json
+          sed -i 's/UPLOAD_POST_USER="MindCoreAI"/UPLOAD_POST_USER="MindCoreAI_US"/' scripts/carousel_pipeline.py
+          sed -i 's/("platform\[\]","facebook"),//' scripts/carousel_pipeline.py
           sed -i 's/HASHTAGS=.*/HASHTAGS="#mindcoreai #mentalhealth #mentalhealthmatters #mentalhealthtiktok #therapytok #anxietyrelief #mentalhealthawareness #healing #selfcare #fyp #foryoupage #mentalhealthusa"/' scripts/carousel_pipeline.py
           sed -i 's/POST_HOUR_UTC=11/POST_HOUR_UTC=16/' scripts/carousel_pipeline.py
-          echo "US config: POST 16:00 UTC (12pm EDT) | US hashtags"
+          echo "US config: TikTok only | POST 16:00 UTC (12pm EDT) | US hashtags"
 
       - name: Install fonts
         run: |
