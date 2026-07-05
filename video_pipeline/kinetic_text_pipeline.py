@@ -324,12 +324,14 @@ def get_scheduled_time(h):
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 def upload_video(video_path, metadata, scheduled_date=None):
     if not UPLOAD_POST_API_KEY: return {"skipped":True}
-    data=[("user",UPLOAD_POST_USER),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("platform[]","twitter"),("title",metadata.get("tiktok_caption","")[:2200]),("facebook_title",metadata.get("facebook_description","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:100]),("youtube_description",metadata.get("youtube_description","")),("youtube_tags","mental health,recovery,mindcore ai,healing")]
+    data=[("user",UPLOAD_POST_USER),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("platform[]","x"),("title",metadata.get("tiktok_caption","")[:2200]),("facebook_title",metadata.get("facebook_description","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:100]),("youtube_description",metadata.get("youtube_description","")),("youtube_tags","mental health,recovery,mindcore ai,healing")]
     if scheduled_date: data.append(("scheduled_date",scheduled_date))
     try:
         with open(video_path,"rb") as f:
             resp=requests.post("https://api.upload-post.com/api/upload",headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"},files=[("video",("kinetic.mp4",f,"video/mp4"))],data=data,timeout=180)
-        r=resp.json() if "json" in resp.headers.get("content-type","") else {"raw":resp.text}; r["status_code"]=resp.status_code; print(f"  Upload {'OK' if resp.ok else 'WARN'}: {resp.status_code}"); return r
+        r=resp.json() if "json" in resp.headers.get("content-type","") else {"raw":resp.text}; r["status_code"]=resp.status_code; print(f"  Upload {'OK' if resp.ok else 'WARN'}: {resp.status_code}")
+        if not resp.ok: print(f"  {resp.text[:400]}")
+        return r
     except Exception as e: print(f"  Upload failed: {e}"); return {"error":str(e)}
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
