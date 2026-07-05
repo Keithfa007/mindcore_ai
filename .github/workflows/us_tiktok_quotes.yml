@@ -1,8 +1,8 @@
 name: US TikTok -- Daily Quote
 
 on:
-  schedule:
-    - cron: "30 0 * * *"
+  # schedule:
+  #   - cron: "30 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "2"  # 2:00 UTC = 10pm EDT
+          POST_HOUR_UTC:       "2"
           PYTHONPATH:          ${{ github.workspace }}
         run: python scripts/quotes_pipeline.py
 
