@@ -1,0 +1,26 @@
+name: Patch -- Ebook Promo Voice + Scripts
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run patch
+        run: python scripts/patch_ebook_voice.py
+      - name: Verify
+        run: |
+          echo "=== Voice settings ==="
+          grep -n "stability\|style\|speaker_boost" scripts/ebook_promo_pipeline.py | head -5
+          echo "=== Story-driven ==="
+          grep -n "chapter_stories\|story_element" scripts/ebook_promo_pipeline.py | head -3
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/ebook_promo_pipeline.py
+          git diff --staged --quiet || git commit -m "fix: ebook promo emotional voice + story-driven scripts"
+          git push
