@@ -1,9 +1,9 @@
 name: Ebook Promo Pipeline
 
-# Tuesday + Thursday at 08:00 UTC (10:00 Malta)
+# Thursday only at 08:00 UTC, scheduled to post at 15:00 UTC (17:00 Malta)
 on:
   schedule:
-    - cron: '0 8 * * 2,4'
+    - cron: '0 8 * * 4'
   workflow_dispatch:
 
 jobs:
@@ -29,4 +29,5 @@ jobs:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
+          POST_HOUR_UTC:       "15"
         run: python scripts/ebook_promo_pipeline.py
