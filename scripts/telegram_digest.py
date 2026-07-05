@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v3.1
+MindCore AI — Daily Telegram Digest v3.3
 =========================================
+v3.3: Added Facebook debug diagnostics to Telegram output.
 v3.1: Fixed schedule to skip commented-out (paused) cron lines.
 v2.9: Added US TikTok analytics, renamed EU TikTok label.
 v2.8: Auto-fetch Facebook page_id, impressions display fix, removed Instagram.
@@ -148,7 +149,7 @@ def get_todays_schedule():
             stripped = line.lstrip()
             if stripped.startswith("#"):
                 continue
-            m = re.search(r"cron:\s*['\"](.*?)['\"]", stripped)
+            m = re.search(r"cron:\s*['\"](.+?)['\"]", stripped)
             if m:
                 cron_matches.append(m.group(1))
         for cron in cron_matches:
@@ -221,15 +222,24 @@ def get_social_media_stats():
 
         # Fetch Facebook page ID
         fb_page_id = None
+        fb_debug = []
         try:
             fb_resp = requests.get(
                 "https://api.upload-post.com/api/uploadposts/facebook/pages",
                 headers=headers, params={"user": UPLOAD_POST_USER}, timeout=15)
+            fb_debug.append(f"pages_status={fb_resp.status_code}")
             if fb_resp.status_code == 200:
                 pages = fb_resp.json()
+                fb_debug.append(f"pages_count={len(pages) if isinstance(pages, list) else 'not_list'}")
                 if isinstance(pages, list) and pages:
                     fb_page_id = pages[0].get("id", pages[0].get("page_id"))
+                    fb_debug.append(f"page_id={fb_page_id}")
+                else:
+                    fb_debug.append("no_pages_returned")
+            else:
+                fb_debug.append(f"pages_body={fb_resp.text[:200]}")
         except Exception as e:
+            fb_debug.append(f"pages_error={e}")
             print(f"   Facebook pages lookup failed: {e}")
 
         # EU: TikTok + YouTube
@@ -237,8 +247,23 @@ def get_social_media_stats():
 
         # EU: Facebook (needs page_id)
         if fb_page_id:
-            fb_data = _fetch_platform_stats(eu_url, headers, "facebook", {"page_id": fb_page_id})
-            eu_data["facebook"] = fb_data.get("facebook", {})
+            fb_resp_raw = requests.get(eu_url, headers=headers,
+                                        params={"platforms": "facebook", "page_id": fb_page_id}, timeout=30)
+            fb_debug.append(f"analytics_status={fb_resp_raw.status_code}")
+            if fb_resp_raw.status_code == 200:
+                fb_data = fb_resp_raw.json()
+                fb_entry = fb_data.get("facebook", {})
+                fb_debug.append(f"has_data={bool(fb_entry)}")
+                if isinstance(fb_entry, dict):
+                    fb_debug.append(f"keys={list(fb_entry.keys())[:8]}")
+                    if fb_entry.get("message"):
+                        fb_debug.append(f"msg={fb_entry['message'][:100]}")
+                eu_data["facebook"] = fb_entry
+            else:
+                fb_debug.append(f"analytics_body={fb_resp_raw.text[:200]}")
+        else:
+            fb_debug.append("skipped_no_page_id")
+        print(f"   Facebook debug: {' | '.join(fb_debug)}")
 
         # US: TikTok
         us_data = _fetch_platform_stats(us_url, headers, "tiktok")
@@ -414,7 +439,7 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
                 lines.append(f"  {name}: {' | '.join(parts)}")
             else:
                 if platform == "facebook":
-                    lines.append(f"  {name}: no 30-day data (check Upload-Post connection)")
+                    lines.append(f"  {name}: no 30-day data (reconnect in Upload-Post)")
                 else:
                     lines.append(f"  {name}: no 30-day data")
         lines.append("")
@@ -453,7 +478,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v3.1 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v3.3 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
