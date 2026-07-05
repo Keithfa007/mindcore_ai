@@ -266,6 +266,7 @@ def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, f
         ("platform[]", "pinterest"),
         ("title", tiktok_title[:280]),
         ("pinterest_description", pinterest_desc[:500]),
+        ("pinterest_board", "mental-health"),
         ("post_mode", "DIRECT_POST"),
         ("photo_cover_index", "0"),
     ]

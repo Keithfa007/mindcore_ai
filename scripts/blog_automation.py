@@ -1066,6 +1066,7 @@ def pin_to_pinterest(image_data, post_title, post_url, primary_keyword):
             ("platform[]", "pinterest"),
             ("title", post_title[:280]),
             ("pinterest_description", pinterest_desc),
+            ("pinterest_board", "mental-health"),
             ("post_mode", "DIRECT_POST"),
             ("photo_cover_index", "0"),
         ]
