@@ -292,7 +292,7 @@ def upload_carousel(image_paths,tiktok_title,description,cfg,scheduled_date,face
         ("facebook_title",facebook_title or tiktok_title),
         ("facebook_description",facebook_description or description),
         ("pinterest_description",f"{tiktok_title}\n\n{description[:300]}\n\nmindcoreai.eu"),
-        ("pinterest_board","mental-health"),
+        ("pinterest_board_id","1123366769493611180"),
         ("post_mode","DIRECT_POST"),
         ("auto_add_music","true"),
         ("photo_cover_index","0"),
