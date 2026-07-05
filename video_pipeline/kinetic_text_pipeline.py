@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Kinetic Text Video Pipeline v4.1
+MindCore AI — Kinetic Text Video Pipeline v4.2
 ===============================================
 SERP-enriched cinematic word-by-word karaoke.
 Supports GENDER env var: "male" (default) or "female".
 
+v4.2: Outlined text with warm highlight, brighter scenic backgrounds, brightness floor.
 v4.1: Gender support — switches voice, persona, keywords file, SERP seeds.
   - male: loads niche_keywords.json (male personas + seeds)
   - female: loads niche_keywords_female.json (female personas + seeds)
@@ -173,8 +174,8 @@ def generate_seo_caption(client, script_lines, topic, niche):
         return {"tiktok_caption":f"Some things need to be said.\n\n{tags}","youtube_title":"Mental Health","youtube_description":f"Try MindCore AI: https://mindcoreai.eu\n\n{tags} #Shorts","facebook_description":f"Some things need to be said.\n\n{tags}"}
 def generate_bg_prompt(client, topic):
     question = topic.get("question", topic.get("topic", "mental health"))
-    try: return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=100, messages=[{"role":"user","content":f"Short image prompt for moody cinematic TikTok background.\n\nTOPIC: \"{question}\"\n\nAtmospheric, dark/moody, NO people, NO text, NO faces. Lighting, colours, objects. Max 40 words.\n\nReturn ONLY the prompt."}]).content[0].text.strip()
-    except: return "dark moody atmospheric scene, cinematic film grain, melancholic, no people, no text"
+    try: return client.messages.create(model=ANTHROPIC_MODEL, max_tokens=100, messages=[{"role":"user","content":f"Short image prompt for a cinematic TikTok background.\n\nTOPIC: \"{question}\"\n\nBeautiful, well-lit, scenic. Think golden hour sunsets, twilight skies, ocean horizons, mountain vistas, city lights at dusk, rain on windows with warm interior light. Visible detail and colour. NOT pitch black. NO people, NO text, NO faces. Max 40 words.\n\nReturn ONLY the prompt."}]).content[0].text.strip()
+    except: return "golden hour sunset over calm ocean, warm orange and pink sky, soft light reflecting on water, cinematic, no people, no text"
 def generate_background_image(bg_prompt, output_path):
     if not FAL_KEY: return None
     try:
@@ -240,10 +241,10 @@ def build_word_positions(words, font, max_w, cx, by, lh):
 def create_kinetic_video(audio_path, sentences, output_path, audio_duration, bg_image_path=None):
     from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
     import tempfile, shutil
-    FPS=24; tf=int((audio_duration+0.5)*FPS); FI=0.25; FO=0.20; AM=(212,165,116); DM=(90,90,110)
+    FPS=24; tf=int((audio_duration+0.5)*FPS); FI=0.25; FO=0.20; AM=(255,180,80); HL=(255,220,140); DM=(180,180,195); OC=(0,0,0); SW=3
     fm = None
     for p in ["/tmp/fonts/Montserrat-ExtraBold.ttf","/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf","/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]:
-        try: fm = ImageFont.truetype(p, 54); print(f"  Font: {os.path.basename(p)}"); break
+        try: fm = ImageFont.truetype(p, 58); print(f"  Font: {os.path.basename(p)}"); break
         except: continue
     if not fm: fm = ImageFont.load_default()
     fw = None
@@ -258,7 +259,11 @@ def create_kinetic_video(audio_path, sentences, output_path, audio_duration, bg_
         ps,_ = build_word_positions(s["words"],fm,mtw,cx,by,lh); s["positions"]=ps
     bg = None
     if bg_image_path and os.path.exists(bg_image_path):
-        try: bg=Image.open(bg_image_path).convert("RGB"); bg=bg.resize((int(WIDTH*1.2),int(HEIGHT*1.2)),Image.LANCZOS); bg=ImageEnhance.Brightness(bg).enhance(0.32); print("  BG: AI image")
+        try:
+            bg=Image.open(bg_image_path).convert("RGB"); bg=bg.resize((int(WIDTH*1.2),int(HEIGHT*1.2)),Image.LANCZOS)
+            bg_brightness = sum(bg.resize((1,1)).getpixel((0,0))) / 3
+            brightness_factor = 0.55 if bg_brightness > 80 else 0.65
+            bg=ImageEnhance.Brightness(bg).enhance(brightness_factor); print(f"  BG: AI image (avg={bg_brightness:.0f}, factor={brightness_factor})")
         except: bg=None
     if bg is None:
         bf=Image.new("RGB",(WIDTH,HEIGHT)); d=ImageDraw.Draw(bf)
@@ -291,21 +296,15 @@ def create_kinetic_video(audio_path, sentences, output_path, audio_duration, bg_
                 if t<fb: a=1.0; yo=0
                 else: raw=(t-fb)/FO; a=1.0-ease_in_out(min(raw,1.0)); yo=-int(30*ease_in_out(min(raw,1.0)))
                 if a<0.03: continue
-                for wi,w in enumerate(s["words"]): p=ps[wi]; draw.text((p["x"],p["y"]+yo),w["text"],font=fm,fill=(int(DM[0]*a),int(DM[1]*a),int(DM[2]*a)))
+                for wi,w in enumerate(s["words"]): p=ps[wi]; draw.text((p["x"],p["y"]+yo),w["text"],font=fm,fill=(int(DM[0]*a),int(DM[1]*a),int(DM[2]*a)),stroke_width=SW,stroke_fill=(int(OC[0]),int(OC[1]),int(OC[2]),int(255*a)))
             elif ia:
                 el=t-s["start"]; sa=ease_in_out(min(el/FI,1.0)) if el<FI else 1.0
                 for wi,w in enumerate(s["words"]):
-                    if w["start"]<=t<w["end"]:
-                        p=ps[wi]; gl=Image.new("RGBA",(WIDTH,HEIGHT),(0,0,0,0)); gd=ImageDraw.Draw(gl)
-                        gd.text((p["x"],p["y"]),w["text"],font=fm,fill=(AM[0],AM[1],AM[2],int(100*sa)))
-                        gl=gl.filter(ImageFilter.GaussianBlur(radius=14)); frame=Image.alpha_composite(frame.convert("RGBA"),gl).convert("RGB"); draw=ImageDraw.Draw(frame); break
-                for wi,w in enumerate(s["words"]):
                     p=ps[wi]; wa=w["start"]<=t<w["end"]; ws=t>=w["start"]
-                    if wa: c=(int(255*sa),)*3
-                    elif ws: c=(int(240*sa),)*3
+                    if wa: c=(int(HL[0]*sa),int(HL[1]*sa),int(HL[2]*sa))
+                    elif ws: c=(int(255*sa),)*3
                     else: c=(int(DM[0]*sa),int(DM[1]*sa),int(DM[2]*sa))
-                    draw.text((p["x"]+2,p["y"]+2),w["text"],font=fm,fill=(int(20*sa),)*3)
-                    draw.text((p["x"],p["y"]),w["text"],font=fm,fill=c)
+                    draw.text((p["x"],p["y"]),w["text"],font=fm,fill=c,stroke_width=SW,stroke_fill=(int(OC[0]),int(OC[1]),int(OC[2]),int(255*sa)))
         draw.text((wmx,wmy),wt,font=fw,fill=(180,180,200))
         if audio_duration>0:
             bp=min(t/audio_duration,1.0); bw=WIDTH-2*barm
@@ -335,7 +334,7 @@ def upload_video(video_path, metadata, scheduled_date=None):
     except Exception as e: print(f"  Upload failed: {e}"); return {"error":str(e)}
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"== MindCore AI - Kinetic Text v4.1 | {GENDER.upper()} ==")
+    print(f"== MindCore AI - Kinetic Text v4.2 | {GENDER.upper()} ==")
     print(f"  Run #{GITHUB_RUN_NUMBER} | Voice: {ELEVENLABS_VOICE_ID[:8]}... | Post: {POST_HOUR_UTC}:00 UTC")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY); sd = get_scheduled_time(POST_HOUR_UTC)
