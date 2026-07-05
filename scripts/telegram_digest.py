@@ -230,10 +230,10 @@ def get_social_media_stats():
                 if isinstance(pages, list) and pages:
                     fb_page_id = pages[0].get("id", pages[0].get("page_id"))
         except Exception as e:
-            print(f"   Facebook pages lookup: {e}")
+            print(f"   Facebook pages lookup failed: {e}")
 
         # EU: TikTok + YouTube
-        eu_data = _fetch_platform_stats(eu_url, headers, "tiktok,youtube,x")
+        eu_data = _fetch_platform_stats(eu_url, headers, "tiktok,youtube,x,pinterest")
 
         # EU: Facebook (needs page_id)
         if fb_page_id:
@@ -249,6 +249,7 @@ def get_social_media_stats():
             "facebook": ("Facebook", eu_data),
             "youtube": ("YouTube", eu_data),
             "x": ("X", eu_data),
+            "pinterest": ("Pinterest", eu_data),
         }
 
         for key, (label, source) in platform_map.items():
@@ -390,11 +391,11 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
 
     if social_stats:
         lines.append("\U0001f4f1 *Social Media:*")
-        for platform in ["tiktok", "tiktok_us", "x", "facebook", "youtube"]:
+        for platform in ["tiktok", "tiktok_us", "x", "facebook", "youtube", "pinterest"]:
             pdata = social_stats.get(platform)
             if not pdata:
                 continue
-            name = {"tiktok": "TikTok (EU)", "tiktok_us": "TikTok (US)", "x": "X", "facebook": "Facebook", "youtube": "YouTube"}.get(platform, platform.capitalize())
+            name = {"tiktok": "TikTok (EU)", "tiktok_us": "TikTok (US)", "x": "X", "facebook": "Facebook", "youtube": "YouTube", "pinterest": "Pinterest"}.get(platform, platform.capitalize())
             parts = []
             views = pdata.get("views", 0)
             impressions = pdata.get("impressions", 0)
@@ -412,7 +413,10 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
             if parts:
                 lines.append(f"  {name}: {' | '.join(parts)}")
             else:
-                lines.append(f"  {name}: no 30-day data")
+                if platform == "facebook":
+                    lines.append(f"  {name}: no 30-day data (check Upload-Post connection)")
+                else:
+                    lines.append(f"  {name}: no 30-day data")
         lines.append("")
 
     if analytics:
