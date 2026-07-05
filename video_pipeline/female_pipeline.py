@@ -353,7 +353,7 @@ def upload_to_platforms(video_path,metadata,cfg,scheduled_date=None):
     if not UPLOAD_POST_API_KEY:return{"skipped":True,"reason":"no API key"}
     user=cfg.get("upload_post_user","")
     if not user:return{"skipped":True,"reason":"no user configured"}
-    data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),("facebook_title",metadata.get("facebook_title","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),("youtube_tags",metadata.get("youtube_tags","")),("first_comment",metadata.get("first_comment",""))]
+    data=[("user",user),("platform[]","tiktok"),("platform[]","youtube"),("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),("facebook_title",metadata.get("facebook_title","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:YOUTUBE_TITLE_LIMIT]),("youtube_description",metadata.get("youtube_description","")[:YOUTUBE_DESCRIPTION_LIMIT]),("youtube_tags",metadata.get("youtube_tags","")),("first_comment",metadata.get("first_comment",""))]
     if scheduled_date:data.append(("scheduled_date",scheduled_date))
     try:
         with open(video_path,"rb") as f:resp=requests.post(UPLOAD_POST_API_URL,headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"},files=[("video",("mindcore_female_video.mp4",f,"video/mp4"))],data=data,timeout=180)

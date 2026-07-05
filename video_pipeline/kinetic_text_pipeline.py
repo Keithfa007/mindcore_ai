@@ -324,7 +324,7 @@ def get_scheduled_time(h):
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 def upload_video(video_path, metadata, scheduled_date=None):
     if not UPLOAD_POST_API_KEY: return {"skipped":True}
-    data=[("user",UPLOAD_POST_USER),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("platform[]","x"),("title",metadata.get("tiktok_caption","")[:2200]),("facebook_title",metadata.get("facebook_description","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:100]),("youtube_description",metadata.get("youtube_description","")),("youtube_tags","mental health,recovery,mindcore ai,healing")]
+    data=[("user",UPLOAD_POST_USER),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","x"),("title",metadata.get("tiktok_caption","")[:2200]),("facebook_title",metadata.get("facebook_description","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:100]),("youtube_description",metadata.get("youtube_description","")),("youtube_tags","mental health,recovery,mindcore ai,healing")]
     if scheduled_date: data.append(("scheduled_date",scheduled_date))
     try:
         with open(video_path,"rb") as f:

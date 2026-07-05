@@ -183,7 +183,7 @@ def _patched_upload(video_path, metadata, cfg, scheduled_date=None):
     if not pipeline.UPLOAD_POST_API_KEY: return {"skipped":True,"reason":"no API key"}
     user = cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
-    data = [("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),("title",metadata.get("tiktok_caption","")[:pipeline.TIKTOK_CAPTION_LIMIT]),("facebook_title",metadata.get("facebook_title","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:pipeline.YOUTUBE_TITLE_LIMIT]),("youtube_description",metadata.get("youtube_description","")[:pipeline.YOUTUBE_DESCRIPTION_LIMIT]),("youtube_tags",metadata.get("youtube_tags","")),("first_comment",metadata.get("first_comment",""))]
+    data = [("user",user),("platform[]","tiktok"),("platform[]","youtube"),("title",metadata.get("tiktok_caption","")[:pipeline.TIKTOK_CAPTION_LIMIT]),("facebook_title",metadata.get("facebook_title","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:pipeline.YOUTUBE_TITLE_LIMIT]),("youtube_description",metadata.get("youtube_description","")[:pipeline.YOUTUBE_DESCRIPTION_LIMIT]),("youtube_tags",metadata.get("youtube_tags","")),("first_comment",metadata.get("first_comment",""))]
     if scheduled_date: data.append(("scheduled_date",scheduled_date))
     try:
         with open(video_path,"rb") as f:

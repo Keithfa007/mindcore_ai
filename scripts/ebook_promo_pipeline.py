@@ -226,7 +226,6 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
         ("user", UPLOAD_POST_USER),
         ("platform[]", "tiktok"),
         ("platform[]", "facebook"),
-        ("platform[]", "youtube"),
         ("title", tiktok_caption[:2200]),
         ("facebook_title", fb_title[:255]),
         ("facebook_description", fb_description),
