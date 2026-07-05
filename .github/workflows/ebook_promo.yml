@@ -1,9 +1,9 @@
 name: Ebook Promo Pipeline
 
-# Thursday only at 08:00 UTC, scheduled to post at 15:00 UTC (17:00 Malta)
+# Tuesday + Thursday at 08:00 UTC, scheduled to post at 15:00 UTC (17:00 Malta)
 on:
   schedule:
-    - cron: '0 8 * * 4'
+    - cron: '0 8 * * 2,4'
   workflow_dispatch:
 
 jobs:
