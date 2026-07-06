@@ -1,0 +1,24 @@
+name: Patch BigQuery Report v1.1
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run patch
+        run: python3 scripts/patch_bigquery_report.py
+      - name: Verify
+        run: |
+          grep -q "v1.1" scripts/bigquery_report.py && echo "Version OK"
+          grep -q "Diagnostic" scripts/bigquery_report.py && echo "Diagnostic OK"
+          grep -q "errors" scripts/bigquery_report.py && echo "Errors OK"
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/bigquery_report.py
+          git commit -m "BigQuery report v1.1: surface query errors in Telegram message"
+          git push
