@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MindCore AI — BigQuery Analytics Report v1.0
+MindCore AI — BigQuery Analytics Report v1.1
 =============================================
 On-demand deep analytics from GA4 raw data in BigQuery.
 Queries last 7 days of event data and sends formatted report to Telegram.
@@ -39,13 +39,18 @@ def get_available_dates(client):
     return dates
 
 
-def run_query(client, sql):
+def run_query(client, sql, errors=None):
     """Run a BigQuery SQL query and return rows as list of dicts."""
     try:
         result = client.query(sql).result()
-        return [dict(row) for row in result]
+        rows = [dict(row) for row in result]
+        print(f"   Query returned {len(rows)} rows")
+        return rows
     except Exception as e:
-        print(f"   Query error: {e}")
+        msg = str(e)[:200]
+        print(f"   Query error: {msg}")
+        if errors is not None:
+            errors.append(msg)
         return []
 
 
@@ -73,10 +78,22 @@ def build_report(client, dates):
 
     print(f"   Querying {len(recent)} days: {date_range}")
 
+    errors = []
     lines = []
     lines.append("\U0001f4ca *BigQuery Analytics Report*")
     lines.append(f"_{date_range} ({len(recent)} days)_")
     lines.append("")
+
+    # 0. Diagnostic: test basic table access
+    print("   [0/5] Diagnostic test...")
+    test_table = f"`{PROJECT}.{DATASET}.events_{recent[-1]}`"
+    diag = run_query(client, f"SELECT COUNT(*) as cnt FROM {test_table}", errors)
+    if diag:
+        lines.append(f"_Diagnostic: {diag[0].get('cnt', 0)} events in latest table_")
+        lines.append("")
+    elif errors:
+        lines.append(f"_Diagnostic FAILED: {errors[-1]}_")
+        lines.append("")
 
     # 1. Overview
     print("   [1/5] Overview...")
@@ -88,7 +105,7 @@ def build_report(client, dates):
             COUNTIF(event_name = 'session_start') as sessions,
             COUNTIF(event_name = 'first_visit') as new_users
         FROM ({tables})
-    """)
+    """, errors)
     if rows:
         r = rows[0]
         lines.append("\U0001f310 *Overview:*")
@@ -107,7 +124,7 @@ def build_report(client, dates):
         GROUP BY page
         ORDER BY views DESC
         LIMIT 8
-    """)
+    """, errors)
     if rows:
         lines.append("\U0001f4c4 *Top Pages:*")
         for r in rows:
@@ -129,7 +146,7 @@ def build_report(client, dates):
         GROUP BY source, medium
         ORDER BY users DESC
         LIMIT 8
-    """)
+    """, errors)
     if rows:
         lines.append("\U0001f517 *Traffic Sources:*")
         for r in rows:
@@ -150,7 +167,7 @@ def build_report(client, dates):
         GROUP BY country
         ORDER BY users DESC
         LIMIT 8
-    """)
+    """, errors)
     if rows:
         lines.append("\U0001f30d *Countries:*")
         for r in rows:
@@ -168,11 +185,18 @@ def build_report(client, dates):
         WHERE event_name = 'session_start'
         GROUP BY device
         ORDER BY users DESC
-    """)
+    """, errors)
     if rows:
         lines.append("\U0001f4f1 *Devices:*")
         for r in rows:
             lines.append(f"  {r.get('device', 'unknown').capitalize()} \u2014 {r.get('users', 0)} users")
+        lines.append("")
+
+    # Error summary
+    if errors:
+        lines.append("\u26a0\ufe0f *Query Errors:*")
+        for i, err in enumerate(errors[:5], 1):
+            lines.append(f"  {i}. {err[:150]}")
         lines.append("")
 
     return "\n".join(lines)
