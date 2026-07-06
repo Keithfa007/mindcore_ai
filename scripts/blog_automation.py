@@ -414,19 +414,29 @@ def load_library():
 
 def pick_from_library(library, audience, history):
     used_keywords = {e["primary_keyword"].lower() for e in history}
+    # Category throttle: if last 2 posts share the same category, skip it
+    throttled_category = None
+    if len(history) >= 2:
+        last_cats = [h.get("category", "") for h in history[-2:]]
+        if last_cats[0] and last_cats[0] == last_cats[1]:
+            throttled_category = last_cats[0]
+            print(f"   THROTTLE: Skipping category '{throttled_category}' (last 2 posts)")
     candidates = [
         kw for kw in library
         if not kw["used"]
         and kw["keyword"].lower() not in used_keywords
-            and not is_duplicate_keyword(kw["keyword"], history)
+        and not is_duplicate_keyword(kw["keyword"], history)
         and kw["audience"] == audience
+        and (throttled_category is None or LIBRARY_CATEGORY_MAP.get(kw["keyword"].lower(), "") != throttled_category)
     ]
     if not candidates and audience != "neutral":
         candidates = [
             kw for kw in library
             if not kw["used"]
             and kw["keyword"].lower() not in used_keywords
+            and not is_duplicate_keyword(kw["keyword"], history)
             and kw["audience"] == "neutral"
+            and (throttled_category is None or LIBRARY_CATEGORY_MAP.get(kw["keyword"].lower(), "") != throttled_category)
         ]
     if not candidates:
         return None
@@ -483,6 +493,13 @@ def research_topic(history):
     if picked:
         print(f"   [LIBRARY] Using verified keyword: '{picked['keyword']}' ({picked['monthly_searches']} searches/mo, {picked['competition']} competition, {picked['trend']})")
         return research_from_library(picked, audience, profile, history, library)
+
+    # Category throttle for SERP/Claude paths too
+    throttled_category = None
+    if len(history) >= 2:
+        last_cats = [h.get("category", "") for h in history[-2:]]
+        if last_cats[0] and last_cats[0] == last_cats[1]:
+            throttled_category = last_cats[0]
 
     # Try SERP research before falling back to Claude
     if SERP_AVAILABLE and SERP_API_KEY:
@@ -595,6 +612,8 @@ CRITERIA:
 ALREADY PUBLISHED:
 {history_txt}
 
+CATEGORY RULE: {"IMPORTANT: Do NOT choose category " + throttled_category + " - the last 2 posts were already in this category. Pick a DIFFERENT category." if throttled_category else "No restriction."}
+
 PREFERRED CATEGORIES:
 {pref_cats}
 
@@ -666,6 +685,8 @@ AUDIENCE CONTEXT:
 
 ALREADY PUBLISHED (avoid repeating):
 {history_txt}
+
+CATEGORY RULE: {"IMPORTANT: Do NOT choose category " + throttled_category + " - the last 2 posts were already in this category. Pick a DIFFERENT category." if throttled_category else "No restriction."}
 
 PREFERRED CATEGORIES:
 {pref_cats}
