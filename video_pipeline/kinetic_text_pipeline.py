@@ -164,7 +164,8 @@ Return ONLY the script lines."""
     raise RuntimeError("Script failed")
 def generate_seo_caption(client, script_lines, topic, niche):
     script_text = " ".join(script_lines); keyword = topic.get("keyword","mental health"); niche_tags = " ".join(niche.get("hashtags",[])) if niche else ""
-    prompt = f"""Upload metadata for a raw mental health TikTok.\n\nSCRIPT: "{script_text}"\nSEO KEYWORD: {keyword}\nNICHE HASHTAGS: {niche_tags}\n\nGenerate:\n- tiktok_caption: 1-2 raw sentences + 8-10 hashtags incl #mindcoreai. Max 2200.\n- youtube_title: punchy <100 chars with SEO keyword\n- youtube_description: 2 sentences. "Try MindCore AI: https://mindcoreai.eu". 6-8 hashtags #Shorts.\n- facebook_description: 2 sentences + 4-5 hashtags incl #mindcoreai\n\nNO emojis. Raw tone. No em dashes.\n\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","youtube_title":"...","youtube_description":"...","facebook_description":"..."}}"""
+    prompt = f"""Upload metadata for a raw mental health TikTok.\n\nSCRIPT: "{script_text}"\nSEO KEYWORD: {keyword}\nNICHE HASHTAGS: {niche_tags}\n\nGenerate:\n- tiktok_caption: 1-2 raw sentences + 8-10 hashtags incl #mindcoreai. Max 2200.\n- youtube_title: punchy <100 chars with SEO keyword\n- youtube_description: 2 sentences. "Try MindCore AI: https://mindcoreai.eu". 6-8 hashtags #Shorts.\n- x_caption: 1-2 punchy sentences + 2-3 hashtags incl #mindcoreai. Max 250 chars total. No hashtag spam.
+- facebook_description: 2 sentences + 4-5 hashtags incl #mindcoreai\n\nNO emojis. Raw tone. No em dashes.\n\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","youtube_title":"...","youtube_description":"...","x_caption":"...","facebook_description":"..."}}"""
     try:
         result = client.messages.create(model=ANTHROPIC_MODEL, max_tokens=600, messages=[{"role":"user","content":prompt}]).content[0].text.strip()
         if result.startswith("```"): result = result.split("```")[1].lstrip("json").strip()
@@ -323,7 +324,7 @@ def get_scheduled_time(h):
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 def upload_video(video_path, metadata, scheduled_date=None):
     if not UPLOAD_POST_API_KEY: return {"skipped":True}
-    data=[("user",UPLOAD_POST_USER),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","x"),("title",metadata.get("tiktok_caption","")[:2200]),("facebook_title",metadata.get("facebook_description","")[:255]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:100]),("youtube_description",metadata.get("youtube_description","")),("youtube_tags","mental health,recovery,mindcore ai,healing")]
+    data=[("user",UPLOAD_POST_USER),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","x"),("title",metadata.get("tiktok_caption","")[:2200]),("facebook_title",metadata.get("facebook_description","")[:255]),("x_title",metadata.get("x_caption",metadata.get("tiktok_caption",""))[:250]),("facebook_description",metadata.get("facebook_description","")),("youtube_title",metadata.get("youtube_title","")[:100]),("youtube_description",metadata.get("youtube_description","")),("youtube_tags","mental health,recovery,mindcore ai,healing")]
     if scheduled_date: data.append(("scheduled_date",scheduled_date))
     try:
         with open(video_path,"rb") as f:
