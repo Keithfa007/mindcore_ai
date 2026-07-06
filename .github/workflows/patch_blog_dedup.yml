@@ -1,0 +1,24 @@
+name: Patch Blog Automation Dedup Fix
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run patch
+        run: python3 scripts/patch_blog_automation.py
+      - name: Verify
+        run: |
+          grep -q "throttled_category" scripts/blog_automation.py && echo "Throttle OK"
+          grep -q "CATEGORY RULE" scripts/blog_automation.py && echo "Category rule OK"
+          grep -c "is_duplicate_keyword" scripts/blog_automation.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/blog_automation.py
+          git commit -m "Blog automation: fix dedup bypass in neutral fallback + add category throttle"
+          git push
