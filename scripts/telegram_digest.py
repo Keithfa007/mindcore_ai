@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v3.4
+MindCore AI — Daily Telegram Digest v3.5
 =========================================
+v3.5: Added Meta Ads campaign report (spend, impressions, clicks, installs).
 v3.4: Fixed Facebook page lookup to handle dict response from Upload-Post API.
 v3.3: Added Facebook debug diagnostics to Telegram output.
 v3.1: Fixed schedule to skip commented-out (paused) cron lines.
@@ -17,6 +18,7 @@ Daily morning summary sent to Telegram:
 - Social media analytics (Upload-Post API) — EU + US TikTok
 - Website stats 7-day (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
+- Meta Ads campaign report (spend, impressions, clicks, installs)
 """
 
 import os
@@ -36,6 +38,8 @@ SITE_URL           = "https://mindcoreai.eu/"
 FIREBASE_PROJECT   = "mindcore-ai"
 UPLOAD_POST_USER   = "MindCoreAI"
 UPLOAD_POST_USER_US = "MindCoreAI_US"
+META_ACCESS_TOKEN   = os.environ.get("META_ACCESS_TOKEN", "")
+META_AD_ACCOUNT_ID  = "1662262447260384"
 
 
 def get_google_credentials():
@@ -357,6 +361,63 @@ def get_social_media_stats():
         return None
 
 
+
+
+def get_meta_ads_stats():
+    """Fetch Meta Ads campaign performance for last 7 days."""
+    if not META_ACCESS_TOKEN:
+        print("   META_ACCESS_TOKEN not set")
+        return None
+    try:
+        url = f"https://graph.facebook.com/v21.0/act_{META_AD_ACCOUNT_ID}/insights"
+        params = {
+            "access_token": META_ACCESS_TOKEN,
+            "date_preset": "last_7d",
+            "fields": "spend,impressions,reach,clicks,actions,cost_per_action_type,ctr,cpm",
+            "level": "account",
+        }
+        resp = requests.get(url, params=params, timeout=30)
+        if resp.status_code != 200:
+            print(f"   Meta Ads API error: {resp.status_code} - {resp.text[:200]}")
+            return None
+        data = resp.json().get("data", [])
+        if not data:
+            print("   Meta Ads: no data returned (campaigns may be paused)")
+            return None
+        row = data[0]
+        spend = float(row.get("spend", 0))
+        impressions = int(row.get("impressions", 0))
+        reach = int(row.get("reach", 0))
+        clicks = int(row.get("clicks", 0))
+        ctr = float(row.get("ctr", 0))
+        cpm = float(row.get("cpm", 0))
+        # Extract app installs from actions
+        installs = 0
+        actions = row.get("actions", [])
+        for action in actions:
+            if action.get("action_type") in ("mobile_app_install", "app_install", "omni_app_install"):
+                installs += int(action.get("value", 0))
+        # Extract cost per install
+        cpi = 0
+        cost_actions = row.get("cost_per_action_type", [])
+        for ca in cost_actions:
+            if ca.get("action_type") in ("mobile_app_install", "app_install", "omni_app_install"):
+                cpi = float(ca.get("value", 0))
+        return {
+            "spend": spend,
+            "impressions": impressions,
+            "reach": reach,
+            "clicks": clicks,
+            "installs": installs,
+            "ctr": round(ctr, 2),
+            "cpm": round(cpm, 2),
+            "cpi": round(cpi, 2),
+        }
+    except Exception as e:
+        print(f"   Meta Ads error: {e}")
+        return None
+
+
 def get_analytics_stats(creds):
     try:
         from google.analytics.data_v1beta import BetaAnalyticsDataClient
@@ -426,7 +487,7 @@ def format_number(n):
     return str(n)
 
 
-def build_message(workflows, failures, todays_schedule, firebase_users, social_stats, analytics, search_console):
+def build_message(workflows, failures, todays_schedule, firebase_users, social_stats, meta_ads, analytics, search_console):
     now = datetime.utcnow().strftime("%A, %b %d %Y \u2014 %H:%M UTC")
     lines = ["\U0001f4ca *MindCore AI \u2014 Daily Digest*", f"_{now}_", ""]
 
@@ -489,6 +550,16 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
                     lines.append(f"  {name}: no 30-day data")
         lines.append("")
 
+    if meta_ads:
+        lines.append("\U0001f4b0 *Meta Ads (7 days):*")
+        lines.append(f"  Spend: \u20ac{meta_ads['spend']:.2f} | Impressions: {format_number(meta_ads['impressions'])}")
+        lines.append(f"  Reach: {format_number(meta_ads['reach'])} | Clicks: {meta_ads['clicks']}")
+        if meta_ads['installs'] > 0:
+            lines.append(f"  \U0001f4f2 Installs: {meta_ads['installs']} | CPI: \u20ac{meta_ads['cpi']:.2f}")
+        else:
+            lines.append(f"  Installs: 0 | CTR: {meta_ads['ctr']}%")
+        lines.append("")
+
     if analytics:
         lines.append("\U0001f310 *Website (7 days):*")
         lines.append(f"  Users: {analytics['users']} | Sessions: {analytics['sessions']}")
@@ -523,7 +594,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v3.4 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v3.5 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
@@ -554,17 +625,24 @@ def main():
     else:
         print("   skipped")
 
-    print("6. Google Analytics (7 days)...")
+    print("6. Meta Ads...")
+    meta_ads = get_meta_ads_stats()
+    if meta_ads:
+        print(f"   OK - \u20ac{meta_ads['spend']:.2f} spent, {meta_ads['installs']} installs")
+    else:
+        print("   skipped")
+
+    print("7. Google Analytics (7 days)...")
     creds = get_google_credentials()
     analytics = get_analytics_stats(creds) if creds else None
     print(f"   {'OK' if analytics else 'skipped'}")
 
-    print("7. Search Console...")
+    print("8. Search Console...")
     search_console = get_search_console_stats(creds) if creds else None
     print(f"   {'OK' if search_console else 'skipped'}")
 
-    print("8. Sending digest...")
-    message = build_message(workflows, failures, todays_schedule, firebase_users, social_stats, analytics, search_console)
+    print("9. Sending digest...")
+    message = build_message(workflows, failures, todays_schedule, firebase_users, social_stats, meta_ads, analytics, search_console)
     send_telegram(message)
     print("\n== Done ==")
 
