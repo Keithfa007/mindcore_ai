@@ -255,16 +255,17 @@ def get_scheduled_time(hour_utc):
     return target.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def upload_photo_to_platforms(image_path, tiktok_title, description, fb_title, fb_description, scheduled_date=None):
+def upload_photo_to_platforms(image_path, pin_title, x_caption, description, fb_title, fb_description, scheduled_date=None):
     """Upload quote image to X + Pinterest via Upload-Post."""
     if not UPLOAD_POST_API_KEY:
         return {"skipped": True, "reason": "no API key"}
-    pinterest_desc = f"{tiktok_title}\n\nMindCore AI - Mental Wellness App\nmindcoreai.eu"
+    pinterest_desc = f"{pin_title}\n\nMindCore AI - Mental Wellness App\nmindcoreai.eu"
     data = [
         ("user", UPLOAD_POST_USER),
         ("platform[]", "x"),
         ("platform[]", "pinterest"),
-        ("title", tiktok_title[:280]),
+        ("title", pin_title[:100]),
+        ("x_title", x_caption[:280]),
         ("pinterest_description", pinterest_desc[:500]),
         ("pinterest_board_id", "1123366769493611180"),
         ("post_mode", "DIRECT_POST"),
@@ -319,12 +320,13 @@ def main():
     jpg_path = render_quote_image(quote, str(OUTPUT_DIR / "quote_image.png"))
 
     print("6. Uploading to X + Pinterest...")
-    tiktok_title = f"{quote}\n\n{caption}\n\n{X_HASHTAGS}"[:280]
+    x_full = f"{caption}\n\n{X_HASHTAGS}"[:280]
+    pin_title = quote[:100]
     description = ""
     fb_title = ""
     fb_description = ""
 
-    result = upload_photo_to_platforms(jpg_path, tiktok_title, description, fb_title, fb_description, scheduled_date=scheduled_date)
+    result = upload_photo_to_platforms(jpg_path, pin_title, x_full, description, fb_title, fb_description, scheduled_date=scheduled_date)
     if result.get("status_code") in (200, 202):
         print(f"  Scheduled: {scheduled_date}")
     elif result.get("skipped"):
@@ -332,7 +334,7 @@ def main():
 
     (OUTPUT_DIR / "quote_metadata.json").write_text(json.dumps({
         "run": GITHUB_RUN_NUMBER, "category": category["name"],
-        "quote": quote, "caption": caption, "tweet_text": tiktok_title,
+        "quote": quote, "caption": caption, "tweet_text": x_full, "pin_title": pin_title,
         "scheduled": scheduled_date, "upload_type": "photo", "platform": "x+pinterest",
     }, indent=2))
     print("\n== Done ==")
