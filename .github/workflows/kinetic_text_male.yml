@@ -2,7 +2,8 @@ name: Kinetic Text Male (EU)
 
 on:
   schedule:
-    - cron: "0 0 * * 0,1,3,5"   # Sun/Mon/Wed/Fri 00:00 UTC
+    - cron: "0 10 * * *"   # 12:00 Malta
+    - cron: "0 16 * * *"   # 18:00 Malta
   workflow_dispatch:
 
 jobs:
@@ -10,24 +11,55 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Check schedule (odd days 10 UTC, even days 16 UTC)
+        id: check
+        run: |
+          DAY=$(date -u +%-d)
+          HOUR=$(date -u +%-H)
+          PARITY=$((DAY % 2))
+          if [ "$PARITY" -eq 1 ] && [ "$HOUR" -eq 10 ]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            echo "post_hour=10" >> $GITHUB_OUTPUT
+            echo "Male runs: odd day $DAY at 10 UTC (12:00 Malta)"
+          elif [ "$PARITY" -eq 0 ] && [ "$HOUR" -eq 16 ]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            echo "post_hour=16" >> $GITHUB_OUTPUT
+            echo "Male runs: even day $DAY at 16 UTC (18:00 Malta)"
+          else
+            echo "run=false" >> $GITHUB_OUTPUT
+            echo "Skipping: DAY=$DAY HOUR=$HOUR PARITY=$PARITY (not male's slot)"
+          fi
+          # Always run on workflow_dispatch
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            echo "post_hour=$(date -u +%-H)" >> $GITHUB_OUTPUT
+            echo "Manual trigger - running now"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.check.outputs.run == 'true'
+
       - uses: actions/setup-python@v5
+        if: steps.check.outputs.run == 'true'
         with:
           python-version: '3.11'
 
       - name: Install dependencies
+        if: steps.check.outputs.run == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-liberation unzip
           pip install anthropic requests openai-whisper Pillow
 
       - name: Download Montserrat font
+        if: steps.check.outputs.run == 'true'
         run: |
           mkdir -p /tmp/fonts
           curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-ExtraBold.ttf" -o /tmp/fonts/Montserrat-ExtraBold.ttf
           curl -sL "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Medium.ttf" -o /tmp/fonts/Montserrat-Medium.ttf
 
       - name: Run kinetic text pipeline (male)
+        if: steps.check.outputs.run == 'true'
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY:  ${{ secrets.ELEVENLABS_API_KEY }}
@@ -36,10 +68,11 @@ jobs:
           UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
           GENDER:              "male"
           GITHUB_RUN_NUMBER:   ${{ github.run_number }}
-          POST_HOUR_UTC:       "17"
+          POST_HOUR_UTC:       ${{ steps.check.outputs.post_hour }}
         run: python video_pipeline/kinetic_text_pipeline.py
 
       - name: Commit topic history
+        if: steps.check.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -50,7 +83,7 @@ jobs:
         continue-on-error: true
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.check.outputs.run == 'true'
         with:
           name: kinetic-male-${{ github.run_number }}
           path: video_pipeline/output_kinetic/
