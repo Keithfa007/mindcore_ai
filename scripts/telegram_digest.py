@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v3.3
+MindCore AI — Daily Telegram Digest v3.4
 =========================================
+v3.4: Fixed Facebook page lookup to handle dict response from Upload-Post API.
 v3.3: Added Facebook debug diagnostics to Telegram output.
 v3.1: Fixed schedule to skip commented-out (paused) cron lines.
 v2.9: Added US TikTok analytics, renamed EU TikTok label.
@@ -211,6 +212,50 @@ def _fetch_platform_stats(url, headers, platforms_param, extra_params=None):
     return resp.json()
 
 
+
+def _extract_pages_from_response(pages_raw, fb_debug):
+    """Extract a list of page objects from the Upload-Post /facebook/pages response.
+
+    The API may return:
+    - A list of page dicts (original expected format)
+    - A dict wrapping a list under a common key (data, pages, results, items)
+    - A dict that IS a single page object (has id or page_id)
+    - A dict with some arbitrary key containing a list of page dicts
+    """
+    fb_debug.append(f"type={type(pages_raw).__name__}")
+
+    if isinstance(pages_raw, list):
+        fb_debug.append(f"pages_count={len(pages_raw)}")
+        return pages_raw if pages_raw else None
+
+    if isinstance(pages_raw, dict):
+        fb_debug.append(f"keys={list(pages_raw.keys())[:8]}")
+
+        for key in ("data", "pages", "results", "items"):
+            if key in pages_raw and isinstance(pages_raw[key], list):
+                extracted = pages_raw[key]
+                fb_debug.append(f"extracted_from={key}")
+                fb_debug.append(f"pages_count={len(extracted)}")
+                return extracted if extracted else None
+
+        pid = pages_raw.get("id") or pages_raw.get("page_id")
+        if pid:
+            fb_debug.append("dict_is_single_page")
+            fb_debug.append("pages_count=1")
+            return [pages_raw]
+
+        for k, v in pages_raw.items():
+            if isinstance(v, list) and v and isinstance(v[0], dict):
+                if "id" in v[0] or "page_id" in v[0]:
+                    fb_debug.append(f"extracted_from={k}")
+                    fb_debug.append(f"pages_count={len(v)}")
+                    return v
+
+        fb_debug.append("no_page_id_found_in_dict")
+
+    return None
+
+
 def get_social_media_stats():
     if not UPLOAD_POST_API_KEY:
         print("   UPLOAD_POST_API_KEY not set")
@@ -229,13 +274,13 @@ def get_social_media_stats():
                 headers=headers, params={"user": UPLOAD_POST_USER}, timeout=15)
             fb_debug.append(f"pages_status={fb_resp.status_code}")
             if fb_resp.status_code == 200:
-                pages = fb_resp.json()
-                fb_debug.append(f"pages_count={len(pages) if isinstance(pages, list) else 'not_list'}")
-                if isinstance(pages, list) and pages:
-                    fb_page_id = pages[0].get("id", pages[0].get("page_id"))
+                pages_raw = fb_resp.json()
+                pages = _extract_pages_from_response(pages_raw, fb_debug)
+                if pages:
+                    fb_page_id = pages[0].get("id") or pages[0].get("page_id")
                     fb_debug.append(f"page_id={fb_page_id}")
                 else:
-                    fb_debug.append("no_pages_returned")
+                    fb_debug.append("no_pages_found")
             else:
                 fb_debug.append(f"pages_body={fb_resp.text[:200]}")
         except Exception as e:
@@ -478,7 +523,7 @@ def send_telegram(message):
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v3.3 ==\n")
+    print("== MindCore AI \u2014 Daily Digest v3.4 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
