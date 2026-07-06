@@ -1071,7 +1071,7 @@ def update_history_on_github(history, new_entry):
 def pin_to_pinterest(image_data, post_title, post_url, primary_keyword):
     """Pin the blog featured image to Pinterest via Upload-Post."""
     if not UPLOAD_POST_API_KEY:
-        print("   Pinterest: skipped (no UPLOAD_POST_API_KEY)")
+        print("   Pinterest+X: skipped (no UPLOAD_POST_API_KEY)")
         return
     import tempfile
     try:
@@ -1084,10 +1084,17 @@ def pin_to_pinterest(image_data, post_title, post_url, primary_keyword):
             f"#mentalhealth #mentalhealthmatters #mindcoreai #healing #selfcare "
             f"#recovery #anxiety #mentalwellness #{primary_keyword.replace(' ', '').lower()}"
         )[:500]
+        x_caption = (
+            f"{post_title}\n\n"
+            f"Read more: {post_url}\n\n"
+            f"#mentalhealth #mindcoreai #mentalwellness"
+        )[:280]
         data = [
             ("user", "MindCoreAI"),
+            ("platform[]", "x"),
             ("platform[]", "pinterest"),
             ("title", post_title[:280]),
+            ("x_title", x_caption),
             ("pinterest_description", pinterest_desc),
             ("pinterest_board_id", "1123366769493611180"),
             ("post_mode", "DIRECT_POST"),
@@ -1103,11 +1110,11 @@ def pin_to_pinterest(image_data, post_title, post_url, primary_keyword):
         f.close()
         os.unlink(tmp.name)
         if resp.ok:
-            print(f"   Pinterest: pinned OK ({resp.status_code})")
+            print(f"   Pinterest+X: posted OK ({resp.status_code})")
         else:
-            print(f"   Pinterest: WARNING {resp.status_code} - {resp.text[:200]}")
+            print(f"   Pinterest+X: WARNING {resp.status_code} - {resp.text[:200]}")
     except Exception as e:
-        print(f"   Pinterest: failed - {e}")
+        print(f"   Pinterest+X: failed - {e}")
 
 
 def main():
