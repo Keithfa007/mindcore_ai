@@ -42,6 +42,8 @@ def _call_anthropic_with_retry(client, max_retries=5, **kwargs):
 
 # Image generation: fal.ai Flux Pro (baked in, no OpenAI needed)
 SERP_API_KEY     = os.environ.get("SERP_API_KEY", "")
+UPLOAD_POST_API_KEY = os.environ.get("UPLOAD_POST_API_KEY", "")
+UPLOAD_POST_PHOTOS_URL = "https://api.upload-post.com/api/upload"
 
 WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
