@@ -18,7 +18,6 @@ jobs:
 
       - name: Configure for US market
         run: |
-          cp video_pipeline/heygen_config_us.json video_pipeline/heygen_config_female.json
           sed -i 's/"serp_country": "gb"/"serp_country": "us"/g' video_pipeline/niche_keywords_female.json
           echo "US config applied | SERP: US | User: MindCoreAI_US"
 
