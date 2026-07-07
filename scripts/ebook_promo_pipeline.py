@@ -278,7 +278,7 @@ def main():
     print(f"== MindCore AI  - Ebook Promotion Pipeline v2.7 ==\n")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
-    scheduled_date = get_scheduled_time(10)
+    scheduled_date = get_scheduled_time(6)
 
     with tempfile.TemporaryDirectory() as tmp:
         cover = os.path.join(tmp, "cover.png")
