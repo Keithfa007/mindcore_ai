@@ -2,8 +2,8 @@
 """
 MindCore AI -- Affiliate Product Carousel Pipeline v1.5
 ========================================================
-Promotes affiliate products from affiliate_products.json as
-personal recommendation carousels. Visually distinct from
+Promotes Online-Therapy.com as personal recommendation carousels.
+Rotates through different therapy angles (individual, couples, CBT, affordability, etc.). Visually distinct from
 the main emotional carousel (warm amber tones, centered layout,
 lifestyle backgrounds, 5 slides).
 
@@ -27,7 +27,6 @@ GITHUB_RUN_NUMBER = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 
 UPLOAD_POST_PHOTOS_URL = "https://api.upload-post.com/api/upload_photos"
 OUTPUT_DIR = Path("scripts/output_affiliate_carousel")
-PRODUCTS_PATH = Path("scripts/affiliate_products.json")
 HISTORY_PATH = Path("scripts/affiliate_carousel_history.json")
 
 IMAGE_WIDTH = 1080
@@ -39,9 +38,9 @@ CLAUDE_RETRY_BASE = 30
 POST_HOUR_UTC = 12
 US_POST_HOUR_UTC = 14
 REQUIRED_BRAND_HASHTAG = "#mindcoreai"
-TIKTOK_HASHTAGS = "#mindcoreai #mentalhealth #wellness #selfcare #fyp #ad #affiliate"
-FB_HASHTAGS = "#mindcoreai #mentalhealth #wellness #selfcare #ad"
-US_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #mentalhealthtiktok #therapytok #anxietyrelief #healing #selfcare #fyp #ad #affiliate"
+TIKTOK_HASHTAGS = "#mindcoreai #mentalhealth #onlinetherapy #therapy #CBT #selfcare #fyp #ad"
+FB_HASHTAGS = "#mindcoreai #mentalhealth #onlinetherapy #therapy #selfcare #ad"
+US_HASHTAGS = "#mindcoreai #mentalhealth #mentalhealthmatters #onlinetherapy #therapytok #CBT #healing #selfcare #fyp #ad"
 SLIDE_COUNT = 5
 
 BADGE_BG = (212, 165, 116)
@@ -79,9 +78,66 @@ def get_scheduled_post_time():
     return s
 
 
-def load_products():
-    data = json.loads(PRODUCTS_PATH.read_text())
-    return data.get("product_categories", [])
+THERAPY_ANGLES = [
+    {
+        "angle": "individual_therapy",
+        "name": "Online-Therapy.com",
+        "hook": "Individual therapy from home",
+        "focus": "Licensed therapists, CBT-based sessions, worksheets, and messaging. Real therapy without the waiting room.",
+        "audience": "anyone struggling with anxiety, depression, stress, or just needing someone to talk to"
+    },
+    {
+        "angle": "couples_therapy",
+        "name": "Online-Therapy.com",
+        "hook": "Couples therapy you can do together from home",
+        "focus": "Work on your relationship with a licensed therapist. Video sessions, messaging, and tools designed for couples.",
+        "audience": "couples dealing with communication issues, trust, distance, or wanting to strengthen their relationship"
+    },
+    {
+        "angle": "affordability",
+        "name": "Online-Therapy.com",
+        "hook": "Therapy that does not break the bank",
+        "focus": "Quality CBT-based therapy at a fraction of in-person costs. No insurance needed. Cancel anytime.",
+        "audience": "people who want therapy but think they cannot afford it"
+    },
+    {
+        "angle": "mens_mental_health",
+        "name": "Online-Therapy.com",
+        "hook": "Built for men who find it hard to ask for help",
+        "focus": "Private, no waiting room, no judgment. Text your therapist when talking feels too hard. CBT tools that actually work.",
+        "audience": "men dealing with anger, isolation, stress, or emotional shutdown"
+    },
+    {
+        "angle": "anxiety_focus",
+        "name": "Online-Therapy.com",
+        "hook": "Too anxious to sit in a waiting room?",
+        "focus": "Start therapy from your couch. CBT-based tools, live video sessions, and a therapist who gets it. Built for people with anxiety.",
+        "audience": "people with social anxiety, general anxiety, or who feel overwhelmed by traditional therapy settings"
+    },
+    {
+        "angle": "recovery_support",
+        "name": "Online-Therapy.com",
+        "hook": "Extra support alongside your recovery",
+        "focus": "Sobriety is the start, not the finish. Get ongoing CBT-based therapy to work through what drove you there in the first place.",
+        "audience": "people in recovery from addiction who need ongoing emotional support"
+    },
+    {
+        "angle": "first_step",
+        "name": "Online-Therapy.com",
+        "hook": "Not ready for in-person? Start here.",
+        "focus": "Your first therapy session from home. No commute, no small talk in a waiting room. Just you and a licensed therapist.",
+        "audience": "people who have never tried therapy and feel nervous about starting"
+    },
+    {
+        "angle": "cbt_tools",
+        "name": "Online-Therapy.com",
+        "hook": "CBT therapy that gives you real tools",
+        "focus": "Not just talking. Worksheets, journal exercises, yoga, and live sessions. A complete toolkit for your mental health.",
+        "audience": "people who want practical, evidence-based mental health tools, not just conversation"
+    }
+]
+
+AFFILIATE_LINK = "https://go.online-therapy.com/SHY0"
 
 
 def load_history():
@@ -247,44 +303,30 @@ def _call_claude(prompt, client, max_tokens=2000):
 
 
 def generate_content(client, product, category):
-    prompt = f"""Write a 5-slide TikTok carousel promoting this product as a personal recommendation.
+    prompt = f"""Write a 5-slide TikTok carousel promoting Online-Therapy.com as a personal recommendation.
 
-PRODUCT: {product['name']}
-CATEGORY: {category['category']}
-BEST FOR: {product.get('best_for', '')}
-HIGHLIGHT: {product.get('highlight', '')}
-PRICE: {product.get('price_range', '')}
-
-VOICE: You are Keith, founder of MindCore AI. You struggled with anxiety, addiction, and sleepless nights for 20 years. You're 2 years clean. This product genuinely helped you. Write as if recommending to a friend.
-
-WRITING STYLE (MANDATORY):
-- NEVER use em dashes. Use commas, periods, or separate sentences instead.
-- NEVER use these AI-tell words: "delve", "tapestry", "landscape", "realm", "navigate", "leverage", "foster", "cultivate", "embark", "comprehensive", "multifaceted", "ever-evolving", "game-changer", "unlock", "unleash", "empower", "supercharge", "revolutionize", "it's important to note", "it's worth noting", "in today's world", "in today's fast-paced world", "harness", "pivotal", "seasoned", "cutting-edge", "spearhead".
-- Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
-- Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
-
-FORMAT  - respond with EXACTLY this JSON structure, nothing else:
-{{
-  "tiktok_title": "Short hook title under 85 chars",
-  "description": "Longer caption 2-3 sentences, include why you personally use it.",
-  "slides": [
-    {{"slide": 1, "hook": "Short punchy hook question (8-12 words max)"}},
-    {{"slide": 2, "story": "Personal 1-2 sentence connection to the problem"}},
-    {{"slide": 3, "shift": "What changed when you found this (1-2 sentences)"}},
-    {{"slide": 4, "product": "Product name + key benefit (1-2 sentences)"}},
-    {{"slide": 5, "cta": "Call to action (short, warm)"}}
-  ]
-}}
+Angle: {angle['hook']}
+Focus: {angle['focus']}
+Target audience: {angle['audience']}
 
 RULES:
-- Slide 1: Hook the viewer with a relatable problem. No product name yet.
-- Slide 2: Brief personal story connecting to that problem. Raw and real.
-- Slide 3: The turning point. What shifted.
-- Slide 4: Introduce the product naturally. What it does and why it works.
-- Slide 5: Warm CTA.
-- Keep ALL text SHORT. These are image overlays, not paragraphs.
-- Do NOT use quotation marks in any slide text.
-- Sound like a real person, not a marketer."""
+- Slide 1: Emotional hook that stops the scroll. Short, raw, personal. No product name yet.
+- Slide 2: Name the pain point. Make the reader feel seen.
+- Slide 3: Introduce Online-Therapy.com naturally. What it offers: licensed therapists, CBT-based, worksheets, live sessions, messaging.
+- Slide 4: Why it works. Practical benefits: from home, affordable, no waiting room, cancel anytime.
+- Slide 5: Warm CTA. Not salesy. "If you have been thinking about it, this is your sign."
+- Each slide: 1 bold heading (5 words max), 2-3 lines of body text (15 words max each)
+- Voice: First person, warm, like telling a friend. No clinical language.
+- NEVER use em dashes. Use commas or periods instead.
+- Do NOT start any slide with "I" or "You know"
+
+Also write:
+- tiktok_title: 1 emotional line under 80 chars (no hashtags)
+- fb_title: 1-2 sentences, warm and personal (under 200 chars)
+
+Return valid JSON:
+{{"slides": [{{"heading": "...", "body": "..."}}, ...], "tiktok_title": "...", "fb_title": "..."}}
+"""
 
     raw = _call_claude(prompt, client)
     raw = raw.replace("```json", "").replace("```", "").strip()
@@ -313,8 +355,8 @@ def main():
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     print("\n1. Selecting product...")
-    category, product = pick_product()
-    affiliate_link = product.get("affiliate_link", "")
+    angle = pick_angle()
+    affiliate_link = AFFILIATE_LINK
 
     print("\n2. Generating content...")
     content = generate_content(client, product, category)
@@ -442,11 +484,11 @@ def main():
         code, msg = post_to_platform(headers, us_tt_data, final_slides)
         print(f"  US TikTok: {code}  - {msg}")
 
-        print(f"  Affiliate link: {affiliate_link}")
+        print(f"  Affiliate link: {AFFILIATE_LINK}")
 
     print("\n6. Saving history...")
     history = load_history()
-    save_history(history, {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "product_name": product["name"], "category": category["category"], "title": content["tiktok_title"], "affiliate_link": affiliate_link})
+    save_history(history, {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "product_name": angle["name"], "angle": angle["angle"], "title": content["tiktok_title"], "affiliate_link": affiliate_link})
 
     print("\n" + "=" * 60)
     print("DONE  - Affiliate carousel posted!")
