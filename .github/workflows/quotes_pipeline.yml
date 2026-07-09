@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fonts-liberation
-          pip install anthropic requests Pillow
+          pip install anthropic requests Pillow numpy
 
       - name: Generate and schedule quote (16:00 Malta / 14:00 UTC)
         env:
