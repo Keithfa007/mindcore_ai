@@ -1,0 +1,25 @@
+name: Patch Quote Backgrounds
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: pip install numpy --break-system-packages
+      - name: Run patch
+        run: python3 scripts/patch_quote_bg.py
+      - name: Verify
+        run: |
+          grep -q "QUOTE_PALETTES" scripts/quotes_pipeline.py && echo "palettes OK"
+          grep -q "warm_amber" scripts/quotes_pipeline.py && echo "amber OK"
+          grep -q "parchment" scripts/quotes_pipeline.py && echo "parchment OK"
+          grep -q "np.random.normal" scripts/quotes_pipeline.py && echo "grain OK"
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/quotes_pipeline.py
+          git commit -m "feat: warm rotating palettes with grain texture for quote backgrounds"
+          git push
