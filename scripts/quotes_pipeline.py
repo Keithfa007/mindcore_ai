@@ -177,11 +177,73 @@ def get_font(size, bold=True):
     return ImageFont.load_default()
 
 
-def create_gradient_background():
+QUOTE_PALETTES = [
+    {
+        "name": "warm_amber",
+        "top": (180, 130, 60),
+        "bot": (120, 75, 30),
+        "text": (255, 255, 255),
+        "accent": (255, 240, 200)
+    },
+    {
+        "name": "deep_brown",
+        "top": (90, 60, 45),
+        "bot": (45, 28, 18),
+        "text": (255, 255, 255),
+        "accent": (230, 210, 180)
+    },
+    {
+        "name": "parchment",
+        "top": (210, 195, 170),
+        "bot": (175, 155, 130),
+        "text": (35, 30, 25),
+        "accent": (80, 65, 50)
+    },
+    {
+        "name": "sage_green",
+        "top": (95, 120, 85),
+        "bot": (55, 75, 50),
+        "text": (255, 255, 255),
+        "accent": (220, 235, 210)
+    },
+    {
+        "name": "deep_navy",
+        "top": (30, 45, 80),
+        "bot": (15, 20, 45),
+        "text": (255, 255, 255),
+        "accent": (180, 200, 235)
+    },
+    {
+        "name": "muted_purple",
+        "top": (95, 70, 110),
+        "bot": (50, 35, 65),
+        "text": (255, 255, 255),
+        "accent": (220, 200, 235)
+    },
+    {
+        "name": "terracotta",
+        "top": (170, 95, 60),
+        "bot": (110, 55, 35),
+        "text": (255, 255, 255),
+        "accent": (255, 220, 190)
+    },
+    {
+        "name": "teal_ocean",
+        "top": (40, 100, 110),
+        "bot": (20, 55, 65),
+        "text": (255, 255, 255),
+        "accent": (180, 230, 235)
+    }
+]
+
+def create_gradient_background(palette=None):
+    if palette is None:
+        palette = random.choice(QUOTE_PALETTES)
+    print(f"  BG palette: {palette['name']}")
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img)
-    top_r, top_g, top_b = 12, 16, 32
-    bot_r, bot_g, bot_b = 6, 6, 12
+    top_r, top_g, top_b = palette["top"]
+    bot_r, bot_g, bot_b = palette["bot"]
     for y in range(HEIGHT):
         ratio = y / HEIGHT
         ease = ratio * ratio * (3 - 2 * ratio)
@@ -189,6 +251,13 @@ def create_gradient_background():
         g = int(top_g + (bot_g - top_g) * ease)
         b = int(top_b + (bot_b - top_b) * ease)
         draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
+    # Grain texture overlay for organic feel
+    import numpy as np
+    grain = np.random.normal(0, 12, (HEIGHT, WIDTH, 3)).astype(np.int16)
+    img_arr = np.array(img, dtype=np.int16)
+    img_arr = np.clip(img_arr + grain, 0, 255).astype(np.uint8)
+    img = Image.fromarray(img_arr)
+    # Subtle vignette
     vignette = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     vdraw = ImageDraw.Draw(vignette)
     cx, cy = WIDTH // 2, HEIGHT // 2
@@ -196,9 +265,9 @@ def create_gradient_background():
     for y in range(0, HEIGHT, 4):
         for x in range(0, WIDTH, 4):
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
-            alpha = int(min(80, (dist / max_dist) * 120))
+            alpha = int(min(50, (dist / max_dist) * 80))
             vdraw.rectangle([x, y, x + 4, y + 4], fill=(0, 0, 0, alpha))
-    return Image.alpha_composite(img.convert("RGBA"), vignette).convert("RGB")
+    return Image.alpha_composite(img.convert("RGBA"), vignette).convert("RGB"), palette
 
 
 def wrap_text_lines(text, font, max_width):
@@ -225,7 +294,7 @@ def draw_text_centered(draw, y, text, font, fill=(255, 255, 255), stroke_width=0
 
 
 def render_quote_image(quote_text, output_path):
-    img = create_gradient_background()
+    img, palette = create_gradient_background()
     draw = ImageDraw.Draw(img)
     quote_font = get_font(44, bold=True)
     attr_font = get_font(24, bold=False)
