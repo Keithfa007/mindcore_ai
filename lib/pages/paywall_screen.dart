@@ -230,14 +230,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Trial card
+                        // Free trial banner
                         if (showTrial) ...[
-                          _TrialCard(
-                              loading: _loading,
-                              product: _sub.trialProduct,
-                              onBuy: _buy,
-                              isDark: isDark,
-                              tt: tt),
+                          _FreeTrialBanner(
+                             loading: _loading,
+                             product: _sub.premiumMonthly,
+                             onBuy: _buy,
+                             isDark: isDark,
+                             tt: tt),
                           const SizedBox(height: 10),
                         ],
 
@@ -370,15 +370,14 @@ class _Toggle extends StatelessWidget {
   }
 }
 
-// ── Trial card ────────────────────────────────────────────────────────
-
-class _TrialCard extends StatelessWidget {
+// ----- Free trial banner --------------------------
+class _FreeTrialBanner extends StatelessWidget {
   final bool loading;
   final ProductDetails? product;
   final Future<void> Function(ProductDetails?) onBuy;
   final bool isDark;
   final TextTheme tt;
-  const _TrialCard(
+  const _FreeTrialBanner(
       {required this.loading,
       required this.product,
       required this.onBuy,
@@ -387,67 +386,61 @@ class _TrialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = const Color(0xFF64748B);
+    final accent = const Color(0xFF10B981);
     return GlassCard(
       glowColor: accent.withValues(alpha: 0.20),
-      padding: const EdgeInsets.all(16),
-      child: Row(
+      padding: const EdgeInsets.all(20),
+      child: Column(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: accent.withValues(alpha: 0.30)),
-                  ),
-                  child: Text('7-DAY TRIAL',
-                      style: tt.labelSmall?.copyWith(
-                          color: accent,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 10)),
-                ),
-                const SizedBox(height: 8),
-                Text('Try 7 days for €1.99',
-                    style: tt.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: isDark
-                            ? Colors.white
-                            : const Color(0xFF0E1320))),
-                const SizedBox(height: 4),
-                Text('50 messages • 5 min voice • All features',
-                    style: tt.bodySmall?.copyWith(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.55)
-                            : const Color(0xFF475467))),
-              ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: accent.withValues(alpha: 0.40)),
             ),
+            child: Text('TRY FREE FOR 3 DAYS',
+                style: tt.labelSmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    letterSpacing: 1.2)),
           ),
-          const SizedBox(width: 12),
-          Column(
-            children: [
-              Text('€1.99',
-                  style: tt.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900, color: accent)),
-              Text('one-time',
-                  style: tt.bodySmall
-                      ?.copyWith(color: accent.withValues(alpha: 0.70))),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: loading ? null : () => onBuy(product),
-                style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: accent),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8)),
-                child: Text('Start',
-                    style: TextStyle(
-                        color: accent, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          Text('Start your free trial',
+              style: tt.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? Colors.white : const Color(0xFF0E1320))),
+          const SizedBox(height: 6),
+          Text('Full access to all Premium features for 3 days.',
+              textAlign: TextAlign.center,
+              style: tt.bodyMedium?.copyWith(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.65)
+                      : const Color(0xFF475467))),
+          const SizedBox(height: 4),
+          Text('Then €14.99/month. Cancel anytime.',
+              textAlign: TextAlign.center,
+              style: tt.bodySmall?.copyWith(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.45)
+                      : const Color(0xFF667085))),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: loading ? null : () => onBuy(product),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: accent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
-            ],
+              child: Text('Start Free Trial',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
           ),
         ],
       ),
