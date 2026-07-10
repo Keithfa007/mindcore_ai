@@ -154,30 +154,15 @@ def save_history(h, entry):
     HISTORY_PATH.write_text(json.dumps(h[-60:], indent=2))
 
 
-def pick_product():
-    categories = load_products()
+def pick_angle():
     history = load_history()
-    recent_products = [h.get("product_name", "") for h in history[-15:]]
-    recent_categories = [h.get("category", "") for h in history[-5:]]
-    candidates = []
-    for cat in categories:
-        if cat["category"] in recent_categories:
-            continue
-        for prod in cat["products"]:
-            if prod["name"] not in recent_products:
-                candidates.append((cat, prod))
-    if not candidates:
-        for cat in categories:
-            for prod in cat["products"]:
-                if prod["name"] not in recent_products:
-                    candidates.append((cat, prod))
-    if not candidates:
-        cat = random.choice(categories)
-        prod = random.choice(cat["products"])
-        candidates = [(cat, prod)]
-    cat, prod = random.choice(candidates)
-    print(f"  Selected: {prod['name']} from {cat['category']}")
-    return cat, prod
+    recent_angles = [h.get("angle", "") for h in history[-4:]]
+    available = [a for a in THERAPY_ANGLES if a["angle"] not in recent_angles]
+    if not available:
+        available = list(THERAPY_ANGLES)
+    angle = random.choice(available)
+    print(f"  Angle: {angle['angle']} -- {angle['hook']}")
+    return angle
 
 
 LIFESTYLE_PROMPTS = {"slide_1": ["Cinematic overhead shot of a cosy reading nook at night, warm amber lamp light, soft blankets, steaming mug. 9:16 vertical. No text, no people, no faces.","Warm golden hour light streaming through sheer curtains into a peaceful bedroom. Soft textures, muted tones. 9:16 vertical. No text, no people.","Close-up of warm candlelight on a wooden table, soft bokeh background, amber and honey tones. 9:16 vertical. No text, no watermarks.","Moody cosy evening scene: soft blanket, warm lamp, rain on window. Amber tones, intimate warmth. 9:16 vertical. No text, no people."],"slide_2": ["Warm morning light on rumpled white bed sheets, peaceful, minimal. Golden hour tones. 9:16 vertical. No text, no people.","Soft focus on a steaming cup of tea on a wooden surface, warm amber background light. 9:16 vertical. No text, no watermarks.","Rain drops on a window at night, warm interior light blurred behind. Intimate, reflective mood. 9:16 vertical. No text.","Close-up of hands wrapped around a warm mug, soft golden light, wooden table. 9:16 vertical. No faces, no text."],"slide_3": ["Warm flat lay of self-care items on a wooden surface: candle, journal, warm drink. Soft golden light from above. 9:16 vertical. No text.","Peaceful morning scene: open book on a sunlit table beside a window, warm tones. 9:16 vertical. No text, no people.","Soft golden light on a wooden shelf with plants, books, and a candle. Warm cosy aesthetic. 9:16 vertical. No text.","Morning sunlight casting warm shadows through blinds onto a peaceful desk. Minimal, warm. 9:16 vertical. No text."],"slide_4": ["Beautiful lifestyle flat lay on warm wood: journal, pen, coffee, soft morning light. Clean and aspirational. 9:16 vertical. No text.","Warm sunset light through a window onto a wooden table with a book and warm drink. Peaceful evening. 9:16 vertical. No text.","Close-up of soft fabrics and warm textures in golden amber light. Cosy, tactile, inviting. 9:16 vertical. No text.","Soft golden light on an open notebook beside a window, morning, peaceful. 9:16 vertical. No text, no people."],"slide_5": ["Warm inviting phone on a wooden table, soft amber candlelight, cosy evening setting. 9:16 vertical. No text, no watermarks.","Smartphone face-up on a warm wooden surface, soft golden morning light. Clean, minimal, inviting. 9:16 vertical. No text.","Phone on a cosy bedside table with warm lamp light, soft evening tones. 9:16 vertical. No text.","Clean minimal shot of a phone on a marble surface beside a warm drink, golden light. 9:16 vertical. No text."]}
@@ -302,7 +287,7 @@ def _call_claude(prompt, client, max_tokens=2000):
     raise RuntimeError("Claude unavailable after all retries")
 
 
-def generate_content(client, product, category):
+def generate_content(client, angle):
     prompt = f"""Write a 5-slide TikTok carousel promoting Online-Therapy.com as a personal recommendation.
 
 Angle: {angle['hook']}
@@ -354,12 +339,12 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    print("\n1. Selecting product...")
+    print("\n1. Selecting angle...")
     angle = pick_angle()
     affiliate_link = AFFILIATE_LINK
 
     print("\n2. Generating content...")
-    content = generate_content(client, product, category)
+    content = generate_content(client, angle)
     print(f"  TikTok title: {content['tiktok_title']}")
 
     print("\n3. Generating slide images...")
@@ -387,8 +372,8 @@ def main():
             lines = [(sd.get("shift", ""), BODY_SIZE, BODY_COLOR, False)]
             img = render_slide(bg, lines)
         elif i == 3:
-            lines = [(sd.get("product", ""), BOLD_SIZE, BOLD_COLOR, True)]
-            img = render_slide(bg, lines, badge_text=product.get("price_range", ""))
+            lines = [(sd.get("heading", ""), BOLD_SIZE, BOLD_COLOR, True)]
+            img = render_slide(bg, lines)
         elif i == 4:
             cta_text = sd.get("cta", "Check the link below")
             lines = [
