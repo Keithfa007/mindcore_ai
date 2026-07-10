@@ -17,7 +17,6 @@ class SubscriptionService {
   // ── Product ID sets ────────────────────────────────────────────────────
 
   static const Set<String> _subscriptionIds = {
-    'mindcore_trial_7day',
     'mindcore_premium_monthly',
     'mindcore_premium_yearly',
     'mindcore_pro_monthly',
