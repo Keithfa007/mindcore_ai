@@ -1,0 +1,17 @@
+name: Patch Affiliate Desc
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run patch
+        run: python3 scripts/patch_affiliate_desc.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/affiliate_carousel_pipeline.py
+          git commit -m "fix: affiliate carousel description key and slide rendering"
+          git push
