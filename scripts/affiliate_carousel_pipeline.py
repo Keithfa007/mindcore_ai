@@ -363,21 +363,25 @@ def main():
         bg = slide_images[key]
 
         if i == 0:
-            lines = [(sd.get("hook", ""), HOOK_SIZE, HOOK_COLOR, True)]
+            lines = [(sd.get("heading", ""), HOOK_SIZE, HOOK_COLOR, True),
+                     (sd.get("body", ""), BODY_SIZE, BODY_COLOR, False)]
             img = render_slide(bg, lines, badge_text="PERSONAL PICK")
         elif i == 1:
-            lines = [(sd.get("story", ""), BODY_SIZE, BODY_COLOR, False)]
+            lines = [(sd.get("heading", ""), BOLD_SIZE, BOLD_COLOR, True),
+                     (sd.get("body", ""), BODY_SIZE, BODY_COLOR, False)]
             img = render_slide(bg, lines)
         elif i == 2:
-            lines = [(sd.get("shift", ""), BODY_SIZE, BODY_COLOR, False)]
+            lines = [(sd.get("heading", ""), BOLD_SIZE, BOLD_COLOR, True),
+                     (sd.get("body", ""), BODY_SIZE, BODY_COLOR, False)]
             img = render_slide(bg, lines)
         elif i == 3:
-            lines = [(sd.get("heading", ""), BOLD_SIZE, BOLD_COLOR, True)]
+            lines = [(sd.get("heading", ""), BOLD_SIZE, BOLD_COLOR, True),
+                     (sd.get("body", ""), BODY_SIZE, BODY_COLOR, False)]
             img = render_slide(bg, lines)
         elif i == 4:
-            cta_text = sd.get("cta", "Check the link below")
             lines = [
-                (cta_text, CTA_TRIG, CTA_COLOR, True),
+                (sd.get("heading", "Your sign to start"), CTA_TRIG, CTA_COLOR, True),
+                (sd.get("body", ""), BODY_SIZE, BODY_COLOR, False),
                 ("MindCore AI", CTA_APP, ACCENT_COLOR, True),
             ]
             img = render_slide(bg, lines)
@@ -396,7 +400,7 @@ def main():
         scheduled = get_scheduled_post_time()
 
         # Build descriptions
-        tiktok_desc = content["description"].strip()
+        tiktok_desc = content["fb_title"].strip()
         if affiliate_link:
             tiktok_desc += f"\n\nGet it here: {affiliate_link}"
         if REQUIRED_BRAND_HASHTAG not in tiktok_desc:
@@ -405,14 +409,14 @@ def main():
             tiktok_desc += " #ad"
         tiktok_desc += f"\n\n{TIKTOK_HASHTAGS}"
 
-        fb_desc = content["description"].strip()
+        fb_desc = content["fb_title"].strip()
         if affiliate_link:
             fb_desc += f"\n\nGet it here: {affiliate_link}"
         fb_desc += f"\n\n{FB_HASHTAGS}"
         if "#ad" not in fb_desc.lower():
             fb_desc += " #ad"
 
-        us_desc = content["description"].strip()
+        us_desc = content["fb_title"].strip()
         if affiliate_link:
             us_desc += f"\n\nGet it here: {affiliate_link}"
         if "#ad" not in us_desc.lower():
