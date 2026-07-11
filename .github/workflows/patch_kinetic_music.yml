@@ -1,0 +1,21 @@
+name: Patch Kinetic Music
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run patch
+        run: python3 scripts/patch_kinetic_music.py
+      - name: Verify
+        run: |
+          grep -q "pick_background_music" video_pipeline/kinetic_text_pipeline.py && echo "music func OK"
+          grep -q "volume=0.12" video_pipeline/kinetic_text_pipeline.py && echo "volume OK"
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add video_pipeline/kinetic_text_pipeline.py
+          git commit -m "feat: add subtle background music to kinetic text videos"
+          git push
