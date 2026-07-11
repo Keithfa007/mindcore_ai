@@ -259,6 +259,16 @@ def build_word_positions(words, font, max_w, cx, by, lh):
         for w in lw: pos[w["idx"]] = {"x":x,"y":y,"w":w["w"]}; x += w["w"] + sw
         y += lh
     return pos, len(lines)
+def pick_background_music():
+    music_dir = PIPELINE_DIR / "music"
+    tracks = [f for f in music_dir.glob("*.mp3") if f.stat().st_size > 10000]
+    if not tracks:
+        print("  No music tracks found")
+        return None
+    track = random.choice(tracks)
+    print(f"  BG music: {track.name}")
+    return str(track)
+
 def create_kinetic_video(audio_path, sentences, output_path, audio_duration, bg_image_path=None):
     from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
     import tempfile, shutil
@@ -334,7 +344,15 @@ def create_kinetic_video(audio_path, sentences, output_path, audio_duration, bg_
             if fwi>0: draw.rectangle([(barm,bary),(barm+fwi,bary+barh)],fill=AM)
         frame.save(os.path.join(fd,f"frame_{fn:05d}.png"),"PNG")
         if fn%(FPS*5)==0: print(f"    Frame {fn}/{tf} ({t:.1f}s)")
-    print("  Encoding..."); cmd=["ffmpeg","-y","-framerate",str(FPS),"-i",os.path.join(fd,"frame_%05d.png"),"-i",audio_path,"-c:v","libx264","-preset","fast","-crf","20","-c:a","aac","-b:a","128k","-pix_fmt","yuv420p","-shortest",output_path]
+    music_path = pick_background_music()
+    print("  Encoding...")
+    if music_path:
+        fade_out_start = max(0, audio_duration - 2)
+        cmd=["ffmpeg","-y","-framerate",str(FPS),"-i",os.path.join(fd,"frame_%05d.png"),"-i",audio_path,"-i",music_path,
+            "-filter_complex",f"[2:a]volume=0.12,afade=t=in:d=2,afade=t=out:st={fade_out_start:.1f}:d=2[bg];[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+            "-map","0:v","-map","[aout]","-c:v","libx264","-preset","fast","-crf","20","-c:a","aac","-b:a","128k","-pix_fmt","yuv420p","-shortest",output_path]
+    else:
+        cmd=["ffmpeg","-y","-framerate",str(FPS),"-i",os.path.join(fd,"frame_%05d.png"),"-i",audio_path,"-c:v","libx264","-preset","fast","-crf","20","-c:a","aac","-b:a","128k","-pix_fmt","yuv420p","-shortest",output_path]
     result=subprocess.run(cmd,capture_output=True,text=True); shutil.rmtree(fd,ignore_errors=True)
     if result.returncode!=0: raise RuntimeError(f"FFmpeg failed: {result.stderr[-500:]}")
     print(f"  Video: {os.path.getsize(output_path)/(1024*1024):.1f} MB, {audio_duration:.1f}s")
