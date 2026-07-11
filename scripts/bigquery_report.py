@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-MindCore AI — BigQuery Analytics Report v1.1
+MindCore AI — BigQuery Analytics Report v1.3
 =============================================
 On-demand deep analytics from GA4 raw data in BigQuery.
 Queries last 7 days of event data and sends formatted report to Telegram.
 
 Covers: top pages, traffic sources, device split, country breakdown, engagement.
+
+v1.3: Fixed page paths grouping — normalize URL in SQL before grouping.
+v1.2: Fixed auth scope (bigquery.readonly -> bigquery).
+v1.1: Error surfacing in Telegram.
 """
 
 import os
@@ -113,11 +117,29 @@ def build_report(client, dates):
         lines.append(f"  Page views: {format_number(r.get('page_views', 0))} | New users: {format_number(r.get('new_users', 0))}")
         lines.append("")
 
-    # 2. Top pages
+    # 2. Top pages — normalize URL in SQL before grouping
     print("   [2/5] Top pages...")
     rows = run_query(client, f"""
         SELECT
-            (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_location') as page,
+            IFNULL(
+                NULLIF(
+                    REGEXP_REPLACE(
+                        SPLIT(
+                            SPLIT(
+                                REPLACE(
+                                    (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_location'),
+                                    'https://mindcoreai.eu', ''
+                                ),
+                                '?'
+                            )[SAFE_OFFSET(0)],
+                            '#'
+                        )[SAFE_OFFSET(0)],
+                        r'/$', ''
+                    ),
+                    ''
+                ),
+                '/'
+            ) as page,
             COUNT(*) as views
         FROM ({tables})
         WHERE event_name = 'page_view'
@@ -128,9 +150,7 @@ def build_report(client, dates):
     if rows:
         lines.append("\U0001f4c4 *Top Pages:*")
         for r in rows:
-            page = r.get('page', '').replace('https://mindcoreai.eu', '').split('?')[0]
-            if not page or page == '':
-                page = '/'
+            page = r.get('page', '/') or '/'
             lines.append(f"  {page} \u2014 {r.get('views', 0)} views")
         lines.append("")
 
