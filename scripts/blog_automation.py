@@ -1093,7 +1093,7 @@ def pin_to_pinterest(image_data, post_title, post_url, primary_keyword):
             ("user", "MindCoreAI"),
             ("platform[]", "x"),
             ("platform[]", "pinterest"),
-            ("title", x_caption),
+            ("title", post_title[:100]),
             ("pinterest_description", pinterest_desc),
             ("pinterest_board_id", "1123366769493611180"),
             ("post_mode", "DIRECT_POST"),
