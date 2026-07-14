@@ -238,7 +238,8 @@ QUOTE_PALETTES = [
 
 def create_gradient_background(palette=None):
     if palette is None:
-        palette = random.choice(QUOTE_PALETTES)
+        day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
+        palette = QUOTE_PALETTES[day_of_year % len(QUOTE_PALETTES)]
     print(f"  BG palette: {palette['name']}")
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img)
@@ -302,14 +303,14 @@ def render_quote_image(quote_text, output_path):
     line_height = 58
     total_text_height = len(lines) * line_height
     quote_top = int(HEIGHT * 0.45) - (total_text_height // 2)
-    accent_color = (180, 160, 120)
+    accent_color = palette.get("accent", (180, 160, 120))
     line_left, line_right = WIDTH // 2 - 80, WIDTH // 2 + 80
     draw.line([(line_left, quote_top - 35), (line_right, quote_top - 35)], fill=accent_color, width=2)
     for i, line in enumerate(lines):
-        draw_text_centered(draw, quote_top + i * line_height, line, quote_font, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
+        draw_text_centered(draw, quote_top + i * line_height, line, quote_font, fill=palette["text"], stroke_width=2, stroke_fill=(0, 0, 0) if palette["text"] == (255, 255, 255) else (255, 255, 255))
     line_y_bottom = quote_top + total_text_height + 20
     draw.line([(line_left, line_y_bottom), (line_right, line_y_bottom)], fill=accent_color, width=2)
-    draw_text_centered(draw, line_y_bottom + 25, " - MindCore AI", attr_font, fill=(140, 140, 160))
+    draw_text_centered(draw, line_y_bottom + 25, " - MindCore AI", attr_font, fill=palette.get("accent", (140, 140, 160)))
     img.save(output_path, "PNG", quality=95)
     jpg_path = output_path.replace(".png", ".jpg")
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
