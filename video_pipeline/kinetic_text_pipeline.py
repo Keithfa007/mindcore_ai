@@ -183,25 +183,27 @@ TOPIC: "{question}"
 RULES:
 - The image must visually represent the SPECIFIC emotion or concept in the topic
 - Use symbolic or metaphorical imagery: broken objects, empty spaces, silhouettes from behind, hands, shadows, mirrors, clocks, chains, open doors, abandoned places, storms, paths
-- Silhouettes and figures seen from behind or far away are OK and encouraged
+- Silhouettes and figures seen from behind or far away are OK but must be FULLY CLOTHED (jacket, hoodie, coat, shirt)
+- STRICTLY NO nudity, NO bare skin, NO shirtless figures, NO exposed bodies, NO underwear, NO swimwear
 - NO close-up faces, NO readable text, NO logos
 - Moody, cinematic lighting. Dark enough for white text overlay but NOT pitch black
 - High visual impact. This must stop someone scrolling on TikTok.
+- SAFE FOR ALL AUDIENCES. Content must pass TikTok community guidelines.
 - Max 40 words
 
 EXAMPLES:
-- "anger in recovery" -> "silhouette of man punching wall in dark hallway, plaster dust in shaft of light, moody blue and amber tones, cinematic"
-- "feeling invisible" -> "transparent ghostly figure standing in crowded subway station, motion blur of people walking through them, cold blue tones"
-- "anxiety at 2am" -> "person sitting on edge of bed in dark room, blue phone glow on face seen from behind, moonlight through window, insomnia"
-- "carrying everything alone" -> "single person carrying enormous bundle on back walking up endless staircase, dramatic overhead light, exhaustion"
+- "anger in recovery" -> "silhouette of man in hoodie punching wall in dark hallway, plaster dust in shaft of light, moody blue and amber tones, cinematic"
+- "feeling invisible" -> "transparent ghostly figure in winter coat standing in crowded subway station, motion blur of people walking through them, cold blue tones"
+- "anxiety at 2am" -> "person in t-shirt sitting on edge of bed in dark room, blue phone glow seen from behind, moonlight through window, insomnia"
+- "carrying everything alone" -> "clothed figure carrying enormous bundle on back walking up endless staircase, dramatic overhead light, exhaustion"
 
 Return ONLY the prompt."""}]).content[0].text.strip()
-    except: return "lone silhouette standing at end of long dark corridor, single shaft of warm light ahead, moody cinematic atmosphere, emotional"
+    except: return "lone silhouette in dark jacket standing at end of long corridor, single shaft of warm light ahead, moody cinematic atmosphere, emotional"
 def generate_background_image(bg_prompt, output_path):
     if not FAL_KEY: return None
     try:
         resp = requests.post("https://fal.run/fal-ai/flux/schnell", headers={"Authorization":f"Key {FAL_KEY}","Content-Type":"application/json"},
-            json={"prompt":bg_prompt,"image_size":{"width":1080,"height":1920},"num_images":1,"num_inference_steps":4,"enable_safety_checker":False}, timeout=120)
+            json={"prompt":bg_prompt,"image_size":{"width":1080,"height":1920},"num_images":1,"num_inference_steps":4,"enable_safety_checker":True}, timeout=120)
         if not resp.ok: return None
         images = resp.json().get("images",[]); url = images[0].get("url") if images else None
         if not url: return None
