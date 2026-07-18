@@ -516,7 +516,7 @@ def research_topic(history):
 
     remaining = sum(1 for k in library if not k["used"])
     print(f"   [RESEARCH] No library/SERP keyword for this audience ({remaining} remaining for others)  - using Claude research")
-    return research_from_claude(audience, profile, history)
+    return research_from_claude(audience, profile, history, throttled_category)
 
 
 def research_from_library(picked, audience, profile, history, library):
@@ -592,7 +592,7 @@ Respond ONLY in this exact JSON  - no markdown:
     return data
 
 
-def research_from_claude(audience, profile, history):
+def research_from_claude(audience, profile, history, throttled_category=None):
     history_txt = format_history_for_prompt(history)
     all_cats    = "\n".join(f"  - {c}" for c in CATEGORIES)
     pref_cats   = "\n".join(f"  - {c}" for c in profile["preferred_categories"])
