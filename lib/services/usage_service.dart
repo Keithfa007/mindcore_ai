@@ -143,19 +143,22 @@ class UsageService {
   // ── Message gating ───────────────────────────────────────────────────
 
   Future<bool> tryConsumeMessage(BuildContext context) async {
-    // Trial users: enforce daily limits
-    if (_isTrialUser) {
-      // Check if trial has expired first
-      final expired = await PremiumService.isTrialExpired();
-      if (expired) {
+    // Chat requires an active trial or a paid subscription (same rule as voice).
+    // Anyone whose trial has ended and who is not subscribed is blocked here.
+    if (!PremiumService.isPremium.value) {
+      final hasAccess = await PremiumService.hasAccess();
+      if (!hasAccess) {
         await _showLimitDialog(context,
           title: 'Your free trial has ended',
-          body: 'You had 3 days of full access and it made a difference.\n\n'
-              'Subscribe to keep going \u2014 your conversations and progress are saved.',
+          body: 'You had 3 days of full access. Subscribe to keep chatting, '
+              'and your conversations and progress stay saved.',
         );
         return false;
       }
+    }
 
+    // Trial users: enforce daily limits
+    if (_isTrialUser) {
       final dailyUsed = await _trialDailyMsgsUsed();
       final dailyLimit = TierConfig.trial.trialDailyMessages;
       if (dailyUsed >= dailyLimit) {
@@ -279,7 +282,7 @@ class UsageService {
           'bonusUpdatedAt':    FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
-        debugPrint('UsageService: addVoiceMinutes Firestore failed \u2014 $e');
+        debugPrint('UsageService: addVoiceMinutes Firestore failed — $e');
       }
     }
     debugPrint('UsageService: added $minutes voice minutes (+${addSeconds}s)');
@@ -326,7 +329,7 @@ class UsageService {
       snapshot.value = updated;
       await _persistLocally(updated);
     } catch (e) {
-      debugPrint('UsageService: Firestore sync failed \u2014 $e');
+      debugPrint('UsageService: Firestore sync failed — $e');
     }
   }
 
@@ -343,7 +346,7 @@ class UsageService {
         'tier':      PremiumService.currentTier.value.firestoreKey,
       }, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('UsageService: increment failed \u2014 $e');
+      debugPrint('UsageService: increment failed — $e');
     }
   }
 
