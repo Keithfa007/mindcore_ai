@@ -100,7 +100,7 @@ class _SplashScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Getting things ready\u2026',
+                'Getting things ready…',
                 style: tt.bodyMedium?.copyWith(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.45)
@@ -115,7 +115,7 @@ class _SplashScreen extends StatelessWidget {
   }
 }
 
-// ── Trial expired screen ───────────────────────────────────────────────────
+// ── Access gate screen (start free trial / subscribe) ──────────────────────
 
 class _TrialExpiredScreen extends StatelessWidget {
   final VoidCallback onSubscribe;
@@ -138,14 +138,14 @@ class _TrialExpiredScreen extends StatelessWidget {
               Icon(Icons.lock_clock_rounded, size: 64, color: cs.primary),
               const SizedBox(height: 24),
               Text(
-                'Your free trial has ended',
+                'Unlock MindCore AI',
                 style: tt.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
-                'Your 3-day free trial has ended. Subscribe to keep '
-                'your progress, conversations and wellness journey going.',
+                'Start your 3-day free trial or subscribe to unlock AI chat, '
+                'voice, guided sessions and more. Cancel anytime.',
                 style: tt.bodyLarge?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.6),
                 ),
@@ -164,7 +164,7 @@ class _TrialExpiredScreen extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                child: Text('See plans',
+                child: Text('Start Free Trial',
                     style: tt.titleMedium?.copyWith(color: Colors.white)),
               ),
               const SizedBox(height: 12),
