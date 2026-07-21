@@ -38,7 +38,10 @@ class SubscriptionService {
   // ── Cached product details ─────────────────────────────────────────────
 
   ProductDetails? trialProduct;
+  // Base plan (recurring price shown on the card / banner).
   ProductDetails? premiumMonthly;
+  // The free-trial offer (used to launch the actual 3-day trial).
+  ProductDetails? premiumMonthlyOffer;
   ProductDetails? premiumYearly;
   ProductDetails? proMonthly;
   ProductDetails? proYearly;
@@ -48,6 +51,10 @@ class SubscriptionService {
 
   /// Returns the ProductDetails for a given voice pack product ID, or null.
   ProductDetails? voicePackProduct(String productId) => _voicePacks[productId];
+
+  /// What to purchase for the 3-day free trial. Falls back to the base plan
+  /// if the trial offer is unavailable (e.g. the user is not eligible).
+  ProductDetails? get premiumTrialPurchase => premiumMonthlyOffer ?? premiumMonthly;
 
   bool get isSupported => true;
 
@@ -74,14 +81,28 @@ class SubscriptionService {
     }
     // A subscription with a base plan AND a free-trial offer comes back as
     // multiple ProductDetails sharing the same id, one per offer. Keep the
-    // offer that carries the free trial so the trial phase is actually used.
+    // base plan for price display and the free-trial offer for the trial.
     for (final p in resp.productDetails) {
       switch (p.id) {
-        case 'mindcore_trial_7day':         trialProduct   = p; break;
-        case 'mindcore_premium_monthly':    premiumMonthly = _preferFreeTrial(premiumMonthly, p); break;
-        case 'mindcore_premium_yearly':     premiumYearly  = _preferFreeTrial(premiumYearly, p);  break;
-        case 'mindcore_pro_monthly':        proMonthly     = _preferFreeTrial(proMonthly, p);     break;
-        case 'mindcore_pro_yearly':         proYearly      = _preferFreeTrial(proYearly, p);      break;
+        case 'mindcore_trial_7day':
+          trialProduct = p;
+          break;
+        case 'mindcore_premium_monthly':
+          if (_hasFreeTrial(p)) {
+            premiumMonthlyOffer = p;
+          } else {
+            premiumMonthly = p;
+          }
+          break;
+        case 'mindcore_premium_yearly':
+          if (!_hasFreeTrial(p)) premiumYearly = p;
+          break;
+        case 'mindcore_pro_monthly':
+          if (!_hasFreeTrial(p)) proMonthly = p;
+          break;
+        case 'mindcore_pro_yearly':
+          if (!_hasFreeTrial(p)) proYearly = p;
+          break;
         case 'mindcore_voice_starter_30min':
         case 'mindcore_voice_standard_60min':
         case 'mindcore_voice_plus_120min':
@@ -89,15 +110,11 @@ class SubscriptionService {
           break;
       }
     }
-    debugPrint('SubscriptionService: premiumMonthly free-trial='
-        '${premiumMonthly != null && _hasFreeTrial(premiumMonthly!)}');
-  }
-
-  /// Keeps whichever ProductDetails carries the free-trial offer.
-  ProductDetails _preferFreeTrial(ProductDetails? current, ProductDetails candidate) {
-    if (current == null) return candidate;
-    if (_hasFreeTrial(candidate) && !_hasFreeTrial(current)) return candidate;
-    return current;
+    // If only the trial offer came back (no separate base plan), use it for
+    // display too so we never render a null price.
+    premiumMonthly ??= premiumMonthlyOffer;
+    debugPrint('SubscriptionService: base=${premiumMonthly != null} '
+        'trialOffer=${premiumMonthlyOffer != null}');
   }
 
   /// True if this Google Play product/offer includes a free (zero-cost) phase.
