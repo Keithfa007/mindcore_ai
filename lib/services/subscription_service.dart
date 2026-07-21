@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:mindcore_ai/models/tier_config.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/services/usage_service.dart';
@@ -71,13 +72,16 @@ class SubscriptionService {
       debugPrint('IAP query error: ${resp.error}');
       return;
     }
+    // A subscription with a base plan AND a free-trial offer comes back as
+    // multiple ProductDetails sharing the same id, one per offer. Keep the
+    // offer that carries the free trial so the trial phase is actually used.
     for (final p in resp.productDetails) {
       switch (p.id) {
         case 'mindcore_trial_7day':         trialProduct   = p; break;
-        case 'mindcore_premium_monthly':    premiumMonthly = p; break;
-        case 'mindcore_premium_yearly':     premiumYearly  = p; break;
-        case 'mindcore_pro_monthly':        proMonthly     = p; break;
-        case 'mindcore_pro_yearly':         proYearly      = p; break;
+        case 'mindcore_premium_monthly':    premiumMonthly = _preferFreeTrial(premiumMonthly, p); break;
+        case 'mindcore_premium_yearly':     premiumYearly  = _preferFreeTrial(premiumYearly, p);  break;
+        case 'mindcore_pro_monthly':        proMonthly     = _preferFreeTrial(proMonthly, p);     break;
+        case 'mindcore_pro_yearly':         proYearly      = _preferFreeTrial(proYearly, p);      break;
         case 'mindcore_voice_starter_30min':
         case 'mindcore_voice_standard_60min':
         case 'mindcore_voice_plus_120min':
@@ -85,6 +89,31 @@ class SubscriptionService {
           break;
       }
     }
+    debugPrint('SubscriptionService: premiumMonthly free-trial='
+        '${premiumMonthly != null && _hasFreeTrial(premiumMonthly!)}');
+  }
+
+  /// Keeps whichever ProductDetails carries the free-trial offer.
+  ProductDetails _preferFreeTrial(ProductDetails? current, ProductDetails candidate) {
+    if (current == null) return candidate;
+    if (_hasFreeTrial(candidate) && !_hasFreeTrial(current)) return candidate;
+    return current;
+  }
+
+  /// True if this Google Play product/offer includes a free (zero-cost) phase.
+  bool _hasFreeTrial(ProductDetails p) {
+    if (p is! GooglePlayProductDetails) return false;
+    final offers = p.productDetails.subscriptionOfferDetails;
+    if (offers == null) return false;
+    for (final offer in offers) {
+      // Only inspect the offer that matches THIS ProductDetails' token.
+      if (offer.offerIdToken != p.offerToken) continue;
+      if (offer.offerId == 'free-trial-3day') return true;
+      for (final phase in offer.pricingPhases) {
+        if (phase.priceAmountMicros == 0) return true;
+      }
+    }
+    return false;
   }
 
   // ── Purchase ──────────────────────────────────────────────────────────
