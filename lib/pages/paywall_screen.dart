@@ -234,7 +234,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         if (showTrial) ...[
                           _FreeTrialBanner(
                              loading: _loading,
-                             product: _sub.premiumMonthly,
+                             product: _sub.premiumTrialPurchase,
+                             priceLabel: _sub.premiumMonthly?.price ?? '€14.99',
                              onBuy: _buy,
                              isDark: isDark,
                              tt: tt),
@@ -374,12 +375,14 @@ class _Toggle extends StatelessWidget {
 class _FreeTrialBanner extends StatelessWidget {
   final bool loading;
   final ProductDetails? product;
+  final String priceLabel;
   final Future<void> Function(ProductDetails?) onBuy;
   final bool isDark;
   final TextTheme tt;
   const _FreeTrialBanner(
       {required this.loading,
       required this.product,
+      required this.priceLabel,
       required this.onBuy,
       required this.isDark,
       required this.tt});
@@ -419,7 +422,7 @@ class _FreeTrialBanner extends StatelessWidget {
                       ? Colors.white.withValues(alpha: 0.65)
                       : const Color(0xFF475467))),
           const SizedBox(height: 4),
-          Text('Then €14.99/month. Cancel anytime.',
+          Text('Then $priceLabel/month. Cancel anytime.',
               textAlign: TextAlign.center,
               style: tt.bodySmall?.copyWith(
                   color: isDark
