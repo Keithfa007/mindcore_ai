@@ -160,11 +160,12 @@ class PremiumService {
     final prefs    = await SharedPreferences.getInstance();
     final localKey = '$_kTrialStartPrefix$uid';
 
-    // Seed from any cached per-user value first (offline friendly).
+    // Seed a value for offline use, but do NOT mark the trial as
+    // authoritatively loaded yet. The gate must wait for the Firestore read
+    // below so it can never decide from a stale cached date.
     final cachedRaw = prefs.getString(localKey);
     if (cachedRaw != null) {
       _trialStartAt = DateTime.tryParse(cachedRaw);
-      _trialLoaded  = true;
     }
 
     try {
@@ -194,7 +195,8 @@ class PremiumService {
       await _setLocal(remote, TierConfig.fromKey(tierKey));
     } catch (e) {
       debugPrint('PremiumService: Firestore refresh failed — $e');
-      // Keep whatever cached value we had; _trialLoaded reflects that.
+      // Offline: fall back to the cached value only if we actually had one.
+      if (cachedRaw != null) _trialLoaded = true;
     }
   }
 
