@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-MindCore AI — Daily Telegram Digest v3.5
+MindCore AI — Daily Telegram Digest v3.6
 =========================================
+v3.6: Added Subscriptions / Trials section (isPremium counts, tier breakdown,
+      new activations in 24h, unlock rate) from the same Firestore users pass.
 v3.5: Added Meta Ads campaign report (spend, impressions, clicks, installs).
 v3.4: Fixed Facebook page lookup to handle dict response from Upload-Post API.
 v3.3: Added Facebook debug diagnostics to Telegram output.
@@ -15,6 +17,7 @@ Daily morning summary sent to Telegram:
 - Pipeline health (GitHub Actions)
 - Today's scheduled pipelines
 - App users (Firestore users collection)
+- Subscriptions / trials (Firestore isPremium)
 - Social media analytics (Upload-Post API) — EU + US TikTok
 - Website stats 7-day (Google Analytics GA4)
 - Search Console stats (impressions, clicks, avg position)
@@ -184,6 +187,10 @@ def get_firestore_users():
         docs = db.collection("users").stream()
         total = 0
         new_24h = 0
+        premium_total = 0
+        premium_new_24h = 0
+        tier_premium = 0
+        tier_pro = 0
         cutoff = datetime.utcnow() - timedelta(hours=24)
         for doc in docs:
             total += 1
@@ -199,7 +206,33 @@ def get_firestore_users():
                         new_24h += 1
                 except:
                     pass
-        return {"total": total, "new_24h": new_24h}
+            # Subscription / trial access (isPremium = active Google Play trial or sub)
+            if data.get("isPremium"):
+                premium_total += 1
+                tier = data.get("tier")
+                if tier == "premium":
+                    tier_premium += 1
+                elif tier == "pro":
+                    tier_pro += 1
+                activated = data.get("premiumActivatedAt")
+                if activated:
+                    try:
+                        if hasattr(activated, "timestamp"):
+                            activated_dt = datetime.utcfromtimestamp(activated.timestamp())
+                        else:
+                            activated_dt = datetime.strptime(str(activated)[:19], "%Y-%m-%dT%H:%M:%S")
+                        if activated_dt > cutoff:
+                            premium_new_24h += 1
+                    except:
+                        pass
+        return {
+            "total": total,
+            "new_24h": new_24h,
+            "premium_total": premium_total,
+            "premium_new_24h": premium_new_24h,
+            "tier_premium": tier_premium,
+            "tier_pro": tier_pro,
+        }
     except Exception as e:
         print(f"   Firestore users error: {e}")
         return None
@@ -488,8 +521,8 @@ def format_number(n):
 
 
 def build_message(workflows, failures, todays_schedule, firebase_users, social_stats, meta_ads, analytics, search_console):
-    now = datetime.utcnow().strftime("%A, %b %d %Y \u2014 %H:%M UTC")
-    lines = ["\U0001f4ca *MindCore AI \u2014 Daily Digest*", f"_{now}_", ""]
+    now = datetime.utcnow().strftime("%A, %b %d %Y — %H:%M UTC")
+    lines = ["\U0001f4ca *MindCore AI — Daily Digest*", f"_{now}_", ""]
 
     total = len(workflows)
     passed = sum(1 for w in workflows if w["conclusion"] == "success")
@@ -498,17 +531,17 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
     if failed > 0:
         for w in workflows:
             if w["conclusion"] == "failure":
-                lines.append(f"  \u274c {w['name']}")
+                lines.append(f"  ❌ {w['name']}")
     lines.append("")
 
     if todays_schedule:
         lines.append(f"\U0001f4c5 *Today's Schedule ({len(todays_schedule)} pipelines):*")
         for s in todays_schedule:
             if s.get("all_day"):
-                lines.append(f"  \u23f0 {s['name']}")
+                lines.append(f"  ⏰ {s['name']}")
             else:
                 malta_h = (s['hour'] + 2) % 24
-                lines.append(f"  \u23f0 {malta_h:02d}:{s['minute']:02d} \u2014 {s['name']}")
+                lines.append(f"  ⏰ {malta_h:02d}:{s['minute']:02d} — {s['name']}")
         lines.append("")
 
     if firebase_users:
@@ -518,6 +551,21 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
             lines.append(f"  {new_emoji} {firebase_users['new_24h']} new in last 24h")
         else:
             lines.append("  No new signups yesterday")
+        lines.append("")
+
+        # Subscriptions / trials (isPremium = active Google Play trial or subscription)
+        prem_total = firebase_users.get("premium_total", 0)
+        prem_new = firebase_users.get("premium_new_24h", 0)
+        total_users = firebase_users.get("total", 0)
+        conv = round(prem_total / total_users * 100, 1) if total_users else 0
+        sub_emoji = "\U0001f389" if prem_new > 0 else "\U0001f4b3"
+        lines.append(f"{sub_emoji} *Subscriptions / Trials:* {prem_total} active")
+        lines.append(f"  Premium: {firebase_users.get('tier_premium', 0)} | Pro: {firebase_users.get('tier_pro', 0)}")
+        if prem_new > 0:
+            lines.append(f"  \U0001f195 {prem_new} new trial/sub in last 24h")
+        else:
+            lines.append("  No new trials/subs in last 24h")
+        lines.append(f"  Unlock rate: {conv}% of users")
         lines.append("")
 
     if social_stats:
@@ -552,10 +600,10 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
 
     if meta_ads:
         lines.append("\U0001f4b0 *Meta Ads (7 days):*")
-        lines.append(f"  Spend: \u20ac{meta_ads['spend']:.2f} | Impressions: {format_number(meta_ads['impressions'])}")
+        lines.append(f"  Spend: €{meta_ads['spend']:.2f} | Impressions: {format_number(meta_ads['impressions'])}")
         lines.append(f"  Reach: {format_number(meta_ads['reach'])} | Clicks: {meta_ads['clicks']}")
         if meta_ads['installs'] > 0:
-            lines.append(f"  \U0001f4f2 Installs: {meta_ads['installs']} | CPI: \u20ac{meta_ads['cpi']:.2f}")
+            lines.append(f"  \U0001f4f2 Installs: {meta_ads['installs']} | CPI: €{meta_ads['cpi']:.2f}")
         else:
             lines.append(f"  Installs: 0 | CTR: {meta_ads['ctr']}%")
         lines.append("")
@@ -575,7 +623,7 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
     if failures:
         lines.append("*\U0001f6a8 Failed in last 24h:*")
         for f in failures[:5]:
-            lines.append(f"  \u274c {f['name']} \u2014 _{format_time(f['updated'])}_")
+            lines.append(f"  ❌ {f['name']} — _{format_time(f['updated'])}_")
         lines.append("")
 
     lines.append("_Have a good day, Keith._ \U0001f4aa")
@@ -587,14 +635,14 @@ def send_telegram(message):
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True}
     resp = requests.post(url, json=payload, timeout=30)
     if resp.status_code != 200:
-        print(f"Telegram error: {resp.status_code} \u2014 {resp.text}")
+        print(f"Telegram error: {resp.status_code} — {resp.text}")
         return False
     print("Telegram message sent")
     return True
 
 
 def main():
-    print("== MindCore AI \u2014 Daily Digest v3.5 ==\n")
+    print("== MindCore AI — Daily Digest v3.6 ==\n")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Telegram credentials not set"); return
     if not GITHUB_TOKEN:
@@ -603,7 +651,7 @@ def main():
     print("1. Pipeline health...")
     workflows, error = get_workflow_runs()
     if error:
-        send_telegram(f"\u274c *Digest Error:* {error}"); return
+        send_telegram(f"❌ *Digest Error:* {error}"); return
     print(f"   {len(workflows)} workflows")
 
     print("2. Recent failures...")
@@ -628,7 +676,7 @@ def main():
     print("6. Meta Ads...")
     meta_ads = get_meta_ads_stats()
     if meta_ads:
-        print(f"   OK - \u20ac{meta_ads['spend']:.2f} spent, {meta_ads['installs']} installs")
+        print(f"   OK - €{meta_ads['spend']:.2f} spent, {meta_ads['installs']} installs")
     else:
         print("   skipped")
 
