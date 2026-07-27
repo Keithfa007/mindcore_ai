@@ -28,6 +28,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   void initState() {
     super.initState();
     PremiumService.isPremium.addListener(_onPremiumChanged);
+    _sub.purchaseError.addListener(_onPurchaseError);
     _initStore();
   }
 
@@ -49,12 +50,25 @@ class _PaywallScreenState extends State<PaywallScreen> {
   @override
   void dispose() {
     PremiumService.isPremium.removeListener(_onPremiumChanged);
+    _sub.purchaseError.removeListener(_onPurchaseError);
     _sub.dispose();
     super.dispose();
   }
 
   void _onPremiumChanged() {
     if (PremiumService.isPremium.value && mounted) Navigator.of(context).pop();
+  }
+
+  // Surface asynchronous purchase failures (from the IAP purchase stream)
+  // to the user instead of leaving the button spinning silently.
+  void _onPurchaseError() {
+    final msg = _sub.purchaseError.value;
+    if (msg == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: Colors.red.shade700,
+    ));
+    _sub.purchaseError.value = null; // consume so it does not repeat
   }
 
   Future<void> _buy(ProductDetails? product) async {
@@ -71,6 +85,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
       await _sub.buy(product);
     } catch (e) {
       debugPrint('PaywallScreen: buy failed — $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not start the purchase. $e'),
+          backgroundColor: Colors.red.shade700,
+        ));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -82,6 +102,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
       await _sub.restore();
     } catch (e) {
       debugPrint('PaywallScreen: restore failed — $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not restore purchases. $e'),
+          backgroundColor: Colors.red.shade700,
+        ));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
