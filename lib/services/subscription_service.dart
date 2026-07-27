@@ -1,6 +1,8 @@
 // lib/services/subscription_service.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:mindcore_ai/models/tier_config.dart';
@@ -14,6 +16,10 @@ class SubscriptionService {
 
   final InAppPurchase _iap = InAppPurchase.instance;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
+
+  /// Surfaces the last user-facing purchase error to the UI (the paywall
+  /// listens to this and shows a SnackBar). Null when there is no pending error.
+  final ValueNotifier<String?> purchaseError = ValueNotifier<String?>(null);
 
   // ── Product ID sets ────────────────────────────────────────────────────
 
@@ -56,18 +62,70 @@ class SubscriptionService {
   /// if the trial offer is unavailable (e.g. the user is not eligible).
   ProductDetails? get premiumTrialPurchase => premiumMonthlyOffer ?? premiumMonthly;
 
+  /// True when the real free-trial offer was resolved from Google Play.
+  /// When false, "Start Free Trial" would fall back to the full-price base
+  /// plan — used by diagnostics and (later) to guard the trial button.
+  bool get hasTrialOffer => premiumMonthlyOffer != null;
+
   bool get isSupported => true;
+
+  // ── Diagnostics ─────────────────────────────────────────────────────────
+  // Best-effort logging so billing/trial failures are visible in production
+  // (where debugPrint is stripped from release builds). Written to the
+  // signed-in user's own doc under `billingDiag` — the Firestore rules allow
+  // the owner to write their own user doc. Never throws: diagnostics must
+  // never break the purchase flow.
+
+  Future<void> _log(String event, [Map<String, dynamic> data = const {}]) async {
+    debugPrint('SubscriptionService[$event]: $data');
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'billingDiag': {
+          event: {...data, 'ts': DateTime.now().toIso8601String()},
+        },
+        'billingDiagAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // Diagnostics must never break the purchase flow.
+    }
+  }
+
+  Map<String, dynamic> _describe(ProductDetails? p) {
+    if (p == null) return {'product': null};
+    final m = <String, dynamic>{'product': p.id, 'price': p.price};
+    if (p is GooglePlayProductDetails) {
+      m['offerToken'] = p.offerToken == null ? 'null' : 'present';
+      final offers = p.productDetails.subscriptionOfferDetails;
+      if (offers != null) {
+        for (final o in offers) {
+          if (o.offerIdToken == p.offerToken) {
+            m['offerId'] = o.offerId;
+            break;
+          }
+        }
+      }
+    }
+    return m;
+  }
 
   // ── Init & product loading ─────────────────────────────────────────────
 
   Future<void> init() async {
     final available = await _iap.isAvailable();
-    if (!available) return;
+    if (!available) {
+      await _log('store_unavailable');
+      return;
+    }
 
     _purchaseSub ??= _iap.purchaseStream.listen(
       _onPurchaseUpdated,
       onDone: () => _purchaseSub?.cancel(),
-      onError: (e) => debugPrint('IAP stream error: $e'),
+      onError: (e) {
+        debugPrint('IAP stream error: $e');
+        _log('stream_error', {'error': e.toString()});
+      },
     );
 
     await _queryProducts();
@@ -77,6 +135,7 @@ class SubscriptionService {
     final resp = await _iap.queryProductDetails(PRODUCT_IDS);
     if (resp.error != null) {
       debugPrint('IAP query error: ${resp.error}');
+      await _log('query_error', {'error': resp.error.toString()});
       return;
     }
     // A subscription with a base plan AND a free-trial offer comes back as
@@ -115,6 +174,13 @@ class SubscriptionService {
     premiumMonthly ??= premiumMonthlyOffer;
     debugPrint('SubscriptionService: base=${premiumMonthly != null} '
         'trialOffer=${premiumMonthlyOffer != null}');
+    await _log('products_loaded', {
+      'count': resp.productDetails.length,
+      'notFound': resp.notFoundIDs,
+      'trialResolved': premiumMonthlyOffer != null,
+      'base': _describe(premiumMonthly),
+      'trialOffer': _describe(premiumMonthlyOffer),
+    });
   }
 
   /// True if this Google Play product/offer includes a free (zero-cost) phase.
@@ -137,6 +203,11 @@ class SubscriptionService {
 
   Future<void> buy(ProductDetails p) async {
     final isConsumable = _consumableIds.contains(p.id);
+    await _log('buy_attempt', {
+      ..._describe(p),
+      'isTrialOffer': identical(p, premiumMonthlyOffer),
+      'consumable': isConsumable,
+    });
     final param = PurchaseParam(productDetails: p);
     if (isConsumable) {
       await _iap.buyConsumable(purchaseParam: param);
@@ -160,9 +231,19 @@ class SubscriptionService {
           break;
         case PurchaseStatus.error:
           debugPrint('Purchase error: ${purchase.error}');
+          purchaseError.value =
+              purchase.error?.message ?? 'Purchase failed. Please try again.';
+          await _log('purchase_error', {
+            'product': purchase.productID,
+            'code': purchase.error?.code,
+            'message': purchase.error?.message,
+            'details': purchase.error?.details?.toString(),
+          });
+          break;
+        case PurchaseStatus.canceled:
+          await _log('purchase_canceled', {'product': purchase.productID});
           break;
         case PurchaseStatus.pending:
-        case PurchaseStatus.canceled:
           break;
       }
     }
@@ -183,6 +264,7 @@ class SubscriptionService {
         debugPrint(
             'SubscriptionService: added ${pack.minutes} voice minutes');
       }
+      await _log('purchase_success', {'product': p.productID, 'type': 'voice'});
       return;
     }
 
@@ -190,6 +272,8 @@ class SubscriptionService {
     final tierConfig = TierConfig.fromProductId(p.productID);
     await PremiumService.activate(tier: tierConfig);
     debugPrint('SubscriptionService: activated ${tierConfig.displayName}');
+    await _log('purchase_success',
+        {'product': p.productID, 'tier': tierConfig.displayName});
   }
 
   void dispose() {
