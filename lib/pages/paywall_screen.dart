@@ -256,8 +256,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Free trial banner
-                        if (showTrial) ...[
+                        // Free trial banner — shown only when a real free-trial
+                        // offer actually resolved from Google Play. Without this
+                        // guard, an ineligible user (or any offer glitch) would
+                        // see "Start Free Trial" and be silently charged full price.
+                        if (showTrial && _sub.hasTrialOffer) ...[
                           _FreeTrialBanner(
                              loading: _loading,
                              product: _sub.premiumTrialPurchase,
