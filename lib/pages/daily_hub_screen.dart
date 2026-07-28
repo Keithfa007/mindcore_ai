@@ -75,6 +75,10 @@ class _DailyHubScreenState extends State<DailyHubScreen>
   }
 
   Future<void> _loadInsightBundle({bool forceRefresh = false}) async {
+    // The insight bundle uses an OpenAI call — premium users only, so
+    // non-subscribers never incur API cost. (Also blocks the call that
+    // previously fired in parallel with the cosmetic premium check.)
+    if (!PremiumService.isPremium.value) return;
     final snapshot = await KnowledgeSnapshotService.buildSnapshot();
     final moodHint = snapshot.dominantState == 'low'
         ? 'low'
