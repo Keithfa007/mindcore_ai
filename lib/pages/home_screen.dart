@@ -90,19 +90,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _loadAI() async {
+    // Streak is a local calculation — always cheap, always load.
+    final streak = await StreakService.currentStreak();
+    if (mounted) setState(() => _streak = streak);
+
+    // Briefing, mood pattern and weekly report each cost an OpenAI call.
+    // Only generate them for premium users, so non-subscribers never incur
+    // API cost and the paywall isn't bypassed. Each service caches its
+    // result per day, so repeat Home visits reuse the cache with no new calls.
+    if (!PremiumService.isPremium.value) {
+      if (mounted) setState(() => _briefingLoading = false);
+      return;
+    }
+
     setState(() => _briefingLoading = true);
     final results = await Future.wait([
       DailyBriefingService.getBriefing(),
       MoodPatternService.detect(),
       WeeklyReportService.getReport(),
-      StreakService.currentStreak(),
     ]);
     if (!mounted) return;
     setState(() {
       _briefing        = results[0] as String?;
       _prediction      = results[1] as MoodPrediction?;
       _weeklyReport    = results[2] as WeeklyReport?;
-      _streak          = results[3] as int? ?? 0;
       _briefingLoading = false;
     });
   }
