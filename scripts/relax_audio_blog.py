@@ -11,14 +11,13 @@ import urllib3.util.connection as _urllib3_conn
 # Pin urllib3 to AF_INET so it uses the routable IPv4 address.
 _urllib3_conn.allowed_gai_family = lambda: socket.AF_INET
 from anthropic import Anthropic
-from openai import OpenAI
+from scripts.fal_image import generate_fal_image
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 # -- Clients ------------------------------------------------------------------
 anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-openai_client    = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 WP_URL          = "https://mindcoreai.eu"
 WP_USERNAME     = os.environ["WP_USERNAME"]
@@ -303,7 +302,7 @@ Use EXACT phrase "{primary_kw}" at least 3 more times. Return COMPLETE post with
 
 # -- Generate cinematic image -------------------------------------------------
 def generate_illustration(title, category_name):
-    print("Generating cinematic image...")
+    print("Generating cinematic image (fal.ai Flux Pro)...")
     prompt = (
         f"A peaceful scene evoking '{category_name}' relaxation and mental wellness. "
         "Cinematic photography style, warm golden-hour lighting, soft focus background, "
@@ -311,25 +310,9 @@ def generate_illustration(title, category_name):
         "Warm amber and soft teal colour grading, photorealistic, hopeful atmosphere. "
         "No text, no words, no letters in the image."
     )
-
-    try:
-        resp = openai_client.images.generate(
-            model="gpt-image-1", prompt=prompt, size="1536x1024", quality="high", n=1,
-        )
-        data = resp.data[0]
-        img  = requests.get(data.url, timeout=30).content if getattr(data, "url", None) else base64.b64decode(data.b64_json)
-        print("   Cinematic image generated (gpt-image-1)")
-        return img
-    except Exception as e1:
-        print(f"   gpt-image-1 failed: {e1}  - trying dall-e-2...")
-
-    try:
-        resp = openai_client.images.generate(model="dall-e-2", prompt=prompt[:1000], size="1024x1024", n=1)
-        img  = requests.get(resp.data[0].url, timeout=30).content
-        print("   Cinematic image generated (dall-e-2 fallback)")
-        return img
-    except Exception as e2:
-        raise RuntimeError(f"All image models failed. gpt-image-1: {e1} | dall-e-2: {e2}")
+    img = generate_fal_image(prompt, image_size="landscape_4_3", model="pro")
+    print("   Cinematic image generated (fal.ai Flux Pro)")
+    return img
 
 
 # -- Upload image to WordPress ------------------------------------------------
