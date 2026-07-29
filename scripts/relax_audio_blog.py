@@ -4,6 +4,12 @@ import base64
 import re
 import time
 import requests
+import socket
+import urllib3.util.connection as _urllib3_conn
+# Force IPv4: mindcoreai.eu serves an AAAA (IPv6) record and the CI runner has
+# no IPv6 route, so requests would fail with "[Errno 101] Network is unreachable".
+# Pin urllib3 to AF_INET so it uses the routable IPv4 address.
+_urllib3_conn.allowed_gai_family = lambda: socket.AF_INET
 from anthropic import Anthropic
 from openai import OpenAI
 from datetime import datetime
