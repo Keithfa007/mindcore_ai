@@ -12,7 +12,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:mindcore_ai/ai/agent_prompts.dart';
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 import 'package:mindcore_ai/services/chat_stream_service.dart';
 import 'package:mindcore_ai/services/live_voice_preferences.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
@@ -98,12 +98,12 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     try {
       await LiveVoicePreferences.instance.load();
       await _chunkPlayer.setVolume(1.0);
-      final key = Env.elevenLabsKey;
-      if (key.isEmpty) return;
+      final idToken = await AiProxy.idToken();
+      if (idToken == null) return;
       await http.post(
-        Uri.parse('https://api.elevenlabs.io/v1/text-to-speech/${LiveVoicePreferences.instance.activeVoiceId}'),
+        AiProxy.tts(LiveVoicePreferences.instance.activeVoiceId),
         headers: {
-          'xi-api-key': key,
+          'Authorization': 'Bearer $idToken',
           'Content-Type': 'application/json',
           'Accept': 'audio/mpeg',
         },
@@ -125,13 +125,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
 
   Future<Uint8List?> _synthesise(String text) async {
     try {
-      final key     = Env.elevenLabsKey;
+      final idToken = await AiProxy.idToken();
       final voiceId = LiveVoicePreferences.instance.activeVoiceId;
-      if (key.isEmpty || text.trim().isEmpty) return null;
+      if (idToken == null || text.trim().isEmpty) return null;
       final res = await http.post(
-        Uri.parse('https://api.elevenlabs.io/v1/text-to-speech/$voiceId'),
+        AiProxy.tts(voiceId),
         headers: {
-          'xi-api-key': key,
+          'Authorization': 'Bearer $idToken',
           'Content-Type': 'application/json',
           'Accept': 'audio/mpeg',
         },
