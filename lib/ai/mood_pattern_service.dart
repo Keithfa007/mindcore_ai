@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mindcore_ai/services/mood_log_service.dart';
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 import 'package:mindcore_ai/pages/helpers/chat_persistence.dart';
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 
 /// A detected mood pattern with headline, detail and optional action.
 class MoodPrediction {
@@ -172,8 +172,8 @@ class MoodPatternService {
 
   static Future<MoodPrediction?> _callAI(
       Map<String, dynamic> ctx, DateTime now) async {
-    final apiKey = Env.openaiKey;
-    if (apiKey.trim().isEmpty) {
+    final idToken = await AiProxy.idToken();
+    if (idToken == null) {
       return _mathFallback(await MoodRepo.instance.fetchAll(), now);
     }
 
@@ -248,9 +248,9 @@ class MoodPatternService {
 
     final response = await http
         .post(
-          Uri.parse('https://api.openai.com/v1/chat/completions'),
+          AiProxy.chat(),
           headers: {
-            'Authorization': 'Bearer $apiKey',
+            'Authorization': 'Bearer $idToken',
             'Content-Type': 'application/json',
           },
           body: jsonEncode({
