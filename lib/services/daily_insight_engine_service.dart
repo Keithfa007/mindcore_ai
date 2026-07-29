@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 
 class DailyInsightBundle {
   final String affirmation;
@@ -51,9 +51,7 @@ class DailyInsightBundle {
 class DailyInsightEngineService {
   DailyInsightEngineService._();
 
-  static const String _endpoint = 'https://api.openai.com/v1/chat/completions';
   static const String _model = 'gpt-4o-mini';
-  static String get _apiKey => Env.openaiKey;
 
   // Cache key includes full date AND day name — guarantees refresh every day
   static String _cacheKey(DateTime now, String mood) {
@@ -129,7 +127,8 @@ class DailyInsightEngineService {
       }
     }
 
-    if (_apiKey.trim().isEmpty) {
+    final idToken = await AiProxy.idToken();
+    if (idToken == null) {
       final bundle = DailyInsightBundle.fallback;
       await prefs.setString(key, jsonEncode(bundle.toJson()));
       return bundle;
@@ -139,10 +138,10 @@ class DailyInsightEngineService {
       final dayCtx = _dayContext(now);
 
       final response = await http.post(
-        Uri.parse(_endpoint),
+        AiProxy.chat(),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
+          'Authorization': 'Bearer $idToken',
         },
         body: jsonEncode({
           'model': _model,
