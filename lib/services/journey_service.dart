@@ -7,7 +7,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mindcore_ai/services/mood_log_service.dart';
 import 'package:mindcore_ai/services/streak_service.dart';
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 import 'package:http/http.dart' as http;
 
 class WeeklyStats {
@@ -174,14 +174,14 @@ class JourneyService {
         if (cached.isNotEmpty) return cached;
       }
 
-      final apiKey = Env.openaiKey;
-      if (apiKey.isEmpty) return '';
+      final idToken = await AiProxy.idToken();
+      if (idToken == null) return '';
 
       final prompt = _buildInsightPrompt(stats);
       final res = await http.post(
-        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        AiProxy.chat(),
         headers: {
-          'Authorization': 'Bearer $apiKey',
+          'Authorization': 'Bearer $idToken',
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
