@@ -5,12 +5,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 import 'package:mindcore_ai/services/live_voice_preferences.dart';
 
 enum TtsMood { calm, anxious, low, neutral }
@@ -74,16 +73,9 @@ class OpenAiTtsService extends ChangeNotifier {
   static final OpenAiTtsService instance = OpenAiTtsService._internal();
 
   // ── ElevenLabs constants ───────────────────────────────────────────────
-  static const String _elevenLabsBaseUrl = 'https://api.elevenlabs.io/v1/text-to-speech';
   static const String _elevenLabsModel   = 'eleven_multilingual_v2';
   // Synthesis timeout — ElevenLabs typically responds within 5-10s for short text
   static const Duration _synthesisTimeout = Duration(seconds: 15);
-
-  static String get _elevenLabsApiKey {
-    const fromEnv = Env.elevenLabsKey;
-    if (fromEnv.isNotEmpty) return fromEnv;
-    return dotenv.env['ELEVENLABS_API_KEY']?.trim() ?? '';
-  }
 
   // ── Player & state ─────────────────────────────────────────────────────
   final AudioPlayer _player = AudioPlayer();
@@ -181,9 +173,9 @@ class OpenAiTtsService extends ChangeNotifier {
     if (!_enabled) return false;
     if (!force && !isSurfaceEnabled(surface)) return false;
 
-    final apiKey = _elevenLabsApiKey;
-    if (apiKey.isEmpty) {
-      debugPrint('[TTS] ELEVENLABS_API_KEY is not set.');
+    final idToken = await AiProxy.idToken();
+    if (idToken == null) {
+      debugPrint('[TTS] not signed in; cannot synthesize voice.');
       return false;
     }
 
@@ -206,7 +198,7 @@ class OpenAiTtsService extends ChangeNotifier {
 
     final cacheKey = '$voiceId|$cleaned';
     final bytes = _audioCache[cacheKey] ??
-        await _synthesize(text: cleaned, apiKey: apiKey, voiceId: voiceId);
+        await _synthesize(text: cleaned, idToken: idToken, voiceId: voiceId);
 
     if (token != _requestToken) return false;
     if (bytes == null || bytes.isEmpty) {
@@ -278,16 +270,15 @@ class OpenAiTtsService extends ChangeNotifier {
   // ── ElevenLabs synthesis ───────────────────────────────────────────────
   Future<Uint8List?> _synthesize({
     required String text,
-    required String apiKey,
+    required String idToken,
     required String voiceId,
   }) async {
     try {
-      final url = '$_elevenLabsBaseUrl/$voiceId';
       final res = await http
           .post(
-            Uri.parse(url),
+            AiProxy.tts(voiceId),
             headers: {
-              'xi-api-key':   apiKey,
+              'Authorization': 'Bearer $idToken',
               'Content-Type': 'application/json',
               'Accept':       'audio/mpeg',
             },
@@ -333,7 +324,7 @@ class OpenAiTtsService extends ChangeNotifier {
   String _cleanText(String text) {
     var c = text.replaceAll('\r', ' ').replaceAll('\n', ' ');
     c = c.replaceAll(RegExp(r'\s+'), ' ');
-    c = c.replaceAll('\u2022', '');
+    c = c.replaceAll('•', '');
     c = c.replaceAllMapped(
       RegExp(r'([a-zA-Z])\s*-\s*([a-zA-Z])'),
       (m) => '${m.group(1)} ${m.group(2)}',
