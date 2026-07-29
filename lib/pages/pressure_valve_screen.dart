@@ -10,7 +10,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 
 class PressureValveScreen extends StatefulWidget {
   const PressureValveScreen({super.key});
@@ -99,10 +99,12 @@ class _PressureValveScreenState extends State<PressureValveScreen>
     setState(() => _reflecting = true);
 
     try {
+      final idToken = await AiProxy.idToken();
+      if (idToken == null) return;
       final response = await http.post(
-        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        AiProxy.chat(),
         headers: {
-          'Authorization': 'Bearer ${Env.openaiKey}',
+          'Authorization': 'Bearer $idToken',
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
@@ -113,10 +115,10 @@ class _PressureValveScreenState extends State<PressureValveScreen>
             {
               'role': 'system',
               'content': 'You are a compassionate, honest companion. The user just wrote something '
-                  'they needed to release \u2014 raw, unfiltered emotion. They chose to hear a brief '
+                  'they needed to release — raw, unfiltered emotion. They chose to hear a brief '
                   'reflection before letting it go forever. Give ONE short, honest paragraph. '
                   'Do not quote their words back. Do not give advice. Do not list steps. '
-                  'Just reflect what you sense underneath their words \u2014 the feeling behind the feeling. '
+                  'Just reflect what you sense underneath their words — the feeling behind the feeling. '
                   'Be warm but direct. End with one sentence of quiet encouragement. '
                   'Keep it under 80 words.',
             },
@@ -140,14 +142,14 @@ class _PressureValveScreenState extends State<PressureValveScreen>
       } else {
         setState(() {
           _reflecting = false;
-          _reflection = 'What you wrote took courage. That\u2019s enough for today.';
+          _reflection = 'What you wrote took courage. That’s enough for today.';
         });
       }
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _reflecting = false;
-        _reflection = 'What you wrote took courage. That\u2019s enough for today.';
+        _reflection = 'What you wrote took courage. That’s enough for today.';
       });
     }
   }
@@ -268,7 +270,7 @@ class _PressureValveScreenState extends State<PressureValveScreen>
                     height: 1.6,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Let it out\u2026',
+                    hintText: 'Let it out…',
                     hintStyle: tt.bodyLarge?.copyWith(
                       color: Colors.white.withValues(alpha: 0.18),
                     ),
@@ -331,7 +333,7 @@ class _PressureValveScreenState extends State<PressureValveScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            'Those words are gone. They can\u2019t weigh you down anymore.',
+            'Those words are gone. They can’t weigh you down anymore.',
             textAlign: TextAlign.center,
             style: tt.bodyMedium?.copyWith(
               color: Colors.white.withValues(alpha: 0.50),
@@ -398,7 +400,7 @@ class _PressureValveScreenState extends State<PressureValveScreen>
           ),
           const SizedBox(height: 20),
           Text(
-            'Listening\u2026',
+            'Listening…',
             style: tt.bodyMedium?.copyWith(
               color: Colors.white.withValues(alpha: 0.40),
             ),
