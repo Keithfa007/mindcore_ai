@@ -1,0 +1,11 @@
+name = "mindcore-proxy"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# Non-secret config. The Firebase project id is public (it's in your app already).
+[vars]
+FIREBASE_PROJECT_ID = "mindcore-ai"
+
+# Secrets are NOT stored here. Set them once with:
+#   wrangler secret put OPENAI_API_KEY
+#   wrangler secret put ELEVENLABS_API_KEY
