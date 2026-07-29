@@ -5,6 +5,12 @@ import re
 import time
 import requests
 import cloudscraper
+import socket
+import urllib3.util.connection as _urllib3_conn
+# Force IPv4: mindcoreai.eu serves an AAAA (IPv6) record and the CI runner has
+# no IPv6 route, so requests/cloudscraper would fail with "[Errno 101] Network
+# is unreachable". Pin urllib3 to AF_INET so it uses the routable IPv4 address.
+_urllib3_conn.allowed_gai_family = lambda: socket.AF_INET
 from anthropic import Anthropic
 from scripts.fal_image import generate_fal_image
 from datetime import datetime
@@ -94,7 +100,7 @@ def quick_links_html(products):
     return (
         f'<div style="background:#0c0c24;border:2px solid #a594f9;border-radius:12px;'
         f'padding:20px;margin:30px 0;color:#e0e8e8;">'
-        f'<h2 style="color:#ffffff;margin-top:0;">Quick Links \u2014 All Products</h2>'
+        f'<h2 style="color:#ffffff;margin-top:0;">Quick Links — All Products</h2>'
         f'{links}</div>'
     )
 
@@ -158,7 +164,7 @@ def load_history():
 def format_history_for_prompt(history):
     if not history: return "None yet."
     return "\n".join(
-        f"  {i}. [{e['date']}] \"{e['title']}\" \u2014 keyword: \"{e['primary_keyword']}\""
+        f"  {i}. [{e['date']}] \"{e['title']}\" — keyword: \"{e['primary_keyword']}\""
         for i, e in enumerate(history, 1)
     )
 
@@ -229,7 +235,7 @@ WRITING STYLE (MANDATORY):
 - Write like a real person. Vary sentence length. No corporate jargon or motivational-poster tone.
 - Prefer simple words: "help" not "facilitate", "use" not "utilize", "start" not "commence".
 
-Respond ONLY in this exact JSON \u2014 no markdown:
+Respond ONLY in this exact JSON — no markdown:
 {{"topic":"title","primary_keyword":"{product_cat['blog_keyword']}","secondary_keywords":["kw2","kw3","kw4","kw5","kw6"],"search_intent":"intent","meta_description":"meta","image_prompt":"scene","category":"{product_cat['wp_category']}"}}\n"""}]
     )
 
@@ -252,8 +258,8 @@ def write_affiliate_post(topic_data, product_cat, history):
     for i, p in enumerate(products, 1):
         product_details += f"\nPRODUCT {i}:\n  Name: {p['name']}\n  Affiliate link: {p['affiliate_link']}\n  Price: {p['price_range']}\n  Best for: {p['best_for']}\n  Highlight: {p['highlight']}\n"
 
-    int_links = "\n".join(f'  - Link text: "{t[0]}" \u2192 {t[1]}' for t in INTERNAL_LINKS)
-    ext_links = "\n".join(f'  - Link text: "{t[0]}" \u2192 {t[1]}' for t in EXTERNAL_LINKS[:2])
+    int_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in INTERNAL_LINKS)
+    ext_links = "\n".join(f'  - Link text: "{t[0]}" → {t[1]}' for t in EXTERNAL_LINKS[:2])
 
     main_history = load_main_blog_history()
     all_posts    = build_post_links(main_history) + build_post_links(history)
@@ -261,7 +267,7 @@ def write_affiliate_post(topic_data, product_cat, history):
     if len(all_posts) >= 2:
         cross_link_block = "\nCROSS-POST LINKS (link to exactly 2 naturally):\n"
         for p in all_posts[-10:]:
-            cross_link_block += f'  - "{p["title"]}" \u2192 {p["url"]}\n'
+            cross_link_block += f'  - "{p["title"]}" → {p["url"]}\n'
 
     product_card_instructions = ""
     for i, p in enumerate(products, 1):
@@ -307,7 +313,7 @@ STRUCTURE:
 9. Quick links (insert EXACT HTML):
 {quick_links_block}
 10. FINAL CTA:
-   <p><strong>These products support your body. {APP_INLINE_LINK} supports your mind \u2014 24/7, no waiting room required.</strong></p>
+   <p><strong>These products support your body. {APP_INLINE_LINK} supports your mind — 24/7, no waiting room required.</strong></p>
    {GP_CTA_LINK}
 
 MANDATORY LINKS:
@@ -338,7 +344,7 @@ def expand_post(content, topic_data, current_words):
     kw     = topic_data["primary_keyword"]
     response = anthropic_client.messages.create(
         model="claude-opus-4-5", max_tokens=3000,
-        messages=[{"role": "user", "content": f"""Post is {current_words} words \u2014 needs {MIN_WORD_COUNT}. Add ~{needed} words. Use EXACT phrase "{kw}" 3+ more times. Return COMPLETE post with EXCERPT.\n\n{content}"""}]
+        messages=[{"role": "user", "content": f"""Post is {current_words} words — needs {MIN_WORD_COUNT}. Add ~{needed} words. Use EXACT phrase "{kw}" 3+ more times. Return COMPLETE post with EXCERPT.\n\n{content}"""}]
     )
     expanded = response.content[0].text
     print(f"   Expanded to {count_words_in_html(expanded)} words")
@@ -475,7 +481,7 @@ def update_history_on_github(history, new_entry):
     token = os.environ.get("GITHUB_TOKEN", "")
     repo  = os.environ.get("GITHUB_REPOSITORY", "")
     if not token or not repo:
-        print("   Skipping \u2014 GITHUB_TOKEN not set")
+        print("   Skipping — GITHUB_TOKEN not set")
         return
     api_url = f"https://api.github.com/repos/{repo}/contents/{HISTORY_FILE}"
     hdrs    = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
@@ -483,7 +489,7 @@ def update_history_on_github(history, new_entry):
     sha     = get_r.json().get("sha") if get_r.status_code == 200 else None
     history.append(new_entry)
     encoded = base64.b64encode(json.dumps(history, indent=2).encode()).decode()
-    payload = {"message": f"affiliate: log \u2014 {new_entry['title'][:60]}", "content": encoded}
+    payload = {"message": f"affiliate: log — {new_entry['title'][:60]}", "content": encoded}
     if sha: payload["sha"] = sha
     put = requests.put(api_url, headers=hdrs, json=payload, timeout=15)
     print(f"   History committed ({len(history)} posts)" if put.status_code in (200, 201) else f"   History failed: {put.text}")
