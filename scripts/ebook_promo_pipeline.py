@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-MindCore AI  - Ebook Promotion Pipeline v2.7
+MindCore AI  - Ebook Promotion Pipeline v2.8
 ============================================
+v2.8: Force IPv4 for all HTTP. mindcoreai.eu now serves an AAAA (IPv6) record,
+      and the CI runner has no IPv6 route, so cover downloads died with
+      "[Errno 101] Network is unreachable" and fell back to a blank dark cover.
+      Pinning urllib3/requests to AF_INET makes it use the routable IPv4 address.
 v2.7: Retry logic + fallback for cover image download.
 v2.6: Free Chapter 1 link + 50% launch discount (until July 31st).
 v2.5: Expanded voiceover variations (18 angles, 12 hooks, 6 closers).
@@ -12,7 +16,16 @@ v2.1: Updated hashtags.
 v2: ElevenLabs TTS. 4x/week.
 """
 
-import os, sys, json, random, requests, subprocess, tempfile, datetime, time
+import os, sys, json, random, requests, subprocess, tempfile, datetime, time, socket
+
+# ── Force IPv4 ──────────────────────────────────────────────────────────────
+# mindcoreai.eu resolves to both an IPv4 (A) and an IPv6 (AAAA) address. The CI
+# runner has no IPv6 route, so requests would try the IPv6 address first and
+# fail with "[Errno 101] Network is unreachable" without cleanly falling back to
+# IPv4. Pinning urllib3's address family to AF_INET forces the routable IPv4
+# path for every requests call in this pipeline (covers, ElevenLabs, Upload-Post).
+import urllib3.util.connection as _urllib3_conn
+_urllib3_conn.allowed_gai_family = lambda: socket.AF_INET
 
 from anthropic import Anthropic
 
@@ -144,7 +157,7 @@ Return ONLY the voiceover text, nothing else."""
 
 def download_cover(url, path):
     """Download cover image with retry logic and User-Agent header."""
-    headers = {"User-Agent": "MindCoreAI-Pipeline/2.7"}
+    headers = {"User-Agent": "MindCoreAI-Pipeline/2.8"}
     for attempt in range(3):
         try:
             if attempt > 0:
@@ -275,7 +288,7 @@ def upload_to_x(cover_path, caption, scheduled_date=None):
         print(f"   X Upload failed: {e}"); return {"error": str(e)}
 
 def main():
-    print(f"== MindCore AI  - Ebook Promotion Pipeline v2.7 ==\n")
+    print(f"== MindCore AI  - Ebook Promotion Pipeline v2.8 ==\n")
     if not ANTHROPIC_API_KEY: sys.exit("ERROR: ANTHROPIC_API_KEY not set")
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
     scheduled_date = get_scheduled_time(6)
