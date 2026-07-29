@@ -4,15 +4,12 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 
 class JournalReflectionService {
   JournalReflectionService._();
   static final instance = JournalReflectionService._();
 
-  static String get _apiKey => Env.openaiKey;
-
-  static const String _endpoint = 'https://api.openai.com/v1/chat/completions';
   static const String _model = 'gpt-4o-mini';
 
   static String _cacheKey(String entryId) => 'jr_reflect_$entryId';
@@ -35,7 +32,8 @@ class JournalReflectionService {
     String moodLabel = 'Neutral',
     bool forceRefresh = false,
   }) async {
-    if (_apiKey.trim().isEmpty) {
+    final idToken = await AiProxy.idToken();
+    if (idToken == null) {
       return 'AI is not configured yet (missing OPENAI_API_KEY).';
     }
 
@@ -71,9 +69,9 @@ Mood label: "$moodLabel"
     try {
       final res = await http
           .post(
-        Uri.parse(_endpoint),
+        AiProxy.chat(),
         headers: {
-          'Authorization': 'Bearer $_apiKey',
+          'Authorization': 'Bearer $idToken',
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
