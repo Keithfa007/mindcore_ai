@@ -8,7 +8,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mindcore_ai/services/mood_log_service.dart';
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 
 class WeeklyReport {
   final String summary;    // 1-2 sentence overall mood summary
@@ -99,8 +99,8 @@ class WeeklyReportService {
   }
 
   static Future<WeeklyReport?> _generate() async {
-    final apiKey = Env.openaiKey;
-    if (apiKey.trim().isEmpty) return null;
+    final idToken = await AiProxy.idToken();
+    if (idToken == null) return null;
 
     // Fetch last 7 days of mood logs
     final all   = await MoodRepo.instance.fetchAll();
@@ -179,9 +179,9 @@ RULES:
     try {
       final response = await http
           .post(
-            Uri.parse('https://api.openai.com/v1/chat/completions'),
+            AiProxy.chat(),
             headers: {
-              'Authorization': 'Bearer $apiKey',
+              'Authorization': 'Bearer $idToken',
               'Content-Type': 'application/json',
             },
             body: jsonEncode({
