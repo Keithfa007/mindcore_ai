@@ -17,12 +17,11 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 
 class UserMemoryService {
   UserMemoryService._();
 
-  static const _endpoint = 'https://api.openai.com/v1/chat/completions';
   static const _model    = 'gpt-4o-mini';
 
   // ── Read ────────────────────────────────────────────────────────────────
@@ -50,8 +49,8 @@ class UserMemoryService {
       List<Map<String, String>> recentMessages) async {
     try {
       final uid    = FirebaseAuth.instance.currentUser?.uid;
-      final apiKey = Env.openaiKey;
-      if (uid == null || apiKey.trim().isEmpty) return;
+      final idToken = await AiProxy.idToken();
+      if (uid == null || idToken == null) return;
 
       // Need at least 4 messages to extract meaningful facts
       final userMessages =
@@ -67,9 +66,9 @@ class UserMemoryService {
 
       final response = await http
           .post(
-            Uri.parse(_endpoint),
+            AiProxy.chat(),
             headers: {
-              'Authorization': 'Bearer $apiKey',
+              'Authorization': 'Bearer $idToken',
               'Content-Type':  'application/json',
             },
             body: jsonEncode({
