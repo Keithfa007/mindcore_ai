@@ -7,7 +7,7 @@ import 'package:mindcore_ai/ai/agent_prompts.dart';
 import 'package:mindcore_ai/ai/agent_router.dart';
 import 'package:mindcore_ai/ai/agent_type.dart';
 import 'package:mindcore_ai/ai/orchestrator_models.dart';
-import 'package:mindcore_ai/env/env.dart';
+import 'package:mindcore_ai/services/ai_proxy.dart';
 import 'package:mindcore_ai/pages/helpers/chat_persona_prefs.dart';
 import 'package:mindcore_ai/pages/helpers/journal_service.dart';
 import 'package:mindcore_ai/services/user_memory_service.dart';
@@ -15,8 +15,6 @@ import 'package:mindcore_ai/services/persona_service.dart';
 import 'package:mindcore_ai/services/user_profile_service.dart';
 
 class ChatStreamService {
-  static String get _apiKey  => Env.openaiKey;
-  static const _endpoint    = 'https://api.openai.com/v1/chat/completions';
   static const _model       = 'gpt-4o-mini';
   static const _temperature = 0.45;
 
@@ -40,8 +38,9 @@ class ChatStreamService {
       );
     }
 
-    if (_apiKey.trim().isEmpty) {
-      const text = 'AI is not configured yet (missing API key).';
+    final idToken = await AiProxy.idToken();
+    if (idToken == null) {
+      const text = 'Please sign in to use chat.';
       await onDelta(text);
       return OrchestratorReply(
         reply: text, agent: AgentType.companion, confidence: 0.35,
@@ -106,9 +105,9 @@ class ChatStreamService {
     final client = http.Client();
     final buffer = StringBuffer();
     try {
-      final request = http.Request('POST', Uri.parse(_endpoint));
+      final request = http.Request('POST', AiProxy.chat());
       request.headers.addAll({
-        'Authorization': 'Bearer $_apiKey',
+        'Authorization': 'Bearer $idToken',
         'Content-Type':  'application/json',
       });
       request.body = jsonEncode({
@@ -242,7 +241,7 @@ class ChatStreamService {
           .where((e) => e.isNotEmpty).toList();
       if (latest.isEmpty) return '';
       final joined = latest.join(' | ');
-      return joined.length > 400 ? '${joined.substring(0, 400)}\u2026' : joined;
+      return joined.length > 400 ? '${joined.substring(0, 400)}…' : joined;
     } catch (_) { return ''; }
   }
 
