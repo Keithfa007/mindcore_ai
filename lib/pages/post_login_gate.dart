@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'home_screen.dart';
-import 'onboarding_screen.dart';
+import 'onboarding_v2_screen.dart';
 import 'paywall_screen.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
@@ -59,12 +59,14 @@ class _PostLoginGateState extends State<PostLoginGate> {
       return const _SplashScreen();
     }
 
-    if (!_hasAccess!) {
-      return _TrialExpiredScreen(onSubscribe: () async => _load());
+    // Onboarding now runs BEFORE the access wall, so a brand-new user
+    // experiences the value + a real AI reply before ever being asked to pay.
+    if (!_onboardingDone!) {
+      return OnboardingV2Screen(onFinish: _finish);
     }
 
-    if (!_onboardingDone!) {
-      return OnboardingScreen(onFinish: _finish);
+    if (!_hasAccess!) {
+      return _TrialExpiredScreen(onSubscribe: () async => _load());
     }
 
     return const HomeScreen();
