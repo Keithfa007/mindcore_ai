@@ -7,6 +7,8 @@ import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
+import 'package:mindcore_ai/services/firebase_auth_service.dart';
+import 'package:mindcore_ai/pages/account_sheet.dart';
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
@@ -80,6 +82,15 @@ class _PaywallScreenState extends State<PaywallScreen> {
       }
       return;
     }
+
+    // The account step happens HERE, not before onboarding. If the user is
+    // still on the anonymous session, create/link a real account before we
+    // charge, so their trial and data are recoverable.
+    if (FirebaseAuthService.instance.isAnonymous) {
+      final ok = await showAccountSheet(context);
+      if (ok != true || !mounted) return;
+    }
+
     setState(() => _loading = true);
     try {
       await _sub.buy(product);
@@ -97,6 +108,16 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _restore() async {
+    // Returning users on a fresh install arrive anonymous — sign them into the
+    // account they subscribed with before restoring.
+    if (FirebaseAuthService.instance.isAnonymous) {
+      final ok = await showAccountSheet(
+        context,
+        title: 'Sign in to restore',
+        subtitle: 'Sign in with the account you subscribed with.',
+      );
+      if (ok != true || !mounted) return;
+    }
     setState(() => _loading = true);
     try {
       await _sub.restore();
