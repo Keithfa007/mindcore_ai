@@ -55,20 +55,20 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Only the minimum needed before the first frame, so the animated splash
-  // appears fast instead of the flat native launch screen.
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
+  // Paint the animated splash on the very first frame, before any async init,
+  // so the flat native launch screen is on screen for the shortest time.
   runApp(const MindCoreApp());
 
-  // Everything else initializes behind the animated splash.
+  // Everything else — including Firebase — initializes behind the splash.
   _bootstrap();
 }
 
 /// Heavy startup work, run after the first frame so the UI is never blank/flat.
 Future<void> _bootstrap() async {
   try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
     await SettingsService.init();
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -77,9 +77,8 @@ Future<void> _bootstrap() async {
     await OpenAiTtsService.instance.init();
 
     final messaging = FirebaseMessaging.instance;
-    // Do NOT await: let the OS permission prompt float over the app rather
-    // than block startup behind it.
-    messaging.requestPermission(alert: true, badge: true, sound: true);
+    // The OS notification permission is NOT requested at startup anymore. It is
+    // requested only if the user opts in on the post-login reminder screen.
     messaging.subscribeToTopic('relax_audio_updates');
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final screen = message.data['screen'];
