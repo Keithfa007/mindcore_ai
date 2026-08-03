@@ -7,11 +7,11 @@
 // triggered if the user taps "Yes", so it never appears unprompted.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
 import 'package:mindcore_ai/services/settings_service.dart';
+import 'package:mindcore_ai/services/notification_service.dart';
 
 class NotificationOptInScreen extends StatefulWidget {
   final VoidCallback onDone;
@@ -33,11 +33,7 @@ class _NotificationOptInScreenState extends State<NotificationOptInScreen> {
       await SettingsService.setDailyReminderEnabled(enable);
       if (enable) {
         // Only now — after an explicit opt-in — request the OS permission.
-        await FirebaseMessaging.instance.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+        await NotificationService.instance.requestPermission();
       }
     } catch (_) {
       // Best effort — never block entry to the app.
