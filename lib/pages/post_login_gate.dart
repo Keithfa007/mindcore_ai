@@ -167,8 +167,9 @@ class _TrialExpiredScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Start your 3-day free trial or subscribe to unlock AI chat, '
-                'voice, guided sessions and more. Cancel anytime.',
+                'Start your 7-day free trial to unlock AI chat, voice, guided '
+                'sessions and more. A payment method is required, and you can '
+                'cancel anytime before day 7 so you are not charged.',
                 style: tt.bodyLarge?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.6),
                 ),
