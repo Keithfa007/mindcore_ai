@@ -66,24 +66,24 @@ class NotificationService {
   static const String _kBatteryPromptShown     = 'battery_opt_prompt_shown';
 
   static const _checkInMessages = [
-    _CheckInMsg('How are you doing? \ud83d\udc99', 'Take a moment to check in with yourself.'),
-    _CheckInMsg('Just thinking of you \ud83c\udf3f', 'How has your day been so far?'),
-    _CheckInMsg('Hey there \u2728', 'How are you feeling right now?'),
-    _CheckInMsg('A gentle nudge \ud83d\udd4a\ufe0f', "We're here if you need us."),
-    _CheckInMsg('How\'s your day going? \u2600\ufe0f', 'Take a breath \u2014 you\'re doing great.'),
-    _CheckInMsg('Checking in with you \ud83d\udcad', 'How are you really doing today?'),
-    _CheckInMsg('A quiet moment \ud83c\udf38', 'Be kind to yourself today.'),
-    _CheckInMsg('Thinking of you \ud83d\udc9a', 'How is your heart today?'),
-    _CheckInMsg('How\'s your evening? \ud83c\udf19', 'You deserve a moment of peace.'),
-    _CheckInMsg('Just here if you need us \ud83c\udf43', 'No pressure \u2014 just checking in.'),
+    _CheckInMsg('How are you doing? 💙', 'Take a moment to check in with yourself.'),
+    _CheckInMsg('Just thinking of you 🌿', 'How has your day been so far?'),
+    _CheckInMsg('Hey there ✨', 'How are you feeling right now?'),
+    _CheckInMsg('A gentle nudge 🕊️', "We're here if you need us."),
+    _CheckInMsg('How\'s your day going? ☀️', 'Take a breath — you\'re doing great.'),
+    _CheckInMsg('Checking in with you 💭', 'How are you really doing today?'),
+    _CheckInMsg('A quiet moment 🌸', 'Be kind to yourself today.'),
+    _CheckInMsg('Thinking of you 💚', 'How is your heart today?'),
+    _CheckInMsg('How\'s your evening? 🌙', 'You deserve a moment of peace.'),
+    _CheckInMsg('Just here if you need us 🍃', 'No pressure — just checking in.'),
   ];
 
   static const _weeklySummaryMessages = [
-    _CheckInMsg('Your week, reflected back \ud83c\udf1f', 'You showed up this week. Open MindCore AI to see how far you have come.'),
-    _CheckInMsg('Sunday check-in \ud83c\udf19', 'Every small step this week counted. Take a moment to acknowledge that.'),
-    _CheckInMsg('You made it through another week \ud83d\udc9a', 'Open MindCore AI to reflect on your week and start the next one gently.'),
-    _CheckInMsg('A quiet Sunday moment \u2728', 'How was your week really? Take 2 minutes to check in with yourself.'),
-    _CheckInMsg('Weekly reflection time \ud83c\udf3f', 'Progress is not always visible. But you kept going. That matters.'),
+    _CheckInMsg('Your week, reflected back 🌟', 'You showed up this week. Open MindCore AI to see how far you have come.'),
+    _CheckInMsg('Sunday check-in 🌙', 'Every small step this week counted. Take a moment to acknowledge that.'),
+    _CheckInMsg('You made it through another week 💚', 'Open MindCore AI to reflect on your week and start the next one gently.'),
+    _CheckInMsg('A quiet Sunday moment ✨', 'How was your week really? Take 2 minutes to check in with yourself.'),
+    _CheckInMsg('Weekly reflection time 🌿', 'Progress is not always visible. But you kept going. That matters.'),
   ];
 
   Future<void> init({
@@ -106,7 +106,9 @@ class NotificationService {
     if (Platform.isAndroid) {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-      await android?.requestNotificationsPermission();
+      // Notification permission is NOT requested here anymore. It is asked only
+      // when the user opts in on the post-login reminder screen (see
+      // NotificationService.requestPermission).
       for (final ch in [
         const AndroidNotificationChannel(_instantChannelId,   _instantChannelName,   description: _instantChannelDesc,        importance: Importance.max),
         const AndroidNotificationChannel(_dailyChannelId,     _dailyChannelName,     description: _dailyChannelDesc,          importance: Importance.max),
@@ -131,6 +133,16 @@ class NotificationService {
     final checkInFreq    = prefs.getInt(_kCheckInFrequency) ?? 2;
     if (checkInEnabled) await scheduleCheckInNotifications(timesPerDay: checkInFreq);
     await scheduleWeeklySummary();
+  }
+
+  /// Requests the OS notification permission (Android 13+). Called only after
+  /// the user explicitly opts in on the reminder screen. Returns true if
+  /// granted, null/false otherwise.
+  Future<bool?> requestPermission() async {
+    if (!Platform.isAndroid) return true;
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    return android?.requestNotificationsPermission();
   }
 
   void _handleNotificationResponse(NotificationResponse response) {
@@ -160,7 +172,7 @@ class NotificationService {
     final already = await isIgnoringBatteryOptimizations();
     if (already) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('\u2705 Background notifications are already enabled')));
+          const SnackBar(content: Text('✅ Background notifications are already enabled')));
       return;
     }
     if (!context.mounted) return;
@@ -170,7 +182,7 @@ class NotificationService {
         title: const Text('Allow background notifications'),
         content: const Text(
           'To receive check-in reminders when the app is closed, tap Allow on the next screen.\n\n'
-          'Select \u201cUnrestricted\u201d or \u201cDon\u2019t optimise\u201d for battery usage.',
+          'Select “Unrestricted” or “Don’t optimise” for battery usage.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
@@ -214,7 +226,7 @@ class NotificationService {
           channelDescription: _blogChannelDesc, importance: Importance.high, priority: Priority.high,
           styleInformation: BigTextStyleInformation('')),
     );
-    await _plugin.show(_blogNotificationId, 'New article \ud83d\udcd6', postTitle, details, payload: payload);
+    await _plugin.show(_blogNotificationId, 'New article 📖', postTitle, details, payload: payload);
   }
 
   // ── Trial nudges ─────────────────────────────────────────────────────────
@@ -242,8 +254,8 @@ class NotificationService {
     try {
       await _plugin.zonedSchedule(
         _trialNudgeDay2Id,
-        'How\'s it going? \ud83d\udc99',
-        'You\'ve been using MindCore AI for 2 days. Your trial ends tomorrow \u2014 how\'s it feeling?',
+        'How\'s it going? 💙',
+        'You\'ve been using MindCore AI for 2 days. Your trial ends tomorrow — how\'s it feeling?',
         day2Time, day2Details,
         payload: payload,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -253,7 +265,7 @@ class NotificationService {
     try {
       await _plugin.zonedSchedule(
         _trialNudgeDay3Id,
-        'Your trial ends today \u23f3',
+        'Your trial ends today ⏳',
         'Everything you\'ve shared is saved and waiting for you. Subscribe to keep going.',
         day3Time, day2Details,
         payload: payload,
@@ -376,12 +388,12 @@ class NotificationService {
   }) async {
     await cancelSleepRitualNotifications();
     await _scheduleOneSleepNotif(
-      id: _sleepEveningId, title: 'Evening check-in \ud83c\udf19',
+      id: _sleepEveningId, title: 'Evening check-in 🌙',
       body: 'How did today go? Take 30 seconds.',
       hour: eveningTime.hour, minute: eveningTime.minute, mode: 'evening',
     );
     await _scheduleOneSleepNotif(
-      id: _sleepMorningId, title: 'Good morning \u2600\ufe0f',
+      id: _sleepMorningId, title: 'Good morning ☀️',
       body: 'How are you feeling today?',
       hour: morningTime.hour, minute: morningTime.minute, mode: 'morning',
     );
@@ -432,7 +444,7 @@ class NotificationService {
 
   Future<void> scheduleWeeklySummaryWithStat(String statLine) async {
     try {
-      final title = 'Your week, reflected back \ud83c\udf1f';
+      final title = 'Your week, reflected back 🌟';
       final body  = statLine.isNotEmpty
           ? '$statLine. Tap to see your full journey.'
           : 'You showed up this week. Open MindCore AI to see how far you have come.';
