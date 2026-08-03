@@ -46,7 +46,7 @@ class SubscriptionService {
   ProductDetails? trialProduct;
   // Base plan (recurring price shown on the card / banner).
   ProductDetails? premiumMonthly;
-  // The free-trial offer (used to launch the actual 3-day trial).
+  // The free-trial offer (used to launch the actual 7-day trial).
   ProductDetails? premiumMonthlyOffer;
   ProductDetails? premiumYearly;
   ProductDetails? proMonthly;
@@ -58,7 +58,7 @@ class SubscriptionService {
   /// Returns the ProductDetails for a given voice pack product ID, or null.
   ProductDetails? voicePackProduct(String productId) => _voicePacks[productId];
 
-  /// What to purchase for the 3-day free trial. Falls back to the base plan
+  /// What to purchase for the 7-day free trial. Falls back to the base plan
   /// if the trial offer is unavailable (e.g. the user is not eligible).
   ProductDetails? get premiumTrialPurchase => premiumMonthlyOffer ?? premiumMonthly;
 
@@ -191,7 +191,12 @@ class SubscriptionService {
     for (final offer in offers) {
       // Only inspect the offer that matches THIS ProductDetails' token.
       if (offer.offerIdToken != p.offerToken) continue;
-      if (offer.offerId == 'free-trial-3day') return true;
+      // Known free-trial offer IDs (fast path). Any zero-cost phase below also
+      // counts, so a renamed offer still resolves correctly.
+      if (offer.offerId == '7daysfreetrial' ||
+          offer.offerId == 'free-trial-3day') {
+        return true;
+      }
       for (final phase in offer.pricingPhases) {
         if (phase.priceAmountMicros == 0) return true;
       }
