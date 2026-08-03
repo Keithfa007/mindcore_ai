@@ -40,6 +40,7 @@ import 'services/premium_service.dart';
 import 'services/usage_service.dart';
 import 'widgets/animated_backdrop.dart';
 import 'widgets/animated_logo.dart';
+import 'services/firebase_auth_service.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -158,20 +159,57 @@ class MindCoreApp extends StatelessWidget {
             valueListenable: _bootReady,
             builder: (context, ready, _) {
               if (!ready) return const AnimatedSplashScreen();
-              return StreamBuilder<User?>(
-                stream: FirebaseAuth.instance.authStateChanges(),
-                builder: (context, snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const AnimatedSplashScreen();
-                  }
-                  return snap.data == null
-                      ? const LoginScreen()
-                      : const PostLoginGate();
-                },
-              );
+              return const _RootRouter();
             },
           ),
         );
+      },
+    );
+  }
+}
+
+/// Decides the first real screen. If nobody is signed in, it signs the user in
+/// anonymously so the onboarding (and the live AI reply) run with no login
+/// form. The account step is deferred to the "Start free trial" moment. If
+/// anonymous sign-in is unavailable (provider disabled), it falls back to the
+/// login screen so the app is never stuck.
+class _RootRouter extends StatefulWidget {
+  const _RootRouter();
+  @override
+  State<_RootRouter> createState() => _RootRouterState();
+}
+
+class _RootRouterState extends State<_RootRouter> {
+  bool _anonTried = false;
+  bool _anonFailed = false;
+
+  Future<void> _ensureAnon() async {
+    try {
+      await FirebaseAuthService.instance.ensureSignedIn();
+    } catch (e) {
+      debugPrint('Anonymous sign-in failed: $e');
+      if (mounted) setState(() => _anonFailed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const AnimatedSplashScreen();
+        }
+        final user = snap.data;
+        if (user == null) {
+          if (_anonFailed) return const LoginScreen();
+          if (!_anonTried) {
+            _anonTried = true;
+            _ensureAnon();
+          }
+          return const AnimatedSplashScreen();
+        }
+        return const PostLoginGate();
       },
     );
   }
