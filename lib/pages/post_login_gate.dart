@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'home_screen.dart';
 import 'onboarding_v2_screen.dart';
+import 'notification_optin_screen.dart';
 import 'paywall_screen.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
@@ -18,9 +19,11 @@ class PostLoginGate extends StatefulWidget {
 
 class _PostLoginGateState extends State<PostLoginGate> {
   static const _kOnboardingDone = 'onboarding_done_v1';
+  static const _kNotifOptIn = 'notif_optin_done_v1';
 
   bool? _onboardingDone;
   bool? _hasAccess;
+  bool? _notifOptInDone;
 
   @override
   void initState() {
@@ -31,11 +34,13 @@ class _PostLoginGateState extends State<PostLoginGate> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final done   = prefs.getBool(_kOnboardingDone) ?? false;
+    final notif  = prefs.getBool(_kNotifOptIn) ?? false;
     final access = await PremiumService.hasAccess();
 
     if (!mounted) return;
     setState(() {
       _onboardingDone = done;
+      _notifOptInDone = notif;
       _hasAccess      = access;
     });
 
@@ -52,10 +57,19 @@ class _PostLoginGateState extends State<PostLoginGate> {
     setState(() => _onboardingDone = true);
   }
 
+  Future<void> _finishNotif() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kNotifOptIn, true);
+    if (!mounted) return;
+    setState(() => _notifOptInDone = true);
+  }
+
   @override
   Widget build(BuildContext context) {
     // Loading — show branded splash instead of plain spinner
-    if (_onboardingDone == null || _hasAccess == null) {
+    if (_onboardingDone == null ||
+        _hasAccess == null ||
+        _notifOptInDone == null) {
       return const _SplashScreen();
     }
 
@@ -67,6 +81,13 @@ class _PostLoginGateState extends State<PostLoginGate> {
 
     if (!_hasAccess!) {
       return _TrialExpiredScreen(onSubscribe: () async => _load());
+    }
+
+    // After the user has access (i.e. after they signed in / started the
+    // trial), ask once about notifications — combined OS permission + daily
+    // reminder. This is the only place notifications are requested.
+    if (!_notifOptInDone!) {
+      return NotificationOptInScreen(onDone: _finishNotif);
     }
 
     return const HomeScreen();
