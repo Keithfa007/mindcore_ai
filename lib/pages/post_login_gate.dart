@@ -6,7 +6,10 @@ import 'home_screen.dart';
 import 'onboarding_v2_screen.dart';
 import 'notification_optin_screen.dart';
 import 'paywall_screen.dart';
+import 'account_sheet.dart';
 import 'package:mindcore_ai/services/premium_service.dart';
+import 'package:mindcore_ai/services/subscription_service.dart';
+import 'package:mindcore_ai/services/firebase_auth_service.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/animated_logo.dart';
 
@@ -80,7 +83,7 @@ class _PostLoginGateState extends State<PostLoginGate> {
     }
 
     if (!_hasAccess!) {
-      return _TrialExpiredScreen(onSubscribe: () async => _load());
+      return _UnlockScreen(onUnlocked: () async => _load());
     }
 
     // After the user has access (i.e. after they signed in / started the
@@ -138,11 +141,131 @@ class _SplashScreen extends StatelessWidget {
   }
 }
 
-// ── Access gate screen (start free trial / subscribe) ──────────────────────
+// ── Unlock screen — starts the 7-day trial directly ────────────────────────
+//
+// "Start free trial" launches the Google Play 7-day trial offer straight away
+// (after linking the anonymous session to a real account). "See all plans"
+// opens the full paywall for anyone who wants yearly or Pro.
 
-class _TrialExpiredScreen extends StatelessWidget {
-  final VoidCallback onSubscribe;
-  const _TrialExpiredScreen({required this.onSubscribe});
+class _UnlockScreen extends StatefulWidget {
+  final VoidCallback onUnlocked;
+  const _UnlockScreen({required this.onUnlocked});
+
+  @override
+  State<_UnlockScreen> createState() => _UnlockScreenState();
+}
+
+class _UnlockScreenState extends State<_UnlockScreen> {
+  final _sub = SubscriptionService();
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    PremiumService.isPremium.addListener(_onPremiumChanged);
+    _sub.purchaseError.addListener(_onPurchaseError);
+    _initStore();
+  }
+
+  Future<void> _initStore() async {
+    try {
+      await _sub.init();
+    } catch (e) {
+      debugPrint('Unlock: IAP init failed — $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    PremiumService.isPremium.removeListener(_onPremiumChanged);
+    _sub.purchaseError.removeListener(_onPurchaseError);
+    // NOTE: do not dispose the shared SubscriptionService singleton here — the
+    // paywall shares it and manages its own lifecycle.
+    super.dispose();
+  }
+
+  void _onPremiumChanged() {
+    if (PremiumService.isPremium.value && mounted) widget.onUnlocked();
+  }
+
+  void _onPurchaseError() {
+    final msg = _sub.purchaseError.value;
+    if (msg == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
+    );
+    _sub.purchaseError.value = null;
+  }
+
+  Future<void> _startTrial() async {
+    // The account step happens HERE — link the anonymous session to a real
+    // account before we charge, so the trial and data are recoverable.
+    if (FirebaseAuthService.instance.isAnonymous) {
+      final ok = await showAccountSheet(context);
+      if (ok != true || !mounted) return;
+    }
+
+    final product = _sub.premiumTrialPurchase;
+    if (product == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('The trial is not available right now. Please try again.'),
+        ));
+      }
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await _sub.buy(product);
+    } catch (e) {
+      debugPrint('Unlock: trial buy failed — $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not start the trial. $e'),
+          backgroundColor: Colors.red.shade700,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _seeAllPlans() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PaywallScreen()),
+    );
+    if (!mounted) return;
+    // The paywall disposes the shared purchase stream on close — re-establish
+    // it so a subsequent "Start free trial" tap still processes results.
+    await _initStore();
+    widget.onUnlocked();
+  }
+
+  Future<void> _restore() async {
+    if (FirebaseAuthService.instance.isAnonymous) {
+      final ok = await showAccountSheet(
+        context,
+        title: 'Sign in to restore',
+        subtitle: 'Sign in with the account you subscribed with.',
+      );
+      if (ok != true || !mounted) return;
+    }
+    setState(() => _loading = true);
+    try {
+      await _sub.restore();
+    } catch (e) {
+      debugPrint('Unlock: restore failed — $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not restore purchases. $e'),
+          backgroundColor: Colors.red.shade700,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -177,28 +300,32 @@ class _TrialExpiredScreen extends StatelessWidget {
               ),
               const SizedBox(height: 40),
               FilledButton(
-                onPressed: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const PaywallScreen()),
-                  );
-                  onSubscribe();
-                },
+                onPressed: _loading ? null : _startTrial,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                child: Text('Start Free Trial',
-                    style: tt.titleMedium?.copyWith(color: Colors.white)),
+                child: _loading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : Text('Start 7-day free trial',
+                        style: tt.titleMedium?.copyWith(color: Colors.white)),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
               TextButton(
-                onPressed: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const PaywallScreen()),
-                  );
-                  onSubscribe();
-                },
+                onPressed: _loading ? null : _seeAllPlans,
+                child: Text(
+                  'See all plans',
+                  style: tt.bodyMedium?.copyWith(
+                      color: cs.primary, fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton(
+                onPressed: _loading ? null : _restore,
                 child: Text(
                   'Restore purchases',
                   style: tt.bodyMedium?.copyWith(
