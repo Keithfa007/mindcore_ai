@@ -20,7 +20,7 @@ class PaywallScreen extends StatefulWidget {
 class _PaywallScreenState extends State<PaywallScreen> {
   final _sub = SubscriptionService();
   bool _loading = false;
-  bool _selectedYearly = false;
+  bool _selectedYearly = true; // lead with the cheaper-feeling yearly price
 
   // Store ready flag — prevents rendering before IAP initialises
   bool _storeReady = false;
@@ -301,6 +301,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                               : _sub.premiumMonthly,
                           loading: _loading,
                           onBuy: _buy,
+                          featured: true,
                           isCurrent: currentTier.tier == AppTier.premium,
                           accentColor: AppColors.primary,
                           glowColor: AppColors.glowBlue,
@@ -318,7 +319,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
                               : _sub.proMonthly,
                           loading: _loading,
                           onBuy: _buy,
-                          featured: true,
                           isCurrent: currentTier.tier == AppTier.pro,
                           accentColor: AppColors.violet,
                           glowColor: AppColors.glowViolet,
@@ -327,14 +327,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         ),
                         const SizedBox(height: 24),
 
-                        // Voice add-on packs
-                        _VoiceAddOnSection(
-                            loading: _loading,
-                            onBuy: _buy,
-                            sub: _sub,
-                            isDark: isDark,
-                            tt: tt),
-                        const SizedBox(height: 20),
+                        // Voice add-on packs — only relevant to existing
+                        // subscribers, so hidden from users who haven't joined.
+                        if (!showTrial) ...[
+                          _VoiceAddOnSection(
+                              loading: _loading,
+                              onBuy: _buy,
+                              sub: _sub,
+                              isDark: isDark,
+                              tt: tt),
+                          const SizedBox(height: 20),
+                        ],
 
                         Text(
                           'Subscriptions renew automatically. Cancel anytime\nin Google Play settings.',
@@ -452,7 +455,7 @@ class _FreeTrialBanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: accent.withValues(alpha: 0.40)),
             ),
-            child: Text('TRY FREE FOR 3 DAYS',
+            child: Text('TRY FREE FOR 7 DAYS',
                 style: tt.labelSmall?.copyWith(
                     color: accent,
                     fontWeight: FontWeight.w900,
@@ -465,14 +468,15 @@ class _FreeTrialBanner extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                   color: isDark ? Colors.white : const Color(0xFF0E1320))),
           const SizedBox(height: 6),
-          Text('Full access to all Premium features for 3 days.',
+          Text('Full access to all Premium features for 7 days.',
               textAlign: TextAlign.center,
               style: tt.bodyMedium?.copyWith(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.65)
                       : const Color(0xFF475467))),
           const SizedBox(height: 4),
-          Text('Then $priceLabel/month. Cancel anytime.',
+          Text('Payment method required. Cancel anytime before day 7 and you '
+              'will not be charged. Then $priceLabel/month.',
               textAlign: TextAlign.center,
               style: tt.bodySmall?.copyWith(
                   color: isDark
@@ -532,9 +536,21 @@ class _PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price    = yearly ? config.yearlyPrice : config.monthlyPrice;
-    final interval = yearly ? '/year' : '/mo';
-    final display  = product?.price ?? '€${price.toStringAsFixed(2)}';
+    final currency = product?.currencySymbol ?? '€';
+    const interval = '/mo';
+    final String bigPrice;
+    final String? subPrice;
+    if (yearly) {
+      // Show the yearly plan as a per-month figure so it reads cheaper, with
+      // the real yearly total underneath.
+      final rawYear = product?.rawPrice ?? config.yearlyPrice;
+      bigPrice = '$currency${(rawYear / 12).toStringAsFixed(2)}';
+      subPrice =
+          'Billed ${product?.price ?? '$currency${config.yearlyPrice.toStringAsFixed(2)}'} per year';
+    } else {
+      bigPrice = product?.price ?? '$currency${config.monthlyPrice.toStringAsFixed(2)}';
+      subPrice = null;
+    }
 
     return GlassCard(
       glowColor: glowColor,
@@ -598,7 +614,7 @@ class _PlanCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(display,
+                  Text(bigPrice,
                       style: tt.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                           color: accentColor,
@@ -612,6 +628,14 @@ class _PlanCard extends StatelessWidget {
               ),
             ],
           ),
+          if (subPrice != null) ...[
+            const SizedBox(height: 6),
+            Text(subPrice,
+                style: tt.bodySmall?.copyWith(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.45)
+                        : const Color(0xFF667085))),
+          ],
           const SizedBox(height: 14),
           _FeatureRow(
               icon: Icons.chat_rounded,
