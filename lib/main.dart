@@ -38,8 +38,14 @@ import 'services/notification_service.dart';
 import 'services/openai_tts_service.dart';
 import 'services/premium_service.dart';
 import 'services/usage_service.dart';
+import 'widgets/animated_backdrop.dart';
+import 'widgets/animated_logo.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Flips to true once all startup services have finished initializing.
+/// While false, the app shows the animated splash instead of a flat screen.
+final ValueNotifier<bool> _bootReady = ValueNotifier<bool>(false);
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -48,28 +54,53 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SettingsService.init();
-  await OpenAiTtsService.instance.init();
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp, DeviceOrientation.portraitDown,
-  ]);
+  // Only the minimum needed before the first frame, so the animated splash
+  // appears fast instead of the flat native launch screen.
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  final messaging = FirebaseMessaging.instance;
-  await messaging.requestPermission(alert: true, badge: true, sound: true);
-  await messaging.subscribeToTopic('relax_audio_updates');
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    final screen = message.data['screen'];
-    if (screen == 'relax_audio') appNavigatorKey.currentState?.pushNamed('/relax-audio');
-  });
-  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-    final screen = message.data['screen'];
-    if (screen == 'relax_audio') appNavigatorKey.currentState?.pushNamed('/relax-audio');
-  });
-  await PremiumService.init();
-  await UsageService.instance.init();
-  await NotificationService.instance.init(navigatorKey: appNavigatorKey);
+
   runApp(const MindCoreApp());
+
+  // Everything else initializes behind the animated splash.
+  _bootstrap();
+}
+
+/// Heavy startup work, run after the first frame so the UI is never blank/flat.
+Future<void> _bootstrap() async {
+  try {
+    await SettingsService.init();
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    await OpenAiTtsService.instance.init();
+
+    final messaging = FirebaseMessaging.instance;
+    // Do NOT await: let the OS permission prompt float over the app rather
+    // than block startup behind it.
+    messaging.requestPermission(alert: true, badge: true, sound: true);
+    messaging.subscribeToTopic('relax_audio_updates');
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final screen = message.data['screen'];
+      if (screen == 'relax_audio') {
+        appNavigatorKey.currentState?.pushNamed('/relax-audio');
+      }
+    });
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      final screen = message.data['screen'];
+      if (screen == 'relax_audio') {
+        appNavigatorKey.currentState?.pushNamed('/relax-audio');
+      }
+    });
+
+    await PremiumService.init();
+    await UsageService.instance.init();
+    await NotificationService.instance.init(navigatorKey: appNavigatorKey);
+  } catch (e) {
+    debugPrint('Bootstrap error: $e');
+  } finally {
+    _bootReady.value = true;
+  }
 }
 
 class MindCoreApp extends StatelessWidget {
@@ -123,17 +154,69 @@ class MindCoreApp extends StatelessWidget {
               return SleepRitualScreen(mode: mode);
             },
           },
-          home: StreamBuilder<User?>(
-            stream: FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Scaffold(body: Center(child: CircularProgressIndicator()));
-              }
-              return snap.data == null ? const LoginScreen() : const PostLoginGate();
+          home: ValueListenableBuilder<bool>(
+            valueListenable: _bootReady,
+            builder: (context, ready, _) {
+              if (!ready) return const AnimatedSplashScreen();
+              return StreamBuilder<User?>(
+                stream: FirebaseAuth.instance.authStateChanges(),
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const AnimatedSplashScreen();
+                  }
+                  return snap.data == null
+                      ? const LoginScreen()
+                      : const PostLoginGate();
+                },
+              );
             },
           ),
         );
       },
+    );
+  }
+}
+
+/// Animated branded splash: the breathing / glowing logo on the aurora
+/// backdrop, shown while the app boots instead of the flat native screen.
+class AnimatedSplashScreen extends StatelessWidget {
+  const AnimatedSplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: AnimatedBackdrop(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const AnimatedLogo(size: 150),
+              const SizedBox(height: 28),
+              Text(
+                'MindCore AI',
+                style: tt.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.8,
+                  color: isDark ? Colors.white : const Color(0xFF0E1320),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Getting things ready…',
+                style: tt.bodyMedium?.copyWith(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.45)
+                      : Colors.black.withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
