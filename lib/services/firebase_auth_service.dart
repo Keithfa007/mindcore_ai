@@ -25,6 +25,26 @@ class FirebaseAuthService {
   User? get currentUser => _auth.currentUser;
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
+  /// True when the current session is an anonymous (not-yet-registered) one.
+  bool get isAnonymous => _auth.currentUser?.isAnonymous ?? false;
+
+  /// Ensures a Firebase session exists so onboarding and the secure proxy work
+  /// before the user creates a real account. Signs in anonymously if nobody is
+  /// signed in yet. Requires the Anonymous provider to be enabled in Firebase.
+  Future<User> ensureSignedIn() async {
+    final existing = _auth.currentUser;
+    if (existing != null) return existing;
+    final cred = await _auth.signInAnonymously();
+    final user = cred.user;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'anonymous-sign-in-failed',
+        message: 'Could not start a session.',
+      );
+    }
+    return user;
+  }
+
   // ---------------------------------------------------------------------------
   // ✅ Auto-sync hook (best effort)
   // ---------------------------------------------------------------------------
@@ -119,6 +139,94 @@ class FirebaseAuthService {
 
   Future<void> sendPasswordResetEmail(String email) async {
     await _auth.sendPasswordResetEmail(email: email.trim());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upgrade an anonymous session to a real account (link), preserving the same
+  // uid so the trial and any data carry over. Falls back to a normal sign-in if
+  // that account already exists (e.g. a returning user). Safe to call whether
+  // or not the current session is anonymous.
+  // ---------------------------------------------------------------------------
+
+  Future<UserCredential> linkOrSignInWithGoogle() async {
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) {
+      throw FirebaseAuthException(
+        code: 'google-sign-in-cancelled',
+        message: 'Google sign-in was cancelled by the user.',
+      );
+    }
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+      accessToken: googleAuth.accessToken,
+    );
+
+    final current = _auth.currentUser;
+    UserCredential cred;
+    if (current != null && current.isAnonymous) {
+      try {
+        cred = await current.linkWithCredential(credential);
+      } on FirebaseAuthException catch (e) {
+        // The Google account already exists as its own account — sign into it.
+        if (e.code == 'credential-already-in-use' ||
+            e.code == 'email-already-in-use') {
+          cred = await _auth.signInWithCredential(credential);
+        } else {
+          rethrow;
+        }
+      }
+    } else {
+      cred = await _auth.signInWithCredential(credential);
+    }
+
+    final user = cred.user;
+    if (user != null) {
+      await _upsertUserDocument(user);
+      await _autoSyncAfterLogin();
+    }
+    return cred;
+  }
+
+  Future<UserCredential> linkOrSignInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final credential = EmailAuthProvider.credential(
+      email: email.trim(),
+      password: password,
+    );
+
+    final current = _auth.currentUser;
+    UserCredential cred;
+    if (current != null && current.isAnonymous) {
+      try {
+        cred = await current.linkWithCredential(credential);
+      } on FirebaseAuthException catch (e) {
+        // That email already has an account — sign into it instead.
+        if (e.code == 'email-already-in-use' ||
+            e.code == 'credential-already-in-use') {
+          cred = await _auth.signInWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          );
+        } else {
+          rethrow;
+        }
+      }
+    } else {
+      cred = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+    }
+
+    final user = cred.user;
+    if (user != null) {
+      await _upsertUserDocument(user);
+      await _autoSyncAfterLogin();
+    }
+    return cred;
   }
 
   // ---------------------------------------------------------------------------
