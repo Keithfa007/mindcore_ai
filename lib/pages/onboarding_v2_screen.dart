@@ -3,7 +3,8 @@
 // New value-first onboarding. Flow:
 //   welcome -> safety & privacy consent -> 2 quick questions ->
 //   LIVE personalised AI reply (the "taste") -> what's inside -> trust/founder
-//   -> daily reminder opt-in -> onFinish().
+//   -> onFinish(). The notification opt-in is no longer here; it runs after the
+//   user has an account and access (see NotificationOptInScreen).
 //
 // It is a drop-in replacement for OnboardingScreen: same `onFinish` contract,
 // so post_login_gate can use it interchangeably. Consent copy and visual style
@@ -15,7 +16,6 @@ import 'package:flutter/services.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/app_gradients.dart';
-import 'package:mindcore_ai/services/settings_service.dart';
 import 'package:mindcore_ai/services/onboarding_taste_service.dart';
 
 class OnboardingV2Screen extends StatefulWidget {
@@ -28,7 +28,7 @@ class OnboardingV2Screen extends StatefulWidget {
 
 class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
     with TickerProviderStateMixin {
-  static const int _stepCount = 8;
+  static const int _stepCount = 7;
   int _step = 0;
 
   // Q1 (multi-select) + Q2 (single-select)
@@ -39,9 +39,6 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
   bool _tasteStarted = false;
   bool _tasteDone = false;
   String _tasteText = '';
-
-  // Notifications
-  bool _notifChosen = false;
 
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fade;
@@ -121,16 +118,6 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
     setState(() => _tasteDone = true);
   }
 
-  Future<void> _handleNotification(bool enable) async {
-    await SettingsService.setDailyReminderEnabled(enable);
-    HapticFeedback.lightImpact();
-    if (!mounted) return;
-    setState(() => _notifChosen = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;
-    widget.onFinish();
-  }
-
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
@@ -208,8 +195,6 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
         return _whatsInside(tt, isDark);
       case 6:
         return _trust(tt, isDark);
-      case 7:
-        return _notifications(tt, isDark);
       default:
         return const SizedBox.shrink();
     }
@@ -751,87 +736,8 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
             ),
           ),
           const SizedBox(height: 14),
-          _PrimaryButton(label: 'Continue', onTap: () => _go(7)),
+          _PrimaryButton(label: 'Continue', onTap: widget.onFinish),
           const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  // ── Step 7: Daily reminder opt-in (finishes onboarding) ─────────────────────
-
-  Widget _notifications(TextTheme tt, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        children: [
-          const Spacer(),
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withValues(alpha: 0.12),
-              border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.30), width: 1.5),
-            ),
-            child: Icon(Icons.notifications_rounded,
-                color: AppColors.primary, size: 38),
-          ),
-          const SizedBox(height: 26),
-          Text('Stay connected to yourself',
-              textAlign: TextAlign.center,
-              style: tt.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.6,
-                  color: isDark ? Colors.white : const Color(0xFF0E1320))),
-          const SizedBox(height: 12),
-          Text(
-            'Would you like a gentle daily reminder to check in? '
-            'Just once a day, at a time that suits you.',
-            textAlign: TextAlign.center,
-            style: tt.bodyMedium?.copyWith(color: _subtle(isDark), height: 1.5),
-          ),
-          const Spacer(),
-          if (_notifChosen)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 32),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle_rounded,
-                      color: AppColors.mintDeep, size: 22),
-                  const SizedBox(width: 8),
-                  Text('Saved, taking you in...',
-                      style: tt.bodyMedium?.copyWith(
-                          color: AppColors.mintDeep,
-                          fontWeight: FontWeight.w700)),
-                ],
-              ),
-            )
-          else ...[
-            _PrimaryButton(
-                label: 'Yes, remind me daily',
-                onTap: () => _handleNotification(true)),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => _handleNotification(false),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  side: BorderSide(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.20)
-                        : Colors.black.withValues(alpha: 0.15),
-                  ),
-                ),
-                child: Text('Not right now',
-                    style: TextStyle(color: _subtle(isDark))),
-              ),
-            ),
-            const SizedBox(height: 32),
-          ],
         ],
       ),
     );
