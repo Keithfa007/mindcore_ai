@@ -590,14 +590,19 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
           const SizedBox(height: 20),
           Expanded(
             child: SingleChildScrollView(
-              child: GridView.count(
-                crossAxisCount: 2,
+              child: GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 11,
-                crossAxisSpacing: 11,
-                childAspectRatio: 1.25,
-                children: _features.map((f) {
+                itemCount: _features.length,
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 11,
+                  crossAxisSpacing: 11,
+                  mainAxisExtent: 150,
+                ),
+                itemBuilder: (context, i) {
+                  final f = _features[i];
                   return GlassCard(
                     glowColor: AppColors.primary.withValues(alpha: 0.10),
                     padding: const EdgeInsets.all(14),
@@ -608,6 +613,8 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
                         Text(f[0], style: const TextStyle(fontSize: 24)),
                         const SizedBox(height: 8),
                         Text(f[1],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: tt.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w800,
                                 color: isDark
@@ -615,12 +622,14 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
                                     : const Color(0xFF0E1320))),
                         const SizedBox(height: 3),
                         Text(f[2],
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: tt.bodySmall?.copyWith(
-                                height: 1.35, color: _subtle(isDark))),
+                                height: 1.3, color: _subtle(isDark))),
                       ],
                     ),
                   );
-                }).toList(),
+                },
               ),
             ),
           ),
@@ -687,11 +696,21 @@ class _OnboardingV2ScreenState extends State<OnboardingV2Screen>
                                           : const Color(0xFF0E1320))),
                               const SizedBox(height: 6),
                               Text(
-                                'I spent years suffering in silence before I got clean. '
-                                'Two years on, I built MindCore for the person I used to be. '
-                                'Whatever you are carrying, you do not have to carry it alone.',
+                                'For over twenty years I worked nights in an industry that '
+                                'never sleeps, and for a lot of that time I was quietly falling '
+                                'apart. On the outside I looked fine. Inside, I was exhausted, '
+                                'ashamed, and completely alone with it.\n\n'
+                                'Getting clean took everything I had. I am two years into that '
+                                'now, and what saved me was not some clever program. It was '
+                                'finally not being alone with my own head at three in the '
+                                'morning.\n\n'
+                                'I built MindCore for the person I used to be. Someone who '
+                                'needed a place to talk when no one was awake to listen, and no '
+                                'judgement was waiting on the other side. Whatever you are '
+                                'carrying tonight, you do not have to carry it alone. I mean '
+                                'that.',
                                 style: tt.bodySmall?.copyWith(
-                                    height: 1.5, color: _subtle(isDark)),
+                                    height: 1.55, color: _subtle(isDark)),
                               ),
                               const SizedBox(height: 8),
                               Text('Keith, founder',
