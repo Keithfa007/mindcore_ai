@@ -96,6 +96,30 @@ def get_wp_auth():
     token = base64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
     return {"Authorization": f"Basic {token}"}
 
+def wp_request(method, url, *, retries=4, backoff=5, **kwargs):
+    """Make a WordPress HTTP request that survives a transient network blip.
+
+    A single ConnectTimeout / ConnectionError / ReadTimeout to mindcoreai.eu
+    (Hostinger occasionally drops one) used to crash the whole pipeline run.
+    This retries ONLY those low-level network errors, with increasing backoff.
+    HTTP status codes (429, 4xx, 5xx) are NOT retried here - the caller reads
+    resp.status_code and decides what to do (the publish loop handles 429
+    itself). Raises RuntimeError only after every network retry is exhausted.
+    """
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return requests.request(method, url, **kwargs)
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout) as exc:
+            last_exc = exc
+            wait = backoff * (attempt + 1)
+            print(f"   WP {method} network error ({type(exc).__name__}) "
+                  f"- retrying in {wait}s (attempt {attempt + 1}/{retries})")
+            time.sleep(wait)
+    raise RuntimeError(
+        f"WordPress {method} {url} failed after {retries} network retries: {last_exc}")
+
 def keyword_to_slug(keyword):
     slug = keyword.lower().strip()
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
@@ -330,7 +354,7 @@ def upload_image(image_data, alt_text=""):
     upload_headers = {**auth}
     upload_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     upload_headers["Content-Type"]        = "image/png"
-    resp = requests.post(f"{WP_URL}/wp-json/wp/v2/media", headers=upload_headers, data=image_data, timeout=60)
+    resp = wp_request("POST", f"{WP_URL}/wp-json/wp/v2/media", headers=upload_headers, data=image_data, timeout=60)
 
     if resp.status_code != 201:
         print(f"   Upload failed ({resp.status_code}): {resp.text}")
@@ -343,13 +367,17 @@ def upload_image(image_data, alt_text=""):
 
     if alt_text:
         time.sleep(2)
-        patch = requests.post(
-            f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
-            headers={**auth, "Content-Type": "application/json"},
-            json={"alt_text": alt_text, "caption": alt_text},
-            timeout=15,
-        )
-        print(f"   Alt text set: '{alt_text}'" if patch.status_code == 200 else "   Alt text failed")
+        try:
+            patch = wp_request(
+                "POST",
+                f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+                headers={**auth, "Content-Type": "application/json"},
+                json={"alt_text": alt_text, "caption": alt_text},
+                timeout=15,
+            )
+            print(f"   Alt text set: '{alt_text}'" if patch.status_code == 200 else "   Alt text failed")
+        except Exception as exc:
+            print(f"   Alt text failed ({exc})  - non-fatal, continuing")
 
     return media_id, media_url
 
@@ -373,12 +401,13 @@ def inject_image_into_content(content, media_url, alt_text):
 # -- Get or create WordPress category ----------------------------------------
 def get_or_create_wp_category(name):
     auth = get_wp_auth()
-    resp = requests.get(f"{WP_URL}/wp-json/wp/v2/categories?search={name}&per_page=10", headers=auth, timeout=15)
+    resp = wp_request("GET", f"{WP_URL}/wp-json/wp/v2/categories?search={name}&per_page=10", headers=auth, timeout=15)
     if resp.status_code == 200:
         for cat in resp.json():
             if cat["name"].lower() == name.lower():
                 return cat["id"]
-    create = requests.post(
+    create = wp_request(
+        "POST",
         f"{WP_URL}/wp-json/wp/v2/categories",
         headers={**auth, "Content-Type": "application/json"},
         json={"name": name}, timeout=15,
@@ -435,7 +464,7 @@ def publish_to_wordpress(title, content, primary_keyword, media_id, media_url, c
     time.sleep(60)
 
     for attempt in range(4):
-        resp = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", headers=auth, json=post_payload, timeout=30)
+        resp = wp_request("POST", f"{WP_URL}/wp-json/wp/v2/posts", headers=auth, json=post_payload, timeout=30)
         if resp.status_code == 201:
             break
         if resp.status_code == 429:
@@ -456,12 +485,18 @@ def publish_to_wordpress(title, content, primary_keyword, media_id, media_url, c
             wait_time = 10 * (img_attempt + 1)
             print(f"   Waiting {wait_time}s before attaching featured image...")
             time.sleep(wait_time)
-            upd = requests.post(
-                f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
-                headers=auth,
-                json={"featured_media": media_id},
-                timeout=30,
-            )
+            try:
+                upd = wp_request(
+                    "POST",
+                    f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
+                    headers=auth,
+                    json={"featured_media": media_id},
+                    timeout=30,
+                )
+            except Exception as exc:
+                # Post is already published, so a network blip here is non-fatal.
+                print(f"   Image attach network error ({exc})  - post is live, skipping")
+                break
             if upd.status_code == 200:
                 print("   Featured image attached")
                 break
