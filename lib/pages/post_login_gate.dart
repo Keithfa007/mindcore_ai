@@ -158,6 +158,8 @@ class _UnlockScreen extends StatefulWidget {
 class _UnlockScreenState extends State<_UnlockScreen> {
   final _sub = SubscriptionService();
   bool _loading = false;
+  bool _ready = false;
+  bool _trialAvailable = false;
 
   @override
   void initState() {
@@ -173,6 +175,11 @@ class _UnlockScreenState extends State<_UnlockScreen> {
     } catch (e) {
       debugPrint('Unlock: IAP init failed — $e');
     }
+    if (!mounted) return;
+    setState(() {
+      _ready = true;
+      _trialAvailable = _sub.hasTrialOffer;
+    });
   }
 
   @override
@@ -198,6 +205,20 @@ class _UnlockScreenState extends State<_UnlockScreen> {
   }
 
   Future<void> _startTrial() async {
+    // Only ever launch the REAL free-trial offer here. If it did not resolve
+    // (account not eligible, offer inactive or still propagating), do NOT
+    // silently buy the full-price base plan — send them to the plan chooser.
+    final offer = _sub.premiumMonthlyOffer;
+    if (offer == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'The free trial is not available on this account right now. Here are the plans.'),
+      ));
+      await _seeAllPlans();
+      return;
+    }
+
     // The account step happens HERE — link the anonymous session to a real
     // account before we charge, so the trial and data are recoverable.
     if (FirebaseAuthService.instance.isAnonymous) {
@@ -205,19 +226,9 @@ class _UnlockScreenState extends State<_UnlockScreen> {
       if (ok != true || !mounted) return;
     }
 
-    final product = _sub.premiumTrialPurchase;
-    if (product == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('The trial is not available right now. Please try again.'),
-        ));
-      }
-      return;
-    }
-
     setState(() => _loading = true);
     try {
-      await _sub.buy(product);
+      await _sub.buy(offer);
     } catch (e) {
       debugPrint('Unlock: trial buy failed — $e');
       if (mounted) {
@@ -272,6 +283,16 @@ class _UnlockScreenState extends State<_UnlockScreen> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
+    const trialCopy =
+        'Start your 7-day free trial to unlock AI chat, voice, guided '
+        'sessions and more. A payment method is required, and you can '
+        'cancel anytime before day 7 so you are not charged.';
+    const subscribeCopy =
+        'Subscribe to unlock AI chat, voice, guided sessions and more. '
+        'Cancel anytime.';
+    // Until the store is ready we optimistically show trial wording.
+    final showTrial = !_ready || _trialAvailable;
+
     return Scaffold(
       backgroundColor: cs.surface,
       body: SafeArea(
@@ -290,9 +311,7 @@ class _UnlockScreenState extends State<_UnlockScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Start your 7-day free trial to unlock AI chat, voice, guided '
-                'sessions and more. A payment method is required, and you can '
-                'cancel anytime before day 7 so you are not charged.',
+                showTrial ? trialCopy : subscribeCopy,
                 style: tt.bodyLarge?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.6),
                 ),
@@ -300,30 +319,37 @@ class _UnlockScreenState extends State<_UnlockScreen> {
               ),
               const SizedBox(height: 40),
               FilledButton(
-                onPressed: _loading ? null : _startTrial,
+                onPressed: (!_ready || _loading)
+                    ? null
+                    : (_trialAvailable ? _startTrial : _seeAllPlans),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                child: _loading
+                child: (!_ready || _loading)
                     ? const SizedBox(
                         width: 22,
                         height: 22,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : Text('Start 7-day free trial',
+                    : Text(
+                        _trialAvailable
+                            ? 'Start 7-day free trial'
+                            : 'See all plans',
                         style: tt.titleMedium?.copyWith(color: Colors.white)),
               ),
-              const SizedBox(height: 6),
-              TextButton(
-                onPressed: _loading ? null : _seeAllPlans,
-                child: Text(
-                  'See all plans',
-                  style: tt.bodyMedium?.copyWith(
-                      color: cs.primary, fontWeight: FontWeight.w700),
+              if (_ready && _trialAvailable) ...[
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed: _loading ? null : _seeAllPlans,
+                  child: Text(
+                    'See all plans',
+                    style: tt.bodyMedium?.copyWith(
+                        color: cs.primary, fontWeight: FontWeight.w700),
+                  ),
                 ),
-              ),
+              ],
               TextButton(
                 onPressed: _loading ? null : _restore,
                 child: Text(
