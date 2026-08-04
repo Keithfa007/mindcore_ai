@@ -11,7 +11,13 @@ import urllib3.util.connection as _urllib3_conn
 # Pin urllib3 to AF_INET so it uses the routable IPv4 address.
 _urllib3_conn.allowed_gai_family = lambda: socket.AF_INET
 from anthropic import Anthropic
-from scripts.fal_image import generate_fal_image
+try:
+    # Works when run as a module (python -m scripts.relax_audio_blog).
+    from scripts.fal_image import generate_fal_image
+except ModuleNotFoundError:
+    # Works when run as a script (python scripts/relax_audio_blog.py), where
+    # the scripts/ folder itself is on sys.path rather than the repo root.
+    from fal_image import generate_fal_image
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
