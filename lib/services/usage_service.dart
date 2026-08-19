@@ -90,6 +90,11 @@ class UsageService {
   static const _kTrialDailyMsgs  = 'trial_daily_msgs_';
   static const _kTrialDailyVoice = 'trial_daily_voice_';
 
+  // Free tier: how many real messages a non-subscribed user gets per day, with
+  // no account and no card. Kept small to protect API costs and preserve the
+  // upgrade incentive, while still giving a genuine taste before the paywall.
+  static const int freeDailyMessages = 5;
+
   bool _initialised = false;
   int  _voiceBuffer = 0;
 
@@ -143,18 +148,23 @@ class UsageService {
   // ── Message gating ───────────────────────────────────────────────────
 
   Future<bool> tryConsumeMessage(BuildContext context) async {
-    // Chat requires an active trial or a paid subscription (same rule as voice).
-    // Anyone whose trial has ended and who is not subscribed is blocked here.
+    // ── Free tier ─────────────────────────────────────────────────────────
+    // A non-subscribed user gets a few real messages per day with no account
+    // and no card. This is the taste that has to land before we ever ask for
+    // payment. When they run out, we invite them to start the 7-day trial.
     if (!PremiumService.isPremium.value) {
-      final hasAccess = await PremiumService.hasAccess();
-      if (!hasAccess) {
+      final freeUsedToday = await _trialDailyMsgsUsed();
+      if (freeUsedToday >= freeDailyMessages) {
         await _showLimitDialog(context,
-          title: 'Your free trial has ended',
-          body: 'You had 3 days of full access. Subscribe to keep chatting, '
-              'and your conversations and progress stay saved.',
+          title: 'That\'s your free messages for today',
+          body: 'You get $freeDailyMessages free messages a day. Start your '
+              '7-day free trial to chat without limits, plus voice and the '
+              'wellness tools, or come back tomorrow for more.',
         );
         return false;
       }
+      await _incrementTrialDailyMsgs();
+      return true;
     }
 
     // Trial users: enforce daily limits
@@ -195,6 +205,17 @@ class UsageService {
   // ── Voice gating ─────────────────────────────────────────────────────
 
   Future<bool> tryConsumeVoice(BuildContext context) async {
+    // Voice is a paid feature. Free-tier (non-subscribed) users are invited to
+    // start the trial rather than being told a trial "ended" they never had.
+    if (!PremiumService.isPremium.value) {
+      await _showLimitDialog(context,
+        title: 'Voice chat is a Premium feature',
+        body: 'Start your 7-day free trial to talk hands-free with your '
+            'companion, on top of unlimited messages and the wellness tools.',
+      );
+      return false;
+    }
+
     final snap = snapshot.value;
 
     if (!snap.tier.hasVoice) {
