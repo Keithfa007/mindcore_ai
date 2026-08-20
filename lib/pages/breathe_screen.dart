@@ -12,7 +12,6 @@ import 'package:mindcore_ai/widgets/app_gradients.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
 import 'package:mindcore_ai/services/live_voice_preferences.dart';
 import 'package:mindcore_ai/services/ai_breathing_coach_service.dart';
-import 'package:mindcore_ai/services/premium_service.dart';
 
 enum _Phase { inhale, hold1, exhale, hold2 }
 enum _Preset { box, equal, fourSevenEight, custom }
@@ -119,19 +118,7 @@ class _BreatheScreenState extends State<BreatheScreen>
       ..addListener(_onTick);
     _loadSettings();
     _loadCoachPref();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _checkPremiumAccess());
-  }
-
-  Future<void> _checkPremiumAccess() async {
-    if (!mounted) return;
-    if (PremiumService.isPremium.value) return;
-    await Navigator.of(context).pushNamed('/paywall');
-    if (!mounted) return;
-    if (!PremiumService.isPremium.value) {
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil('/home', (route) => false);
-    }
+    // Breathing is a free feature, no premium gate.
   }
 
   Future<void> _loadSettings() async {

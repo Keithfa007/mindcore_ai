@@ -7,7 +7,6 @@ import 'package:mindcore_ai/pages/helpers/mood_picker_sheet.dart';
 import 'package:mindcore_ai/services/reset_metrics_service.dart';
 import 'package:mindcore_ai/services/mood_log_service.dart';
 import 'package:mindcore_ai/services/openai_tts_service.dart';
-import 'package:mindcore_ai/services/premium_service.dart';
 import 'package:mindcore_ai/pages/helpers/route_observer.dart';
 import 'package:mindcore_ai/widgets/tts_replay_button.dart';
 
@@ -32,16 +31,7 @@ class _ResetScreenState extends State<ResetScreen>
   @override
   void initState() {
     super.initState();
-    _checkPremiumAccess();
-  }
-
-  Future<void> _checkPremiumAccess() async {
-    await Future.delayed(const Duration(milliseconds: 250));
-    if (!mounted) return;
-    if (!PremiumService.isPremium.value) {
-      await Navigator.of(context).pushNamed('/paywall');
-      if (mounted) Navigator.of(context).pop();
-    }
+    // Breathing / reset is a free feature — no premium gate.
   }
 
   Future<void> _pickMood() async {

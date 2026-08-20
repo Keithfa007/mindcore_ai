@@ -9,7 +9,6 @@ import '../widgets/page_scaffold.dart';
 import 'package:mindcore_ai/widgets/animated_backdrop.dart';
 import 'package:mindcore_ai/widgets/glass_card.dart';
 import 'package:mindcore_ai/widgets/section_hero_card.dart';
-import 'package:mindcore_ai/services/premium_service.dart';
 
 const kCardShadow = Color(0x14000000);
 
@@ -118,19 +117,7 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     super.initState();
     _monthCursor = DateTime(DateTime.now().year, DateTime.now().month, 1);
     _loadMoodFromStore();
-    // ✅ Wait for first frame then check premium
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPremiumAccess());
-  }
-
-  // ✅ Push paywall, then after it pops, if still not premium go home.
-  Future<void> _checkPremiumAccess() async {
-    if (!mounted) return;
-    if (PremiumService.isPremium.value) return;
-    await Navigator.of(context).pushNamed('/paywall');
-    if (!mounted) return;
-    if (!PremiumService.isPremium.value) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-    }
+    // Mood tracking is a free feature, no premium gate.
   }
 
   Future<void> _loadMoodFromStore() async {
