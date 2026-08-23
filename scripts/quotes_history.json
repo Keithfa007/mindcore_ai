@@ -1,11 +1,5 @@
 [
   {
-    "quote": "The cravings don't disappear. You just get faster at remembering why you stopped.",
-    "category": "recovery_wisdom",
-    "date": "2026-07-04",
-    "run": 23
-  },
-  {
     "quote": "Some days you hold it together so well you forget you're still broken.",
     "category": "the_unsaid",
     "date": "2026-07-05",
@@ -298,5 +292,11 @@
     "category": "the_unsaid",
     "date": "2026-08-22",
     "run": 73
+  },
+  {
+    "quote": "Changing your mind about staying is not dramatic. It's the first honest thing you've done in weeks.",
+    "category": "permission",
+    "date": "2026-08-23",
+    "run": 74
   }
 ]
