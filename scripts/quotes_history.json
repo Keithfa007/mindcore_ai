@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Some days you hold it together so well you forget you're still broken.",
-    "category": "the_unsaid",
-    "date": "2026-07-05",
-    "run": 24
-  },
-  {
     "quote": "Falling apart in private still counts as falling apart. You're allowed to say so.",
     "category": "permission",
     "date": "2026-07-06",
@@ -298,5 +292,11 @@
     "category": "permission",
     "date": "2026-08-23",
     "run": 74
+  },
+  {
+    "quote": "Calling yourself too much just means you felt everything they were too numb to admit was real.",
+    "category": "hard_reframe",
+    "date": "2026-08-24",
+    "run": 75
   }
 ]
