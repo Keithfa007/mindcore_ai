@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Falling apart in private still counts as falling apart. You're allowed to say so.",
-    "category": "permission",
-    "date": "2026-07-06",
-    "run": 25
-  },
-  {
     "quote": "Being too much was never the problem. You were just always in the wrong rooms.",
     "category": "hard_reframe",
     "date": "2026-07-06",
@@ -298,5 +292,11 @@
     "category": "hard_reframe",
     "date": "2026-08-24",
     "run": 75
+  },
+  {
+    "quote": "Realizing you've been grieving yourself while still being alive is the loneliest kind of knowing.",
+    "category": "midnight_honesty",
+    "date": "2026-08-25",
+    "run": 76
   }
 ]
