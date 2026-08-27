@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Somewhere between exhausted and asleep, you admitted you haven't been fine for a while.",
-    "category": "midnight_honesty",
-    "date": "2026-07-07",
-    "run": 27
-  },
-  {
     "quote": "Tired isn't even the right word anymore. Tired left months ago.",
     "category": "3am_truth",
     "date": "2026-07-08",
@@ -298,5 +292,11 @@
     "category": "3am_truth",
     "date": "2026-08-26",
     "run": 77
+  },
+  {
+    "quote": "Strength isn't the part where you held it together. It's the part where you finally didn't.",
+    "category": "silent_strength",
+    "date": "2026-08-27",
+    "run": 78
   }
 ]
