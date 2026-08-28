@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Tired isn't even the right word anymore. Tired left months ago.",
-    "category": "3am_truth",
-    "date": "2026-07-08",
-    "run": 28
-  },
-  {
     "quote": "Asking for help is the part they never tell you is brave.",
     "category": "silent_strength",
     "date": "2026-07-09",
@@ -298,5 +292,11 @@
     "category": "silent_strength",
     "date": "2026-08-27",
     "run": 78
+  },
+  {
+    "quote": "Nobody tells you the cravings stop being about the substance long before they stop showing up.",
+    "category": "recovery_wisdom",
+    "date": "2026-08-28",
+    "run": 79
   }
 ]
