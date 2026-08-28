@@ -1,0 +1,36 @@
+name: MindCore AI -- Weekly Life Story (draft)
+
+on:
+  schedule:
+    - cron: '0 10 * * 0'   # Sundays 10:00 UTC
+  workflow_dispatch:         # lets you run it on demand to test
+
+permissions:
+  contents: write
+
+jobs:
+  life-story:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic requests fal-client
+
+      - name: Run life story pipeline
+        env:
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          FAL_KEY:            ${{ secrets.FAL_KEY }}
+          WP_USERNAME:        ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD:    ${{ secrets.WP_APP_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          STORY_BANK_JSON:    ${{ secrets.STORY_BANK_JSON }}
+          STORY_CATEGORY:     'Recovery & Sobriety'
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY:  ${{ github.repository }}
+          PYTHONPATH:         ${{ github.workspace }}
+        run: python scripts/life_story_pipeline.py
