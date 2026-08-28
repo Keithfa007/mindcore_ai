@@ -482,20 +482,77 @@ def get_search_console_stats(creds):
     try:
         from googleapiclient.discovery import build
         service = build("searchconsole", "v1", credentials=creds)
-        end_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-        start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
-        response = service.searchanalytics().query(
-            siteUrl=SITE_URL,
-            body={"startDate": start_date, "endDate": end_date, "dimensions": []},
-        ).execute()
-        if response.get("rows"):
-            row = response["rows"][0]
-            return {
-                "clicks": int(row.get("clicks", 0)),
-                "impressions": int(row.get("impressions", 0)),
-                "ctr": round(row.get("ctr", 0) * 100, 1),
-                "position": round(row.get("position", 0), 1),
-            }
+
+        def _totals(start, end):
+            resp = service.searchanalytics().query(
+                siteUrl=SITE_URL,
+                body={"startDate": start, "endDate": end, "dimensions": []},
+            ).execute()
+            if resp.get("rows"):
+                r = resp["rows"][0]
+                return {
+                    "clicks": int(r.get("clicks", 0)),
+                    "impressions": int(r.get("impressions", 0)),
+                    "ctr": round(r.get("ctr", 0) * 100, 1),
+                    "position": round(r.get("position", 0), 1),
+                }
+            return {"clicks": 0, "impressions": 0, "ctr": 0.0, "position": 0.0}
+
+        today = datetime.utcnow()
+        cur_start = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+        cur_end = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        prev_start = (today - timedelta(days=14)).strftime("%Y-%m-%d")
+        prev_end = (today - timedelta(days=8)).strftime("%Y-%m-%d")
+
+        cur = _totals(cur_start, cur_end)
+        prev = _totals(prev_start, prev_end)
+
+        # Branded vs non-branded clicks over the last 7 days. Non-brand clicks
+        # are the only real "new discovery" signal; brand clicks are people who
+        # already know MindCore. This matters far more than average position,
+        # which is pure noise at low impression volume.
+        brand_clicks = 0
+        nonbrand_clicks = 0
+        top_nonbrand = []
+        try:
+            qresp = service.searchanalytics().query(
+                siteUrl=SITE_URL,
+                body={
+                    "startDate": cur_start,
+                    "endDate": cur_end,
+                    "dimensions": ["query"],
+                    "rowLimit": 250,
+                },
+            ).execute()
+            for r in qresp.get("rows", []):
+                q = (r.get("keys", [""])[0] or "").lower()
+                clicks = int(r.get("clicks", 0))
+                is_brand = ("mindcore" in q) or ("mind core" in q) or ("mind-core" in q)
+                if is_brand:
+                    brand_clicks += clicks
+                elif clicks > 0:
+                    nonbrand_clicks += clicks
+                    top_nonbrand.append((r.get("keys", [""])[0], clicks))
+            top_nonbrand.sort(key=lambda x: x[1], reverse=True)
+        except Exception as e:
+            print(f"   Search Console query breakdown error: {e}")
+
+        def _delta(cur_v, prev_v):
+            if prev_v == 0:
+                return None
+            return round((cur_v - prev_v) / prev_v * 100)
+
+        return {
+            "clicks": cur["clicks"],
+            "impressions": cur["impressions"],
+            "ctr": cur["ctr"],
+            "position": cur["position"],
+            "clicks_wow": _delta(cur["clicks"], prev["clicks"]),
+            "impressions_wow": _delta(cur["impressions"], prev["impressions"]),
+            "brand_clicks": brand_clicks,
+            "nonbrand_clicks": nonbrand_clicks,
+            "top_nonbrand": top_nonbrand[:3],
+        }
     except Exception as e:
         print(f"   Search Console error: {e}")
     return None
@@ -615,9 +672,24 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
         lines.append("")
 
     if search_console:
+        def _wow(pct):
+            if pct is None:
+                return ""
+            arrow = "▲" if pct > 0 else ("▼" if pct < 0 else "▬")
+            return f" ({arrow}{abs(pct)}% WoW)"
         lines.append("\U0001f50d *Google Search (7 days):*")
-        lines.append(f"  Impressions: {search_console['impressions']} | Clicks: {search_console['clicks']}")
-        lines.append(f"  CTR: {search_console['ctr']}% | Avg Position: {search_console['position']}")
+        lines.append(
+            f"  Clicks: {search_console['clicks']}{_wow(search_console.get('clicks_wow'))}"
+            f" | Impressions: {format_number(search_console['impressions'])}{_wow(search_console.get('impressions_wow'))}"
+        )
+        lines.append(
+            f"  Non-brand clicks: {search_console.get('nonbrand_clicks', 0)} (real discovery)"
+            f" | Brand: {search_console.get('brand_clicks', 0)}"
+        )
+        if search_console.get("top_nonbrand"):
+            top = ", ".join(f"{q} ({c})" for q, c in search_console["top_nonbrand"])
+            lines.append(f"  Top non-brand: {top}")
+        lines.append(f"  CTR: {search_console['ctr']}% | Avg pos: {search_console['position']} (noisy, ignore day-to-day)")
         lines.append("")
 
     if failures:
