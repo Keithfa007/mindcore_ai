@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Asking for help is the part they never tell you is brave.",
-    "category": "silent_strength",
-    "date": "2026-07-09",
-    "run": 29
-  },
-  {
     "quote": "Nobody tells you that getting better feels like grief too.",
     "category": "recovery_wisdom",
     "date": "2026-07-10",
@@ -298,5 +292,11 @@
     "category": "recovery_wisdom",
     "date": "2026-08-28",
     "run": 79
+  },
+  {
+    "quote": "Practicing what you'll say if someone finally asks how you're really doing is its own kind of loneliness.",
+    "category": "the_unsaid",
+    "date": "2026-08-29",
+    "run": 80
   }
 ]
