@@ -61,6 +61,9 @@ flutter {
 }
 
 dependencies {
-    implementation 'com.android.billingclient:billing-ktx:7.1.1'
+    // Google Play Billing is provided transitively by the in_app_purchase_android
+    // plugin (Billing Library 8 via in_app_purchase 3.3.0). Do not pin billing-ktx
+    // here again - an explicit override can force an older billing version and
+    // reintroduce the deprecation warning.
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
 }
