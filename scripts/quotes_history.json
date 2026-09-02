@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Not being able to explain the pain doesn't mean the pain isn't real. It means it's older than your words for it.",
-    "category": "hard_reframe",
-    "date": "2026-07-13",
-    "run": 33
-  },
-  {
     "quote": "Staying busy was never a coping mechanism. It was just a way to avoid the quiet long enough to fall asleep.",
     "category": "midnight_honesty",
     "date": "2026-07-14",
@@ -298,5 +292,11 @@
     "category": "midnight_honesty",
     "date": "2026-09-01",
     "run": 83
+  },
+  {
+    "quote": "Somewhere tonight you're being the strong one for people who have no idea what that's costing you.",
+    "category": "3am_truth",
+    "date": "2026-09-02",
+    "run": 84
   }
 ]
