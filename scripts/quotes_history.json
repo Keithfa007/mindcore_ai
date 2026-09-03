@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Staying busy was never a coping mechanism. It was just a way to avoid the quiet long enough to fall asleep.",
-    "category": "midnight_honesty",
-    "date": "2026-07-14",
-    "run": 34
-  },
-  {
     "quote": "Some nights the loneliness isn't about being alone. It's about being surrounded and still invisible.",
     "category": "3am_truth",
     "date": "2026-07-15",
@@ -298,5 +292,11 @@
     "category": "3am_truth",
     "date": "2026-09-02",
     "run": 84
+  },
+  {
+    "quote": "Asking for help with shaking hands is still asking for help.",
+    "category": "silent_strength",
+    "date": "2026-09-03",
+    "run": 85
   }
 ]
