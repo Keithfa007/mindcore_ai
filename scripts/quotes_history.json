@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Some nights the loneliness isn't about being alone. It's about being surrounded and still invisible.",
-    "category": "3am_truth",
-    "date": "2026-07-15",
-    "run": 35
-  },
-  {
     "quote": "Letting someone in after keeping everyone out is one of the bravest things a body can do.",
     "category": "silent_strength",
     "date": "2026-07-16",
@@ -298,5 +292,11 @@
     "category": "silent_strength",
     "date": "2026-09-03",
     "run": 85
+  },
+  {
+    "quote": "Getting clean taught me what I wanted. Getting better taught me I had no idea how to want it without guilt.",
+    "category": "recovery_wisdom",
+    "date": "2026-09-04",
+    "run": 86
   }
 ]
