@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Letting someone in after keeping everyone out is one of the bravest things a body can do.",
-    "category": "silent_strength",
-    "date": "2026-07-16",
-    "run": 36
-  },
-  {
     "quote": "Nobody warns you that the version of yourself you're saving is someone you haven't met yet.",
     "category": "recovery_wisdom",
     "date": "2026-07-17",
@@ -298,5 +292,11 @@
     "category": "recovery_wisdom",
     "date": "2026-09-04",
     "run": 86
+  },
+  {
+    "quote": "Telling someone you're fine and meaning it for the first time is its own kind of grief.",
+    "category": "the_unsaid",
+    "date": "2026-09-05",
+    "run": 87
   }
 ]
