@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Nobody warns you that the version of yourself you're saving is someone you haven't met yet.",
-    "category": "recovery_wisdom",
-    "date": "2026-07-17",
-    "run": 37
-  },
-  {
     "quote": "The version of you that keeps everyone else calm is still allowed to fall apart.",
     "category": "the_unsaid",
     "date": "2026-07-18",
@@ -298,5 +292,11 @@
     "category": "the_unsaid",
     "date": "2026-09-05",
     "run": 87
+  },
+  {
+    "quote": "Putting yourself last so long you forgot that was even a choice.",
+    "category": "permission",
+    "date": "2026-09-06",
+    "run": 88
   }
 ]
