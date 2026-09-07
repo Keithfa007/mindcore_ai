@@ -1,11 +1,5 @@
 [
   {
-    "quote": "The version of you that keeps everyone else calm is still allowed to fall apart.",
-    "category": "the_unsaid",
-    "date": "2026-07-18",
-    "run": 38
-  },
-  {
     "quote": "Grief doesn't need a reason you can defend. Losing yourself counts.",
     "category": "permission",
     "date": "2026-07-19",
@@ -298,5 +292,11 @@
     "category": "permission",
     "date": "2026-09-06",
     "run": 88
+  },
+  {
+    "quote": "Being too much was never the problem. You were just in the wrong rooms.",
+    "category": "hard_reframe",
+    "date": "2026-09-07",
+    "run": 89
   }
 ]
