@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Grief doesn't need a reason you can defend. Losing yourself counts.",
-    "category": "permission",
-    "date": "2026-07-19",
-    "run": 39
-  },
-  {
     "quote": "Falling apart slowly isn't weakness. It's what happens when you've been strong for too long with no one noticing.",
     "category": "hard_reframe",
     "date": "2026-07-20",
@@ -298,5 +292,11 @@
     "category": "hard_reframe",
     "date": "2026-09-07",
     "run": 89
+  },
+  {
+    "quote": "Somewhere tonight you're being kind to everyone except the one person who actually knows how bad it is.",
+    "category": "midnight_honesty",
+    "date": "2026-09-08",
+    "run": 90
   }
 ]
