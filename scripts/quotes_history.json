@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Falling apart slowly isn't weakness. It's what happens when you've been strong for too long with no one noticing.",
-    "category": "hard_reframe",
-    "date": "2026-07-20",
-    "run": 40
-  },
-  {
     "quote": "Admitting you've been pretending to be okay is somehow harder than just continuing to pretend.",
     "category": "midnight_honesty",
     "date": "2026-07-21",
@@ -298,5 +292,11 @@
     "category": "midnight_honesty",
     "date": "2026-09-08",
     "run": 90
+  },
+  {
+    "quote": "Telling yourself it'll be better in the morning has stopped working, but you say it anyway.",
+    "category": "3am_truth",
+    "date": "2026-09-09",
+    "run": 91
   }
 ]
