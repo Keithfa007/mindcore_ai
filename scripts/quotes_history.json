@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Admitting you've been pretending to be okay is somehow harder than just continuing to pretend.",
-    "category": "midnight_honesty",
-    "date": "2026-07-21",
-    "run": 41
-  },
-  {
     "quote": "Pretending to sleep so no one asks if you're okay is its own kind of loneliness.",
     "category": "3am_truth",
     "date": "2026-07-22",
@@ -298,5 +292,11 @@
     "category": "3am_truth",
     "date": "2026-09-09",
     "run": 91
+  },
+  {
+    "quote": "Asking for help is not the moment you gave up. It's the moment you stopped lying about how close you were.",
+    "category": "silent_strength",
+    "date": "2026-09-10",
+    "run": 92
   }
 ]
