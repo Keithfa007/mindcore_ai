@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Pretending to sleep so no one asks if you're okay is its own kind of loneliness.",
-    "category": "3am_truth",
-    "date": "2026-07-22",
-    "run": 42
-  },
-  {
     "quote": "Letting someone carry part of it with you is not giving up. It's the hardest thing you'll do all week.",
     "category": "silent_strength",
     "date": "2026-07-23",
@@ -298,5 +292,11 @@
     "category": "silent_strength",
     "date": "2026-09-10",
     "run": 92
+  },
+  {
+    "quote": "The day I stopped waiting to feel ready was the day I realized ready was never coming. I went anyway.",
+    "category": "recovery_wisdom",
+    "date": "2026-09-11",
+    "run": 93
   }
 ]
