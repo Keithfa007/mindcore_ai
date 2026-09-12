@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Letting someone carry part of it with you is not giving up. It's the hardest thing you'll do all week.",
-    "category": "silent_strength",
-    "date": "2026-07-23",
-    "run": 43
-  },
-  {
     "quote": "Two years out and I still check the exits first. Old habits don't die. They just stop running the show.",
     "category": "recovery_wisdom",
     "date": "2026-07-24",
@@ -298,5 +292,11 @@
     "category": "recovery_wisdom",
     "date": "2026-09-11",
     "run": 93
+  },
+  {
+    "quote": "The scariest part of getting better is running out of reasons it wasn't your fault.",
+    "category": "the_unsaid",
+    "date": "2026-09-12",
+    "run": 94
   }
 ]
