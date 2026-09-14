@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Healing looks a lot like sitting in a parking lot before you're ready to go inside.",
-    "category": "the_unsaid",
-    "date": "2026-07-25",
-    "run": 45
-  },
-  {
     "quote": "Choosing yourself for once is not something you need to apologize for.",
     "category": "permission",
     "date": "2026-07-26",
@@ -298,5 +292,11 @@
     "category": "permission",
     "date": "2026-09-13",
     "run": 95
+  },
+  {
+    "quote": "Falling apart in front of someone and having them stay is not a burden story. It's proof you were worth staying for.",
+    "category": "hard_reframe",
+    "date": "2026-09-14",
+    "run": 96
   }
 ]
