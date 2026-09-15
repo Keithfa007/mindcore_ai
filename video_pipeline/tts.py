@@ -7,8 +7,8 @@ Replaces Fish Audio for voiceovers. Fish Audio stays for in-app voice only.
 v2.0: Emotional voice settings (stability 0.30, style 0.60, speaker_boost).
 
 Voices:
-  Male:   jfIS2w2yJi0grJZPyEsk
-  Female: uIZsnBL0YK1S5j69bAih
+  Male:   tyTP8F2QWIFGeIBiYTic
+  Female: mFgXOmlOfXfr6suoQkRH
 """
 
 import os
@@ -18,8 +18,8 @@ import requests
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 
-MALE_VOICE_ID   = "jfIS2w2yJi0grJZPyEsk"
-FEMALE_VOICE_ID = "uIZsnBL0YK1S5j69bAih"
+MALE_VOICE_ID   = "tyTP8F2QWIFGeIBiYTic"
+FEMALE_VOICE_ID = "mFgXOmlOfXfr6suoQkRH"
 
 
 def generate_elevenlabs_tts(text, output_path, voice_id, model_id="eleven_multilingual_v2"):
