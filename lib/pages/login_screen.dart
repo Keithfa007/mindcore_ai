@@ -1,6 +1,7 @@
 // lib/pages/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'email_auth_screen.dart';
 import '../services/firebase_auth_service.dart';
@@ -106,8 +107,12 @@ class _LoginScreenState extends State<LoginScreen>
       await JournalService.syncFromFirestore();
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/home');
+    } on FirebaseAuthException catch (e) {
+      // User backed out of the Google chooser — not an error, stay quiet.
+      if (e.code == 'google-sign-in-cancelled') return;
+      setState(() => _error = e.message ?? 'Could not sign you in. Please try again.');
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = 'Something went wrong. Please try again.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -243,7 +248,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 // Google button
                                 _AuthButton(
                                   label: _busy
-                                      ? 'Signing in\u2026'
+                                      ? 'Signing in…'
                                       : 'Continue with Google',
                                   icon: Icons.login_rounded,
                                   gradient: const LinearGradient(
