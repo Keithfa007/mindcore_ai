@@ -172,6 +172,17 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     if (newTitle == null || newTitle.isEmpty) return;
+    // Prevent duplicate chat names (compare case-insensitively, ignore self).
+    final clash = _convs.any((c) =>
+        c.id != _currentConvId &&
+        c.title.trim().toLowerCase() == newTitle.toLowerCase());
+    if (clash) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('A chat with that name already exists. Pick another.')),
+      );
+      return;
+    }
     await ChatPersistence.renameConversation(id: _currentConvId, title: newTitle);
     _convs = await ChatPersistence.listConversations();
     if (!mounted) return;
@@ -202,6 +213,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _clearHistory() async {
     if (_currentConvId.isEmpty) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear messages?'),
+        content: const Text('This removes all messages in this chat. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
     await ChatPersistence.clear(_currentConvId);
     unawaited(SharedChatSession.instance.switchConversation(_currentConvId));
     if (!mounted) return;
@@ -228,7 +251,7 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (_) => const MoodPickerSheet(),
     );
     if (res == null) return null;
-    if (res is Map) return {'emoji': (res['emoji'] ?? '\ud83d\ude42').toString(), 'label': (res['label'] ?? 'Neutral').toString()};
+    if (res is Map) return {'emoji': (res['emoji'] ?? '🙂').toString(), 'label': (res['label'] ?? 'Neutral').toString()};
     return null;
   }
 
@@ -471,7 +494,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _messages.add(ChatMessage(
             id: _id.v4(), role: 'assistant',
-            text: '\u26a0\ufe0f I couldn\'t reach the AI right now.\nPlease check your internet connection.\n\nError: $e',
+            text: '⚠️ I couldn\'t reach the AI right now.\nPlease check your internet connection.\n\nError: $e',
             timestamp: DateTime.now(), supportModeLabel: 'Connection issue',
           ));
         });
@@ -527,7 +550,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (mounted && _currentConvId == convIdAtSend) {
         final ci = _messages.indexWhere((m) => m.id == messageId);
-        if (ci != -1) { _messages[ci] = _messages[ci].copyWith(text: '${_messages[ci].text}\n\n\u26a0\ufe0f Retry failed: $e', supportModeLabel: 'Retry issue'); setState(() {}); _persist(convId: convIdAtSend); }
+        if (ci != -1) { _messages[ci] = _messages[ci].copyWith(text: '${_messages[ci].text}\n\n⚠️ Retry failed: $e', supportModeLabel: 'Retry issue'); setState(() {}); _persist(convId: convIdAtSend); }
       }
     } finally {
       if (mounted && _currentConvId == convIdAtSend) setState(() { _isSending = false; _isTyping = false; });
@@ -543,7 +566,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return DateFormat('yyyy-MM-dd').format(dt);
   }
 
-  String _formatMsgTimestamp(DateTime dt) => DateFormat('EEE, MMM d \u2022 HH:mm').format(dt);
+  String _formatMsgTimestamp(DateTime dt) => DateFormat('EEE, MMM d • HH:mm').format(dt);
 
   String _stripLeadingEmoji(String s) {
     final regex = RegExp(r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F1E6}-\u{1F1FF}]+[\s\-:]*', unicode: true);
@@ -611,6 +634,13 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                Text('You',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.70),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 10,
+                        letterSpacing: 0.3)),
+                const SizedBox(height: 2),
                 Text(m.text,
                     style: TextStyle(
                         color: theme.colorScheme.onPrimaryContainer,
@@ -701,7 +731,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildTypingIndicator() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 48, 4),
-      child: Text('\u2026', style: TextStyle(
+      child: Text('…', style: TextStyle(
           color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.40),
           fontSize: 22)),
     );
@@ -739,7 +769,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final decoratedTitle = _currentMoodEmoji == null ? baseTitle : '$baseTitle ${_currentMoodEmoji!}';
     final bottomInset    = MediaQuery.of(context).viewInsets.bottom;
     final safeBottom     = MediaQuery.of(context).viewPadding.bottom;
-    final moodButtonEmoji = _currentMoodEmoji ?? '\ud83d\ude42';
+    final moodButtonEmoji = _currentMoodEmoji ?? '🙂';
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
