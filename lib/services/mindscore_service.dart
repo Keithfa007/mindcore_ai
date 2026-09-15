@@ -134,38 +134,41 @@ class MindScoreService {
     final scores = <int>[];
     final now = DateTime.now();
 
+    // Fetch each data source ONCE up front. The old version re-fetched moods
+    // and habit history inside the 7-day loop (up to 14 round trips), which is
+    // what made the MindScore screen hang on a slow connection (bug #3).
+    List<dynamic> allMoods = [];
+    try {
+      allMoods = await MoodRepo.instance.fetchAll();
+    } catch (_) {}
+    List<dynamic> habitHistory = [];
+    try {
+      habitHistory = await HabitService.getHistory(days: 7);
+    } catch (_) {}
+
     for (int i = 6; i >= 0; i--) {
       final date = now.subtract(Duration(days: i));
-      double dayScore = 50; // default
+      double moodScore = 50; // default
 
-      try {
-        // Mood for that day
-        final entries = await MoodRepo.instance.fetchAll();
-        final dayEntries = entries.where((e) =>
-            e.timestamp.year == date.year &&
-            e.timestamp.month == date.month &&
-            e.timestamp.day == date.day);
-        double moodScore = 50;
-        if (dayEntries.isNotEmpty) {
-          final avg = dayEntries.map((e) => e.score).reduce((a, b) => a + b) /
-              dayEntries.length;
-          moodScore = ((avg - 1) / 4.0 * 100).clamp(0, 100);
-        }
+      final dayEntries = allMoods.where((e) =>
+          e.timestamp.year == date.year &&
+          e.timestamp.month == date.month &&
+          e.timestamp.day == date.day);
+      if (dayEntries.isNotEmpty) {
+        final avg = dayEntries.map((e) => e.score).reduce((a, b) => a + b) /
+            dayEntries.length;
+        moodScore = ((avg - 1) / 4.0 * 100).clamp(0, 100);
+      }
 
-        // Habits for that day
-        final dateKey = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-        double habitScore = 0;
-        try {
-          final history = await HabitService.getHistory(days: 7);
-          final dayHabit = history.where((h) => h.date == dateKey);
-          if (dayHabit.isNotEmpty) {
-            habitScore = (dayHabit.first.completionPercent * 100).clamp(0, 100);
-          }
-        } catch (_) {}
+      final dateKey =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      double habitScore = 0;
+      final dayHabit = habitHistory.where((h) => h.date == dateKey);
+      if (dayHabit.isNotEmpty) {
+        habitScore = (dayHabit.first.completionPercent * 100).clamp(0, 100);
+      }
 
-        dayScore = (moodScore * 0.55) + (habitScore * 0.45);
-      } catch (_) {}
-
+      final dayScore = (moodScore * 0.55) + (habitScore * 0.45);
       scores.add(dayScore.round().clamp(0, 100));
     }
 
