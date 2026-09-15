@@ -34,16 +34,26 @@ class _HabitMindScoreScreenState extends State<HabitMindScoreScreen> {
   }
 
   Future<void> _load() async {
-    final habits = await HabitService.getToday();
-    final score = await MindScoreService.calculate();
-    final trend = await MindScoreService.weeklyTrend();
-    if (!mounted) return;
-    setState(() {
-      _habits = habits;
-      _mindScore = score;
-      _trend = trend;
-      _loading = false;
-    });
+    try {
+      // Run the three sources concurrently instead of one-after-another, and
+      // cap the wait so a slow network can't leave the spinner up forever (#3).
+      final results = await Future.wait([
+        HabitService.getToday(),
+        MindScoreService.calculate(),
+        MindScoreService.weeklyTrend(),
+      ]).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      setState(() {
+        _habits = results[0] as HabitEntry;
+        _mindScore = results[1] as MindScoreResult;
+        _trend = results[2] as List<int>;
+        _loading = false;
+      });
+    } catch (_) {
+      // Timed out or failed — show the screen with defaults rather than hang.
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _toggle(String habit) async {
@@ -173,7 +183,7 @@ class _HabitMindScoreScreenState extends State<HabitMindScoreScreen> {
                     child: Row(children: [
                       Icon(Icons.check_circle_outline_rounded, size: 14, color: AppColors.mintDeep),
                       const SizedBox(width: 6),
-                      Text('TODAY\u2019S HABITS',
+                      Text('TODAY’S HABITS',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.8,
                               color: isDark ? Colors.white.withValues(alpha: 0.45) : Colors.black.withValues(alpha: 0.40))),
                     ]),
@@ -244,11 +254,11 @@ class _HabitMindScoreScreenState extends State<HabitMindScoreScreen> {
   }
 
   String _scoreSubtitle(int score) {
-    if (score >= 80) return 'You\u2019re showing up for yourself. Keep going.';
+    if (score >= 80) return 'You’re showing up for yourself. Keep going.';
     if (score >= 60) return 'Consistent effort builds lasting change.';
     if (score >= 40) return 'Every check mark is a step forward.';
-    if (score >= 20) return 'Small actions compound. You\u2019re doing it.';
-    return 'You opened the app. That\u2019s already something.';
+    if (score >= 20) return 'Small actions compound. You’re doing it.';
+    return 'You opened the app. That’s already something.';
   }
 }
 
