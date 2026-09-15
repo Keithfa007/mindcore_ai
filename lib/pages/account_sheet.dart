@@ -85,6 +85,10 @@ class _AccountSheetState extends State<_AccountSheet> {
       setState(() => _error = 'Enter a valid email address.');
       return;
     }
+    if (pass.contains(' ')) {
+      setState(() => _error = 'Password cannot contain spaces.');
+      return;
+    }
     if (pass.length < 6) {
       setState(() => _error = 'Password must be at least 6 characters.');
       return;
