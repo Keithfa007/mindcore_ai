@@ -11,6 +11,7 @@ import 'package:mindcore_ai/widgets/section_hero_card.dart';
 
 import '../services/firebase_auth_service.dart';
 import '../services/storage_service.dart';
+import 'account_sheet.dart';
 import 'settings_screen.dart';
 import 'package:mindcore_ai/services/settings_service.dart';
 
@@ -60,7 +61,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _saveName() async {
     final name = _nameCtrl.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a display name.')),
+      );
+      return;
+    }
+    // Allow letters, numbers, single spaces, hyphens and apostrophes only (bug #21).
+    final valid = RegExp(r"^[A-Za-zÀ-ÿ0-9 '\-]{2,40}$").hasMatch(name);
+    if (!valid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Use 2-40 letters or numbers. No special characters.')),
+      );
+      return;
+    }
     setState(() => _busy = true);
     try {
       await FirebaseAuthService.instance.updateDisplayName(name);
@@ -98,7 +112,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _signIn() async {
+    final ok = await showAccountSheet(
+      context,
+      title: 'Sign in',
+      subtitle: 'Save your progress across devices.',
+    );
+    if (ok == true && mounted) setState(() {});
+  }
+
   Future<void> _signOut() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text('You can sign back in anytime with the same account.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (ok != true) return;
     await FirebaseAuthService.instance.signOut();
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (r) => false);
@@ -158,10 +193,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 12),
                   GestureDetector(
                     onTap: _busy ? null : _pickAndUploadAvatar,
-                    child: CircleAvatar(
-                      radius: 56,
-                      backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
-                      child: user?.photoURL == null ? const Icon(Icons.person, size: 40) : null,
+                    child: Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        CircleAvatar(
+                          radius: 56,
+                          backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
+                          child: user?.photoURL == null ? const Icon(Icons.person, size: 40) : null,
+                        ),
+                        // Camera badge so it's clear the avatar is tappable (bug #13).
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: theme.colorScheme.surface, width: 2),
+                          ),
+                          child: Icon(Icons.photo_camera_rounded,
+                              size: 16, color: theme.colorScheme.onPrimary),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -200,8 +251,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   TextField(
                     controller: _nameCtrl,
+                    maxLength: 40,
                     decoration: const InputDecoration(
-                      // labelText: 'Display name',
+                      hintText: 'Enter your display name',
+                      counterText: '',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -268,23 +321,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SectionHeroCard(
+                  SectionHeroCard(
                     title: 'Account Controls',
-                    subtitle: 'Sign out or delete account',
+                    subtitle: (user?.isAnonymous ?? true)
+                        ? 'Sign in to save your account'
+                        : 'Sign out or delete account',
                   ),
                   const SizedBox(height: 6),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.logout),
-                    title: const Text('Sign out'),
-                    onTap: _busy ? null : _signOut,
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.delete_forever, color: Colors.red),
-                    title: const Text('Delete account'),
-                    onTap: _busy ? null : _deleteAccount,
-                  ),
+                  if (user?.isAnonymous ?? true)
+                    // Anonymous session: no account to sign out of yet.
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.login),
+                      title: const Text('Sign in / Create account'),
+                      onTap: _busy ? null : _signIn,
+                    )
+                  else ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.logout),
+                      title: const Text('Sign out'),
+                      onTap: _busy ? null : _signOut,
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.delete_forever, color: Colors.red),
+                      title: const Text('Delete account'),
+                      onTap: _busy ? null : _deleteAccount,
+                    ),
+                  ],
                 ],
               ),
             ),
