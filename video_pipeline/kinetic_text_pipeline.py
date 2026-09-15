@@ -24,8 +24,8 @@ UPLOAD_POST_USER    = os.environ.get("UPLOAD_POST_USER", "MindCoreAI")
 FAL_KEY             = os.environ.get("FAL_KEY", "")
 SERP_API_KEY        = os.environ.get("SERP_API_KEY", "")
 GENDER              = os.environ.get("GENDER", "male").lower()
-MALE_VOICE_ID       = "jfIS2w2yJi0grJZPyEsk"
-FEMALE_VOICE_ID     = "uIZsnBL0YK1S5j69bAih"
+MALE_VOICE_ID       = "tyTP8F2QWIFGeIBiYTic"
+FEMALE_VOICE_ID     = "mFgXOmlOfXfr6suoQkRH"
 ELEVENLABS_VOICE_ID = FEMALE_VOICE_ID if GENDER == "female" else MALE_VOICE_ID
 ELEVENLABS_API_URL  = "https://api.elevenlabs.io/v1/text-to-speech"
 SERP_API_URL        = "https://serpapi.com/search"
