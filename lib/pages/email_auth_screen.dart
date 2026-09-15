@@ -1,4 +1,6 @@
 // lib/pages/email_auth_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -26,8 +28,13 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
   bool _obscure = true;
   String? _error;
 
+  // Forgot-password resend cooldown (prevents spamming reset emails — bug #19).
+  bool _resetCooldown = false;
+  Timer? _resetTimer;
+
   @override
   void dispose() {
+    _resetTimer?.cancel();
     _emailC.dispose();
     _passC.dispose();
     super.dispose();
@@ -46,7 +53,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
         case 'email-already-in-use':
           return 'That email is already registered.';
         case 'weak-password':
-          return 'Password is too weak (try 8+ characters).';
+          return 'Password is too weak (use at least 6 characters).';
         case 'too-many-requests':
           return 'Too many attempts. Try again in a few minutes.';
         case 'network-request-failed':
@@ -73,6 +80,16 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
         return;
       }
 
+      if (pass.contains(' ')) {
+        setState(() => _error = 'Password cannot contain spaces.');
+        return;
+      }
+
+      if (!_isLogin && pass.length < 6) {
+        setState(() => _error = 'Password must be at least 6 characters.');
+        return;
+      }
+
       if (_isLogin) {
         await _auth.signInWithEmail(email: email, password: pass);
       } else {
@@ -84,7 +101,9 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
       await JournalService.syncFromFirestore();
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // back to login/auth gate; authState will update
+      // Go straight into the app. Popping only returned to the login screen,
+      // which does not listen to auth state, so the user got stuck there.
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
     } catch (e) {
       setState(() => _error = _friendlyError(e));
     } finally {
@@ -93,17 +112,28 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
   }
 
   Future<void> _forgot() async {
+    if (_resetCooldown) return;
     final email = _emailC.text.trim();
-    if (email.isEmpty) {
-      setState(() => _error = 'Enter your email first, then tap “Forgot password?”.');
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _error = 'Enter a valid email first, then tap “Forgot password?”.');
       return;
     }
     try {
       await _auth.sendPasswordResetEmail(email);
       if (!mounted) return;
+      // Clear any stale validation message once the request succeeds (bug #16).
+      setState(() {
+        _error = null;
+        _resetCooldown = true;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password reset email sent.')),
+        const SnackBar(content: Text('Reset link sent. Check your inbox (and spam).')),
       );
+      // Re-enable after 60s so users can't spam reset emails (bug #19).
+      _resetTimer?.cancel();
+      _resetTimer = Timer(const Duration(seconds: 60), () {
+        if (mounted) setState(() => _resetCooldown = false);
+      });
     } catch (e) {
       setState(() => _error = _friendlyError(e));
     }
@@ -224,8 +254,8 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                       ),
                       if (_isLogin)
                         TextButton(
-                          onPressed: _loading ? null : _forgot,
-                          child: const Text('Forgot password?'),
+                          onPressed: (_loading || _resetCooldown) ? null : _forgot,
+                          child: Text(_resetCooldown ? 'Reset link sent' : 'Forgot password?'),
                         ),
                     ],
                   ),
