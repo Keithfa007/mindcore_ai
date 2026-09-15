@@ -19,8 +19,13 @@ class PaywallScreen extends StatefulWidget {
 
 class _PaywallScreenState extends State<PaywallScreen> {
   final _sub = SubscriptionService();
-  bool _loading = false;
+  // Which product is being purchased/restored right now. Only that button shows
+  // a spinner, so tapping one plan no longer lights up every button (bug #7).
+  String? _busyId;
   bool _selectedYearly = true; // lead with the cheaper-feeling yearly price
+
+  bool get _busy => _busyId != null;
+  bool _isBusyFor(ProductDetails? p) => _busyId != null && _busyId == p?.id;
 
   // Store ready flag — prevents rendering before IAP initialises
   bool _storeReady = false;
@@ -83,6 +88,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       return;
     }
 
+    // Only one purchase in flight at a time (bug #7).
+    if (_busyId != null) return;
+
     // The account step happens HERE, not before onboarding. If the user is
     // still on the anonymous session, create/link a real account before we
     // charge, so their trial and data are recoverable.
@@ -91,7 +99,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (ok != true || !mounted) return;
     }
 
-    setState(() => _loading = true);
+    setState(() => _busyId = product.id);
     try {
       await _sub.buy(product);
     } catch (e) {
@@ -103,11 +111,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
         ));
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _busyId = null);
     }
   }
 
   Future<void> _restore() async {
+    if (_busyId != null) return;
     // Returning users on a fresh install arrive anonymous — sign them into the
     // account they subscribed with before restoring.
     if (FirebaseAuthService.instance.isAnonymous) {
@@ -118,7 +127,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       );
       if (ok != true || !mounted) return;
     }
-    setState(() => _loading = true);
+    setState(() => _busyId = '__restore__');
     try {
       await _sub.restore();
     } catch (e) {
@@ -130,7 +139,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         ));
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _busyId = null);
     }
   }
 
@@ -160,7 +169,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     ),
                     const Spacer(),
                     TextButton(
-                      onPressed: _loading ? null : _restore,
+                      onPressed: _busy ? null : _restore,
                       child: Text('Restore',
                           style: tt.labelSmall?.copyWith(
                               color: AppColors.primary,
@@ -283,7 +292,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         // see "Start Free Trial" and be silently charged full price.
                         if (showTrial && _sub.hasTrialOffer) ...[
                           _FreeTrialBanner(
-                             loading: _loading,
+                             loading: _isBusyFor(_sub.premiumTrialPurchase),
                              product: _sub.premiumTrialPurchase,
                              priceLabel: _sub.premiumMonthly?.price ?? '€14.99',
                              onBuy: _buy,
@@ -299,7 +308,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           product: _selectedYearly
                               ? _sub.premiumYearly
                               : _sub.premiumMonthly,
-                          loading: _loading,
+                          loading: _isBusyFor(_selectedYearly
+                              ? _sub.premiumYearly
+                              : _sub.premiumMonthly),
                           onBuy: _buy,
                           featured: true,
                           isCurrent: currentTier.tier == AppTier.premium,
@@ -317,7 +328,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           product: _selectedYearly
                               ? _sub.proYearly
                               : _sub.proMonthly,
-                          loading: _loading,
+                          loading: _isBusyFor(_selectedYearly
+                              ? _sub.proYearly
+                              : _sub.proMonthly),
                           onBuy: _buy,
                           isCurrent: currentTier.tier == AppTier.pro,
                           accentColor: AppColors.violet,
@@ -331,7 +344,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         // subscribers, so hidden from users who haven't joined.
                         if (!showTrial) ...[
                           _VoiceAddOnSection(
-                              loading: _loading,
+                              busyId: _busyId,
                               onBuy: _buy,
                               sub: _sub,
                               isDark: isDark,
@@ -705,13 +718,13 @@ class _PlanCard extends StatelessWidget {
 // ── Voice add-on section ───────────────────────────────────────────────────────────
 
 class _VoiceAddOnSection extends StatelessWidget {
-  final bool loading;
+  final String? busyId;
   final Future<void> Function(ProductDetails?) onBuy;
   final SubscriptionService sub;
   final bool isDark;
   final TextTheme tt;
   const _VoiceAddOnSection(
-      {required this.loading,
+      {required this.busyId,
       required this.onBuy,
       required this.sub,
       required this.isDark,
@@ -742,7 +755,7 @@ class _VoiceAddOnSection extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 10),
               child: _VoicePackCard(
                   pack: pack,
-                  loading: loading,
+                  busyId: busyId,
                   product: sub.voicePackProduct(pack.productId),
                   onBuy: onBuy,
                   isDark: isDark,
@@ -755,14 +768,14 @@ class _VoiceAddOnSection extends StatelessWidget {
 
 class _VoicePackCard extends StatelessWidget {
   final VoicePackConfig pack;
-  final bool loading;
+  final String? busyId;
   final ProductDetails? product;
   final Future<void> Function(ProductDetails?) onBuy;
   final bool isDark;
   final TextTheme tt;
   const _VoicePackCard(
       {required this.pack,
-      required this.loading,
+      required this.busyId,
       required this.product,
       required this.onBuy,
       required this.isDark,
@@ -770,6 +783,7 @@ class _VoicePackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loading = busyId != null && busyId == product?.id;
     return GlassCard(
       glowColor: AppColors.glowMint,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
