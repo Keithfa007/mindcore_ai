@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Choosing yourself for once is not something you need to apologize for.",
-    "category": "permission",
-    "date": "2026-07-26",
-    "run": 46
-  },
-  {
     "quote": "Being difficult to love and being unlovable are not the same thing. One is about fit. The other is a lie you inherited.",
     "category": "hard_reframe",
     "date": "2026-07-27",
@@ -298,5 +292,11 @@
     "category": "hard_reframe",
     "date": "2026-09-14",
     "run": 96
+  },
+  {
+    "quote": "Somewhere tonight you're being gentler to a stranger than you've been to yourself in years.",
+    "category": "midnight_honesty",
+    "date": "2026-09-15",
+    "run": 97
   }
 ]
