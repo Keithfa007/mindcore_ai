@@ -237,7 +237,6 @@ def upload_all_platforms(video_path, tiktok_caption, fb_title, fb_description, y
     if not UPLOAD_POST_API_KEY: return {"skipped": True, "reason": "no API key"}
     data = [
         ("user", UPLOAD_POST_USER),
-        ("platform[]", "tiktok"),
         ("platform[]", "facebook"),
         ("title", tiktok_caption[:2200]),
         ("facebook_title", fb_title[:255]),

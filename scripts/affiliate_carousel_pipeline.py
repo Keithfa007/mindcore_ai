@@ -423,23 +423,8 @@ def main():
             us_desc += " #ad"
         us_desc += f"\n\n{US_HASHTAGS}"
 
-        # ── 1. EU TikTok (14:00 Malta / 12:00 UTC) ──
-        print("  [1/3] EU TikTok...")
-        eu_tt_data = [
-            ("user", "MindCoreAI"),
-            ("platform[]", "tiktok"),
-            ("tiktok_title", title),
-            ("description", tiktok_desc[:TIKTOK_DESC_LIMIT]),
-            ("post_mode", "DIRECT_POST"),
-            ("auto_add_music", "true"),
-            ("photo_cover_index", "0"),
-            ("scheduled_date", scheduled),
-        ]
-        code, msg = post_to_platform(headers, eu_tt_data, final_slides)
-        print(f"  EU TikTok: {code}  - {msg}")
-
-        # ── 2. EU Facebook (14:00 Malta / 12:00 UTC) ──
-        print("  [2/3] EU Facebook...")
+        # ── EU Facebook (14:00 Malta / 12:00 UTC) ──
+        print("  [1/1] EU Facebook...")
         eu_fb_data = [
             ("user", "MindCoreAI"),
             ("platform[]", "facebook"),
@@ -450,28 +435,6 @@ def main():
         ]
         code, msg = post_to_platform(headers, eu_fb_data, final_slides)
         print(f"  EU Facebook: {code}  - {msg}")
-
-        # ── 3. US TikTok (16:00 Malta / 14:00 UTC) ──
-        print("  [3/3] US TikTok...")
-        now_utc = datetime.now(timezone.utc)
-        us_target = now_utc.replace(hour=US_POST_HOUR_UTC, minute=0, second=0, microsecond=0)
-        if now_utc >= us_target:
-            us_target += timedelta(days=1)
-        us_scheduled = us_target.strftime("%Y-%m-%dT%H:%M:%SZ")
-        print(f"  US Scheduled: {us_scheduled} ({US_POST_HOUR_UTC:02d}:00 UTC / 16:00 Malta)")
-
-        us_tt_data = [
-            ("user", "MindCoreAI_US"),
-            ("platform[]", "tiktok"),
-            ("tiktok_title", title),
-            ("description", us_desc[:TIKTOK_DESC_LIMIT]),
-            ("post_mode", "DIRECT_POST"),
-            ("auto_add_music", "true"),
-            ("photo_cover_index", "0"),
-            ("scheduled_date", us_scheduled),
-        ]
-        code, msg = post_to_platform(headers, us_tt_data, final_slides)
-        print(f"  US TikTok: {code}  - {msg}")
 
         print(f"  Affiliate link: {AFFILIATE_LINK}")
 

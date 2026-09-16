@@ -284,7 +284,6 @@ def upload_carousel(image_paths,tiktok_title,description,cfg,scheduled_date,face
     headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"}
     data=[
         ("user",user),
-        ("platform[]","tiktok"),
         ("platform[]","facebook"),
         ("tiktok_title",tiktok_title),
         ("description",description),

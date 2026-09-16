@@ -619,7 +619,7 @@ def upload_to_platforms(video_path, metadata, cfg):
     user=cfg.get("upload_post_user","")
     if not user: return {"skipped":True,"reason":"no user configured"}
     headers={"Authorization":f"Apikey {UPLOAD_POST_API_KEY}"}
-    data=[("user",user),("platform[]","tiktok"),("platform[]","facebook"),("platform[]","youtube"),
+    data=[("user",user),("platform[]","facebook"),("platform[]","youtube"),
           ("title",metadata.get("tiktok_caption","")[:TIKTOK_CAPTION_LIMIT]),
           ("facebook_title",metadata.get("facebook_title","")[:255]),
           ("facebook_description",metadata.get("facebook_description","")),
