@@ -40,7 +40,6 @@ GA4_PROPERTY_ID    = "516837337"
 SITE_URL           = "https://mindcoreai.eu/"
 FIREBASE_PROJECT   = "mindcore-ai"
 UPLOAD_POST_USER   = "MindCoreAI"
-UPLOAD_POST_USER_US = "MindCoreAI_US"
 META_ACCESS_TOKEN   = os.environ.get("META_ACCESS_TOKEN", "")
 META_AD_ACCOUNT_ID  = "1662262447260384"
 
@@ -300,7 +299,6 @@ def get_social_media_stats():
     try:
         headers = {"Authorization": f"Apikey {UPLOAD_POST_API_KEY}"}
         eu_url = f"https://api.upload-post.com/api/analytics/{UPLOAD_POST_USER}"
-        us_url = f"https://api.upload-post.com/api/analytics/{UPLOAD_POST_USER_US}"
 
         # Fetch Facebook page ID
         fb_page_id = None
@@ -347,9 +345,6 @@ def get_social_media_stats():
             fb_debug.append("skipped_no_page_id")
         print(f"   Facebook debug: {' | '.join(fb_debug)}")
 
-        # US: TikTok
-        us_data = _fetch_platform_stats(us_url, headers, "tiktok")
-
         results = {}
         platform_map = {
             "tiktok": ("TikTok (EU)", eu_data),
@@ -373,19 +368,6 @@ def get_social_media_stats():
                 "likes": pdata.get("likes", 0),
                 "comments": pdata.get("comments", 0),
                 "shares": pdata.get("shares", 0),
-            }
-
-        # US TikTok
-        us_tk = us_data.get("tiktok", {})
-        if isinstance(us_tk, dict) and not us_tk.get("message") and us_tk.get("success") is not False:
-            results["tiktok_us"] = {
-                "followers": us_tk.get("followers", 0),
-                "views": us_tk.get("views", 0),
-                "impressions": us_tk.get("impressions", 0),
-                "reach": us_tk.get("reach", 0),
-                "likes": us_tk.get("likes", 0),
-                "comments": us_tk.get("comments", 0),
-                "shares": us_tk.get("shares", 0),
             }
 
         return results if results else None
@@ -627,11 +609,11 @@ def build_message(workflows, failures, todays_schedule, firebase_users, social_s
 
     if social_stats:
         lines.append("\U0001f4f1 *Social Media:*")
-        for platform in ["tiktok", "tiktok_us", "x", "facebook", "youtube", "pinterest"]:
+        for platform in ["tiktok", "x", "facebook", "youtube", "pinterest"]:
             pdata = social_stats.get(platform)
             if not pdata:
                 continue
-            name = {"tiktok": "TikTok (EU)", "tiktok_us": "TikTok (US)", "x": "X", "facebook": "Facebook", "youtube": "YouTube", "pinterest": "Pinterest"}.get(platform, platform.capitalize())
+            name = {"tiktok": "TikTok (EU)", "x": "X", "facebook": "Facebook", "youtube": "YouTube", "pinterest": "Pinterest"}.get(platform, platform.capitalize())
             parts = []
             views = pdata.get("views", 0)
             impressions = pdata.get("impressions", 0)
