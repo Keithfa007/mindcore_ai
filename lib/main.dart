@@ -31,6 +31,7 @@ import 'pages/wins_screen.dart';
 import 'pages/truth_deck_screen.dart';
 import 'pages/pressure_valve_screen.dart';
 import 'pages/habit_mindscore_screen.dart';
+import 'pages/safety_screen.dart';
 
 import 'pages/helpers/route_observer.dart';
 import 'services/settings_service.dart';
@@ -136,6 +137,7 @@ class MindCoreApp extends StatelessWidget {
             '/paywall':          (_) => const PaywallScreen(),
             '/voice-chat':       (_) => const VoiceChatScreen(),
             '/sos':              (_) => const SosScreen(),
+            '/safety':           (_) => const SafetyScreen(),
             '/disclaimer':       (_) => const DisclaimerScreen(),
             '/blog':             (_) => const BlogScreen(),
             '/journey':          (_) => const JourneyScreen(),
