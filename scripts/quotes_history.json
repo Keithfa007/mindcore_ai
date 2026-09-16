@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Being difficult to love and being unlovable are not the same thing. One is about fit. The other is a lie you inherited.",
-    "category": "hard_reframe",
-    "date": "2026-07-27",
-    "run": 47
-  },
-  {
     "quote": "Somewhere tonight you're lying awake doing the math on whether anyone would actually notice.",
     "category": "midnight_honesty",
     "date": "2026-07-28",
@@ -298,5 +292,11 @@
     "category": "midnight_honesty",
     "date": "2026-09-15",
     "run": 97
+  },
+  {
+    "quote": "Pretending to be okay is exhausting. Turns out so is finally stopping.",
+    "category": "3am_truth",
+    "date": "2026-09-16",
+    "run": 98
   }
 ]
