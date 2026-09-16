@@ -27,7 +27,25 @@ class _PressureValveScreenState extends State<PressureValveScreen>
   bool _releasing = false;
   bool _released = false;
   bool _reflecting = false;
+  bool _crisis = false;
   String? _reflection;
+
+  // High-confidence self-harm / suicide cues. Phrase-based to avoid false
+  // positives on words like "deadline" or "dying of laughter".
+  static const List<String> _crisisCues = [
+    'want to die', 'wanna die', 'want to be dead', 'wish i was dead',
+    'wish i were dead', 'kill myself', 'killing myself', 'end my life',
+    'end it all', 'take my life', 'suicid', 'better off dead',
+    'no reason to live', 'no point in living', "don't want to live",
+    'dont want to live', "don't want to be here", 'dont want to be here',
+    'hurt myself', 'harm myself', 'self harm', 'self-harm', 'cut myself',
+    "can't go on", 'cant go on', 'no way out',
+  ];
+
+  bool _looksLikeCrisis(String text) {
+    final t = text.toLowerCase();
+    return _crisisCues.any(t.contains);
+  }
 
   late final AnimationController _dissolveCtrl;
   late final Animation<double> _dissolveFade;
@@ -79,6 +97,7 @@ class _PressureValveScreenState extends State<PressureValveScreen>
     setState(() {
       _releasing = false;
       _released = true;
+      _crisis = _looksLikeCrisis(textForReflection);
       // Keep text temporarily in case user wants reflection
       _textCtrl.text = textForReflection;
     });
@@ -96,6 +115,12 @@ class _PressureValveScreenState extends State<PressureValveScreen>
     final text = _textCtrl.text;
     _textCtrl.clear(); // Clear immediately — we only use it for the API call
 
+    // Safety net: if crisis language slipped through, show support, not a reflection.
+    if (_looksLikeCrisis(text)) {
+      setState(() => _crisis = true);
+      return;
+    }
+
     setState(() => _reflecting = true);
 
     try {
@@ -109,7 +134,10 @@ class _PressureValveScreenState extends State<PressureValveScreen>
         },
         body: jsonEncode({
           'model': 'gpt-4o-mini',
-          'temperature': 0.6,
+          'temperature': 0.95,
+          'top_p': 0.95,
+          'presence_penalty': 0.6,
+          'frequency_penalty': 0.5,
           'max_tokens': 250,
           'messages': [
             {
@@ -120,7 +148,11 @@ class _PressureValveScreenState extends State<PressureValveScreen>
                   'Do not quote their words back. Do not give advice. Do not list steps. '
                   'Just reflect what you sense underneath their words — the feeling behind the feeling. '
                   'Be warm but direct. End with one sentence of quiet encouragement. '
-                  'Keep it under 80 words.',
+                  'Keep it under 80 words. '
+                  'IMPORTANT: Vary your response every time. Never reuse stock openings like '
+                  '"It sounds like you\'re carrying" or "It sounds like". Do not use the phrases '
+                  '"immense weight", "you are not alone", or "brighter moment ahead". '
+                  'Start differently each time and respond specifically to what they actually wrote.',
             },
             {
               'role': 'user',
@@ -195,7 +227,7 @@ class _PressureValveScreenState extends State<PressureValveScreen>
                 if (!_released && !_reflecting && _reflection == null)
                   _buildWritingState(tt, bottomInset)
                 else if (_released && !_reflecting && _reflection == null)
-                  _buildReleasedState(tt)
+                  (_crisis ? _buildCrisisState(tt) : _buildReleasedState(tt))
                 else if (_reflecting)
                   _buildReflectingState(tt)
                 else
@@ -374,6 +406,101 @@ class _PressureValveScreenState extends State<PressureValveScreen>
                 ),
               ),
               child: Text('Let it go',
+                  style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.55),
+                  )),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Crisis state (self-harm / suicide cues detected) ────────────
+  Widget _buildCrisisState(TextTheme tt) {
+    return Expanded(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Spacer(),
+          Icon(Icons.favorite_rounded,
+              color: const Color(0xFFE24B4A), size: 46),
+          const SizedBox(height: 20),
+          Text(
+            'You don’t have to carry this alone.',
+            textAlign: TextAlign.center,
+            style: tt.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'What you wrote sounds really heavy, and it matters. '
+            'Please reach out to someone who can support you right now. You deserve that.',
+            textAlign: TextAlign.center,
+            style: tt.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.60),
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFA32D2D).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: const Color(0xFFE24B4A).withValues(alpha: 0.45)),
+            ),
+            child: Text(
+              'If you are in immediate danger, call your local emergency number now '
+              '(112 in Malta and Europe, 999 in the UK, 911 in the US, 000 in Australia).',
+              textAlign: TextAlign.center,
+              style: tt.bodySmall?.copyWith(
+                color: Colors.white.withValues(alpha: 0.85),
+                height: 1.5,
+              ),
+            ),
+          ),
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                Navigator.of(context).pushNamed('/safety');
+              },
+              icon: const Icon(Icons.phone_rounded, size: 18),
+              label: Text('Get crisis support',
+                  style: tt.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  )),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE24B4A),
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _letItGo,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: Text('Close',
                   style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: Colors.white.withValues(alpha: 0.55),
