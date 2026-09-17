@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Somewhere tonight you're lying awake doing the math on whether anyone would actually notice.",
-    "category": "midnight_honesty",
-    "date": "2026-07-28",
-    "run": 48
-  },
-  {
     "quote": "Apologizing for crying is somehow the loneliest part of crying.",
     "category": "3am_truth",
     "date": "2026-07-29",
@@ -298,5 +292,11 @@
     "category": "3am_truth",
     "date": "2026-09-16",
     "run": 98
+  },
+  {
+    "quote": "Letting someone carry part of it for a while is not surrender. It's the first smart thing you've done in months.",
+    "category": "silent_strength",
+    "date": "2026-09-17",
+    "run": 99
   }
 ]
