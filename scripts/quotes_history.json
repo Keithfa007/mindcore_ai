@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Saying \"I'm not okay\" out loud for the first time is not breaking. It's the first real breath you've taken in months.",
-    "category": "silent_strength",
-    "date": "2026-07-30",
-    "run": 50
-  },
-  {
     "quote": "Getting sober was the easy part. Learning to want things again almost broke me twice as bad.",
     "category": "recovery_wisdom",
     "date": "2026-07-31",
@@ -298,5 +292,11 @@
     "category": "recovery_wisdom",
     "date": "2026-09-18",
     "run": 100
+  },
+  {
+    "quote": "Smiling through it so long that the real version of your face feels like the lie now.",
+    "category": "the_unsaid",
+    "date": "2026-09-19",
+    "run": 101
   }
 ]
