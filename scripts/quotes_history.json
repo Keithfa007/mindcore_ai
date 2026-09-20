@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Getting sober was the easy part. Learning to want things again almost broke me twice as bad.",
-    "category": "recovery_wisdom",
-    "date": "2026-07-31",
-    "run": 51
-  },
-  {
     "quote": "The hardest part of getting better is having nothing left to blame anymore.",
     "category": "the_unsaid",
     "date": "2026-08-01",
@@ -298,5 +292,11 @@
     "category": "the_unsaid",
     "date": "2026-09-19",
     "run": 101
+  },
+  {
+    "quote": "Putting yourself first isn't selfish. It's just your turn.",
+    "category": "permission",
+    "date": "2026-09-20",
+    "run": 102
   }
 ]
