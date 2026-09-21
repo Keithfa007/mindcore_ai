@@ -1,11 +1,5 @@
 [
   {
-    "quote": "The hardest part of getting better is having nothing left to blame anymore.",
-    "category": "the_unsaid",
-    "date": "2026-08-01",
-    "run": 52
-  },
-  {
     "quote": "Needing a break before you break is not laziness. It's the only honest thing left.",
     "category": "permission",
     "date": "2026-08-02",
@@ -298,5 +292,11 @@
     "category": "permission",
     "date": "2026-09-20",
     "run": 102
+  },
+  {
+    "quote": "Falling apart slowly enough that no one noticed isn't weakness. It's what survival looked like from the inside.",
+    "category": "hard_reframe",
+    "date": "2026-09-21",
+    "run": 103
   }
 ]
