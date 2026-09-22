@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Needing a break before you break is not laziness. It's the only honest thing left.",
-    "category": "permission",
-    "date": "2026-08-02",
-    "run": 53
-  },
-  {
     "quote": "Not being able to fix yourself doesn't mean you're the thing that's broken.",
     "category": "hard_reframe",
     "date": "2026-08-03",
@@ -298,5 +292,11 @@
     "category": "hard_reframe",
     "date": "2026-09-21",
     "run": 103
+  },
+  {
+    "quote": "Somewhere tonight you're hoping someone notices without you having to say a word.",
+    "category": "midnight_honesty",
+    "date": "2026-09-22",
+    "run": 104
   }
 ]
