@@ -144,7 +144,7 @@ RULES:
 - Each line must work as standalone text on screen.
 - NO emojis, NO hashtags, NO "hey guys", NO motivational cliches.
 - Do NOT start with "I" more than twice.
-- First line must hit IMMEDIATELY. No setup. Punch first.
+- LINE 1 IS THE HOOK. It is the scroll-stopper, the whole reason someone stops. One short line, 2 to 6 words, present tense, no setup or throat-clearing. Make it a raw admission, a direct call-out, or a curiosity gap that forces them to read line 2. Match the energy of these shapes (do NOT copy them): "Nobody knew I was drowning." / "You're not lazy." / "The 3am thought I never say." / "I smiled so you wouldn't worry."
 
 WRITING STYLE (MANDATORY):
 - NEVER use em dashes. Use commas, periods, or separate sentences.
@@ -164,7 +164,7 @@ Return ONLY the script lines."""
     raise RuntimeError("Script failed")
 def generate_seo_caption(client, script_lines, topic, niche):
     script_text = " ".join(script_lines); keyword = topic.get("keyword","mental health"); niche_tags = " ".join(niche.get("hashtags",[])) if niche else ""
-    prompt = f"""Upload metadata for a raw mental health TikTok.\n\nSCRIPT: "{script_text}"\nSEO KEYWORD: {keyword}\nNICHE HASHTAGS: {niche_tags}\n\nGenerate:\n- tiktok_caption: 1-2 raw sentences + 8-10 hashtags incl #mindcoreai. Max 2200.\n- youtube_title: punchy <100 chars with SEO keyword\n- youtube_description: 2 sentences. "Try MindCore AI: https://mindcoreai.eu". 6-8 hashtags #Shorts.\n- x_caption: 1-2 punchy sentences + 2-3 hashtags incl #mindcoreai. Max 250 chars total. No hashtag spam.
+    prompt = f"""Upload metadata for a raw mental health TikTok.\n\nSCRIPT: "{script_text}"\nSEO KEYWORD: {keyword}\nNICHE HASHTAGS: {niche_tags}\n\nGenerate:\n- tiktok_caption: 1-2 raw sentences + 8-10 hashtags incl #mindcoreai. Max 2200.\n- youtube_title: a scroll-stopping hook under 100 chars that works its SEO keyword in naturally. Use a curiosity gap or a raw, relatable line, not a plain description. No clickbait lies, no emojis.\n- youtube_description: 2 sentences. "Try MindCore AI: https://mindcoreai.eu". 6-8 hashtags #Shorts.\n- x_caption: 1-2 punchy sentences + 2-3 hashtags incl #mindcoreai. Max 250 chars total. No hashtag spam.
 - facebook_description: 2 sentences + 4-5 hashtags incl #mindcoreai\n\nNO emojis. Raw tone. No em dashes.\n\nReturn ONLY valid JSON:\n{{"tiktok_caption":"...","youtube_title":"...","youtube_description":"...","x_caption":"...","facebook_description":"..."}}"""
     try:
         result = client.messages.create(model=ANTHROPIC_MODEL, max_tokens=600, messages=[{"role":"user","content":prompt}]).content[0].text.strip()
