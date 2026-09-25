@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Some nights the bravest thing you did was just not make it permanent.",
-    "category": "3am_truth",
-    "date": "2026-08-05",
-    "run": 56
-  },
-  {
     "quote": "Telling one person the truth about how bad it got is not weakness. It's the first crack of light.",
     "category": "silent_strength",
     "date": "2026-08-06",
@@ -298,5 +292,11 @@
     "category": "silent_strength",
     "date": "2026-09-24",
     "run": 106
+  },
+  {
+    "quote": "The part nobody mentions is how strange it feels to want things again.",
+    "category": "recovery_wisdom",
+    "date": "2026-09-25",
+    "run": 107
   }
 ]
