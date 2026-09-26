@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Telling one person the truth about how bad it got is not weakness. It's the first crack of light.",
-    "category": "silent_strength",
-    "date": "2026-08-06",
-    "run": 57
-  },
-  {
     "quote": "Nobody tells you that forgiving yourself takes longer than quitting ever did.",
     "category": "recovery_wisdom",
     "date": "2026-08-07",
@@ -298,5 +292,11 @@
     "category": "recovery_wisdom",
     "date": "2026-09-25",
     "run": 107
+  },
+  {
+    "quote": "Apologizing for taking up space in a room you were invited into.",
+    "category": "the_unsaid",
+    "date": "2026-09-26",
+    "run": 108
   }
 ]
