@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Nobody tells you that forgiving yourself takes longer than quitting ever did.",
-    "category": "recovery_wisdom",
-    "date": "2026-08-07",
-    "run": 58
-  },
-  {
     "quote": "Telling the truth about how you feel and still not being believed is a specific kind of damage.",
     "category": "the_unsaid",
     "date": "2026-08-08",
@@ -298,5 +292,11 @@
     "category": "the_unsaid",
     "date": "2026-09-26",
     "run": 108
+  },
+  {
+    "quote": "Falling apart on a day that looked fine from the outside still counts.",
+    "category": "permission",
+    "date": "2026-09-27",
+    "run": 109
   }
 ]
