@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Calling yourself broken assumes there was ever a version of you that wasn't worth this much trouble.",
-    "category": "hard_reframe",
-    "date": "2026-08-10",
-    "run": 61
-  },
-  {
     "quote": "Somewhere tonight you're waiting for proof you matter to someone who doesn't know you're waiting.",
     "category": "midnight_honesty",
     "date": "2026-08-11",
@@ -298,5 +292,11 @@
     "category": "midnight_honesty",
     "date": "2026-09-29",
     "run": 111
+  },
+  {
+    "quote": "Telling the truth about how bad it got means watching people realize they missed it entirely.",
+    "category": "3am_truth",
+    "date": "2026-09-30",
+    "run": 112
   }
 ]
