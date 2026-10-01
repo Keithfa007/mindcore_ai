@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Somewhere tonight you're waiting for proof you matter to someone who doesn't know you're waiting.",
-    "category": "midnight_honesty",
-    "date": "2026-08-11",
-    "run": 62
-  },
-  {
     "quote": "Loving you back is something you've talked yourself out of letting anyone do.",
     "category": "3am_truth",
     "date": "2026-08-12",
@@ -298,5 +292,11 @@
     "category": "3am_truth",
     "date": "2026-09-30",
     "run": 112
+  },
+  {
+    "quote": "Saying the words out loud for the first time is not surrender. It's the bravest sentence you've ever finished.",
+    "category": "silent_strength",
+    "date": "2026-10-01",
+    "run": 113
   }
 ]
