@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Letting someone see the real damage and staying anyway is not vulnerability. It's the bravest transaction two people can make.",
-    "category": "silent_strength",
-    "date": "2026-08-13",
-    "run": 64
-  },
-  {
     "quote": "Sobriety gave me my life back. Turns out I had no idea what to do with it.",
     "category": "recovery_wisdom",
     "date": "2026-08-14",
@@ -298,5 +292,11 @@
     "category": "recovery_wisdom",
     "date": "2026-10-02",
     "run": 114
+  },
+  {
+    "quote": "Carrying everyone else's okay while yours falls apart in the background is not love. It's just the loneliest volunteer work there is.",
+    "category": "the_unsaid",
+    "date": "2026-10-03",
+    "run": 115
   }
 ]
