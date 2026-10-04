@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Sobriety gave me my life back. Turns out I had no idea what to do with it.",
-    "category": "recovery_wisdom",
-    "date": "2026-08-14",
-    "run": 65
-  },
-  {
     "quote": "Crying in the shower isn't hiding. It's just the only place you let yourself be honest.",
     "category": "the_unsaid",
     "date": "2026-08-15",
@@ -298,5 +292,11 @@
     "category": "the_unsaid",
     "date": "2026-10-03",
     "run": 115
+  },
+  {
+    "quote": "Needing a day where you do nothing and feel nothing and ask nothing of yourself is not laziness. It's just overdue.",
+    "category": "permission",
+    "date": "2026-10-04",
+    "run": 116
   }
 ]
