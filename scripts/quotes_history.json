@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Falling apart is not a character flaw. It's what happens when you've held too much for too long.",
-    "category": "permission",
-    "date": "2026-08-16",
-    "run": 67
-  },
-  {
     "quote": "Feeling everything this hard isn't a flaw in your wiring. It means nothing got past you unnoticed.",
     "category": "hard_reframe",
     "date": "2026-08-17",
@@ -298,5 +292,11 @@
     "category": "hard_reframe",
     "date": "2026-10-05",
     "run": 117
+  },
+  {
+    "quote": "Letting someone love you well after so long being loved badly is the strangest kind of learning.",
+    "category": "midnight_honesty",
+    "date": "2026-10-06",
+    "run": 118
   }
 ]
