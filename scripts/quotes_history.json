@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Somewhere in the last hour you stopped lying to yourself. That's not nothing.",
-    "category": "midnight_honesty",
-    "date": "2026-08-18",
-    "run": 69
-  },
-  {
     "quote": "Needing someone to know how bad it got is not weakness. It's the most honest thing left in you.",
     "category": "silent_strength",
     "date": "2026-08-20",
@@ -298,5 +292,11 @@
     "category": "3am_truth",
     "date": "2026-10-07",
     "run": 119
+  },
+  {
+    "quote": "Letting someone see the version of you that isn't holding it together is not falling apart. It's finally telling the truth.",
+    "category": "silent_strength",
+    "date": "2026-10-08",
+    "run": 120
   }
 ]
