@@ -1,11 +1,5 @@
 [
   {
-    "quote": "Nobody prepares you for the moment you realize you actually want to be here.",
-    "category": "recovery_wisdom",
-    "date": "2026-08-21",
-    "run": 72
-  },
-  {
     "quote": "Grieving a life you never lost is still grief. Nobody has a word for that yet.",
     "category": "the_unsaid",
     "date": "2026-08-22",
@@ -298,5 +292,11 @@
     "category": "recovery_wisdom",
     "date": "2026-10-09",
     "run": 121
+  },
+  {
+    "quote": "Telling someone you love them while secretly wondering if they'd be better off without you is the most exhausting lie a person can carry.",
+    "category": "the_unsaid",
+    "date": "2026-10-10",
+    "run": 122
   }
 ]
